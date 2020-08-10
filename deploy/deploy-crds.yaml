@@ -1,0 +1,147 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: innodbclusters.mysql.oracle.com
+spec:
+  group: mysql.oracle.com
+  versions:
+    - name: v2alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                secretName:
+                  type: string
+                sslSecretName:
+                  type: string
+                version:
+                  type: string
+                image:
+                  type: string
+                shellImage:
+                  type: string
+                baseServerId:
+                  type: integer
+                volumeClaimTemplates:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                mycnf:
+                  type: string
+                instances:
+                  type: integer
+                podSpec:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                initDB:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                routerImage:
+                  type: string
+                routers:
+                  type: integer
+                routerSpec:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                backupProfiles:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      dumpInstance:
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+                      snapshot:
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+                backupSchedules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      backupProfileName:
+                        type: string
+                      backupProfile:
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+                      deleteBackupData:
+                        type: boolean
+            status:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Status
+          type: string
+          description: Status of the InnoDB Cluster
+          jsonPath: .status.cluster.status
+        - name: Online
+          type: integer
+          description: Number of ONLINE InnoDB Cluster instances
+          jsonPath: .status.cluster.onlineInstances
+        - name: Instances
+          type: integer
+          description: Number of InnoDB Cluster instances configured
+          jsonPath: .spec.instances
+        - name: Routers
+          type: integer
+          description: Number of Router instances configured for the InnoDB Cluster
+          jsonPath: .spec.routers
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+  scope: Namespaced
+  names:
+    kind: InnoDBCluster
+    listKind: InnoDBClusterList
+    singular: innodbcluster
+    plural: innodbclusters
+    shortNames:
+      - ic
+      - ics
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: mysqlbackups.mysql.oracle.com
+spec:
+  group: mysql.oracle.com
+  scope: Namespaced
+  names:
+    kind: MySQLBackup
+    listKind: MySQLBackupList
+    singular: mysqlbackup
+    plural: mysqlbackups
+    shortNames:
+      - mbk
+  versions:
+    - name: v2alpha1
+      served: true
+      storage: true
+  subresources:
+    status: {}
+  additionalPrinterColumns:
+    - name: Cluster
+      type: string
+      description: Name of the target cluster
+      JSONPath: .spec.clusterName
+    - name: Status
+      type: string
+      description: Status of the Backup
+      JSONPath: .status.status
+    - name: Output
+      type: string
+      description: Name of the produced file/directory
+      JSONPath: .status.output
+    - name: Age
+      type: date
+      JSONPath: .metadata.creationTimestamp

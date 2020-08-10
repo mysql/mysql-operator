@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mysql-operator
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-operator
+  namespace: mysql-operator
+  labels:
+    version: "1.0"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: mysql-operator
+  template:
+    metadata:
+      labels:
+        name: mysql-operator
+    spec:
+      containers:
+        - name: mysql-operator
+          image: akkojima/mysql-shell:8.0.21
+          imagePullPolicy: IfNotPresent
+          args: ["mysqlsh", "--pym", "mysqloperator", "operator"]
+          #args: ["mysqlsh", "--js", "-e", "os.sleep(999999999)"]
+          env:
+            - name: MYSQL_OPERATOR_DEBUG
+              value: "1"
+---
+apiVersion: zalando.org/v1
+kind: ClusterKopfPeering
+metadata:
+  name: mysql-operator

@@ -15,13 +15,14 @@
 FROM mysql/mysql-server:@VERSION@
 
 ENV MYSQL_UNIX_PORT /var/lib/mysql/mysql.sock
-ENV MYSQLD_PARENT_PID 0
 
 VOLUME /var/lib/mysql
 
 # We don't want the default healthcheck since we override
 # it from the Pod.
 HEALTHCHECK NONE
+
+COPY docker-entrypoint.sh /entrypoint.sh
 
 EXPOSE 3306 33060 33061
 CMD ["mysqld"]

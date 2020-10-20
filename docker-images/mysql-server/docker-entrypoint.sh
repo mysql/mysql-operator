@@ -204,5 +204,7 @@ EOF
 	echo "[Entrypoint] Starting MySQL 8.0.21-1.1.17"
 fi
 
-env MYSQLD_PARENT_PID=$$ "$@"
+export MYSQLD_PARENT_PID=0
+
+exec "$@"
 

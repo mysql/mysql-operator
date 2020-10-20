@@ -320,8 +320,9 @@ def on_pod_delete(body, logger, **kwargs):
             if pod.index == 0 and cluster.deleting:
                 cluster_objects.on_last_cluster_pod_removed(cluster, logger)
     else:
-        pod.remove_member_finalizer()
+        pod.remove_member_finalizer(body)
 
         logger.error(f"Owner cluster for {pod.name} does not exist anymore")
         #raise kopf.PermanentError("Cluster object deleted before Pod")
 
+    logger.info(f"====> BODY={body['metadata'].get('finalizers')}")

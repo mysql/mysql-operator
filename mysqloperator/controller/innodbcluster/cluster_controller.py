@@ -607,6 +607,7 @@ class ClusterController:
             # cluster is being deleted, if this is pod-0 shut it down
             if pod.index == 0:
                 self.destroy_cluster(pod, logger)
+                pod.remove_member_finalizer(pod_body)
                 return
 
         if pod.deleting or diag.status in (diagnose.DIAG_CLUSTER_ONLINE, diagnose.DIAG_CLUSTER_ONLINE_PARTIAL, diagnose.DIAG_CLUSTER_ONLINE_UNCERTAIN, diagnose.DIAG_CLUSTER_FINALIZING):

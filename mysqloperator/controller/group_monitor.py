@@ -91,7 +91,7 @@ class MonitoredCluster:
                     self.target_not_primary = not is_primary
                     self.session = session
                 except mysqlsh.Error as e:
-                    if mysql.ErrorCode.CR_ERROR_LAST >= e.code >= mysql.ErrorCode.CR_ERROR_FIRST:
+                    if mysql.ErrorCode.CR_MAX_ERROR >= e.code >= mysql.ErrorCode.CR_MIN_ERROR:
                         # Try again if the server we were connectd to is gone
                         continue
                     else:

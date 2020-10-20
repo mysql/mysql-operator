@@ -8,9 +8,6 @@ fi
 version=$base_version
 #push=1
 
-myregistry=localhost:5000
-
-
 if [ -n "$clean" -o ! -d bld.mysql-server ]; then
     rm -fr bld.mysql-server
     mkdir bld.mysql-server
@@ -33,10 +30,7 @@ docker build . -t $image
 cd ..
 
 minikube cache add $image
-exit
-
-docker tag $image $myregistry/mysql-server:$version
-docker push $myregistry/mysql-server:$version
+minikube cache reload
 
 if [ -n "$push" ]; then
   docker push $image

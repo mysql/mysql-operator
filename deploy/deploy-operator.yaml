@@ -29,6 +29,7 @@ spec:
           env:
             - name: MYSQL_OPERATOR_DEBUG
               value: "1"
+      serviceAccountName: mysql-operator-sa
 ---
 apiVersion: zalando.org/v1
 kind: ClusterKopfPeering

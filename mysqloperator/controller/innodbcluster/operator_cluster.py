@@ -202,7 +202,7 @@ def on_innodbcluster_field_routers(old, new, body, logger, **kwargs):
         router_objects.update_size(cluster, new, logger)
 
 
-@kopf.on.create("", "v1", "pods", labels={"app": "mysql"})
+@kopf.on.create("", "v1", "pods", labels={"component": "mysqld"})
 def on_pod_create(body, logger, **kwargs):
     """
     Handle MySQL server Pod creation, which can happen when:
@@ -237,7 +237,7 @@ def on_pod_create(body, logger, **kwargs):
         g_ephemeral_pod_state.set(pod, "mysql-restarts", pod.get_container_restarts("mysql"))
 
 
-@kopf.on.event("", "v1", "pods", labels={"app": "mysql"})
+@kopf.on.event("", "v1", "pods", labels={"component": "mysqld"})
 def on_pod_event(event, body, logger, **kwargs):
     """
     Handle low-level MySQL server pod events. The events we're interested in are:
@@ -292,7 +292,7 @@ def on_pod_event(event, body, logger, **kwargs):
             continue
 
 
-@kopf.on.delete("", "v1", "pods", labels={"app": "mysql"})
+@kopf.on.delete("", "v1", "pods", labels={"component": "mysqld"})
 def on_pod_delete(body, logger, **kwargs):
     """
     Handle MySQL server Pod deletion, which can happen when:

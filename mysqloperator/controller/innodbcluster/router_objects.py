@@ -33,6 +33,7 @@ metadata:
   name: {spec.name}
   namespace: {spec.namespace}
   labels:
+    tier: mysql
     mysql.oracle.com/cluster: {spec.name}
 spec:
   ports:
@@ -53,7 +54,8 @@ spec:
     protocol: TCP
     targetPort: {spec.router_roxport}
   selector:
-    app: mysqlrouter
+    component: mysqlrouter
+    tier: mysql
     mysql.oracle.com/cluster: {spec.name}
   type: ClusterIP
 """
@@ -89,17 +91,20 @@ kind: ReplicaSet
 metadata:
   name: {spec.name}-router
   label:
+    tier: mysql
     mysql.oracle.com/cluster: {spec.name}
 spec:
   replicas: {spec.routers}
   selector:
     matchLabels:
-      app: mysqlrouter
+      component: mysqlrouter
+      tier: mysql
       mysql.oracle.com/cluster: {spec.name}
   template:
     metadata:
       labels:
-        app: mysqlrouter
+        component: mysqlrouter
+        tier: mysql
         mysql.oracle.com/cluster: {spec.name}
     spec:
       containers:

@@ -266,7 +266,7 @@ def connect(user, password, logger, timeout=60):
     i = 0
     while timeout is None or i < timeout:
         try:
-            shell.connect({"user":user, "password":password, "socket":"/var/run/mysql/mysql.sock"})
+            shell.connect({"user":user, "password":password, "scheme":"mysql"})
             break
         except mysqlsh.Error as e:
             if mysqlutils.is_client_error(e.code) or e.code == mysql.ErrorCode.ER_ACCESS_DENIED_ERROR:
@@ -301,10 +301,42 @@ def initialize(session, datadir, pod, cluster, logger):
     # session.run_sql("shutdown")
 
 
-def helper(pod, cluster, logger):
+def standby(pod, cluster, logger):
     while True:
         import time
         time.sleep(1)
+
+
+def bootstrap(pod, datadir, logger):
+    name = pod.name
+    namespace = pod.namespace
+
+    logger.info(f"Bootstrapping mysql pod {namespace}/{name}, datadir={datadir}")
+
+    # wait for mysqld to startup, since the sidecar and mysql containers are
+    # started at the same time
+    logger.info("Connecting to MySQL...")
+    session = connect("root", "initpass", logger, timeout=None)
+
+    try:
+        initialize(session, datadir, pod, pod.get_cluster(), logger)
+        logger.info("Bootstrap finished")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        logger.critical(f"Unhandled exception while bootstrapping MySQL: {e}")
+        # TODO post event to the Pod and the Cluster object if this is the seed
+        return 1
+
+    session.close()
+
+    return 0
+
+
+
+def check_bootstrap_needed(logger):
+    # we need to bootstrap the MySQL server if:
+    return True
 
 
 def main(argv):
@@ -322,26 +354,14 @@ def main(argv):
 
     utils.log_banner(__file__, logger)
 
-    # wait for mysqld to startup, since the sidecar and mysql containers are
-    # started at the same time
-    logger.info("Connecting to MySQL...")
-    session = connect("root", "initpass", logger, timeout=None)
-
-    logger.info(f"Bootstrapping mysql pod {namespace}/{name}, datadir={datadir}")
-
-    try:
-        initialize(session, datadir, pod, cluster, logger)
-        logger.info("Bootstrap finished")
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        logger.critical(f"Unhandled exception while bootstrapping MySQL: {e}")
-        # TODO post event to the Pod and the Cluster object if this is the seed
-        return 1
+    if check_bootstrap_needed(logger):
+        r = bootstrap(pod, datadir, logger)
+        if r != 0:
+            return r
 
     logger.info("Waiting for Operator requests...")
     try:
-        helper(pod, cluster, logger)
+        standby(pod, cluster, logger)
     except Exception as e:
         import traceback
         traceback.print_exc()

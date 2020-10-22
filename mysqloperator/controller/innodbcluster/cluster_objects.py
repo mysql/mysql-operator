@@ -24,6 +24,7 @@ import yaml
 from ..kubeutils import api_core, api_apps
 import base64
 
+# TODO replace app field with component (mysqld,router) and tier (mysql)
 
 # This service includes all instances, even those that are not ready
 def prepare_cluster_service(spec):
@@ -34,7 +35,8 @@ metadata:
   name: {spec.name}-instances
   namespace: {spec.namespace}
   labels:
-    cluster: {spec.name}
+    tier: mysql
+    mysql.oracle.com/cluster: {spec.name}
   annotations:
     service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
 spec:
@@ -51,7 +53,8 @@ spec:
     port: {spec.mysql_grport}
     targetPort: {spec.mysql_grport}
   selector:
-    app: mysql
+    component: mysqld
+    tier: mysql
     mysql.oracle.com/cluster: {spec.name}
   type: ClusterIP
 """
@@ -127,18 +130,21 @@ kind: StatefulSet
 metadata:
   name: {spec.name}
   labels:
+    tier: mysql
     mysql.oracle.com/cluster: {spec.name}
 spec:
   serviceName: {spec.name}-instances
   replicas: {spec.instances}
   selector:
     matchLabels:
-      app: mysql
+      component: mysqld
+      tier: mysql
       mysql.oracle.com/cluster: {spec.name}
   template:
     metadata:
       labels:
-        app: mysql
+        component: mysqld
+        tier: mysql
         mysql.oracle.com/cluster: {spec.name}
     spec:
       subdomain: {spec.name}
@@ -180,6 +186,8 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        - name: MYSQL_UNIX_PORT
+          value: /var/run/mysql/mysql.sock
         volumeMounts:
         - name: rundir
           mountPath: /var/run/mysql

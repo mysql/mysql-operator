@@ -4,8 +4,6 @@ version=8.0.21
 full_version=$version.$(date +%s)
 #push=1
 
-myregistry=localhost:5000
-
 if [ -n "$clean" -o ! -d bld.mysql-shell ]; then
     rm -fr bld.mysql-shell
     mkdir bld.mysql-shell
@@ -33,11 +31,11 @@ fi
 
 image=akkojima/mysql-shell:$version
 
+minikube ssh "docker image rm -f $image"
 
 docker build . -t $image
 cd ..
 
-minikube ssh "docker image rm -f $image"
 minikube cache delete $image
 minikube cache add $image
 minikube cache reload

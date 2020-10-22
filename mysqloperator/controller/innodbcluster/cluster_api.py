@@ -380,7 +380,7 @@ class InnoDBCluster:
     def get_pods(self):
         # get all pods that belong to the same container
         objects = api_core.list_namespaced_pod(
-            self.namespace, label_selector="app=mysql")
+            self.namespace, label_selector="component=mysqld")
 
         pods = []
 

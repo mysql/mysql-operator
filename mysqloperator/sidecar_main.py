@@ -136,6 +136,8 @@ def populate_with_clone(datadir, session, cluster, pod, logger):
     - Local accounts will be created if missing.
     - root password will be reset if needed
     """
+    logger.info(f"Initializing mysql via clone...")
+
     start_time = session.run_sql("select now(6)").fetch_one()[0]
 
     # TODO monitor clone from a thread and dump progress
@@ -147,26 +149,11 @@ def populate_with_clone(datadir, session, cluster, pod, logger):
 
     logger.info("Restarting mysqld back up, this may take a while")
 
-    if True:
-        # root credentials for the new instance are supposed to match in donor
-        user, host, password = get_root_account_info(cluster)
+    # root credentials for the new instance are supposed to match in donor
+    user, host, password = get_root_account_info(cluster)
 
-        logger.info(f"Connecting as {user}")
-        session = connect(user, password, logger)
-    else:
-        # root credentials for the new instance are different in the donor,
-        # so we need to reset it
-
-        # Connect using donor root account
-        session = connect(cluster.parsed_spec.initDB.clone.root_user, "", logger)
-
-        # TODO reset root password
-        logger.info(f"Resetting password for {cluster.parsed_spec.initDB.root_user}")
-
-        # restart server again
-        session.run_sql("shutdown")
-
-        session = connect("localroot", "", logger)
+    logger.info(f"Connecting as {user}")
+    session = connect(user, password, logger)
 
     initdb.finish_clone_seed_pod(session, cluster, logger)
 
@@ -184,6 +171,8 @@ def populate_with_clone(datadir, session, cluster, pod, logger):
 
 
 def populate_with_dump(datadir, session, cluster, pod, logger):
+    logger.info(f"Initializing mysql from a dump...")
+
     initdb.load_dump(session, cluster, pod, cluster.parsed_spec.initDB.dump, logger)
 
     wipe_old_innodb_cluster(session, logger)
@@ -342,6 +331,7 @@ def main(argv):
 
     try:
         initialize(session, datadir, pod, cluster, logger)
+        logger.info("Bootstrap finished")
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -349,7 +339,7 @@ def main(argv):
         # TODO post event to the Pod and the Cluster object if this is the seed
         return 1
 
-    logger.info("Bootstrap done, waiting for Operator requests...")
+    logger.info("Waiting for Operator requests...")
     try:
         helper(pod, cluster, logger)
     except Exception as e:

@@ -46,7 +46,6 @@ class CloneInitDBSpec:
     password_secret_name = None
     password_secret_key = None
     root_user = None
-    root_password_secret_key = None
 
     def parse(self, spec, prefix):
         self.uri = spec.get("donorUrl")
@@ -54,18 +53,11 @@ class CloneInitDBSpec:
         key_ref = dget_dict(spec, "secretKeyRef", prefix)
         self.password_secret_name = dget_str(key_ref, "name", prefix+".secretKeyRef")
         self.password_secret_key = dget_str(key_ref, "clonePasswordKey", prefix+".secretKeyRef")
-        self.root_password_secret_key = dget_str(key_ref, "rootPasswordKey", prefix+".secretKeyRef")
 
     def get_password(self, ns):
         secret = api_core.read_namespaced_secret(self.password_secret_name, ns)
 
         return utils.b64decode(secret.data[self.password_secret_key])
-
-    def get_root_password(self, ns):
-        secret = api_core.read_namespaced_secret(self.password_secret_name, ns)
-
-        return utils.b64decode(secret.data[self.root_password_secret_key])
-
 
 class SnapshotInitDBSpec:
     storage = None # StorageSpec

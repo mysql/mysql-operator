@@ -26,10 +26,16 @@ entrypoints = {
     "operator": ".operator_main",
     "sidecar": ".sidecar_main",
     "init": ".init_main",
-    "backup": ".backup_main"
+    "backup": ".backup_main",
+    "sleep": None
 }
 
 if sys.argv[1] in entrypoints:
+    if sys.argv[1] == "sleep":
+        print("Sleeping...")
+        import time
+        time.sleep(3600)
+        sys.exit(0)
     mod = importlib.import_module(entrypoints[sys.argv[1]], "mysqloperator")
     sys.exit(mod.main(sys.argv[1:]))
 else:

@@ -477,6 +477,14 @@ class InnoDBCluster:
                 return None
             raise
 
+    def get_initmysql(self):
+        try:
+            return api_core.read_namespaced_config_map(f"{self.name}-initmysql", self.namespace)
+        except ApiException as e:
+            if e.status == 404:
+                return None
+            raise
+
     def _get_status_field(self, field):
         return self.status.get(field)
 
@@ -741,6 +749,7 @@ class MySQLPod:
         try:
             return InnoDBCluster.read(self.cluster_name, self.namespace)
         except ApiException as e:
+            print(f"Could not get cluster {self.namespace}/{self.cluster_name}: {e}")
             if e.status == 404:
                 return None
             raise
@@ -842,10 +851,7 @@ class MySQLPod:
         self._add_finalizer("mysql.oracle.com/membership")
 
     def remove_member_finalizer(self, pod_body = None):
-        self._remove_finalizer("mysql.oracle.com/membership")
-        if pod_body:
-            # modify the JSON data used internally by kopf to update its finalizer list
-            pod_body["metadata"]["finalizers"].remove("mysql.oracle.com/membership")
+        self._remove_finalizer("mysql.oracle.com/membership", pod_body)
     
     def _add_finalizer(self, fin):
         """
@@ -857,8 +863,13 @@ class MySQLPod:
         self.obj = api_core.patch_namespaced_pod(
             self.name, self.namespace, body=patch)
 
-    def _remove_finalizer(self, fin):
+    def _remove_finalizer(self, fin, pod_body=None):
         patch = { "metadata": { "$deleteFromPrimitiveList/finalizers": [fin] }}
         self.obj = api_core.patch_namespaced_pod(
             self.name, self.namespace, body=patch)
+
+        if pod_body:
+            # modify the JSON data used internally by kopf to update its finalizer list
+            if fin in pod_body["metadata"]["finalizers"]:
+                pod_body["metadata"]["finalizers"].remove(fin)
 

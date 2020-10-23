@@ -26,6 +26,8 @@ done
 
 image=akkojima/mysql-server:$version
 
+minikube ssh "docker image rm -f $image"
+
 docker build . -t $image
 cd ..
 

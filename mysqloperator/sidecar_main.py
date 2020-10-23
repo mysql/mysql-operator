@@ -21,28 +21,28 @@
 
 # Bootstrap sequence:
 
-# initContainer
-# 1 - initializes MySQL configuration files
+# 1 - initconf (initContainer)
+# 1.1 - initializes MySQL configuration files
+# 
+# 2 - initmysql (initContainer) - via docker container entrypoint script
+# 2.1 - initializes MySQL datadir
+# 2.2 - create default root account
+# 2.3 - create localroot
 #
-# MySQL container entrypoint:
-# 2 - initialize datadir
-# 3 - create root
-# 4 - start
+# 3 - mysql - via container entrypoint:
+# 3.1 - start mysqld
 #
-# Shell Sidecar:
-# 5 - create localroot
-# 6 - configureInstance()
-# 7 - initialize db (clone, loadDump etc)
-# 8 - restart (optional)
-# 9 - mark as ready
-
+# 4 - sidecar:
+# 4.1 - configureInstance()
+# 4.2 - initialize db (clone, loadDump etc)
+# 4.3 - restart (optional)
+# 4.4 - mark as ready
+# # TODO move some stuff to initdatadir?
 
 # Initializes a MySQL Pod to be used in an InnoDBCluster managed by Kubernetes
 #
 # This performs the following tasks and runs instead of the regular
 # initialization done by the Docker image entry point:
-#  - create localroot user
-#  - initialize datadir
 #  - configureInstance() and create InnoDB Cluster admin account
 #  - if this is the seed pod:
 #     - populate database from what's specified in initDB
@@ -76,6 +76,9 @@ mysql = mysqlsh.globals.mysql
 # if there's any activity happening, so the timeout is for activity to happen
 # not the total time it takes for the server to start.
 CLONE_RESTART_TIMEOUT=60*10
+
+# Path to a file created to indicate server bootstrap was done
+BOOTSTRAP_DONE_FILE = "/var/run/mysql/bootstrap-done" 
 
 def create_local_accounts(session, logger):
     """
@@ -195,8 +198,8 @@ def populate_db(datadir, session, cluster, pod, logger):
         else:
             logger.warning("spec.initDB ignored because no supported initialization parameters found")
 
-    # TODO move this to operator
-    create_root_account(session, cluster, logger)
+    # TODO move this to operator?
+    # create_root_account(session, cluster, logger)
 
     return session
 
@@ -269,7 +272,7 @@ def connect(user, password, logger, timeout=60):
             shell.connect({"user":user, "password":password, "scheme":"mysql"})
             break
         except mysqlsh.Error as e:
-            if mysqlutils.is_client_error(e.code) or e.code == mysql.ErrorCode.ER_ACCESS_DENIED_ERROR:
+            if mysqlutils.is_client_error(e.code):
                 logger.info(f"Connect attempt #{i} failed: {e}")
                 time.sleep(2)
             else:
@@ -283,8 +286,6 @@ def connect(user, password, logger, timeout=60):
 
 
 def initialize(session, datadir, pod, cluster, logger):
-    create_local_accounts(session, logger)
-
     create_admin_account(session, cluster, logger)
 
     user, password = cluster.get_admin_account()
@@ -308,15 +309,37 @@ def standby(pod, cluster, logger):
 
 
 def bootstrap(pod, datadir, logger):
+    """
+    Prepare MySQL instance for InnoDB cluster.
+
+    This function must be idempotent, because the sidecar container can get
+    restarted in many different scenarios. It's also possible that the
+    whole pod gets deleted and recreated while its underlying PV is reused.
+    In that case, the Pod will look brand new (so we can't rely on any data
+    stored in the Pod object), but the instance will be already prepared and
+    not be in the expected initial state with initial defaults.
+    """
     name = pod.name
     namespace = pod.namespace
 
-    logger.info(f"Bootstrapping mysql pod {namespace}/{name}, datadir={datadir}")
-
-    # wait for mysqld to startup, since the sidecar and mysql containers are
-    # started at the same time
+    # we may have to wait for mysqld to startup, since the sidecar and mysql 
+    # containers are started at the same time.
     logger.info("Connecting to MySQL...")
-    session = connect("root", "initpass", logger, timeout=None)
+
+    # try to connect with the admin user first, if it succeeds skip init
+    user, password = pod.get_cluster().get_admin_account()
+    try:
+        session = connect(user, password, logger, timeout=None)
+
+        logger.info(f"Connect with user {user} succeeded, skipping MySQL preparation.")
+
+        return 0
+    except mysqlsh.Error as e:
+        logger.debug(f"Connect with {user}: {e}")
+
+    logger.info(f"Preparing mysql pod {namespace}/{name}, datadir={datadir}")    
+
+    session = connect("localroot", "", logger, timeout=None)
 
     try:
         initialize(session, datadir, pod, pod.get_cluster(), logger)
@@ -331,12 +354,6 @@ def bootstrap(pod, datadir, logger):
     session.close()
 
     return 0
-
-
-
-def check_bootstrap_needed(logger):
-    # we need to bootstrap the MySQL server if:
-    return True
 
 
 def main(argv):
@@ -354,10 +371,9 @@ def main(argv):
 
     utils.log_banner(__file__, logger)
 
-    if check_bootstrap_needed(logger):
-        r = bootstrap(pod, datadir, logger)
-        if r != 0:
-            return r
+    r = bootstrap(pod, datadir, logger)
+    if r != 0:
+        return r
 
     logger.info("Waiting for Operator requests...")
     try:

@@ -151,7 +151,7 @@ spec:
       readinessGates:
       - conditionType: "mysql.oracle.com/ready"
       initContainers:
-      - name: init
+      - name: initconf
         image: {spec.shellImage}
         imagePullPolicy: {spec.shell_image_pull_policy}
         command: ["mysqlsh", "--pym", "mysqloperator", "init"]
@@ -172,6 +172,38 @@ spec:
           mountPath: /var/lib/mysql
         - name: mycnfdata
           mountPath: /mnt/mycnfdata
+      - name: initmysql
+        image: {spec.image}
+        imagePullPolicy: {spec.mysql_image_pull_policy}
+        args: {mysql_argv}
+        env:
+        - name: MYSQL_INIT_ONLY
+          value: "1"
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {spec.secretName}
+              key: rootPassword
+        - name: MYSQL_ROOT_HOST
+          valueFrom:
+            secretKeyRef:
+              name: {spec.secretName}
+              key: rootHost
+              optional: true
+        volumeMounts:
+        - name: datadir
+          mountPath: /var/lib/mysql
+        - name: rundir
+          mountPath: /var/run/mysql
+        - name: mycnfdata
+          mountPath: /etc/my.cnf.d
+          subPath: my.cnf.d
+        - name: mycnfdata
+          mountPath: /docker-entrypoint-initdb.d
+          subPath: docker-entrypoint-initdb.d
+        - name: mycnfdata
+          mountPath: /etc/my.cnf
+          subPath: my.cnf
       containers:
       - name: sidecar
         image: {spec.shellImage}
@@ -231,8 +263,6 @@ spec:
         env:
         - name: MYSQLD_PARENT_PID
           value: "0"
-          name: MYSQL_ROOT_PASSWORD
-          value: "initpass"
 {utils.indent(spec.extra_env, 8)}
         ports:
         - containerPort: {spec.mysql_port}
@@ -294,19 +324,6 @@ spec:
 def prepare_initconf(spec):
     liveness_probe = """#!/bin/bash
 # Copyright (c) 2020, Oracle and/or its affiliates.
-#
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; version 2 of the License.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
 
 # Insert 1 success every this amount of failures
 # (assumes successThreshold is > 1)
@@ -351,19 +368,6 @@ fi
 
     readiness_probe = """#!/bin/bash
 # Copyright (c) 2020, Oracle and/or its affiliates.
-#
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; version 2 of the License.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
 
 # Once the container is ready, it's always ready.
 if [ -f /mysql-ready ]; then
@@ -385,6 +389,15 @@ kind: ConfigMap
 metadata:
   name: {spec.name}-initconf
 data:
+  initdb-localroot.sql: |
+    # Create socket authenticated localroot@localhost account 
+    set sql_log_bin=0;
+    CREATE USER localroot@localhost IDENTIFIED WITH auth_socket AS 'root';
+    GRANT ALL ON *.* TO localroot@localhost WITH GRANT OPTION;
+    GRANT PROXY ON ''@'' TO localroot@localhost WITH GRANT OPTION;
+    set sql_log_bin=1;
+
+
   readinessprobe.sh: |
 {utils.indent(readiness_probe, 4)}
 

@@ -33,12 +33,16 @@ mysql = mysqlsh.globals.mysql
 
 def init_conf(datadir, pod, cluster, logger):
     """
-    Initialize MySQL configuration files, which must be mounted in /mnt/mycnfdata.
+    Initialize MySQL configuration files and init scripts, which must be mounted
+    in /mnt/mycnfdata.
     The source config files must be mounted in /mnt/initconf.
 
     The config files are them symlinked to /etc to be used by mysqld in the rest
     of the script. The main container should directly mount them in their final
     locations.
+
+    Init scripts are executed by the mysql container entrypoint when it's
+    initializing for the 1st time.
     """
     server_id = pod.index + cluster.parsed_spec.baseServerId
     report_host = f'{os.getenv("MY_POD_NAME")}.{cluster.name}-instances.{cluster.namespace}.svc.cluster.local'
@@ -48,6 +52,8 @@ def init_conf(datadir, pod, cluster, logger):
     destdir = "/mnt/mycnfdata/"
 
     os.makedirs(destdir + "my.cnf.d", exist_ok=True)
+    os.makedirs(destdir + "docker-entrypoint-initdb.d", exist_ok=True)
+
     with open(srcdir + "my.cnf.in") as f:
         data = f.read()
         data = data.replace("@@SERVER_ID@@", str(server_id))
@@ -57,10 +63,17 @@ def init_conf(datadir, pod, cluster, logger):
             mycnf.write(data)
 
     for f in os.listdir(srcdir):
-        if f.endswith(".cnf"):
+        if f.startswith("initdb-"):
+            shutil.copy(os.path.join(srcdir, f), destdir + "docker-entrypoint-initdb.d")
+            if f.endswith(".sh"):
+                os.chmod(os.path.join(destdir + "docker-entrypoint-initdb.d", f), 0o555)
+        elif f.endswith(".cnf"):
             shutil.copy(os.path.join(srcdir, f), destdir + "my.cnf.d")
 
+
     if os.path.exists("/etc/my.cnf"):
+        logger.info("Replacing /etc/my.cnf, old contents were:")
+        logger.info(open("/etc/my.cnf").read())
         os.remove("/etc/my.cnf")
     os.symlink(destdir + "my.cnf", "/etc/my.cnf")
 
@@ -69,6 +82,7 @@ def init_conf(datadir, pod, cluster, logger):
     os.symlink(destdir + "my.cnf.d", "/etc/my.cnf.d")
 
     logger.info(f"Configuration done")
+
 
 
 def main(argv):
@@ -85,7 +99,7 @@ def main(argv):
 
     utils.log_banner(__file__, logger)
 
-    logger.info(f"Bootstrapping mysql pod {namespace}/{name}, datadir={datadir}")
+    logger.info(f"Configuring mysql pod {namespace}/{name}, datadir={datadir}")
 
     logger.debug(f"Initial contents of {datadir}:")
     subprocess.run(["ls", "-l", datadir])

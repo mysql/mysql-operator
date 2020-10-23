@@ -60,6 +60,8 @@ def monitor_existing_clusters():
 
 @kopf.on.create(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL)
 def on_innodbcluster_create(name, namespace, body, logger, **kwargs):
+    logger.info(f"CLUSTER {name} CREATED")
+
     logger.info(f"Initializing InnoDB Cluster name={name} namespace={namespace}")
 
     cluster = InnoDBCluster(body)
@@ -115,15 +117,12 @@ def on_innodbcluster_create(name, namespace, body, logger, **kwargs):
                 "lastProbeTime": utils.isotime()
         }})
 
-    g_group_monitor.monitor_cluster(cluster, on_group_view_change)
-
-
 
 @kopf.on.delete(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL)
 def on_innodbcluster_delete(name, namespace, body, logger, **kwargs):
     cluster = InnoDBCluster(body)
 
-    logger.info(f"Cluster was deleted")
+    logger.info(f"CLUSTER {name} DELETED")
 
     g_group_monitor.remove_cluster(cluster)
 
@@ -224,9 +223,12 @@ def on_pod_create(body, logger, **kwargs):
         raise kopf.TemporaryError(f"{pod.name} is not ready yet", delay=10)
 
     cluster = pod.get_cluster()
+    logger.info(f"CLUSTER DELETING={cluster.deleting}")
     
     with ClusterMutex(cluster, pod):
         if pod.index == 0 and not cluster.get_create_time():
+            g_group_monitor.monitor_cluster(cluster, on_group_view_change)
+
             cluster_objects.on_first_cluster_pod_created(cluster, logger)
 
         cluster_ctl = ClusterController(cluster)

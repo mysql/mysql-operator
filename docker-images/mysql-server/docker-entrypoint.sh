@@ -53,6 +53,9 @@ if [ "$1" = 'mysqld' ]; then
 		fi
 	fi
 
+	ls -l $DATADIR
+	echo 
+	ls -l /docker-entrypoint-initdb.d
 	if [ ! -d "$DATADIR/mysql" ]; then
 		# If the password variable is a filename we use the contents of the file. We
 		# read this first to make sure that a proper error is generated for empty files.
@@ -201,7 +204,18 @@ password=healthcheckpass
 EOF
 	touch /mysql-init-complete
 	chown -R mysql:mysql "$DATADIR"
-	echo "[Entrypoint] Starting MySQL 8.0.21-1.1.17"
+
+	if [ -n "$MYSQL_INIT_ONLY" ]; then
+		echo "[Entrypoint] MYSQL_INIT_ONLY is set, exiting without starting MySQL..."
+		exit 0
+	else
+		echo "[Entrypoint] Starting MySQL 8.0.21-1.1.17"
+	fi
+else
+	if [ -n "$MYSQL_INIT_ONLY" ]; then
+		echo "[Entrypoint] MySQL already initialized and MYSQL_INIT_ONLY is set, exiting without starting MySQL..."
+		exit 0
+	fi
 fi
 
 export MYSQLD_PARENT_PID=0

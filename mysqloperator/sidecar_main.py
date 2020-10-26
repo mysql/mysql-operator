@@ -198,8 +198,7 @@ def populate_db(datadir, session, cluster, pod, logger):
         else:
             logger.warning("spec.initDB ignored because no supported initialization parameters found")
 
-    # TODO move this to operator?
-    # create_root_account(session, cluster, logger)
+    create_root_account(session, cluster, logger)
 
     return session
 
@@ -235,14 +234,15 @@ def create_root_account(session, cluster, logger):
     if info:
         user, host, password = info
 
-        if user != "root" or host != "localhost":
+        if user == "root" and host == "localhost":
+            # Nothing to do here, password was already set by the container
+            pass
+        else:
             session.run_sql("CREATE USER IF NOT EXISTS ?@? IDENTIFIED BY ?", [user, host, password])
             session.run_sql("GRANT ALL ON *.* TO ?@? WITH GRANT OPTION", [user, host])
             session.run_sql("GRANT PROXY ON ''@'' TO ?@? WITH GRANT OPTION", [user, host])
-        if user == "root":
-            session.run_sql("SET PASSWORD FOR root@localhost=?", [password])
-            if host != "localhost":
-                session.run_sql("SET PASSWORD FOR root@?=?", [host, password])
+            # Drop the default root account and keep the new one only
+            session.run_sql("DROP USER IF EXISTS root@localhost")
 
 
 def create_admin_account(session, cluster, logger):

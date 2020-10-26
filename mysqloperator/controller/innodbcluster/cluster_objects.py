@@ -186,12 +186,6 @@ spec:
             secretKeyRef:
               name: {spec.secretName}
               key: rootPassword
-        - name: MYSQL_ROOT_HOST
-          valueFrom:
-            secretKeyRef:
-              name: {spec.secretName}
-              key: rootHost
-              optional: true
         volumeMounts:
         - name: datadir
           mountPath: /var/lib/mysql

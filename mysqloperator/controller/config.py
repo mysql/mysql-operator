@@ -21,9 +21,9 @@
 
 debug = False
 enable_mysqld_general_log = False
-mysql_image_pull_policy = "Never"
-router_image_pull_policy = "Never"
-shell_image_pull_policy = "Never"
+mysql_image_pull_policy = "IfNotPresent"
+router_image_pull_policy = "IfNotPresent"
+shell_image_pull_policy = "IfNotPresent"
 
 
 # Constants
@@ -71,6 +71,10 @@ def config_from_env():
     if dev:
         if not level:
             level = 1
+
+        mysql_image_pull_policy = "Never"
+        router_image_pull_policy = "Never"
+        shell_image_pull_policy = "Never"
 
     if level:
         level = int(level)

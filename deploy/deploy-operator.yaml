@@ -32,11 +32,8 @@ spec:
           imagePullPolicy: IfNotPresent
           args: ["mysqlsh", "--pym", "mysqloperator", "operator"]
           env:
-          - name: MYSQL_OPERATOR_DEBUG
-            value: "1"
+            - name: MYSQL_OPERATOR_DEBUG
+              value: "1"
+            - name: MYSQL_OPERATOR_DEV
+              value: "1"
       serviceAccountName: mysql-operator-sa
----
-apiVersion: zalando.org/v1
-kind: ClusterKopfPeering
-metadata:
-  name: mysql-operator

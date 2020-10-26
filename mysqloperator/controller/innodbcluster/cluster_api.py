@@ -84,6 +84,7 @@ class SQLInitDB:
     storage = None # DataLocation
 
 
+
 class InitDB:
     clone = None # CloneInitDBSpec
     snapshot = None # SnapshotInitDBSpec
@@ -156,8 +157,8 @@ class InnoDBClusterSpec:
 
     router_rwport = 6446
     router_roport = 6447
-    router_rwxport = 64460
-    router_roxport = 64470
+    router_rwxport = 6448
+    router_roxport = 6449
     router_httpport = 8080
   
     def __init__(self, namespace, name, spec):

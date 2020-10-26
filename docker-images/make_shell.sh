@@ -31,10 +31,12 @@ fi
 
 image=akkojima/mysql-shell:$version
 
-minikube ssh "docker image rm -f $image"
+#minikube ssh "docker image rm -f $image"
 
 docker build . -t $image
 cd ..
+
+exit
 
 minikube cache delete $image
 minikube cache add $image

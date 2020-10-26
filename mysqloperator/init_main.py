@@ -112,11 +112,13 @@ def main(argv):
         cluster = pod.get_cluster()
 
         init_conf(datadir, pod, cluster, logger)
-
-        return 0
     except Exception as e:
         import traceback
         traceback.print_exc()
         logger.critical(f"Unhandled exception while bootstrapping MySQL: {e}")
         # TODO post event to the Pod and the Cluster object if this is the seed
         return 1
+
+    # TODO support for restoring from clone snapshot or MEB goes in here
+
+    return 0

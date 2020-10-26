@@ -85,6 +85,8 @@ data:
 # TODO - check if we need to add a finalizer to the sts and svc (and if so, what's the condition to remove them)
 # TODO - check if we need to make readinessProbe take into account innodb recovery times
 
+# TODO - create ServiceAccount ({cluster.name}-sidecar-sa) for the mysql pods and bind it to the mysql-sidecar role
+
 # ## About lifecycle probes:
 #
 # ### startupProbe

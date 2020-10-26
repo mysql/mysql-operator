@@ -3,6 +3,12 @@ kind: Namespace
 metadata:
   name: mysql-operator
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mysql-operator-sa
+  namespace: mysql-operator
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -25,10 +31,9 @@ spec:
           image: akkojima/mysql-shell:8.0.21
           imagePullPolicy: IfNotPresent
           args: ["mysqlsh", "--pym", "mysqloperator", "operator"]
-          #args: ["mysqlsh", "--js", "-e", "os.sleep(999999999)"]
           env:
-            - name: MYSQL_OPERATOR_DEBUG
-              value: "1"
+          - name: MYSQL_OPERATOR_DEBUG
+            value: "1"
       serviceAccountName: mysql-operator-sa
 ---
 apiVersion: zalando.org/v1

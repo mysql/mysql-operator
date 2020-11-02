@@ -268,7 +268,7 @@ class InnoDBClusterSpec:
                 logger.warning("spec.mycnf data does not contain a [mysqld] line")
 
         def check_image(image, option):
-            name, _, version = self.image.partition(":")
+            name, _, version = self.image.rpartition(":")
             try:
                 if "-" in version:
                     version = version.split("-")[0]

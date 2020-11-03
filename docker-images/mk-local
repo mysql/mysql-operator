@@ -1,0 +1,31 @@
+# Copyright (c) 2020, Oracle and/or its affiliates.
+
+only=$1
+
+case $only in
+    server) server=1; router=0; shell=0 ;;
+    router) server=0; router=1; shell=0 ;;
+    shell) server=0; router=0; shell=1 ;;
+    *) server=1; router=1; shell=1 ;;
+esac
+
+version=8.0.21
+
+DOCKER_IMAGE_DIR=${DOCKER_IMAGE_DIR:-/tmp/docker-images}
+mkdir -p $DOCKER_IMAGE_DIR
+
+if [ $server -ne 0 ]; then
+    ./make_server.sh mysql $version
+    docker image save mysql/mysql-server:$version -o $DOCKER_IMAGE_DIR/mysql-server:$version
+fi
+
+if [ $shell -ne 0 ]; then
+    ./make_shell.sh mysql $version
+    docker image save mysql/mysql-shell:$version -o $DOCKER_IMAGE_DIR/mysql-shell:$version
+fi
+
+if [ $router -ne 0 ]; then
+    ./make_router.sh mysql $version
+    docker image save mysql/mysql-router:$version -o $DOCKER_IMAGE_DIR/mysql-router:$version
+fi
+

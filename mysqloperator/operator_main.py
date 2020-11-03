@@ -20,6 +20,7 @@
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 
+from .controller import config as myconfig
 import mysqlsh
 import asyncio
 import kopf
@@ -27,8 +28,8 @@ import logging
 import time
 # from kopf.config import configure as config_log
 
-from .controller import operator, config as myconfig
-
+# this will register operator event handlers
+from .controller import operator
 
 def main(argv):
     mysqlsh.globals.shell.options.useWizards = False

@@ -1,7 +1,22 @@
 # Copyright (c) 2020, Oracle and/or its affiliates.
 
+# This builds the docker images in the minikube environment
+# Note this only works in a single node minikube.
+
+
+registry=akkojima
+version=8.0.21
+
+images="mysql-server mysql-router mysql-shell"
+
+for img in $images; do
+    image=$registry/$img:$version
+    minikube ssh "docker image rm -f $image"
+    minikube cache delete $image
+done
+
 eval $(minikube docker-env)
 
-./make_server.sh
-./make_shell.sh
-./make_router.sh
+./make_server.sh $registry $version
+./make_shell.sh $registry $version
+./make_router.sh $registry $version

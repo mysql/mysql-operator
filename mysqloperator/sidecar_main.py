@@ -238,6 +238,7 @@ def create_root_account(session, cluster, logger):
             # Nothing to do here, password was already set by the container
             pass
         else:
+            logger.info(f"Creating root account {user}@{host}")
             session.run_sql("CREATE USER IF NOT EXISTS ?@? IDENTIFIED BY ?", [user, host, password])
             session.run_sql("GRANT ALL ON *.* TO ?@? WITH GRANT OPTION", [user, host])
             session.run_sql("GRANT PROXY ON ''@'' TO ?@? WITH GRANT OPTION", [user, host])
@@ -255,12 +256,9 @@ def create_admin_account(session, cluster, logger):
     # binlog has to be disabled for this, because we need to create the account
     # independently in all instances (so that we can run configure on them),
     # which would cause diverging GTID sets
-    session.run_sql("SET sql_log_bin=0")
     session.run_sql("CREATE USER IF NOT EXISTS ?@? IDENTIFIED BY ?", [user, host, password])
     session.run_sql("GRANT ALL ON *.* TO ?@? WITH GRANT OPTION", [user, host])
     session.run_sql("GRANT PROXY ON ''@'' TO ?@? WITH GRANT OPTION", [user, host])
-    session.run_sql("SET sql_log_bin=1")
-
 
 
 def connect(user, password, logger, timeout=60):
@@ -286,7 +284,10 @@ def connect(user, password, logger, timeout=60):
 
 
 def initialize(session, datadir, pod, cluster, logger):
+    session.run_sql("SET sql_log_bin=0")
+    create_root_account(session, cluster, logger)
     create_admin_account(session, cluster, logger)
+    session.run_sql("SET sql_log_bin=1")
 
     user, password = cluster.get_admin_account()
     session = connect(user, password, logger)
@@ -335,7 +336,7 @@ def bootstrap(pod, datadir, logger):
 
         return 0
     except mysqlsh.Error as e:
-        logger.debug(f"Connect with {user}: {e}")
+        logger.debug(f"Connect as {user} failed, assuming Pod is not prepared: {e}")
 
     logger.info(f"Preparing mysql pod {namespace}/{name}, datadir={datadir}")    
 

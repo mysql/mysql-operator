@@ -257,8 +257,6 @@ spec:
           successThreshold: 1
           timeout: 5
         env:
-        - name: MYSQLD_PARENT_PID
-          value: "0"
 {utils.indent(spec.extra_env, 8)}
         ports:
         - containerPort: {spec.mysql_port}

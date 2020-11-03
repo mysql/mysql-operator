@@ -21,9 +21,9 @@
 
 debug = False
 enable_mysqld_general_log = False
-mysql_image_pull_policy = "IfNotPresent"
-router_image_pull_policy = "IfNotPresent"
-shell_image_pull_policy = "IfNotPresent"
+mysql_image_pull_policy = "Always"
+router_image_pull_policy = "Always"
+shell_image_pull_policy = "Always"
 
 
 # Constants
@@ -36,16 +36,16 @@ MAX_BASE_SERVER_ID = 4000000000
 DEFAULT_VERSION_TAG = "8.0.21"
 
 DEFAULT_SERVER_VERSION_TAG = DEFAULT_VERSION_TAG
-MIN_SUPPORTED_MYSQL_VERSION = "8.0.19"
+MIN_SUPPORTED_MYSQL_VERSION = "8.0.21"
 MAX_SUPPORTED_MYSQL_VERSION = "8.0.21"
 
 DEFAULT_ROUTER_VERSION_TAG = DEFAULT_VERSION_TAG
 
 DEFAULT_SHELL_VERSION_TAG = DEFAULT_VERSION_TAG
 
-MYSQL_SERVER_IMAGE = "akkojima/mysql-server"
-MYSQL_ROUTER_IMAGE = "akkojima/mysql-router"
-MYSQL_SHELL_IMAGE = "akkojima/mysql-shell"
+MYSQL_SERVER_IMAGE = "mysql/mysql-server"
+MYSQL_ROUTER_IMAGE = "mysql/mysql-router"
+MYSQL_SHELL_IMAGE = "mysql/mysql-shell"
 
 CLUSTER_ADMIN_USER_NAME = "mysqladmin"
 ROUTER_METADATA_USER_NAME = "mysqlrouter"
@@ -60,21 +60,15 @@ def config_from_env():
     global enable_mysqld_general_log
     global mysql_image_pull_policy
     global router_image_pull_policy
-    global MYSQL_SERVER_IMAGE
-    global MYSQL_ROUTER_IMAGE
-
-    ROUTER_METADATA_USER = "mysqlrouter"
+    global shell_image_pull_policy
 
     level = os.getenv("MYSQL_OPERATOR_DEBUG")
-    dev = os.getenv("MYSQL_OPERATOR_DEV")
 
-    if dev:
-        if not level:
-            level = 1
-
-        mysql_image_pull_policy = "Never"
-        router_image_pull_policy = "Never"
-        shell_image_pull_policy = "Never"
+    pull_policy = os.getenv("MYSQL_OPERATOR_IMAGE_PULL_POLICY")
+    if pull_policy:
+        mysql_image_pull_policy = pull_policy
+        router_image_pull_policy = pull_policy
+        shell_image_pull_policy = pull_policy
 
     if level:
         level = int(level)

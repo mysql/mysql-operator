@@ -15,7 +15,7 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
 set -e
 
-echo "[Entrypoint] MySQL Docker Image 8.0.21-1.1.17"
+echo "[Entrypoint] MySQL Docker Image @VERSION@-1.1.17"
 # Fetch value from server config
 # We use mysqld --verbose --help instead of my_print_defaults because the
 # latter only show values present in config files, and not server defaults
@@ -209,7 +209,7 @@ EOF
 		echo "[Entrypoint] MYSQL_INIT_ONLY is set, exiting without starting MySQL..."
 		exit 0
 	else
-		echo "[Entrypoint] Starting MySQL 8.0.21-1.1.17"
+		echo "[Entrypoint] Starting MySQL @VERSION@-1.1.17"
 	fi
 else
 	if [ -n "$MYSQL_INIT_ONLY" ]; then

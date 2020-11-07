@@ -122,11 +122,9 @@ class InnoDBClusterSpec:
     # secret with SSL certificates
     sslSecretName = None
 
+    # MySQL server version
     version = config.DEFAULT_VERSION_TAG
 
-    shellImage = config.MYSQL_SHELL_IMAGE + ":" + config.DEFAULT_SHELL_VERSION_TAG
-
-    image = config.MYSQL_SERVER_IMAGE + ":" + config.DEFAULT_SERVER_VERSION_TAG
     # number of MySQL instances (required)
     instances = None
     # base value for server_id
@@ -140,7 +138,6 @@ class InnoDBClusterSpec:
     # Initialize DB
     initDB = None
 
-    routerImage = config.MYSQL_ROUTER_IMAGE + ":" + config.DEFAULT_ROUTER_VERSION_TAG
     # number of Router instances (optional)
     routers = 0
     # override pod template for Router (optional)
@@ -171,7 +168,10 @@ class InnoDBClusterSpec:
 
         self.instances = dget_int(spec, "instances", "spec")
 
-        if "podSpec" in spec:
+        if "version" in spec:
+            self.version = spec.get("version")
+
+        if "podSpec" in spec: # TODO - replace with something more specific
             self.podSpec = spec.get("podSpec")
 
         if "volumeClaimTemplates" in spec:
@@ -183,17 +183,11 @@ class InnoDBClusterSpec:
         if "routers" in spec:
             self.routers = spec.get("routers")
 
-        if "routerSpec" in spec:
+        if "routerSpec" in spec: # TODO - replace with something more specific
             self.routerSpec = spec.get("routerSpec")
 
         if "initDB" in spec:
             self.load_initdb(spec.get("initDB"))
-
-        if "image" in spec:
-            self.image = spec.get("image")
-
-        if "routerImage" in spec:
-            self.routerImage = spec.get("routerImage")
 
         # TODO keep a list of base_server_id in the operator to keep things globally unique?
         if "baseServerId" in spec:
@@ -268,6 +262,9 @@ class InnoDBClusterSpec:
             if "[mysqld]" not in self.mycnf:
                 logger.warning("spec.mycnf data does not contain a [mysqld] line")
 
+        # TODO ensure that if version is set, then image and routerImage are not
+        # TODO should we support upgrading router only?
+
         def check_image(image, option):
             name, _, version = self.image.rpartition(":")
             try:
@@ -287,8 +284,25 @@ class InnoDBClusterSpec:
                 raise ApiSpecError(
                     f"spec.{option} is for an unsupported version {version}. Must be at most {config.MAX_SUPPORTED_MYSQL_VERSION}, unless the Operator is upgraded.")
 
-        check_image(self.image, "image")
-        check_image(self.routerImage, "routerImage")
+        # TODO check version instead
+        #check_image(self.image, "image")
+        #check_image(self.routerImage, "routerImage")
+
+    @property
+    def mysql_image(self):
+        # server image version is the one given by the user or latest by default
+        return f"{config.MYSQL_SERVER_IMAGE}:{self.version}"
+
+    @property
+    def router_image(self):
+        # router image version is always the latest
+        return f"{config.MYSQL_ROUTER_IMAGE}:{config.DEFAULT_ROUTER_VERSION_TAG}"
+
+    @property
+    def shell_image(self):
+        # shell image version is the same as ours (operator)
+        return f"{config.MYSQL_SHELL_IMAGE}:{config.DEFAULT_SHELL_VERSION_TAG}"
+
 
     @property
     def mysql_image_pull_policy(self):

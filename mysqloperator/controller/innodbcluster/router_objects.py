@@ -109,7 +109,7 @@ spec:
     spec:
       containers:
       - name: router
-        image: {spec.routerImage}
+        image: {spec.router_image}
         imagePullPolicy: {spec.router_image_pull_policy}
         env:
         - name: MYSQL_HOST

@@ -10,6 +10,7 @@ case $only in
 esac
 
 version=8.0.21
+version0=8.0.20
 
 DOCKER_IMAGE_DIR=${DOCKER_IMAGE_DIR:-/tmp/docker-images}
 mkdir -p $DOCKER_IMAGE_DIR
@@ -17,6 +18,8 @@ mkdir -p $DOCKER_IMAGE_DIR
 if [ $server -ne 0 ]; then
     ./make_server.sh mysql $version
     docker image save mysql/mysql-server:$version -o $DOCKER_IMAGE_DIR/mysql-server:$version
+    ./make_server.sh mysql $version0
+    docker image save mysql/mysql-server:$version0 -o $DOCKER_IMAGE_DIR/mysql-server:$version0
 fi
 
 if [ $shell -ne 0 ]; then
@@ -27,5 +30,7 @@ fi
 if [ $router -ne 0 ]; then
     ./make_router.sh mysql $version
     docker image save mysql/mysql-router:$version -o $DOCKER_IMAGE_DIR/mysql-router:$version
+    ./make_router.sh mysql $version0
+    docker image save mysql/mysql-router:$version0 -o $DOCKER_IMAGE_DIR/mysql-router:$version0
 fi
 

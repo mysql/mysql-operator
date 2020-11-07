@@ -154,7 +154,7 @@ spec:
       - conditionType: "mysql.oracle.com/ready"
       initContainers:
       - name: initconf
-        image: {spec.shellImage}
+        image: {spec.shell_image}
         imagePullPolicy: {spec.shell_image_pull_policy}
         command: ["mysqlsh", "--pym", "mysqloperator", "init"]
         env:
@@ -175,7 +175,7 @@ spec:
         - name: mycnfdata
           mountPath: /mnt/mycnfdata
       - name: initmysql
-        image: {spec.image}
+        image: {spec.mysql_image}
         imagePullPolicy: {spec.mysql_image_pull_policy}
         args: {mysql_argv}
         env:
@@ -202,7 +202,7 @@ spec:
           subPath: my.cnf
       containers:
       - name: sidecar
-        image: {spec.shellImage}
+        image: {spec.shell_image}
         imagePullPolicy: {spec.shell_image_pull_policy}
         command: ["mysqlsh", "--pym", "mysqloperator", "sidecar"]
         env:
@@ -226,7 +226,7 @@ spec:
           mountPath: /etc/my.cnf
           subPath: my.cnf
       - name: mysql
-        image: {spec.image}
+        image: {spec.mysql_image}
         imagePullPolicy: {spec.mysql_image_pull_policy}
         args: {mysql_argv}
         lifecycle:
@@ -257,6 +257,8 @@ spec:
           successThreshold: 1
           timeout: 5
         env:
+        - name: MYSQL_UNIX_PORT
+          value: /var/run/mysql/mysql.sock
 {utils.indent(spec.extra_env, 8)}
         ports:
         - containerPort: {spec.mysql_port}
@@ -384,11 +386,15 @@ metadata:
   name: {spec.name}-initconf
 data:
   initdb-localroot.sql: |
-    # Create socket authenticated localroot@localhost account 
     set sql_log_bin=0;
+    # Create socket authenticated localroot@localhost account 
     CREATE USER localroot@localhost IDENTIFIED WITH auth_socket AS 'root';
     GRANT ALL ON *.* TO localroot@localhost WITH GRANT OPTION;
     GRANT PROXY ON ''@'' TO localroot@localhost WITH GRANT OPTION;
+    # Drop the default account created by the docker image
+    DROP USER IF EXISTS healthchecker@localhost;
+    # Create account for liveness probe
+    CREATE USER mysqlhealthchecker@localhost IDENTIFIED WITH auth_socket AS 'root';
     set sql_log_bin=1;
 
 
@@ -455,7 +461,7 @@ def update_stateful_set_spec(sts, patch):
 
 def update_version(sts, spec):
     patch = {"spec": {"template": {"spec": {"containers": [
-      {"name": "mysql", "image": spec.image}
+      {"name": "mysql", "image": spec.mysql_image}
     ]}}}}
 
     update_stateful_set_spec(sts, patch)

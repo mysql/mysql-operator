@@ -109,7 +109,7 @@ spec:
       - ic
       - ics
 ---
-apiVersion: apiextensions.k8s.io/v1beta1
+apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   name: mysqlbackups.mysql.oracle.com
@@ -127,21 +127,37 @@ spec:
     - name: v2alpha1
       served: true
       storage: true
-  subresources:
-    status: {}
-  additionalPrinterColumns:
-    - name: Cluster
-      type: string
-      description: Name of the target cluster
-      JSONPath: .spec.clusterName
-    - name: Status
-      type: string
-      description: Status of the Backup
-      JSONPath: .status.status
-    - name: Output
-      type: string
-      description: Name of the produced file/directory
-      JSONPath: .status.output
-    - name: Age
-      type: date
-      JSONPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                clusterName:
+                  type: string
+                backupProfileName:
+                  type: string
+                backupProfile:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                deleteBackupData:
+                  type: boolean
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Cluster
+          type: string
+          description: Name of the target cluster
+          jsonPath: .spec.clusterName
+        - name: Status
+          type: string
+          description: Status of the Backup
+          jsonPath: .status.status
+        - name: Output
+          type: string
+          description: Name of the produced file/directory
+          jsonPath: .status.output
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp

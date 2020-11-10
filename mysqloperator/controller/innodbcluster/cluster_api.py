@@ -125,6 +125,9 @@ class InnoDBClusterSpec:
     # MySQL server version
     version = config.DEFAULT_VERSION_TAG
 
+    # TODO Router version, if user wants to override it (latest by default)
+    # routerVersion = None
+
     # number of MySQL instances (required)
     instances = None
     # base value for server_id
@@ -236,11 +239,11 @@ class InnoDBClusterSpec:
 
         if not self.instances:
             raise ApiSpecError(
-                f"spec.instances must be set and > 0. Got {instances!r}")
+                f"spec.instances must be set and > 0. Got {self.instances!r}")
 
         if self.routers is None:
             raise ApiSpecError(
-                f"spec.routers must be set. Got {routers!r}")
+                f"spec.routers must be set. Got {self.routers!r}")
 
         if not self.baseServerId or self.baseServerId < config.MIN_BASE_SERVER_ID or self.baseServerId > config.MAX_BASE_SERVER_ID:
             raise ApiSpecError(
@@ -573,6 +576,10 @@ class InnoDBCluster:
 
     def get_create_time(self):
         return self._get_status_field("createTime")
+
+    @property
+    def ready(self):
+        return bool(self.get_create_time())
 
     def set_last_known_quorum(self, members):
         ### TODO

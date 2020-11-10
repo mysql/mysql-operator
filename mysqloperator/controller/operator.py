@@ -24,7 +24,7 @@ from .backup import operator_backup
 from . import config, utils
 from .group_monitor import g_group_monitor
 import kopf
-import datetime
+import logging
 
 
 # @kopf.on.login()
@@ -35,6 +35,9 @@ import datetime
 @kopf.on.startup()
 def on_startup(settings: kopf.OperatorSettings, logger, **_):
     utils.log_banner(__file__, logger)
+
+    # don't post logger.debug() calls as k8s events
+    settings.posting.level = logging.INFO
 
     # Change the annotation field for storing kopf state, so that the main operator
     # and the pod controller don't collide

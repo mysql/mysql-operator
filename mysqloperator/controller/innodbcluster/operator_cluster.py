@@ -60,8 +60,6 @@ def monitor_existing_clusters():
 
 @kopf.on.create(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL)
 def on_innodbcluster_create(name, namespace, body, logger, **kwargs):
-    logger.info(f"CLUSTER {name} CREATED")
-
     logger.info(f"Initializing InnoDB Cluster name={name} namespace={namespace}")
 
     cluster = InnoDBCluster(body)
@@ -122,7 +120,7 @@ def on_innodbcluster_create(name, namespace, body, logger, **kwargs):
 def on_innodbcluster_delete(name, namespace, body, logger, **kwargs):
     cluster = InnoDBCluster(body)
 
-    logger.info(f"CLUSTER {name} DELETED")
+    logger.info(f"Deletig cluster {name}")
 
     g_group_monitor.remove_cluster(cluster)
 
@@ -144,7 +142,7 @@ def on_innodbcluster_field_instances(old, new, body, logger, **kwargs):
     cluster = InnoDBCluster(body)
 
     # ignore spec changes if the cluster is still being initialized
-    if not cluster.get_create_time():
+    if not cluster.ready:
         logger.debug(f"Ignoring spec.instances change for unready cluster")
         return
 
@@ -158,12 +156,39 @@ def on_innodbcluster_field_instances(old, new, body, logger, **kwargs):
         cluster_objects.update_stateful_set_spec(sts, {"spec": {"replicas": new}})
 
 
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL, field="spec.version")
+def on_innodbcluster_field_version(old, new, body, logger, **kwargs):
+    cluster = InnoDBCluster(body)
+
+    # ignore spec changes if the cluster is still being initialized
+    if not cluster.ready:
+        logger.debug(f"Ignoring spec.version change for unready cluster")
+        return
+
+    # TODO - identify what cluster statuses should allow this change
+
+    sts = cluster.get_stateful_set()
+    if sts and old != new:
+        logger.info(f"Updating MySQL version for InnoDB Cluster StatefulSet pod template from {old} to {new}")
+        cluster.parsed_spec.validate(logger)
+
+        cluster_ctl = ClusterController(cluster)
+
+        try:
+            cluster_ctl.on_upgrade(new)
+        except:
+            # revert version in the spec
+            raise
+
+        cluster_objects.update_version(sts, cluster.parsed_spec)
+
+
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL, field="spec.image")
 def on_innodbcluster_field_image(old, new, body, logger, **kwargs):
     cluster = InnoDBCluster(body)
 
     # ignore spec changes if the cluster is still being initialized
-    if not cluster.get_create_time():
+    if not cluster.ready:
         logger.debug(f"Ignoring spec.image change for unready cluster")
         return
 

@@ -1,7 +1,5 @@
 # Copyright (c) 2020, Oracle and/or its affiliates.
 
-cd mysql-router
-
 registry=$1
 version=$2
 
@@ -14,5 +12,16 @@ fi
 
 image=$registry/mysql-router:$version
 
-docker build . -t $image
 
+if [ -n "$clean" -o ! -d bld.mysql-router ]; then
+    rm -fr bld.mysql-router
+    mkdir bld.mysql-router
+fi
+cd bld.mysql-router
+
+for src in ../mysql-router/*; do
+    dst=`basename $src`
+    sed -e "s/@VERSION@/$version/g" $src > $dst
+done
+
+docker build . -t $image

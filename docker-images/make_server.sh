@@ -16,11 +16,8 @@ image=$registry/mysql-server:$version
 if [ -n "$clean" -o ! -d bld.mysql-server ]; then
     rm -fr bld.mysql-server
     mkdir bld.mysql-server
-    cd bld.mysql-server
-    install_pydeps=1
-else
-    cd bld.mysql-server
 fi
+cd bld.mysql-server
 
 
 for src in ../mysql-server/*; do

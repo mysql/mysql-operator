@@ -30,7 +30,9 @@ def start_clone_seed_pod(session, cluster, seed_pod, clone_spec, logger):
 
     donor_root_co = dict(mysqlsh.globals.shell.parse_uri(clone_spec.uri))
     donor_root_co["user"] = clone_spec.root_user or "root"
-    donor_root_co["password"] = clone_spec.get_root_password(cluster.namespace)
+    donor_root_co["password"] = clone_spec.get_password(cluster.namespace)
+
+    print(f"CONNECTING WITH {donor_root_co}")
 
     with Session(donor_root_co) as donor:
         clone_installed = False

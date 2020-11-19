@@ -442,6 +442,7 @@ data:
     enforce_gtid_consistency=ON
     gtid_mode=ON
     relay_log_info_repository=TABLE
+    skip_slave_start=1
 
 
   99-extra.cnf: |

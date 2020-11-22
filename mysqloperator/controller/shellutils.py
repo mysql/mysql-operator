@@ -23,17 +23,17 @@ import mysqlsh
 import kopf
 import time
 
-mysql = mysqlsh.globals.mysql
-mysqlx = mysqlsh.globals.mysqlx
+mysql = mysqlsh.mysql
+mysqlx = mysqlsh.mysqlx
 
 
-# MySQL connection errors that are not supposed to happen while connecting to 
+# MySQL connection errors that are not supposed to happen while connecting to
 # a cluster member. If these happen there's either a bug or someone/thing broke
 # the cluster. There's no point in retrying after these.
 FATAL_CONNECT_ERRORS = set([
-# Authentication errors aren't supposed to happen because we
-# only use an account we own, so access denied would indicate
-# something or someone broke our account or worse.
+    # Authentication errors aren't supposed to happen because we
+    # only use an account we own, so access denied would indicate
+    # something or someone broke our account or worse.
     mysql.ErrorCode.ER_ACCESS_DENIED_ERROR,
     mysql.ErrorCode.ER_ACCOUNT_HAS_BEEN_LOCKED
 ])
@@ -52,16 +52,20 @@ FATAL_SQL_ERRORS = set([
 FATAL_MYSQL_ERRORS = FATAL_CONNECT_ERRORS.union(FATAL_SQL_ERRORS)
 
 
-def rethrow_if_fatal_connect(err, where, logger):
+def check_fatal_connect(err, where, logger):
     if err.code in FATAL_MYSQL_ERRORS:
-        logger.error(f"Unexpected error connecting to MySQL. This error is not expected and may indicate a bug or corrupted cluster deployment: error={err} target={where}")
-        raise
+        logger.error(
+            f"Unexpected error connecting to MySQL. This error is not expected and may indicate a bug or corrupted cluster deployment: error={err} target={where}")
+        return True
+    return False
 
 
-def rethrow_if_fatal(err, where, context, logger):
+def check_fatal(err, where, context, logger):
     if err.code in FATAL_SQL_ERRORS:
-        logger.error(f"Unexpected MySQL error. This error is not expected and may indicate a bug or corrupted cluster deployment: error={err} target={where}{' context=%s' % context if context else ''}")
-        raise
+        logger.error(
+            f"Unexpected MySQL error. This error is not expected and may indicate a bug or corrupted cluster deployment: error={err} target={where}{' context=%s' % context if context else ''}")
+        return True
+    return False
 
 
 class Timeout(Exception):
@@ -94,7 +98,7 @@ class RetryLoop:
                 raise
             except GiveUp as err:
                 self.logger.error(
-                        f"Error executing {f.__qualname__}, giving up: {err.real_exc}")
+                    f"Error executing {f.__qualname__}, giving up: {err.real_exc}")
                 if err.real_exc:
                     raise err.real_exc
                 else:
@@ -125,36 +129,30 @@ class Session:
                 if "password" in url:
                     del url["password"]
                 url = mysqlsh.globals.shell.unparse_uri(url)
-                raise mysqlsh.Error(e.code, f"Error connecting to {url}: {e.msg}")
+                raise mysqlsh.Error(
+                    e.code, f"Error connecting to {url}: {e.msg}")
         else:
             self.session = session
-
 
     def __enter__(self):
         return self.session
 
-
     def __exit__(self, exc_type, exc_value, traceback):
         self.session.close()
 
-
     def __getattr__(self, name):
         return getattr(self.session, name)
-
 
 
 class Dba:
     def __init__(self, dba):
         self.dba = dba
 
-
     def __enter__(self):
         return self.dba
 
-
     def __exit__(self, exc_type, exc_value, traceback):
         self.dba.session.close()
-
 
     def __getattr__(self, name):
         return getattr(self.dba, name)
@@ -164,14 +162,11 @@ class Cluster:
     def __init__(self, cluster):
         self.cluster = cluster
 
-
     def __enter__(self):
         return self.cluster
 
-
     def __exit__(self, exc_type, exc_value, traceback):
         self.cluster.disconnect()
-
 
     def __getattr__(self, name):
         return getattr(self.cluster, name)
@@ -179,13 +174,13 @@ class Cluster:
 
 def connect_dba(target, logger, **kwargs):
     def connect_dba(target):
-        return Dba(mysqlsh.create_dba(target))
+        return Dba(mysqlsh.connect_dba(target))
     return RetryLoop(logger, **kwargs).call(connect_dba, target)
 
 
 def connect_to_pod(pod, logger, **kwargs):
     def connect(target):
-        session = mysqlsh.globals.mysql.get_session(target)
+        session = mysqlsh.mysql.get_session(target)
         # avoid trouble with global autocommit=0
         session.run_sql("set autocommit=1")
         # make sure there's no global ansi_quotes or anything like that
@@ -210,7 +205,7 @@ def jump_to_primary(session, account):
     r = res.fetch_one()
     while r:
         if r[0] == "PRIMARY":
-            if r[2]: # we're the primary
+            if r[2]:  # we're the primary
                 return session
             else:
                 # connect to the PRIMARY using the same credentials
@@ -220,7 +215,8 @@ def jump_to_primary(session, account):
                 try:
                     return mysqlx.get_session(co)
                 except mysqlsh.Error as e:
-                    print(f"Could not connect to {co['host']}:{co['port']}: {e}")
+                    print(
+                        f"Could not connect to {co['host']}:{co['port']}: {e}")
                     # continue in case we're in multi-primary mode
 
         r = res.fetch_one()
@@ -233,21 +229,24 @@ def get_valid_cluster_handle(cluster, logger):
     Try to get a cluster handle from any ONLINE pod.
     """
     ignore_pods = []
+
     def try_once():
         last_err = None
         for pod in cluster.get_pods():
             if pod.name not in ignore_pods:
                 try:
-                    dba = mysqlsh.create_dba(pod.endpoint_co)
+                    dba = mysqlsh.connect_dba(pod.endpoint_co)
                 except Exception as e:
-                    logger.warning(f"Could not connect: target={pod.endpoint} error={e}")
+                    logger.warning(
+                        f"Could not connect: target={pod.endpoint} error={e}")
                     last_err = e
                     continue
-                
+
                 try:
                     return pod, dba, dba.get_cluster()
                 except Exception as e:
-                    logger.warning(f"get_cluster: target={pod.endpoint} error={e}")
+                    logger.warning(
+                        f"get_cluster: target={pod.endpoint} error={e}")
                     last_err = e
                     continue
 
@@ -310,8 +309,6 @@ def query_members(session):
 
 def parse_uri(uri):
     return mysqlsh.globals.shell.parse_uri(uri)
-
-
 
 
 def make_ip_allowlist(pods):

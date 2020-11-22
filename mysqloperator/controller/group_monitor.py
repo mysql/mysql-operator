@@ -24,10 +24,11 @@ import threading
 import time
 import mysqlsh
 
-mysql = mysqlsh.globals.mysql
-mysqlx = mysqlsh.globals.mysqlx
+mysql = mysqlsh.mysql
+mysqlx = mysqlsh.mysqlx
 
 k_connect_retry_interval = 10
+
 
 class MonitoredCluster:
     def __init__(self, cluster, handler):
@@ -42,21 +43,19 @@ class MonitoredCluster:
 
         self.handler = handler
 
-
     @property
     def name(self):
         return self.cluster.name
-
 
     @property
     def namespace(self):
         return self.cluster.namespace
 
-
     def ensure_connected(self):
         # TODO run a ping every X seconds
         if not self.session and (not self.last_connect_attempt or time.time() - self.last_connect_attempt > k_connect_retry_interval):
-            print(f"GroupMonitor: Trying to connect to a member of cluster {self.cluster.namespace}/{self.cluster.name}")
+            print(
+                f"GroupMonitor: Trying to connect to a member of cluster {self.cluster.namespace}/{self.cluster.name}")
             self.last_connect_attempt = time.time()
             self.session = None
             self.connect_to_primary()
@@ -64,27 +63,31 @@ class MonitoredCluster:
             # force a refresh after we connect so we don't miss anything
             # that happened while we were out
             if self.session:
-                print(f"GroupMonitor: Connect member of {self.cluster.namespace}/{self.cluster.name} OK {self.session}")
+                print(
+                    f"GroupMonitor: Connect member of {self.cluster.namespace}/{self.cluster.name} OK {self.session}")
                 self.on_view_change(None)
             else:
-                print(f"GroupMonitor: Connect to member of {self.cluster.namespace}/{self.cluster.name} failed")
+                print(
+                    f"GroupMonitor: Connect to member of {self.cluster.namespace}/{self.cluster.name} failed")
 
         return self.session
-
 
     def connect_to_primary(self):
         while True:
             session, is_primary = self.find_primary()
             if not is_primary:
                 if session:
-                    print(f"GroupMonitor: Could not connect to PRIMARY of cluster {self.cluster.namespace}/{self.cluster.name}")
+                    print(
+                        f"GroupMonitor: Could not connect to PRIMARY of cluster {self.cluster.namespace}/{self.cluster.name}")
                 else:
-                    print(f"GroupMonitor: Could not connect to PRIMARY nor SECONDARY of cluster {self.cluster.namespace}/{self.cluster.name}")
+                    print(
+                        f"GroupMonitor: Could not connect to PRIMARY nor SECONDARY of cluster {self.cluster.namespace}/{self.cluster.name}")
 
             if session:
                 try:
-                    # extend number of seconds for the server to wait for a command to arrive to a full day 
-                    session.run_sql(f"set session mysqlx_wait_timeout = {24*60*60}")
+                    # extend number of seconds for the server to wait for a command to arrive to a full day
+                    session.run_sql(
+                        f"set session mysqlx_wait_timeout = {24*60*60}")
                     session._enable_notices(["GRViewChanged"])
                     co = shellutils.parse_uri(session.uri)
                     self.target = f"{co['host']}:{co['port']}"
@@ -96,10 +99,9 @@ class MonitoredCluster:
                         continue
                     else:
                         raise
-            else:            
+            else:
                 self.session = None
             break
-
 
     def find_primary(self):
         account = self.cluster.get_admin_account()
@@ -135,7 +137,6 @@ class MonitoredCluster:
 
         return not_primary, False
 
-
     def try_connect(self, pod):
         try:
             session = mysqlx.get_session(pod.xendpoint_co)
@@ -144,7 +145,6 @@ class MonitoredCluster:
             return None
 
         return session
-
 
     def handle_notice(self):
         while 1:
@@ -160,11 +160,11 @@ class MonitoredCluster:
                     break
 
             except mysqlsh.Error as e:
-                print(f"GroupMonitor: Error fetching notice: dest={self.target} error={e}")
+                print(
+                    f"GroupMonitor: Error fetching notice: dest={self.target} error={e}")
                 self.session.close()
                 self.session = None
                 break
-
 
     def on_view_change(self, view_id):
         members = shellutils.query_members(self.session)
@@ -184,7 +184,8 @@ class MonitoredCluster:
 
         # force reconnection if the PRIMARY changed or we're not connected to the PRIMARY
         if self.target_not_primary or force_reconnect:
-            print(f"GroupMonitor: PRIMARY changed for {self.cluster.namespace}/{self.cluster.name}")
+            print(
+                f"GroupMonitor: PRIMARY changed for {self.cluster.namespace}/{self.cluster.name}")
             if self.session:
                 self.session.close()
                 self.session = None
@@ -198,7 +199,6 @@ class GroupMonitor(threading.Thread):
         self.clusters = []
         self.stopped = False
 
-
     def monitor_cluster(self, cluster, handler):
         for c in self.clusters:
             if c.name == cluster.name and c.namespace == cluster.namespace:
@@ -208,13 +208,11 @@ class GroupMonitor(threading.Thread):
         self.clusters.append(target)
         print(f"Added monitor for {cluster.namespace}/{cluster.name}")
 
-
     def remove_cluster(self, cluster):
         for c in self.clusters:
             if c.name == cluster.name and c.namespace == cluster.namespace:
                 self.clusters.remove(c)
                 break
-
 
     def run(self):
         last_ping = time.time()
@@ -236,10 +234,8 @@ class GroupMonitor(threading.Thread):
                     if cluster.session and cluster.session in ready:
                         cluster.handle_notice()
 
-
     def stop(self):
         self.stopped = True
 
 
 g_group_monitor = GroupMonitor()
-

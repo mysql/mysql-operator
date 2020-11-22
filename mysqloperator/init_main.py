@@ -29,7 +29,8 @@ import shutil
 from .controller import utils, config
 from .controller.innodbcluster.cluster_api import MySQLPod
 
-mysql = mysqlsh.globals.mysql
+mysql = mysqlsh.mysql
+
 
 def init_conf(datadir, pod, cluster, logger):
     """
@@ -46,7 +47,8 @@ def init_conf(datadir, pod, cluster, logger):
     """
     server_id = pod.index + cluster.parsed_spec.baseServerId
     report_host = f'{os.getenv("MY_POD_NAME")}.{cluster.name}-instances.{cluster.namespace}.svc.cluster.local'
-    logger.info(f"Setting up configurations for {pod.name}  server_id={server_id}  report_host={report_host}")
+    logger.info(
+        f"Setting up configurations for {pod.name}  server_id={server_id}  report_host={report_host}")
 
     srcdir = "/mnt/initconf/"
     destdir = "/mnt/mycnfdata/"
@@ -64,12 +66,13 @@ def init_conf(datadir, pod, cluster, logger):
 
     for f in os.listdir(srcdir):
         if f.startswith("initdb-"):
-            shutil.copy(os.path.join(srcdir, f), destdir + "docker-entrypoint-initdb.d")
+            shutil.copy(os.path.join(srcdir, f), destdir +
+                        "docker-entrypoint-initdb.d")
             if f.endswith(".sh"):
-                os.chmod(os.path.join(destdir + "docker-entrypoint-initdb.d", f), 0o555)
+                os.chmod(os.path.join(
+                    destdir + "docker-entrypoint-initdb.d", f), 0o555)
         elif f.endswith(".cnf"):
             shutil.copy(os.path.join(srcdir, f), destdir + "my.cnf.d")
-
 
     if os.path.exists("/etc/my.cnf"):
         logger.info("Replacing /etc/my.cnf, old contents were:")
@@ -84,14 +87,13 @@ def init_conf(datadir, pod, cluster, logger):
     logger.info(f"Configuration done")
 
 
-
 def main(argv):
     datadir = argv[1] if len(argv) > 1 else "/var/lib/mysql"
 
     mysqlsh.globals.shell.options.useWizards = False
-    logging.basicConfig(level=logging.DEBUG, 
-            format='%(asctime)s - [%(levelname)s] [%(name)s] %(message)s',
-            datefmt="%Y-%m-%dT%H:%M:%S")
+    logging.basicConfig(level=logging.DEBUG,
+                        format='%(asctime)s - [%(levelname)s] [%(name)s] %(message)s',
+                        datefmt="%Y-%m-%dT%H:%M:%S")
     logger = logging.getLogger("initmysql")
 
     name = os.getenv("MY_POD_NAME")

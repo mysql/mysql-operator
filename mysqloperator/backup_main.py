@@ -30,6 +30,7 @@ from .controller.backup.backup_api import MySQLBackup
 from .controller.innodbcluster.cluster_api import InnoDBCluster
 import logging
 
+
 def get_dir_size(d):
     size = 0
     for dirpath, dirnames, filenames in os.walk(d):
@@ -54,18 +55,21 @@ def execute_dump_instance(backup_source, profile, backupdir, backup_name, logger
         options["ociProfile"] = "DEFAULT"
 
         if profile.storage.ociObjectStorage.prefix:
-            output = os.path.join(profile.storage.ociObjectStorage.prefix, backup_name)
+            output = os.path.join(
+                profile.storage.ociObjectStorage.prefix, backup_name)
         else:
             output = backup_name
     else:
         output = os.path.join(backupdir, backup_name)
 
-    logger.info(f"dump_instance starting: output={output}  options={options}  source={backup_source['user']}@{backup_source['host']}:{backup_source['port']}")
+    logger.info(
+        f"dump_instance starting: output={output}  options={options}  source={backup_source['user']}@{backup_source['host']}:{backup_source['port']}")
 
     try:
         shell.connect(backup_source)
     except mysqlsh.Error as e:
-        logger.error(f"Could not connect to {backup_source['host']}:{backup_source['port']}: {e}")
+        logger.error(
+            f"Could not connect to {backup_source['host']}:{backup_source['port']}: {e}")
         raise
 
     try:
@@ -77,7 +81,8 @@ def execute_dump_instance(backup_source, profile, backupdir, backup_name, logger
     # TODO get backup size and other stats from the dump cmd itself
 
     if profile.storage.ociObjectStorage:
-        tenancy = [line.split("=")[1].strip() for line in open("/.oci/config", "r").readlines() if line.startswith("tenancy")][0]
+        tenancy = [line.split("=")[1].strip() for line in open(
+            "/.oci/config", "r").readlines() if line.startswith("tenancy")][0]
 
         info = {
             "method": "dump-instance/oci-bucket",
@@ -106,7 +111,7 @@ def execute_clone_snapshot(backup_source, profile, backupdir, backup_name, logge
 
 
 def pick_source_instance(cluster, logger):
-    mysql = mysqlsh.globals.mysql
+    mysql = mysqlsh.mysql
 
     primary = None
     best_secondary = None
@@ -118,9 +123,10 @@ def pick_source_instance(cluster, logger):
         try:
             with shellutils.connect_dba(pod.endpoint_co, logger, max_tries=3) as dba:
                 try:
-                    status = dba.get_cluster().member_status({"extended":1})
+                    status = dba.get_cluster().member_status({"extended": 1})
                 except mysqlsh.Error as e:
-                    logger.warning(f"Could not get cluster status from {pod}: {e}")
+                    logger.warning(
+                        f"Could not get cluster status from {pod}: {e}")
                     continue
                 applier_queue_size = dba.session.run_sql(
                     "SELECT COUNT_TRANSACTIONS_REMOTE_IN_APPLIER_QUEUE"
@@ -130,7 +136,8 @@ def pick_source_instance(cluster, logger):
             logger.warning(f"Could not connect to {pod}: {e}")
             continue
 
-        logger.info(f"Cluster status from {pod} is {status}, applier_queue_size={applier_queue_size}")
+        logger.info(
+            f"Cluster status from {pod} is {status}, applier_queue_size={applier_queue_size}")
         if not status["clusterStatus"].startswith("OK") or status["memberState"] != "ONLINE":
             continue
 
@@ -149,17 +156,21 @@ def pick_source_instance(cluster, logger):
     elif primary:
         return primary
 
-    raise Exception(f"No instances available to backup from in cluster {cluster.name}")
+    raise Exception(
+        f"No instances available to backup from in cluster {cluster.name}")
 
 
 def do_backup(backup, job_name, start, backupdir, logger):
-    logger.info(f"Starting backup of {backup.namespace}/{backup.parsed_spec.clusterName}  profile={backup.parsed_spec.backupProfileName}  backupdir={backupdir}")
+    logger.info(
+        f"Starting backup of {backup.namespace}/{backup.parsed_spec.clusterName}  profile={backup.parsed_spec.backupProfileName}  backupdir={backupdir}")
 
     cluster = backup.get_cluster()
 
-    profile = cluster.parsed_spec.get_backup_profile(backup.parsed_spec.backupProfileName)
+    profile = cluster.parsed_spec.get_backup_profile(
+        backup.parsed_spec.backupProfileName)
     if not profile:
-        raise Exception(f"Unknown backup profile {backup.parsed_spec.backupProfileName} in cluster {backup.namespace}/{backup.parsed_spec.clusterName}")
+        raise Exception(
+            f"Unknown backup profile {backup.parsed_spec.backupProfileName} in cluster {backup.namespace}/{backup.parsed_spec.clusterName}")
 
     backup_source = pick_source_instance(cluster, logger)
 
@@ -177,8 +188,8 @@ def main(argv):
     debug = False
 
     logging.basicConfig(level=logging.DEBUG,
-            format='%(asctime)s - [%(levelname)s] [%(name)s] %(message)s',
-            datefmt="%Y-%m-%dT%H:%M:%S")
+                        format='%(asctime)s - [%(levelname)s] [%(name)s] %(message)s',
+                        datefmt="%Y-%m-%dT%H:%M:%S")
 
     # suppress logging from other libs
     for name in ['kubernetes']:
@@ -188,7 +199,8 @@ def main(argv):
             logger.handlers[:] = [logging.NullHandler()]
 
     logger = logging.getLogger("backup")
-    ts = datetime.datetime.fromtimestamp(os.stat(__file__).st_mtime).isoformat()
+    ts = datetime.datetime.fromtimestamp(
+        os.stat(__file__).st_mtime).isoformat()
     logger.info(f"backup  version={config.OPERATOR_VERSION}  timestamp={ts}")
 
     import subprocess
@@ -222,4 +234,3 @@ def main(argv):
         return 1
 
     return 0
-

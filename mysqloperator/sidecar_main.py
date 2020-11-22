@@ -23,7 +23,7 @@
 
 # 1 - initconf (initContainer)
 # 1.1 - initializes MySQL configuration files
-# 
+#
 # 2 - initmysql (initContainer) - via docker container entrypoint script
 # 2.1 - initializes MySQL datadir
 # 2.2 - create default root account
@@ -69,16 +69,17 @@ from .controller import utils, mysqlutils, config
 from .controller.innodbcluster import initdb
 from .controller.innodbcluster.cluster_api import MySQLPod
 
-mysql = mysqlsh.globals.mysql
+mysql = mysqlsh.mysql
 
 # The time it takes for mysqld to restart after a clone can be very long,
 # because it has to apply redo logs. OTOH we monitor the error log to see
 # if there's any activity happening, so the timeout is for activity to happen
 # not the total time it takes for the server to start.
-CLONE_RESTART_TIMEOUT=60*10
+CLONE_RESTART_TIMEOUT = 60*10
 
 # Path to a file created to indicate server bootstrap was done
-BOOTSTRAP_DONE_FILE = "/var/run/mysql/bootstrap-done" 
+BOOTSTRAP_DONE_FILE = "/var/run/mysql/bootstrap-done"
+
 
 def create_local_accounts(session, logger):
     """
@@ -113,7 +114,8 @@ def configure_for_innodb_cluster(dba, logger):
 def wipe_old_innodb_cluster(session, logger):
     # drop innodb cluster accounts
     try:
-        rows = session.run_sql("select attributes->>'$.recoveryAccountUser', attributes->>'$.recoveryAccountHost' from mysql_innodb_cluster_metadata.v2_instances").fetch_all()
+        rows = session.run_sql(
+            "select attributes->>'$.recoveryAccountUser', attributes->>'$.recoveryAccountHost' from mysql_innodb_cluster_metadata.v2_instances").fetch_all()
         for user, host in rows:
             if user and host:
                 logger.info(f"Dropping user {user}@{host}")
@@ -122,7 +124,8 @@ def wipe_old_innodb_cluster(session, logger):
         if e.code in (mysql.ErrorCode.ER_BAD_DB_ERROR, mysql.ErrorCode.ER_NO_SUCH_TABLE):
             pass
         else:
-            logger.error(f"Could not query for old InnoDB Cluster accounts: {e}")
+            logger.error(
+                f"Could not query for old InnoDB Cluster accounts: {e}")
             raise
 
     # drop metadata schema if there's one
@@ -146,7 +149,8 @@ def populate_with_clone(datadir, session, cluster, pod, logger):
     # TODO monitor clone from a thread and dump progress
     # initdb.monitor_clone(session, start_time, logger)
 
-    initdb.start_clone_seed_pod(session, cluster, pod, cluster.parsed_spec.initDB.clone, logger)
+    initdb.start_clone_seed_pod(
+        session, cluster, pod, cluster.parsed_spec.initDB.clone, logger)
 
     logger.info("Waiting for mysqld to be restarted/shutdown by clone")
 
@@ -176,7 +180,8 @@ def populate_with_clone(datadir, session, cluster, pod, logger):
 def populate_with_dump(datadir, session, cluster, pod, logger):
     logger.info(f"Initializing mysql from a dump...")
 
-    initdb.load_dump(session, cluster, pod, cluster.parsed_spec.initDB.dump, logger)
+    initdb.load_dump(session, cluster, pod,
+                     cluster.parsed_spec.initDB.dump, logger)
 
     wipe_old_innodb_cluster(session, logger)
 
@@ -196,7 +201,8 @@ def populate_db(datadir, session, cluster, pod, logger):
         elif cluster.parsed_spec.initDB.dump:
             return populate_with_dump(datadir, session, cluster, pod, logger)
         else:
-            logger.warning("spec.initDB ignored because no supported initialization parameters found")
+            logger.warning(
+                "spec.initDB ignored because no supported initialization parameters found")
 
     create_root_account(session, cluster, logger)
 
@@ -205,12 +211,13 @@ def populate_db(datadir, session, cluster, pod, logger):
 
 def get_root_account_info(cluster):
     secrets = cluster.get_user_secrets()
-    if secrets: 
+    if secrets:
         user = secrets.data.get("rootUser")
         host = secrets.data.get("rootHost")
         password = secrets.data.get("rootPassword", None)
         if not password:
-            raise Exception(f"rootPassword missing in secret {secrets.metadata['name']}")
+            raise Exception(
+                f"rootPassword missing in secret {secrets.metadata['name']}")
         if user:
             user = utils.b64decode(user)
         else:
@@ -239,9 +246,12 @@ def create_root_account(session, cluster, logger):
             pass
         else:
             logger.info(f"Creating root account {user}@{host}")
-            session.run_sql("CREATE USER IF NOT EXISTS ?@? IDENTIFIED BY ?", [user, host, password])
-            session.run_sql("GRANT ALL ON *.* TO ?@? WITH GRANT OPTION", [user, host])
-            session.run_sql("GRANT PROXY ON ''@'' TO ?@? WITH GRANT OPTION", [user, host])
+            session.run_sql(
+                "CREATE USER IF NOT EXISTS ?@? IDENTIFIED BY ?", [user, host, password])
+            session.run_sql(
+                "GRANT ALL ON *.* TO ?@? WITH GRANT OPTION", [user, host])
+            session.run_sql(
+                "GRANT PROXY ON ''@'' TO ?@? WITH GRANT OPTION", [user, host])
             # Drop the default root account and keep the new one only
             session.run_sql("DROP USER IF EXISTS root@localhost")
 
@@ -256,9 +266,11 @@ def create_admin_account(session, cluster, logger):
     # binlog has to be disabled for this, because we need to create the account
     # independently in all instances (so that we can run configure on them),
     # which would cause diverging GTID sets
-    session.run_sql("CREATE USER IF NOT EXISTS ?@? IDENTIFIED BY ?", [user, host, password])
+    session.run_sql(
+        "CREATE USER IF NOT EXISTS ?@? IDENTIFIED BY ?", [user, host, password])
     session.run_sql("GRANT ALL ON *.* TO ?@? WITH GRANT OPTION", [user, host])
-    session.run_sql("GRANT PROXY ON ''@'' TO ?@? WITH GRANT OPTION", [user, host])
+    session.run_sql(
+        "GRANT PROXY ON ''@'' TO ?@? WITH GRANT OPTION", [user, host])
 
 
 def connect(user, password, logger, timeout=60):
@@ -267,18 +279,21 @@ def connect(user, password, logger, timeout=60):
     i = 0
     while timeout is None or i < timeout:
         try:
-            shell.connect({"user":user, "password":password, "scheme":"mysql"})
+            shell.connect(
+                {"user": user, "password": password, "scheme": "mysql"})
             break
         except mysqlsh.Error as e:
             if mysqlutils.is_client_error(e.code):
                 logger.info(f"Connect attempt #{i} failed: {e}")
                 time.sleep(2)
             else:
-                logger.critical(f"Unexpected MySQL error during connection: {e}")
+                logger.critical(
+                    f"Unexpected MySQL error during connection: {e}")
                 raise
         i += 1
     else:
-        raise Exception("Could not connect to MySQL server after initialization")
+        raise Exception(
+            "Could not connect to MySQL server after initialization")
 
     return mysqlsh.globals.session
 
@@ -296,7 +311,7 @@ def initialize(session, datadir, pod, cluster, logger):
 
     # if this is the 1st pod of the cluster, then initialize it and create default accounts
     if pod.index == 0 and cluster.get_create_time() is None:
-       session = populate_db(datadir, session, cluster, pod, logger)
+        session = populate_db(datadir, session, cluster, pod, logger)
 
     # # shutdown mysqld to let the definitive container start it back
     # logger.info("Shutting down mysql...")
@@ -323,7 +338,7 @@ def bootstrap(pod, datadir, logger):
     name = pod.name
     namespace = pod.namespace
 
-    # we may have to wait for mysqld to startup, since the sidecar and mysql 
+    # we may have to wait for mysqld to startup, since the sidecar and mysql
     # containers are started at the same time.
     logger.info("Connecting to MySQL...")
 
@@ -332,13 +347,15 @@ def bootstrap(pod, datadir, logger):
     try:
         session = connect(user, password, logger, timeout=None)
 
-        logger.info(f"Connect with user {user} succeeded, skipping MySQL preparation.")
+        logger.info(
+            f"Connect with user {user} succeeded, skipping MySQL preparation.")
 
         return 0
     except mysqlsh.Error as e:
-        logger.debug(f"Connect as {user} failed, assuming Pod is not prepared: {e}")
+        logger.debug(
+            f"Connect as {user} failed, assuming Pod is not prepared: {e}")
 
-    logger.info(f"Preparing mysql pod {namespace}/{name}, datadir={datadir}")    
+    logger.info(f"Preparing mysql pod {namespace}/{name}, datadir={datadir}")
 
     session = connect("localroot", "", logger, timeout=None)
 
@@ -361,9 +378,9 @@ def main(argv):
     datadir = argv[1] if len(argv) > 1 else "/var/lib/mysql"
 
     mysqlsh.globals.shell.options.useWizards = False
-    logging.basicConfig(level=logging.DEBUG, 
-            format='%(asctime)s - [%(levelname)s] [%(name)s] %(message)s',
-            datefmt="%Y-%m-%dT%H:%M:%S")
+    logging.basicConfig(level=logging.DEBUG,
+                        format='%(asctime)s - [%(levelname)s] [%(name)s] %(message)s',
+                        datefmt="%Y-%m-%dT%H:%M:%S")
     logger = logging.getLogger("sidecar")
     name = os.getenv("MY_POD_NAME")
     namespace = os.getenv("MY_POD_NAMESPACE")

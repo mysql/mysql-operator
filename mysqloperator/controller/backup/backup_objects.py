@@ -19,18 +19,20 @@
 # along with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
+from ..innodbcluster.cluster_api import InnoDBClusterSpec
+from .backup_api import MySQLBackupSpec
 import yaml
 from .. import utils, config, consts
 
 
-def prepare_backup_secrets(spec):
+def prepare_backup_secrets(spec: InnoDBClusterSpec) -> dict:
     """
     Secrets for authenticating backup tool with MySQL.
     """
     backup_user = utils.b64encode(config.BACKUP_USER_NAME)
     backup_pwd = utils.b64encode(utils.generate_password())
 
-    # We use a separate secrets object for the backup, so that we don't need to 
+    # We use a separate secrets object for the backup, so that we don't need to
     # give access for the main secret to backup instances.
     tmpl = f"""
 apiVersion: v1
@@ -44,7 +46,7 @@ data:
     return yaml.safe_load(tmpl)
 
 
-def prepare_backup_job(jobname, spec):
+def prepare_backup_job(jobname: str, spec: MySQLBackupSpec) -> dict:
     tmpl = f"""
 apiVersion: batch/v1
 kind: Job

@@ -19,7 +19,9 @@
 # along with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
+from kubernetes.client import api_client
 from .. import utils, config, consts
+from .cluster_api import InnoDBCluster, InnoDBClusterSpec
 import yaml
 from ..kubeutils import api_core, api_apps
 import base64
@@ -27,7 +29,9 @@ import base64
 # TODO replace app field with component (mysqld,router) and tier (mysql)
 
 # This service includes all instances, even those that are not ready
-def prepare_cluster_service(spec):
+
+
+def prepare_cluster_service(spec: InnoDBClusterSpec) -> dict:
     tmpl = f"""
 apiVersion: v1
 kind: Service
@@ -61,8 +65,7 @@ spec:
     return yaml.safe_load(tmpl)
 
 
-
-def prepare_secrets(spec):
+def prepare_secrets(spec: InnoDBClusterSpec) -> dict:
     def encode(s):
         return base64.b64encode(bytes(s, "ascii")).decode("ascii")
 
@@ -79,7 +82,6 @@ data:
   clusterAdminPassword: {admin_pwd}
 """
     return yaml.safe_load(tmpl)
-
 
 
 # TODO - check if we need to add a finalizer to the sts and svc (and if so, what's the condition to remove them)
@@ -108,7 +110,7 @@ data:
 # resetting the failure counter and let it actually fail.
 #
 # ### readinessProbe
-# 
+#
 # used to let k8s know that the container can be marked as ready, which means
 # it can accept external connections. We need mysqld to be always accessible,
 # so the probe should always succeed as soon as startup succeeds.
@@ -121,7 +123,7 @@ data:
 # this checks that the server is still healthy. If it fails above the threshold
 # (e.g. because of a deadlock), the container is restarted.
 #
-def prepare_cluster_stateful_set(spec):
+def prepare_cluster_stateful_set(spec: InnoDBClusterSpec) -> dict:
     mysql_argv = ["mysqld", "--user=mysql"]
     if config.enable_mysqld_general_log:
         mysql_argv.append("--general-log=1")
@@ -307,17 +309,17 @@ spec:
 
     if spec.podSpec:
         utils.merge_patch_object(statefulset["spec"]["template"]["spec"],
-                            spec.podSpec, "spec.podSpec")
+                                 spec.podSpec, "spec.podSpec")
 
     if spec.volumeClaimTemplates:
         utils.merge_patch_object(statefulset["spec"]["volumeClaimTemplates"],
-                            spec.volumeClaimTemplates, "spec.volumeClaimTemplates",
-                            key=".metadata.name")
+                                 spec.volumeClaimTemplates, "spec.volumeClaimTemplates",
+                                 key=".metadata.name")
 
     return statefulset
 
 
-def prepare_initconf(spec):
+def prepare_initconf(spec: InnoDBClusterSpec) -> dict:
     liveness_probe = """#!/bin/bash
 # Copyright (c) 2020, Oracle and/or its affiliates.
 
@@ -455,27 +457,28 @@ data:
     return yaml.safe_load(tmpl)
 
 
-def update_stateful_set_spec(sts, patch):
+def update_stateful_set_spec(sts, patch: dict) -> None:
     api_apps.patch_namespaced_stateful_set(
         sts.metadata.name, sts.metadata.namespace, body=patch)
 
 
-def update_version(sts, spec):
+def update_version(sts, spec: InnoDBClusterSpec) -> None:
     patch = {"spec": {"template": {"spec": {"containers": [
-      {"name": "mysql", "image": spec.mysql_image}
+        {"name": "mysql", "image": spec.mysql_image}
     ]}}}}
 
     update_stateful_set_spec(sts, patch)
 
 
-def on_first_cluster_pod_created(cluster, logger):
+def on_first_cluster_pod_created(cluster: InnoDBCluster, logger) -> None:
     # Add finalizer to the cluster object to prevent it from being deleted
     # until the last pod is properly deleted.
     cluster.add_cluster_finalizer()
 
 
-def on_last_cluster_pod_removed(cluster, logger):
+def on_last_cluster_pod_removed(cluster: InnoDBCluster, logger) -> None:
     # Remove cluster finalizer because the last pod was deleted, this lets
     # the cluster object to be deleted too
-    logger.info(f"Last pod for cluster {cluster.name} was deleted, removing cluster finalizer...")
+    logger.info(
+        f"Last pod for cluster {cluster.name} was deleted, removing cluster finalizer...")
     cluster.remove_cluster_finalizer()

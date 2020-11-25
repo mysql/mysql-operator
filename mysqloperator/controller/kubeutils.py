@@ -19,6 +19,7 @@
 # along with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
+from typing import Callable, Optional, TypeVar
 from kubernetes.client.rest import ApiException
 from kubernetes import client, config
 
@@ -33,7 +34,18 @@ except config.config_exception.ConfigException:
         raise Exception(
             "Could not configure kubernetes python client")
 
-api_core = client.CoreV1Api()
-api_customobj = client.CustomObjectsApi()
-api_apps = client.AppsV1Api()
-api_batch = client.BatchV1Api()
+api_core: client.CoreV1Api = client.CoreV1Api()
+api_customobj: client.CustomObjectsApi = client.CustomObjectsApi()
+api_apps: client.AppsV1Api = client.AppsV1Api()
+api_batch: client.BatchV1Api = client.BatchV1Api()
+
+T = TypeVar("T")
+
+
+def catch_404(f: Callable[..., T]) -> Optional[T]:
+    try:
+        return f()
+    except ApiException as e:
+        if e.status == 404:
+            return None
+        raise

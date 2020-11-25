@@ -26,15 +26,13 @@ from ..innodbcluster.cluster_api import InnoDBCluster
 from .backup_api import MySQLBackup
 from . import backup_objects
 import kopf
-import yaml
-import datetime
-import time
-
+from logging import Logger
 
 
 @kopf.on.create(consts.GROUP, consts.VERSION, consts.MYSQLBACKUP_PLURAL)
-def on_mysqlbackup_create(name, namespace, spec, body, logger, **kwargs):
-    logger.info(f"Initializing MySQL Backup job name={name} namespace={namespace}")
+def on_mysqlbackup_create(name: str, namespace: str, spec: dict, body: dict, logger: Logger, **kwargs):
+    logger.info(
+        f"Initializing MySQL Backup job name={name} namespace={namespace}")
 
     backup = MySQLBackup(body)
 
@@ -51,4 +49,3 @@ def on_mysqlbackup_create(name, namespace, spec, body, logger, **kwargs):
 
 
 # TODO create a job to delete the data when the job is deleted
-

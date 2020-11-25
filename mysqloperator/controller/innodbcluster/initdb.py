@@ -19,24 +19,30 @@
 # along with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
-from ..shellutils import Session
+from mysqlsh.mysql import ClassicSession
+from .cluster_api import DumpInitDBSpec, MySQLPod, InitDB, CloneInitDBSpec, InnoDBCluster
+from ..shellutils import SessionWrap
 from .. import mysqlutils
 import mysqlsh
 import time
 import os
+from logging import Logger
 
 
-def start_clone_seed_pod(session, cluster, seed_pod, clone_spec, logger):
+def start_clone_seed_pod(session: mysqlsh.mysql.ClassicSession,
+                         cluster: InnoDBCluster,
+                         seed_pod: MySQLPod, clone_spec: CloneInitDBSpec,
+                         logger: Logger) -> bool:
     logger.info(
         f"Initializing seed instance. method=clone  pod={seed_pod}  source={clone_spec.uri}")
 
-    donor_root_co = dict(mysqlsh.globals.shell.parse_uri(clone_spec.uri))
+    donor_root_co = mysqlsh.globals.shell.parse_uri(clone_spec.uri)
     donor_root_co["user"] = clone_spec.root_user or "root"
     donor_root_co["password"] = clone_spec.get_password(cluster.namespace)
 
     print(f"CONNECTING WITH {donor_root_co}")
 
-    with Session(donor_root_co) as donor:
+    with SessionWrap(donor_root_co) as donor:
         clone_installed = False
         for row in iter(donor.run_sql("SHOW PLUGINS").fetch_one, None):
             if row[3]:
@@ -55,7 +61,7 @@ def start_clone_seed_pod(session, cluster, seed_pod, clone_spec, logger):
         donor_co = dict(mysqlsh.globals.shell.parse_uri(clone_spec.uri))
         donor_co["password"] = clone_spec.get_password(cluster.namespace)
 
-        with Session(donor_co) as donor:
+        with SessionWrap(donor_co) as donor:
             return mysqlutils.clone_server(donor_co, donor, session, logger)
     except mysqlsh.Error as e:
         if mysqlutils.is_client_error(e.code) or e.code == mysqlsh.mysql.ErrorCode.ER_ACCESS_DENIED_ERROR:
@@ -66,14 +72,14 @@ def start_clone_seed_pod(session, cluster, seed_pod, clone_spec, logger):
             raise
 
 
-def monitor_clone(session, start_time, logger):
+def monitor_clone(session: ClassicSession, start_time: str, logger: Logger) -> None:
     logger.info("Waiting for clone...")
     while True:
         r = session.run_sql("select * from performance_schema.clone_progress")
         time.sleep(1)
 
 
-def finish_clone_seed_pod(session, cluster, logger):
+def finish_clone_seed_pod(session: ClassicSession, cluster: InnoDBCluster, logger: Logger) -> None:
     return
     logger.info(f"Finalizing clone")
 
@@ -83,21 +89,20 @@ def finish_clone_seed_pod(session, cluster, logger):
     logger.info(f"Clone finished successfully")
 
 
-def load_dump(session, cluster, pod, init_spec, logger):
+def load_dump(session: ClassicSession, cluster: InnoDBCluster, pod: MySQLPod, init_spec: DumpInitDBSpec, logger: Logger) -> None:
     options = init_spec.loadOptions.copy()
 
     if init_spec.storage.ociObjectStorage:
-        if init_spec.name:
-            path = os.path.join(init_spec.prefix or "", init_spec.name)
-        else:
-            path = init_spec.prefix
-        options["osBucketName"] = init_spec.storage.ociObjectStorage.osBucketName
+        path = init_spec.storage.ociObjectStorage.prefix
+        options["osBucketName"] = init_spec.storage.ociObjectStorage.bucketName
         options["ociConfigFile"] = "/.oci/config"
         options["ociProfile"] = "DEFAULT"
     else:
-        path = os.path.join(init_spec.prefix or "", init_spec.path)
+        path = init_spec.path
 
     logger.info(f"Executing load_dump({path}, {options})")
+
+    assert path
     try:
         mysqlsh.globals.util.load_dump(path, options)
     except mysqlsh.Error as e:

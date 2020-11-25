@@ -37,7 +37,7 @@ if sys.argv[1] in entrypoints:
         time.sleep(3600)
         sys.exit(0)
     mod = importlib.import_module(entrypoints[sys.argv[1]], "mysqloperator")
-    sys.exit(mod.main(sys.argv[1:]))
+    sys.exit(mod.main(sys.argv[1:]))  # type: ignore
 else:
     print("Invalid args:", sys.argv)
     sys.exit(1)

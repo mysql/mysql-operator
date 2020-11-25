@@ -31,6 +31,7 @@ import time
 # this will register operator event handlers
 from .controller import operator
 
+
 def main(argv):
     mysqlsh.globals.shell.options.useWizards = False
 
@@ -44,7 +45,7 @@ def main(argv):
     # kopf peering. If there are multiple operator instances in the cluster,
     # only the one with the highest priority will actually be active.
     loop.run_until_complete(kopf.operator(
-        priority=time.time(),
+        priority=int(time.time()*1000000),
         peering_name="mysql-operator"
     ))
 
@@ -53,4 +54,3 @@ def main(argv):
 
 if __name__ == "__main__":
     main([])
-

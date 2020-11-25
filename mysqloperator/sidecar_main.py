@@ -58,16 +58,20 @@
 # same Pod of the same StatefulSet (?).
 #
 
+from logging import Logger
 import subprocess
+from typing import Optional, Tuple, cast
 import mysqlsh
 import sys
 import os
 import logging
 import time
 import shutil
+
+from mysqlsh.mysql import ClassicSession
 from .controller import utils, mysqlutils, config
 from .controller.innodbcluster import initdb
-from .controller.innodbcluster.cluster_api import MySQLPod
+from .controller.innodbcluster.cluster_api import CloneInitDBSpec, DumpInitDBSpec, InnoDBCluster, InnoDBClusterSpec, MySQLPod
 
 mysql = mysqlsh.mysql
 
@@ -133,7 +137,7 @@ def wipe_old_innodb_cluster(session, logger):
     session.run_sql("drop schema if exists mysql_innodb_cluster_metadata")
 
 
-def populate_with_clone(datadir, session, cluster, pod, logger):
+def populate_with_clone(datadir: str, session: ClassicSession, cluster: InnoDBCluster, clone_spec: CloneInitDBSpec, pod: MySQLPod, logger: Logger):
     """
     Initialize the DB using clone.
     Server may be restarted multiple times but will be back up on return.
@@ -150,7 +154,7 @@ def populate_with_clone(datadir, session, cluster, pod, logger):
     # initdb.monitor_clone(session, start_time, logger)
 
     initdb.start_clone_seed_pod(
-        session, cluster, pod, cluster.parsed_spec.initDB.clone, logger)
+        session, cluster, pod, clone_spec, logger)
 
     logger.info("Waiting for mysqld to be restarted/shutdown by clone")
 
@@ -177,18 +181,17 @@ def populate_with_clone(datadir, session, cluster, pod, logger):
     return session
 
 
-def populate_with_dump(datadir, session, cluster, pod, logger):
+def populate_with_dump(datadir: str, session: ClassicSession, cluster: InnoDBCluster, init_spec: DumpInitDBSpec, pod: MySQLPod, logger: Logger):
     logger.info(f"Initializing mysql from a dump...")
 
-    initdb.load_dump(session, cluster, pod,
-                     cluster.parsed_spec.initDB.dump, logger)
+    initdb.load_dump(session, cluster, pod, init_spec, logger)
 
     wipe_old_innodb_cluster(session, logger)
 
     return session
 
 
-def populate_db(datadir, session, cluster, pod, logger):
+def populate_db(datadir, session, cluster, pod, logger: Logger) -> ClassicSession:
     """
     Populate DB from source specified in the cluster spec.
     Also creates main root account specified by user.
@@ -197,9 +200,9 @@ def populate_db(datadir, session, cluster, pod, logger):
     """
     if cluster.parsed_spec.initDB:
         if cluster.parsed_spec.initDB.clone:
-            return populate_with_clone(datadir, session, cluster, pod, logger)
+            return populate_with_clone(datadir, session, cluster, cluster.parsed_spec.initDB.clone, pod, logger)
         elif cluster.parsed_spec.initDB.dump:
-            return populate_with_dump(datadir, session, cluster, pod, logger)
+            return populate_with_dump(datadir, session, cluster, cluster.parsed_spec.initDB.dump, pod, logger)
         else:
             logger.warning(
                 "spec.initDB ignored because no supported initialization parameters found")
@@ -209,7 +212,7 @@ def populate_db(datadir, session, cluster, pod, logger):
     return session
 
 
-def get_root_account_info(cluster):
+def get_root_account_info(cluster: InnoDBCluster) -> Tuple[str, str, str]:
     secrets = cluster.get_user_secrets()
     if secrets:
         user = secrets.data.get("rootUser")
@@ -230,30 +233,29 @@ def get_root_account_info(cluster):
 
         return user, host, password
 
-    return None
+    raise Exception(
+        f"Could not get secret with for root account information for {cluster.namespace}/{cluster.name}")
 
 
-def create_root_account(session, cluster, logger):
+def create_root_account(session: ClassicSession, cluster, logger: Logger) -> None:
     """
     Create general purpose root account (owned by user) as specified by user.
     """
-    info = get_root_account_info(cluster)
-    if info:
-        user, host, password = info
+    user, host, password = get_root_account_info(cluster)
 
-        if user == "root" and host == "localhost":
-            # Nothing to do here, password was already set by the container
-            pass
-        else:
-            logger.info(f"Creating root account {user}@{host}")
-            session.run_sql(
-                "CREATE USER IF NOT EXISTS ?@? IDENTIFIED BY ?", [user, host, password])
-            session.run_sql(
-                "GRANT ALL ON *.* TO ?@? WITH GRANT OPTION", [user, host])
-            session.run_sql(
-                "GRANT PROXY ON ''@'' TO ?@? WITH GRANT OPTION", [user, host])
-            # Drop the default root account and keep the new one only
-            session.run_sql("DROP USER IF EXISTS root@localhost")
+    if user == "root" and host == "localhost":
+        # Nothing to do here, password was already set by the container
+        pass
+    else:
+        logger.info(f"Creating root account {user}@{host}")
+        session.run_sql(
+            "CREATE USER IF NOT EXISTS ?@? IDENTIFIED BY ?", [user, host, password])
+        session.run_sql(
+            "GRANT ALL ON *.* TO ?@? WITH GRANT OPTION", [user, host])
+        session.run_sql(
+            "GRANT PROXY ON ''@'' TO ?@? WITH GRANT OPTION", [user, host])
+        # Drop the default root account and keep the new one only
+        session.run_sql("DROP USER IF EXISTS root@localhost")
 
 
 def create_admin_account(session, cluster, logger):
@@ -273,7 +275,7 @@ def create_admin_account(session, cluster, logger):
         "GRANT PROXY ON ''@'' TO ?@? WITH GRANT OPTION", [user, host])
 
 
-def connect(user, password, logger, timeout=60):
+def connect(user: str, password: str, logger: Logger, timeout: Optional[int] = 60) -> ClassicSession:
     shell = mysqlsh.globals.shell
 
     i = 0
@@ -294,6 +296,8 @@ def connect(user, password, logger, timeout=60):
     else:
         raise Exception(
             "Could not connect to MySQL server after initialization")
+
+    assert mysqlsh.globals.session
 
     return mysqlsh.globals.session
 
@@ -318,13 +322,13 @@ def initialize(session, datadir, pod, cluster, logger):
     # session.run_sql("shutdown")
 
 
-def standby(pod, cluster, logger):
+def standby(pod, cluster, logger: Logger) -> None:
     while True:
         import time
         time.sleep(1)
 
 
-def bootstrap(pod, datadir, logger):
+def bootstrap(pod, datadir: str, logger: Logger) -> int:
     """
     Prepare MySQL instance for InnoDB cluster.
 
@@ -382,8 +386,8 @@ def main(argv):
                         format='%(asctime)s - [%(levelname)s] [%(name)s] %(message)s',
                         datefmt="%Y-%m-%dT%H:%M:%S")
     logger = logging.getLogger("sidecar")
-    name = os.getenv("MY_POD_NAME")
-    namespace = os.getenv("MY_POD_NAMESPACE")
+    name = cast(str, os.getenv("MY_POD_NAME"))
+    namespace = cast(str, os.getenv("MY_POD_NAMESPACE"))
     pod = MySQLPod.read(name, namespace)
     cluster = pod.get_cluster()
 

@@ -19,7 +19,7 @@
 # along with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
-import kopf 
+import kopf
 
 # Shell Error Codes (TODO move to mysqlsh.ErrorCode)
 SHERR_DBA_BADARG_INSTANCE_NOT_MANAGED = 51300
@@ -33,6 +33,6 @@ SHERR_DBA_GROUP_REBOOT_NEEDED = "NEED_REBOOT"
 
 
 class PermanentErrorWithCode(kopf.PermanentError):
-    def __init__(self, msg, code):
+    def __init__(self, msg: str, code: int):
         super().__init__(msg)
         self.code = code

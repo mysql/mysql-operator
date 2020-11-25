@@ -27,10 +27,12 @@ import random
 import base64
 import threading
 
-def b64decode(s):
+
+def b64decode(s: str) -> str:
     return base64.b64decode(s).decode("utf8")
 
-def b64encode(s):
+
+def b64encode(s: str) -> str:
     return base64.b64encode(bytes(s, "utf8")).decode("ascii")
 
 
@@ -41,12 +43,12 @@ class EphemeralState:
         self.data = {}
         self.lock = threading.Lock()
 
-    def get(self, obj, key):
+    def get(self, obj, key: str):
         key = obj.namespace+"/"+obj.name+"/"+key
         with self.lock:
             return self.data.get(key)
 
-    def testset(self, obj, key, value):
+    def testset(self, obj, key: str, value):
         key = obj.namespace+"/"+obj.name+"/"+key
         with self.lock:
             old = self.data.get(key)
@@ -54,22 +56,25 @@ class EphemeralState:
                 self.data[key] = value
         return old
 
-    def set(self, obj, key, value):
+    def set(self, obj, key: str, value) -> None:
         key = obj.namespace+"/"+obj.name+"/"+key
         with self.lock:
             self.data[key] = value
 
+
 g_ephemeral_pod_state = EphemeralState()
 
 
-def isotime():
-  return datetime.datetime.now().replace(microsecond=0).isoformat()+"Z"
+def isotime() -> str:
+    return datetime.datetime.now().replace(microsecond=0).isoformat()+"Z"
 
-def timestamp():
-  return datetime.datetime.now().replace(microsecond=0).strftime("%Y%m%d-%H%M%S")
 
-def merge_patch_object(base, patch, prefix = "", key=""):
-    assert not key, "not implemented" # TODO support key
+def timestamp() -> str:
+    return datetime.datetime.now().replace(microsecond=0).strftime("%Y%m%d-%H%M%S")
+
+
+def merge_patch_object(base: dict, patch: dict, prefix: str = "", key: str = "") -> None:
+    assert not key, "not implemented"  # TODO support key
 
     if type(base) != type(patch):
         raise ValueError(f"Invalid type in {prefix}")
@@ -130,16 +135,17 @@ def merge_patch_object(base, patch, prefix = "", key=""):
             base[k] = v
 
 
-def generate_password():
+def generate_password() -> str:
     random.seed(int(str(time.time()).split(".")[-1]))
     return "-".join("".join(random.choice(string.ascii_letters+string.digits+"_.=+-~") for i in range(5)) for ii in range(5))
 
 
-def version_to_int(version):
+def version_to_int(version: str) -> int:
     # x.y.z[.w]
     parts = version.split(".")
     if len(parts) > 4 or len(parts) < 3:
-        raise ValueError(f"Invalid version number {version}. Must be n.n.n or n.n.n.n")
+        raise ValueError(
+            f"Invalid version number {version}. Must be n.n.n or n.n.n.n")
 
     parts = [int(p) for p in parts]
 
@@ -150,12 +156,12 @@ def version_to_int(version):
         return parts[0] * 1000000000000 + parts[1] * 10000000000 + parts[2] + 100000000
 
 
-def indent(s, spaces):
+def indent(s: str, spaces: int) -> str:
     ind = "\n" + " "*spaces
     return " " * spaces + ind.join(s.split("\n"))
 
 
-def log_banner(path, logger):
+def log_banner(path: str, logger) -> None:
     import pkg_resources
     from . import config
 
@@ -163,4 +169,5 @@ def log_banner(path, logger):
     ts = datetime.datetime.fromtimestamp(os.stat(path).st_mtime).isoformat()
 
     path = os.path.basename(path)
-    logger.info(f"MySQL Operator/{path}={config.OPERATOR_VERSION} timestamp={ts} kopf={kopf_version}")
+    logger.info(
+        f"MySQL Operator/{path}={config.OPERATOR_VERSION} timestamp={ts} kopf={kopf_version}")

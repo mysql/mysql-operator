@@ -29,6 +29,7 @@ from .controller import storage_api
 from .controller.backup.backup_api import MySQLBackup
 from .controller.innodbcluster.cluster_api import InnoDBCluster
 import logging
+from typing import Optional
 
 
 def get_dir_size(d):
@@ -100,17 +101,19 @@ def execute_dump_instance(backup_source, profile, backupdir, backup_name, logger
             "spaceAvailable": f"{gb_avail:.4}G",
             "size": f"{backup_size:.4}G"
         }
+    else:
+        assert False
 
     logger.info(f"dump_instance finished successfully")
 
     return info
 
 
-def execute_clone_snapshot(backup_source, profile, backupdir, backup_name, logger):
-    pass
+def execute_clone_snapshot(backup_source, profile, backupdir: Optional[str], backup_name: str, logger: logging.Logger) -> dict:
+    ...
 
 
-def pick_source_instance(cluster, logger):
+def pick_source_instance(cluster, logger: logging.Logger):
     mysql = mysqlsh.mysql
 
     primary = None
@@ -121,7 +124,7 @@ def pick_source_instance(cluster, logger):
         if pod.deleting:
             continue
         try:
-            with shellutils.connect_dba(pod.endpoint_co, logger, max_tries=3) as dba:
+            with shellutils.DbaWrap(shellutils.connect_dba(pod.endpoint_co, logger, max_tries=3)) as dba:
                 try:
                     status = dba.get_cluster().member_status({"extended": 1})
                 except mysqlsh.Error as e:
@@ -160,7 +163,7 @@ def pick_source_instance(cluster, logger):
         f"No instances available to backup from in cluster {cluster.name}")
 
 
-def do_backup(backup, job_name, start, backupdir, logger):
+def do_backup(backup, job_name: str, start, backupdir: Optional[str], logger: logging.Logger) -> dict:
     logger.info(
         f"Starting backup of {backup.namespace}/{backup.parsed_spec.clusterName}  profile={backup.parsed_spec.backupProfileName}  backupdir={backupdir}")
 

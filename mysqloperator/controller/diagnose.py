@@ -19,10 +19,15 @@
 # along with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
+from .innodbcluster.cluster_api import InnoDBCluster, MySQLPod
 import typing
+from typing import Optional, Tuple, List, Set, Dict, cast
 from . import shellutils, consts, errors
 import kopf
 import mysqlsh
+from mysqlsh.dba import Dba, Cluster
+from mysqlsh.mysql import ClassicSession
+import enum
 import time
 
 mysql = mysqlsh.mysql
@@ -31,39 +36,41 @@ mysql = mysqlsh.mysql
 # InnoDB Cluster Instance Diagnostic Statuses
 #
 
-# GR ONLINE
-DIAG_INSTANCE_ONLINE = "ONLINE"
 
-# GR RECOVERING
-DIAG_INSTANCE_RECOVERING = "RECOVERING"
+class InstanceDiagStatus(enum.Enum):
+    # GR ONLINE
+    ONLINE = "ONLINE"
 
-# GR ERROR
-DIAG_INSTANCE_ERROR = "ERROR"
+    # GR RECOVERING
+    RECOVERING = "RECOVERING"
 
-# GR OFFLINE or any indication that makes it's certain that GR is not ONLINE or RECOVERING
-DIAG_INSTANCE_OFFLINE = "OFFLINE"
+    # GR ERROR
+    ERROR = "ERROR"
 
-# Instance is not a member (and never was)
-# in addition to being OFFLINE
-DIAG_INSTANCE_NOT_MANAGED = "NOT_MANAGED"
+    # GR OFFLINE or any indication that makes it's certain that GR is not ONLINE or RECOVERING
+    OFFLINE = "OFFLINE"
 
-# Uncertain because we can't connect or query it
-DIAG_INSTANCE_UNKNOWN = "UNKNOWN"
+    # Instance is not a member (and never was)
+    # in addition to being OFFLINE
+    NOT_MANAGED = "NOT_MANAGED"
+
+    # Uncertain because we can't connect or query it
+    UNKNOWN = "UNKNOWN"
 
 
 class InstanceStatus:
-    pod = None
-    status: typing.Optional[str] = None
+    pod: Optional[MySQLPod] = None
+    status: InstanceDiagStatus = InstanceDiagStatus.UNKNOWN
 
-    connect_error = None
+    connect_error: Optional[int] = None
 
-    view_id = None
-    is_primary = None
-    in_quorum = None
-    peers = None
+    view_id: Optional[str] = None
+    is_primary: Optional[bool] = None
+    in_quorum: Optional[bool] = None
+    peers: Optional[dict] = None
 
 
-def diagnose_instance(pod, logger, dba=None):
+def diagnose_instance(pod: MySQLPod, logger, dba: Dba = None) -> InstanceStatus:
     """
     Check state of an instance in the given pod.
 
@@ -81,7 +88,6 @@ def diagnose_instance(pod, logger, dba=None):
         except mysqlsh.Error as e:
             logger.info(f"Could not connect to {pod.endpoint}: error={e}")
             status.connect_error = e.code
-            status.status = DIAG_INSTANCE_UNKNOWN
 
             if mysql.ErrorCode.CR_MAX_ERROR >= e.code >= mysql.ErrorCode.CR_MIN_ERROR:
                 # client side errors mean we can't connect to the server, but the
@@ -93,9 +99,9 @@ def diagnose_instance(pod, logger, dba=None):
                     f"{pod.endpoint}: pod.phase={pod.phase}  deleting={pod.deleting}")
                 if pod.phase != "Running" or not pod.check_containers_ready() or pod.deleting:
                     # not ONLINE for sure if the Pod is not running
-                    status.status = DIAG_INSTANCE_OFFLINE
+                    status.status = InstanceDiagStatus.OFFLINE
             else:
-                if shellutils.is_fatal_connect(e, pod.endpoint_url_safe, logger):
+                if shellutils.check_fatal_connect(e, pod.endpoint_url_safe, logger):
                     raise
 
             return status
@@ -112,13 +118,14 @@ def diagnose_instance(pod, logger, dba=None):
             # can fail as OFFLINE instead of NOT_MANAGED if its copy of the
             # metadata lacks the trx where it was removed
             if e.code == errors.SHERR_DBA_BADARG_INSTANCE_NOT_ONLINE:
-                status.status = DIAG_INSTANCE_OFFLINE
+                status.status = InstanceDiagStatus.OFFLINE
             elif e.code == errors.SHERR_DBA_BADARG_INSTANCE_NOT_MANAGED:
-                status.status = DIAG_INSTANCE_NOT_MANAGED
+                status.status = InstanceDiagStatus.NOT_MANAGED
             else:
-                shellutils.rethrow_if_fatal(
-                    e, pod.endpoint_url_safe, "get_cluster()", logger)
-                status.status = DIAG_INSTANCE_UNKNOWN
+                if shellutils.check_fatal(
+                        e, pod.endpoint_url_safe, "get_cluster()", logger):
+                    raise
+                status.status = InstanceDiagStatus.UNKNOWN
 
     if cluster:
         try:
@@ -152,21 +159,22 @@ def diagnose_instance(pod, logger, dba=None):
             status.peers = members
 
             if mystate == "ONLINE":
-                status.status = DIAG_INSTANCE_ONLINE
+                status.status = InstanceDiagStatus.ONLINE
             elif mystate == "RECOVERING":
-                status.status = DIAG_INSTANCE_RECOVERING
+                status.status = InstanceDiagStatus.RECOVERING
             elif mystate == "ERROR":
-                status.status = DIAG_INSTANCE_ERROR
+                status.status = InstanceDiagStatus.ERROR
             elif mystate == "OFFLINE":
-                status.status = DIAG_INSTANCE_OFFLINE
+                status.status = InstanceDiagStatus.OFFLINE
             else:
                 assert False, f"{pod.endpoint}: bad state {mystate}"
         except mysqlsh.Error as e:
-            shellutils.rethrow_if_fatal(
-                e, pod.endpoint_url_safe, "status()", logger)
+            if shellutils.check_fatal(
+                    e, pod.endpoint_url_safe, "status()", logger):
+                raise
 
             logger.info(f"status() failed at {pod.endpoint}: error={e}")
-            status.status = DIAG_INSTANCE_UNKNOWN
+            status.status = InstanceDiagStatus.UNKNOWN
 
     return status
 
@@ -175,34 +183,37 @@ def diagnose_instance(pod, logger, dba=None):
 # InnoDB Cluster Candidate Instance Statuses
 #
 
-# Instance is already a member of the cluster
-DIAG_CANDIDATE_MEMBER = "MEMBER"
+class CandidateDiagStatus(enum.Enum):
+    UNKNOWN = None
 
-# Instance is a member of the cluster but can rejoin it
-DIAG_CANDIDATE_REJOINABLE = "REJOINABLE"
+    # Instance is already a member of the cluster
+    MEMBER = "MEMBER"
 
-# Instance is not yet a member of the cluster but can join it
-DIAG_CANDIDATE_JOINABLE = "JOINABLE"
+    # Instance is a member of the cluster but can rejoin it
+    REJOINABLE = "REJOINABLE"
 
-# Instance is a member of the cluster but has a problem that prevents it
-# from rejoining
-DIAG_CANDIDATE_BROKEN = "BROKEN"
+    # Instance is not yet a member of the cluster but can join it
+    JOINABLE = "JOINABLE"
 
-# Instance is not yet a member of the cluster and can't join it
-DIAG_CANDIDATE_UNSUITABLE = "UNSUITABLE"
+    # Instance is a member of the cluster but has a problem that prevents it
+    # from rejoining
+    BROKEN = "BROKEN"
 
-# Instance can't be reached
-DIAG_CANDIDATE_UNREACHABLE = "UNREACHABLE"
+    # Instance is not yet a member of the cluster and can't join it
+    UNSUITABLE = "UNSUITABLE"
+
+    # Instance can't be reached
+    UNREACHABLE = "UNREACHABLE"
 
 
 class CandidateStatus:
-    status = None
+    status: CandidateDiagStatus = CandidateDiagStatus.UNKNOWN
 
     # Reasons for broken/unsuitable
-    bad_gtid_set = None
+    bad_gtid_set: Optional[str] = None
 
 
-def check_errant_gtids(primary_session, pod, pod_dba, logger):
+def check_errant_gtids(primary_session: ClassicSession, pod: MySQLPod, pod_dba: Dba, logger) -> Optional[str]:
     try:
         gtid_set = pod_dba.session.run_sql(
             "SELECT @@globals.GTID_EXECUTED").fetch_one()[0]
@@ -220,7 +231,7 @@ def check_errant_gtids(primary_session, pod, pod_dba, logger):
     return None
 
 
-def diagnose_cluster_candidate(primary_session, cluster, pod, pod_dba, logger):
+def diagnose_cluster_candidate(primary_session: ClassicSession, cluster: Cluster, pod: MySQLPod, pod_dba: Dba, logger) -> CandidateStatus:
     """
     Check status of an instance that's about to be added to the cluster or
     rejoin it, relative to the given cluster. Also checks whether the instance
@@ -231,12 +242,12 @@ def diagnose_cluster_candidate(primary_session, cluster, pod, pod_dba, logger):
 
     istatus = diagnose_instance(pod, logger, pod_dba)
 
-    if istatus.status == DIAG_INSTANCE_UNKNOWN:
-        status.status = DIAG_CANDIDATE_UNREACHABLE
-    elif istatus.status in (DIAG_INSTANCE_ONLINE, DIAG_INSTANCE_RECOVERING):
-        status.status = DIAG_CANDIDATE_MEMBER
+    if istatus.status == InstanceDiagStatus.UNKNOWN:
+        status.status = CandidateDiagStatus.UNREACHABLE
+    elif istatus.status in (InstanceDiagStatus.ONLINE, InstanceDiagStatus.RECOVERING):
+        status.status = CandidateDiagStatus.MEMBER
         logger.debug(f"{pod} is {istatus.status} -> {status.status}")
-    elif istatus.status == DIAG_INSTANCE_NOT_MANAGED:
+    elif istatus.status == InstanceDiagStatus.NOT_MANAGED:
         status.bad_gtid_set = check_errant_gtids(
             primary_session, pod, pod_dba, logger)
         if status.bad_gtid_set:
@@ -244,14 +255,14 @@ def diagnose_cluster_candidate(primary_session, cluster, pod, pod_dba, logger):
                 f"{pod} has errant transactions relative to the cluster: errant_gtids={status.bad_gtid_set}")
 
         if not status.bad_gtid_set:
-            status.status = DIAG_CANDIDATE_JOINABLE
+            status.status = CandidateDiagStatus.JOINABLE
         else:
-            status.status = DIAG_CANDIDATE_UNSUITABLE
+            status.status = CandidateDiagStatus.UNSUITABLE
 
         logger.debug(
             f"{pod} is {istatus.status}, errant_gtids={status.bad_gtid_set} -> {status.status}")
-    elif istatus.status in (DIAG_INSTANCE_OFFLINE, DIAG_INSTANCE_ERROR):
-        if istatus.status == DIAG_INSTANCE_ERROR:
+    elif istatus.status in (InstanceDiagStatus.OFFLINE, InstanceDiagStatus.ERROR):
+        if istatus.status == InstanceDiagStatus.ERROR:
             # check for fatal GR errors
             fatal_error = None
         else:
@@ -266,14 +277,14 @@ def diagnose_cluster_candidate(primary_session, cluster, pod, pod_dba, logger):
         if pod.endpoint in cluster.status()["defaultReplicaSet"]["topology"].keys():
             # already a member of the cluster
             if not status.bad_gtid_set and not fatal_error:
-                status.status = DIAG_CANDIDATE_REJOINABLE
+                status.status = CandidateDiagStatus.REJOINABLE
             else:
-                status.status = DIAG_CANDIDATE_BROKEN
+                status.status = CandidateDiagStatus.BROKEN
         else:
             if not status.bad_gtid_set and not fatal_error:
-                status.status = DIAG_CANDIDATE_JOINABLE
+                status.status = CandidateDiagStatus.JOINABLE
             else:
-                status.status = DIAG_CANDIDATE_UNSUITABLE
+                status.status = CandidateDiagStatus.UNSUITABLE
 
         logger.debug(
             f"{pod} is {istatus.status}  errant_gtids={status.bad_gtid_set}  fatal_error={fatal_error} -> {status.status}")
@@ -288,77 +299,79 @@ def diagnose_cluster_candidate(primary_session, cluster, pod, pod_dba, logger):
 #
 
 
-DIAG_CLUSTER_ONLINE = "ONLINE"
-# - All members are reachable or part of the quorum
-# - Reachable members form a quorum between themselves
-# - There are no unreachable members that are not in the quorum
-# - All members are ONLINE
+class ClusterDiagStatus(enum.Enum):
+    ONLINE = "ONLINE"
+    # - All members are reachable or part of the quorum
+    # - Reachable members form a quorum between themselves
+    # - There are no unreachable members that are not in the quorum
+    # - All members are ONLINE
 
-DIAG_CLUSTER_ONLINE_PARTIAL = "ONLINE_PARTIAL"
-# - All members are reachable or part of the quorum
-# - Some reachable members form a quorum between themselves
-# - There may be members outside of the quorum in any state, but they must not form a quorum
-# Note that there may be members that think are ONLINE, but minority in a view with UNREACHABLE members
+    ONLINE_PARTIAL = "ONLINE_PARTIAL"
+    # - All members are reachable or part of the quorum
+    # - Some reachable members form a quorum between themselves
+    # - There may be members outside of the quorum in any state, but they must not form a quorum
+    # Note that there may be members that think are ONLINE, but minority in a view with UNREACHABLE members
 
-DIAG_CLUSTER_OFFLINE = "OFFLINE"
-# - All members are reachable
-# - All cluster members are OFFLINE/ERROR (or being deleted)
-# - GTID set of all members are consistent
-# We're sure that the cluster is completely down with no quorum hiding somewhere
-# The cluster can be safely rebooted
+    OFFLINE = "OFFLINE"
+    # - All members are reachable
+    # - All cluster members are OFFLINE/ERROR (or being deleted)
+    # - GTID set of all members are consistent
+    # We're sure that the cluster is completely down with no quorum hiding somewhere
+    # The cluster can be safely rebooted
 
-DIAG_CLUSTER_NO_QUORUM = "NO_QUORUM"
-# - All members are reachable
-# - All cluster members are either OFFLINE/ERROR or ONLINE but with no quorum
-# A split-brain with no-quorum still falls in this category
-# The cluster can be safely restored
+    NO_QUORUM = "NO_QUORUM"
+    # - All members are reachable
+    # - All cluster members are either OFFLINE/ERROR or ONLINE but with no quorum
+    # A split-brain with no-quorum still falls in this category
+    # The cluster can be safely restored
 
-DIAG_CLUSTER_SPLIT_BRAIN = "SPLIT_BRAIN"
-# - Some but not all members are unreachable
-# - There are multiple ONLINE/RECOVERING members forming a quorum, but with >1
-# different views
-# If some members are not reachable, they could either be forming more errant
-# groups or be unavailable, but that doesn't make much dfifference.
+    SPLIT_BRAIN = "SPLIT_BRAIN"
+    # - Some but not all members are unreachable
+    # - There are multiple ONLINE/RECOVERING members forming a quorum, but with >1
+    # different views
+    # If some members are not reachable, they could either be forming more errant
+    # groups or be unavailable, but that doesn't make much dfifference.
 
-DIAG_CLUSTER_ONLINE_UNCERTAIN = "ONLINE_UNCERTAIN"
-# - Some members are unreachable
-# - Reachable members form a quorum between themselves
-# - There are unreachable members that are not in the quorum and have unknown state
-# Because there are members with unknown state, the possibility that there's a
-# split-brain exists.
+    ONLINE_UNCERTAIN = "ONLINE_UNCERTAIN"
+    # - Some members are unreachable
+    # - Reachable members form a quorum between themselves
+    # - There are unreachable members that are not in the quorum and have unknown state
+    # Because there are members with unknown state, the possibility that there's a
+    # split-brain exists.
 
-DIAG_CLUSTER_OFFLINE_UNCERTAIN = "OFFLINE_UNCERTAIN"
-# OFFLINE with unreachable members
+    OFFLINE_UNCERTAIN = "OFFLINE_UNCERTAIN"
+    # OFFLINE with unreachable members
 
-DIAG_CLUSTER_NO_QUORUM_UNCERTAIN = "NO_QUORUM_UNCERTAIN"
-# NO_QUORUM with unreachable members
+    NO_QUORUM_UNCERTAIN = "NO_QUORUM_UNCERTAIN"
+    # NO_QUORUM with unreachable members
 
-DIAG_CLUSTER_SPLIT_BRAIN_UNCERTAIN = "SPLIT_BRAIN_UNCERTAIN"
-# SPLIT_BRAIN with unreachable members
+    SPLIT_BRAIN_UNCERTAIN = "SPLIT_BRAIN_UNCERTAIN"
+    # SPLIT_BRAIN with unreachable members
 
-DIAG_CLUSTER_UNKNOWN = "UNKNOWN"
-# - No reachable/connectable members
-# We have no idea about the state of the cluster, so nothing can be done about it
-# (even if we wanted)
+    UNKNOWN = "UNKNOWN"
+    # - No reachable/connectable members
+    # We have no idea about the state of the cluster, so nothing can be done about it
+    # (even if we wanted)
 
-DIAG_CLUSTER_INITIALIZING = "INITIALIZING"
-# - Cluster is not marked as initialized in Kubernetes
-# The cluster hasn't been created/initialized yet, so we can safely create it
+    INITIALIZING = "INITIALIZING"
+    # - Cluster is not marked as initialized in Kubernetes
+    # The cluster hasn't been created/initialized yet, so we can safely create it
 
-DIAG_CLUSTER_FINALIZING = "FINALIZING"
-# - Cluster object is marked as being deleted
+    FINALIZING = "FINALIZING"
+    # - Cluster object is marked as being deleted
 
-DIAG_CLUSTER_INVALID = "INVALID"
-# - A (currently) undiagnosable and unrecoverable mess that doesn't fit any other state
+    INVALID = "INVALID"
+    # - A (currently) undiagnosable and unrecoverable mess that doesn't fit any other state
 
 
-def find_group_partitions(online_pod_info, pods, logger):
+def find_group_partitions(online_pod_info: Dict[str, InstanceStatus],
+                          pods: Set[MySQLPod], logger) -> Tuple[List[List[InstanceStatus]], List[Set[MySQLPod]]]:
     # List of group partitions that have quorum and can execute transactions.
     # If there's more than 1, then there's a split-brain. If there's none, then
     # we have no availability.
-    active_partitions = []
+    active_partitions: List[List[InstanceStatus]] = []
     # List of group partitions that have no quorum and can't execute transactions.
-    blocked_partitions = []
+    blocked_partitions: List[Set[MySQLPod]] = []
 
     all_pods = {}
     for pod in pods:
@@ -419,13 +432,13 @@ def find_group_partitions(online_pod_info, pods, logger):
 
 
 class ClusterStatus:
-    status = None
-    primary = None
-    online_members = []
-    quorum_candidates = None
+    status: ClusterDiagStatus = ClusterDiagStatus.UNKNOWN
+    primary: Optional[MySQLPod] = None
+    online_members: List[MySQLPod] = []
+    quorum_candidates: Optional[list] = None
 
 
-def do_diagnose_cluster(cluster, logger):
+def do_diagnose_cluster(cluster: InnoDBCluster, logger) -> ClusterStatus:
     cluster.reload()
     all_pods = set(cluster.get_pods())
 
@@ -441,7 +454,7 @@ def do_diagnose_cluster(cluster, logger):
 
     if not create_time and not cluster.deleting:
         cluster_status = ClusterStatus()
-        cluster_status.status = DIAG_CLUSTER_INITIALIZING
+        cluster_status.status = ClusterDiagStatus.INITIALIZING
         logger.debug(f"Cluster {cluster.name}  status={cluster_status.status}")
         return cluster_status
 
@@ -458,17 +471,17 @@ def do_diagnose_cluster(cluster, logger):
         status = diagnose_instance(pod, logger)
         logger.info(
             f"diag instance {pod} --> {status.status} quorum={status.in_quorum}")
-        if status.status == DIAG_INSTANCE_UNKNOWN:
+        if status.status == InstanceDiagStatus.UNKNOWN:
             unsure_pods.add(pod)
             all_member_pods.add(pod)
-        elif status.status in (DIAG_INSTANCE_OFFLINE, DIAG_INSTANCE_ERROR):
+        elif status.status in (InstanceDiagStatus.OFFLINE, InstanceDiagStatus.ERROR):
             offline_pods.add(pod)
             all_member_pods.add(pod)
-        elif status.status in (DIAG_INSTANCE_ONLINE, DIAG_INSTANCE_RECOVERING):
+        elif status.status in (InstanceDiagStatus.ONLINE, InstanceDiagStatus.RECOVERING):
             online_pod_statuses[pod.endpoint] = status
             online_pods.add(pod)
             all_member_pods.add(pod)
-        elif status.status != DIAG_INSTANCE_NOT_MANAGED:
+        elif status.status != InstanceDiagStatus.NOT_MANAGED:
             all_member_pods.add(pod)
         else:
             logger.debug(f"{pod} = {status.status}")
@@ -489,21 +502,21 @@ def do_diagnose_cluster(cluster, logger):
         if not active_partitions:
             # no quorum
             if unsure_pods:
-                cluster_status.status = DIAG_CLUSTER_NO_QUORUM_UNCERTAIN
+                cluster_status.status = ClusterDiagStatus.NO_QUORUM_UNCERTAIN
             else:
-                cluster_status.status = DIAG_CLUSTER_NO_QUORUM
+                cluster_status.status = ClusterDiagStatus.NO_QUORUM
             if blocked_partitions:
                 cluster_status.quorum_candidates = list(blocked_partitions[0])
         elif len(active_partitions) == 1:
             # ok
             if unsure_pods:
-                cluster_status.status = DIAG_CLUSTER_ONLINE_UNCERTAIN
+                cluster_status.status = ClusterDiagStatus.ONLINE_UNCERTAIN
             elif offline_pods:
-                cluster_status.status = DIAG_CLUSTER_ONLINE_PARTIAL
+                cluster_status.status = ClusterDiagStatus.ONLINE_PARTIAL
             else:
-                cluster_status.status = DIAG_CLUSTER_ONLINE
+                cluster_status.status = ClusterDiagStatus.ONLINE
             cluster_status.online_members = [
-                p.pod for p in active_partitions[0]]
+                p.pod for p in active_partitions[0] if p.pod]
             for p in active_partitions[0]:
                 if p.is_primary:
                     cluster_status.primary = p.pod
@@ -511,30 +524,30 @@ def do_diagnose_cluster(cluster, logger):
         else:
             # split-brain
             if unsure_pods:
-                cluster_status.status = DIAG_CLUSTER_SPLIT_BRAIN_UNCERTAIN
+                cluster_status.status = ClusterDiagStatus.SPLIT_BRAIN_UNCERTAIN
             else:
-                cluster_status.status = DIAG_CLUSTER_SPLIT_BRAIN
+                cluster_status.status = ClusterDiagStatus.SPLIT_BRAIN
             cluster_status.online_members = []
             for part in active_partitions:
-                cluster_status.online_members += [p.pod for p in part]
+                cluster_status.online_members += [p.pod for p in part if p.pod]
     else:
         if cluster.deleting:
-            cluster_status.status = DIAG_CLUSTER_FINALIZING
+            cluster_status.status = ClusterDiagStatus.FINALIZING
         else:
             if offline_pods:
                 if unsure_pods:
-                    cluster_status.status = DIAG_CLUSTER_OFFLINE_UNCERTAIN
+                    cluster_status.status = ClusterDiagStatus.OFFLINE_UNCERTAIN
                 else:
-                    cluster_status.status = DIAG_CLUSTER_OFFLINE
+                    cluster_status.status = ClusterDiagStatus.OFFLINE
             else:
-                cluster_status.status = DIAG_CLUSTER_UNKNOWN
+                cluster_status.status = ClusterDiagStatus.UNKNOWN
 
     logger.debug(f"Cluster {cluster.name}  status={cluster_status.status}")
 
     return cluster_status
 
 
-def diagnose_cluster(cluster, logger):
+def diagnose_cluster(cluster: InnoDBCluster, logger) -> ClusterStatus:
     """
     Diagnose the state of an InnoDB cluster, assuming it was already initialized.
 
@@ -564,4 +577,4 @@ def diagnose_cluster(cluster, logger):
         - auth error on a pod that's already initialized
     """
 
-    return shellutils.RetryLoop(logger).call(do_diagnose_cluster, cluster, logger)
+    return cast(ClusterStatus, shellutils.RetryLoop(logger).call(do_diagnose_cluster, cluster, logger))

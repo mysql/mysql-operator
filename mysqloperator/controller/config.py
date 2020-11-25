@@ -52,7 +52,7 @@ ROUTER_METADATA_USER_NAME = "mysqlrouter"
 BACKUP_USER_NAME = "mysqlbackup"
 
 
-def config_from_env():
+def config_from_env() -> None:
     import mysqlsh
     import os
 
@@ -90,5 +90,3 @@ def config_from_env():
                 mysqlsh.globals.shell.options["dba.logSql"] = 1
             else:
                 mysqlsh.globals.shell.options.logLevel = 6
-
-

@@ -19,6 +19,7 @@
 # along with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
+from logging import Logger
 from .innodbcluster import operator_cluster
 from .backup import operator_backup
 from . import config, utils
@@ -33,7 +34,7 @@ import logging
 
 
 @kopf.on.startup()
-def on_startup(settings: kopf.OperatorSettings, logger, **_):
+def on_startup(settings: kopf.OperatorSettings, logger: Logger, *args, **_):
     utils.log_banner(__file__, logger)
 
     # don't post logger.debug() calls as k8s events
@@ -52,7 +53,6 @@ def on_startup(settings: kopf.OperatorSettings, logger, **_):
     g_group_monitor.start()
 
 
-
 @kopf.on.cleanup()
-def on_shutdown(logger, **kwargs):
+def on_shutdown(logger: Logger, *args, **kwargs):
     g_group_monitor.stop()

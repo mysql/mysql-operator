@@ -19,9 +19,14 @@
 # along with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
+from logging import Logger
+from .innodbcluster.cluster_api import MySQLPod
+import typing
+from typing import Optional, Callable
 import mysqlsh
 import kopf
 import time
+from mysqlsh.dba import Dba, Cluster
 
 mysql = mysqlsh.mysql
 mysqlx = mysqlsh.mysqlx
@@ -52,7 +57,7 @@ FATAL_SQL_ERRORS = set([
 FATAL_MYSQL_ERRORS = FATAL_CONNECT_ERRORS.union(FATAL_SQL_ERRORS)
 
 
-def check_fatal_connect(err, where, logger):
+def check_fatal_connect(err, where, logger) -> bool:
     if err.code in FATAL_MYSQL_ERRORS:
         logger.error(
             f"Unexpected error connecting to MySQL. This error is not expected and may indicate a bug or corrupted cluster deployment: error={err} target={where}")
@@ -60,7 +65,7 @@ def check_fatal_connect(err, where, logger):
     return False
 
 
-def check_fatal(err, where, context, logger):
+def check_fatal(err, where, context, logger) -> bool:
     if err.code in FATAL_SQL_ERRORS:
         logger.error(
             f"Unexpected MySQL error. This error is not expected and may indicate a bug or corrupted cluster deployment: error={err} target={where}{' context=%s' % context if context else ''}")
@@ -77,15 +82,21 @@ class GiveUp(Exception):
         self.real_exc = real_exc
 
 
+T = typing.TypeVar("T")
+
+
 class RetryLoop:
-    def __init__(self, logger, timeout=60, max_tries=None, is_retriable=None, backoff=lambda i: i+1):
+    def __init__(self, logger: Logger, timeout: int = 60,
+                 max_tries: Optional[int] = None,
+                 is_retriable: Optional[Callable] = None,
+                 backoff: Callable[[int], int] = lambda i: i+1):
         self.logger = logger
         self.timeout = timeout
         self.max_tries = max_tries
         self.backoff = backoff
         self.is_retriable = is_retriable
 
-    def call(self, f, *args, **kwargs):
+    def call(self, f: Callable[..., T], *args, **kwargs) -> T:
         delay = 1
         tries = 0
         total_wait = 0
@@ -119,7 +130,7 @@ class RetryLoop:
                     raise
 
 
-class Session:
+class SessionWrap:
     def __init__(self, session):
         if isinstance(session, dict):
             try:
@@ -144,8 +155,8 @@ class Session:
         return getattr(self.session, name)
 
 
-class Dba:
-    def __init__(self, dba):
+class DbaWrap:
+    def __init__(self, dba: Dba):
         self.dba = dba
 
     def __enter__(self):
@@ -158,8 +169,8 @@ class Dba:
         return getattr(self.dba, name)
 
 
-class Cluster:
-    def __init__(self, cluster):
+class ClusterWrap:
+    def __init__(self, cluster: Cluster):
         self.cluster = cluster
 
     def __enter__(self):
@@ -172,13 +183,11 @@ class Cluster:
         return getattr(self.cluster, name)
 
 
-def connect_dba(target, logger, **kwargs):
-    def connect_dba(target):
-        return Dba(mysqlsh.connect_dba(target))
-    return RetryLoop(logger, **kwargs).call(connect_dba, target)
+def connect_dba(target: dict, logger: Logger, **kwargs) -> Dba:
+    return RetryLoop(logger, **kwargs).call(mysqlsh.connect_dba, target)
 
 
-def connect_to_pod(pod, logger, **kwargs):
+def connect_to_pod(pod: MySQLPod, logger: Logger, **kwargs):
     def connect(target):
         session = mysqlsh.mysql.get_session(target)
         # avoid trouble with global autocommit=0
@@ -190,7 +199,7 @@ def connect_to_pod(pod, logger, **kwargs):
             session.run_sql("set group_replication_consistency='EVENTUAL'")
         except:
             pass
-        return Session(session)
+        return SessionWrap(session)
 
     return RetryLoop(logger, **kwargs).call(connect, pod.endpoint_co)
 

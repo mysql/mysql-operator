@@ -26,6 +26,7 @@ import os
 import logging
 import time
 import shutil
+from typing import cast
 from .controller import utils, config
 from .controller.innodbcluster.cluster_api import MySQLPod
 
@@ -96,8 +97,8 @@ def main(argv):
                         datefmt="%Y-%m-%dT%H:%M:%S")
     logger = logging.getLogger("initmysql")
 
-    name = os.getenv("MY_POD_NAME")
-    namespace = os.getenv("MY_POD_NAMESPACE")
+    name = cast(str, os.getenv("MY_POD_NAME"))
+    namespace = cast(str, os.getenv("MY_POD_NAMESPACE"))
 
     utils.log_banner(__file__, logger)
 

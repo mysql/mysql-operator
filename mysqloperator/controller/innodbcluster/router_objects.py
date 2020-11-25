@@ -19,13 +19,15 @@
 # along with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
-from .. import config, consts, utils
+from .cluster_api import InnoDBCluster, InnoDBClusterSpec
+from .. import config, utils
 import yaml
-import base64
-from ..kubeutils import api_core, api_apps
+from ..kubeutils import api_apps
 import kopf
+from logging import Logger
 
-def prepare_router_service(spec):
+
+def prepare_router_service(spec: InnoDBClusterSpec) -> dict:
     tmpl = f"""
 apiVersion: v1
 kind: Service
@@ -61,11 +63,12 @@ spec:
 """
     return yaml.safe_load(tmpl)
 
-def prepare_router_secrets(spec):
+
+def prepare_router_secrets(spec: InnoDBClusterSpec) -> dict:
     router_user = utils.b64encode(config.ROUTER_METADATA_USER_NAME)
     router_pwd = utils.b64encode(utils.generate_password())
 
-    # We use a separate secrets object for the router, so that we don't need to 
+    # We use a separate secrets object for the router, so that we don't need to
     # give access for the main secret to router instances.
     tmpl = f"""
 apiVersion: v1
@@ -78,13 +81,14 @@ data:
 """
     return yaml.safe_load(tmpl)
 
-def prepare_router_replica_set(spec):
+
+def prepare_router_replica_set(spec: InnoDBClusterSpec) -> dict:
     # Start the router replicaset with 0 replicas and only set it to the desired
     # value once the cluster is ONLINE, otherwise the router bootstraps could
     # timeout and fail unnecessarily.
 
-# TODO livenessProbe
-# TODO setup http
+    # TODO livenessProbe
+    # TODO setup http
     tmpl = f"""
 apiVersion: apps/v1
 kind: ReplicaSet
@@ -146,7 +150,7 @@ spec:
     return yaml.safe_load(tmpl)
 
 
-def update_size(cluster, size, logger):
+def update_size(cluster: InnoDBCluster, size: int, logger: Logger) -> None:
     rs = cluster.get_router_replica_set()
     if rs:
         if size:
@@ -155,11 +159,13 @@ def update_size(cluster, size, logger):
                 rs.metadata.name, rs.metadata.namespace, body=patch)
         else:
             logger.info(f"Deleting Router ReplicaSet")
-            api_apps.delete_namespaced_replica_set(f"{cluster.name}-router", cluster.namespace)
+            api_apps.delete_namespaced_replica_set(
+                f"{cluster.name}-router", cluster.namespace)
     else:
         if size:
             logger.info(f"Creating Router ReplicaSet with replicas={size}")
 
             router_replicaset = prepare_router_replica_set(cluster.parsed_spec)
             kopf.adopt(router_replicaset)
-            api_apps.create_namespaced_replica_set(namespace=cluster.namespace, body=router_replicaset)
+            api_apps.create_namespaced_replica_set(
+                namespace=cluster.namespace, body=router_replicaset)

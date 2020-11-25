@@ -22,6 +22,7 @@
 import typing
 from typing import Optional, List, Tuple, cast, overload
 import kopf
+from kopf.structs.bodies import Body
 from kubernetes.client.models.v1_secret import V1Secret
 from .. import utils, config, consts
 from ..backup.backup_api import BackupProfile
@@ -340,8 +341,8 @@ class InnoDBClusterSpec:
 
 
 class InnoDBCluster:
-    def __init__(self, cluster: dict):
-        self.obj: dict = cluster
+    def __init__(self, cluster: Body):
+        self.obj: Body = cluster
 
         self.parsed_spec = InnoDBClusterSpec(
             self.namespace, self.name, self.spec)
@@ -353,18 +354,23 @@ class InnoDBCluster:
         return f"<InnoDBCluster {self.name}>"
 
     @classmethod
-    def _get(cls, ns: str, name: str) -> dict:
-        return cast(dict,
+    def _get(cls, ns: str, name: str) -> Body:
+        return cast(Body,
                     api_customobj.get_namespaced_custom_object(
                         consts.GROUP, consts.VERSION, ns,
                         consts.INNODBCLUSTER_PLURAL, name))
 
     @classmethod
-    def _patch(cls, ns: str, name: str, patch: dict) -> dict:
-        return cast(dict,
-                    api_customobj.patch_namespaced_custom_object(
-                        consts.GROUP, consts.VERSION, ns,
-                        consts.INNODBCLUSTER_PLURAL, name, body=patch))
+    def _patch(cls, ns: str, name: str, patch: dict) -> Body:
+        return cast(Body, api_customobj.patch_namespaced_custom_object(
+            consts.GROUP, consts.VERSION, ns,
+            consts.INNODBCLUSTER_PLURAL, name, body=patch))
+
+    @classmethod
+    def _patch_status(cls, ns: str, name: str, patch: dict) -> Body:
+        return cast(Body, api_customobj.patch_namespaced_custom_object_status(
+            consts.GROUP, consts.VERSION, ns,
+            consts.INNODBCLUSTER_PLURAL, name, body=patch))
 
     @classmethod
     def read(cls, ns: str, name: str) -> 'InnoDBCluster':
@@ -525,7 +531,7 @@ class InnoDBCluster:
         else:
             patch = {"status": obj["status"]}
         patch["status"][field] = value
-        self.obj = self._patch(self.namespace, self.name, patch)
+        self.obj = self._patch_status(self.namespace, self.name, patch)
 
     def set_cluster_status(self, cluster_status) -> None:
         self._set_status_field("cluster", cluster_status)
@@ -537,13 +543,13 @@ class InnoDBCluster:
         return status
 
     def set_status(self, status) -> None:
-        obj = self._get(self.namespace, self.name)
+        obj = cast(dict, self._get(self.namespace, self.name))
 
         if "status" not in obj:
             obj["status"] = status
         else:
             obj["status"] = utils.merge_patch_object(obj["status"], status)
-        self.obj = self._patch(self.namespace, self.name, obj)
+        self.obj = self._patch_status(self.namespace, self.name, obj)
 
     def update_cluster_info(self, info: dict) -> None:
         """
@@ -576,9 +582,11 @@ class InnoDBCluster:
         self._set_status_field("createTime", time.replace(
             microsecond=0).isoformat()+"Z")
 
-    def get_create_time(self) -> datetime.datetime:
-        dt = self._get_status_field("createTime").rstrip("Z")
-        return datetime.datetime.fromisoformat(dt)
+    def get_create_time(self) -> Optional[datetime.datetime]:
+        dt = self._get_status_field("createTime")
+        if dt:
+            return datetime.datetime.fromisoformat(dt.rstrip("Z"))
+        return None
 
     @property
     def ready(self) -> bool:
@@ -634,7 +642,7 @@ class InnoDBCluster:
 
             # TODO store the current server/router version + timestamp
             # store previous versions in a version history log
-            self.obj = self._patch(self.namespace, self.name, patch)
+            self.obj = self._patch_status(self.namespace, self.name, patch)
 
     # TODO store last known majority and use it for diagnostics when there are
     # unconnectable pods
@@ -663,7 +671,7 @@ class MySQLPod:
 
     @overload
     @classmethod
-    def from_json(cls, pod: dict) -> 'MySQLPod':
+    def from_json(cls, pod: Body) -> 'MySQLPod':
         ...
 
     @classmethod
@@ -894,7 +902,7 @@ class MySQLPod:
     def add_member_finalizer(self) -> None:
         self._add_finalizer("mysql.oracle.com/membership")
 
-    def remove_member_finalizer(self, pod_body: dict = None) -> None:
+    def remove_member_finalizer(self, pod_body: Body = None) -> None:
         self._remove_finalizer("mysql.oracle.com/membership", pod_body)
 
     def _add_finalizer(self, fin: str) -> None:
@@ -907,7 +915,7 @@ class MySQLPod:
         self.obj = api_core.patch_namespaced_pod(
             self.name, self.namespace, body=patch)
 
-    def _remove_finalizer(self, fin: str, pod_body: dict = None) -> None:
+    def _remove_finalizer(self, fin: str, pod_body: Body = None) -> None:
         patch = {"metadata": {"$deleteFromPrimitiveList/finalizers": [fin]}}
         self.obj = api_core.patch_namespaced_pod(
             self.name, self.namespace, body=patch)

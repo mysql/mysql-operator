@@ -20,6 +20,9 @@
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 
+from typing import Any, Optional
+from kopf.structs.bodies import Body
+from kubernetes.client.rest import ApiException
 from .. import consts, kubeutils, config, utils, errors, diagnose
 from .. import shellutils
 from ..group_monitor import g_group_monitor
@@ -31,16 +34,13 @@ from . import cluster_objects, router_objects, cluster_api
 from .cluster_api import InnoDBCluster, InnoDBClusterSpec, MySQLPod
 import kopf
 from logging import Logger
-import yaml
-import mysqlsh
-import datetime
 import time
 
 
 # TODO check whether we should store versions in status to make upgrade easier
 
 
-def on_group_view_change(cluster, members, view_id_changed):
+def on_group_view_change(cluster: InnoDBCluster, members: list, view_id_changed: bool) -> None:
     """
     Triggered from the GroupMonitor whenever the membership view changes.
     This handler should react to changes that wouldn't be noticed by regular
@@ -52,14 +52,17 @@ def on_group_view_change(cluster, members, view_id_changed):
     c.on_group_view_change(members, view_id_changed)
 
 
-def monitor_existing_clusters():
+def monitor_existing_clusters(logger: Logger) -> None:
     clusters = cluster_api.get_all_clusters()
     for cluster in clusters:
-        g_group_monitor.monitor_cluster(cluster, on_group_view_change)
+        if cluster.get_create_time():
+            g_group_monitor.monitor_cluster(
+                cluster, on_group_view_change, logger)
 
 
-@kopf.on.create(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL)
-def on_innodbcluster_create(name: str, namespace: str, body: dict, logger: Logger, **kwargs):
+@kopf.on.create(consts.GROUP, consts.VERSION,
+                consts.INNODBCLUSTER_PLURAL)  # type: ignore
+def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body, logger: Logger, **kwargs) -> None:
     logger.info(
         f"Initializing InnoDB Cluster name={name} namespace={namespace}")
 
@@ -67,41 +70,49 @@ def on_innodbcluster_create(name: str, namespace: str, body: dict, logger: Logge
     icspec = cluster.parsed_spec
     icspec.validate(logger)
 
+    def ignore_404(f) -> Any:
+        try:
+            return f()
+        except ApiException as e:
+            if e.status == 404:
+                return None
+            raise
+
     if not cluster.get_create_time():
-        if not cluster.get_initconf():
+        if not ignore_404(cluster.get_initconf):
             configs = cluster_objects.prepare_initconf(icspec)
             kopf.adopt(configs)
             api_core.create_namespaced_config_map(namespace, configs)
 
-        if not cluster.get_private_secrets():
+        if not ignore_404(cluster.get_private_secrets):
             secret = cluster_objects.prepare_secrets(icspec)
             kopf.adopt(secret)
             api_core.create_namespaced_secret(namespace=namespace, body=secret)
 
-        if not cluster.get_router_account():
+        if not ignore_404(cluster.get_router_account):
             secret = router_objects.prepare_router_secrets(icspec)
             kopf.adopt(secret)
             api_core.create_namespaced_secret(namespace=namespace, body=secret)
 
-        if not cluster.get_service():
+        if not ignore_404(cluster.get_service):
             service = cluster_objects.prepare_cluster_service(icspec)
             kopf.adopt(service)
             api_core.create_namespaced_service(
                 namespace=namespace, body=service)
 
-        if not cluster.get_stateful_set():
+        if not ignore_404(cluster.get_stateful_set):
             statefulset = cluster_objects.prepare_cluster_stateful_set(icspec)
             kopf.adopt(statefulset)
             api_apps.create_namespaced_stateful_set(
                 namespace=namespace, body=statefulset)
 
-        if not cluster.get_router_service():
+        if not ignore_404(cluster.get_router_service):
             router_service = router_objects.prepare_router_service(icspec)
             kopf.adopt(router_service)
             api_core.create_namespaced_service(
                 namespace=namespace, body=router_service)
 
-        if not cluster.get_router_replica_set():
+        if not ignore_404(cluster.get_router_replica_set):
             if icspec.routers > 0:
                 router_replicaset = router_objects.prepare_router_replica_set(
                     icspec)
@@ -109,11 +120,13 @@ def on_innodbcluster_create(name: str, namespace: str, body: dict, logger: Logge
                 api_apps.create_namespaced_replica_set(
                     namespace=namespace, body=router_replicaset)
 
-        if not cluster.get_backup_account():
+        if not ignore_404(cluster.get_backup_account):
             secret = backup_objects.prepare_backup_secrets(icspec)
             kopf.adopt(secret)
             api_core.create_namespaced_secret(namespace=namespace, body=secret)
 
+        logger.info(
+            "Component objects created, switching status to PENDING")
         cluster.set_status({
             "cluster": {
                 "status": "PENDING",
@@ -122,11 +135,12 @@ def on_innodbcluster_create(name: str, namespace: str, body: dict, logger: Logge
             }})
 
 
-@kopf.on.delete(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL)
-def on_innodbcluster_delete(name: str, namespace: str, body: dict, logger: Logger, **kwargs):
+@kopf.on.delete(consts.GROUP, consts.VERSION,
+                consts.INNODBCLUSTER_PLURAL)  # type: ignore
+def on_innodbcluster_delete(name: str, namespace: str, body: Body, logger: Logger, **kwargs):
     cluster = InnoDBCluster(body)
 
-    logger.info(f"Deletig cluster {name}")
+    logger.info(f"Deleting cluster {name}")
 
     g_group_monitor.remove_cluster(cluster)
 
@@ -144,8 +158,9 @@ def on_innodbcluster_delete(name: str, namespace: str, body: dict, logger: Logge
 
 # TODO add a busy state and prevent changes while on it
 
-@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL, field="spec.instances")
-def on_innodbcluster_field_instances(old, new, body: dict, logger: Logger, **kwargs):
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.instances")  # type: ignore
+def on_innodbcluster_field_instances(old, new, body: Body, logger: Logger, **kwargs):
     cluster = InnoDBCluster(body)
 
     # ignore spec changes if the cluster is still being initialized
@@ -165,8 +180,9 @@ def on_innodbcluster_field_instances(old, new, body: dict, logger: Logger, **kwa
             sts, {"spec": {"replicas": new}})
 
 
-@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL, field="spec.version")
-def on_innodbcluster_field_version(old, new, body: dict, logger: Logger, **kwargs):
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.version")  # type: ignore
+def on_innodbcluster_field_version(old, new, body: Body, logger: Logger, **kwargs):
     cluster = InnoDBCluster(body)
 
     # ignore spec changes if the cluster is still being initialized
@@ -193,8 +209,9 @@ def on_innodbcluster_field_version(old, new, body: dict, logger: Logger, **kwarg
         cluster_objects.update_version(sts, cluster.parsed_spec)
 
 
-@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL, field="spec.image")
-def on_innodbcluster_field_image(old, new, body: dict, logger: Logger, **kwargs):
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.image")  # type: ignore
+def on_innodbcluster_field_image(old, new, body: Body, logger: Logger, **kwargs):
     cluster = InnoDBCluster(body)
 
     # ignore spec changes if the cluster is still being initialized
@@ -221,8 +238,9 @@ def on_innodbcluster_field_image(old, new, body: dict, logger: Logger, **kwargs)
         cluster_objects.update_version(sts, cluster.parsed_spec)
 
 
-@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL, field="spec.routers")
-def on_innodbcluster_field_routers(old, new, body: dict, logger: Logger, **kwargs):
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.routers")  # type: ignore
+def on_innodbcluster_field_routers(old, new, body: Body, logger: Logger, **kwargs):
     cluster = InnoDBCluster(body)
 
     # ignore spec changes if the cluster is still being initialized
@@ -237,8 +255,9 @@ def on_innodbcluster_field_routers(old, new, body: dict, logger: Logger, **kwarg
         router_objects.update_size(cluster, new, logger)
 
 
-@kopf.on.create("", "v1", "pods", labels={"component": "mysqld"})
-def on_pod_create(body: dict, logger: Logger, **kwargs):
+@kopf.on.create("", "v1", "pods",
+                labels={"component": "mysqld"})  # type: ignore
+def on_pod_create(body: Body, logger: Logger, **kwargs):
     """
     Handle MySQL server Pod creation, which can happen when:
     - cluster is being first created
@@ -265,9 +284,10 @@ def on_pod_create(body: dict, logger: Logger, **kwargs):
 
     with ClusterMutex(cluster, pod):
         if pod.index == 0 and not cluster.get_create_time():
-            g_group_monitor.monitor_cluster(cluster, on_group_view_change)
-
             cluster_objects.on_first_cluster_pod_created(cluster, logger)
+
+            g_group_monitor.monitor_cluster(
+                cluster, on_group_view_change, logger)
 
         cluster_ctl = ClusterController(cluster)
 
@@ -278,8 +298,9 @@ def on_pod_create(body: dict, logger: Logger, **kwargs):
             pod, "mysql-restarts", pod.get_container_restarts("mysql"))
 
 
-@kopf.on.event("", "v1", "pods", labels={"component": "mysqld"})
-def on_pod_event(event, body: dict, logger: Logger, **kwargs):
+@kopf.on.event("", "v1", "pods",
+               labels={"component": "mysqld"})  # type: ignore
+def on_pod_event(event, body: Body, logger: Logger, **kwargs):
     """
     Handle low-level MySQL server pod events. The events we're interested in are:
     - when a container restarts in a Pod (e.g. because of mysqld crash)
@@ -340,8 +361,9 @@ def on_pod_event(event, body: dict, logger: Logger, **kwargs):
             continue
 
 
-@kopf.on.delete("", "v1", "pods", labels={"component": "mysqld"})
-def on_pod_delete(body: dict, logger: Logger, **kwargs):
+@kopf.on.delete("", "v1", "pods",
+                labels={"component": "mysqld"})  # type: ignore
+def on_pod_delete(body: Body, logger: Logger, **kwargs):
     """
     Handle MySQL server Pod deletion, which can happen when:
     - cluster is being scaled down (members being removed)
@@ -371,6 +393,6 @@ def on_pod_delete(body: dict, logger: Logger, **kwargs):
         pod.remove_member_finalizer(body)
 
         logger.error(f"Owner cluster for {pod.name} does not exist anymore")
-        #raise kopf.PermanentError("Cluster object deleted before Pod")
+        # raise kopf.PermanentError("Cluster object deleted before Pod")
 
     logger.info(f"====> BODY={body['metadata'].get('finalizers')}")

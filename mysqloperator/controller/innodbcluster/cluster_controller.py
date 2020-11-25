@@ -20,16 +20,17 @@
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 
-from mysqlsh.mysql import ClassicSession
+from kopf.structs.bodies import Body
 from .. import consts, errors, kubeutils, shellutils, utils, config, mysqlutils
 from .. import diagnose
 from ..shellutils import DbaWrap
 from . import router_objects
 from .cluster_api import MySQLPod, InnoDBCluster, client
-from mysqlsh import Dba
-from mysqlsh.dba import Cluster
 import typing
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+if TYPE_CHECKING:
+    from mysqlsh.mysql import ClassicSession
+    from mysqlsh import Dba, Cluster
 import os
 import copy
 import mysqlsh
@@ -78,7 +79,7 @@ class ClusterController:
 
     def publish_status(self, diag: diagnose.ClusterStatus) -> None:
         cluster_status = {
-            "status": diag.status,
+            "status": diag.status.name,
             "onlineInstances": len(diag.online_members),
             "lastProbeTime": utils.isotime()
         }
@@ -106,7 +107,7 @@ class ClusterController:
         else:
             return last_status
 
-    def probe_member_status(self, pod: MySQLPod, session: ClassicSession, joined: bool, logger) -> None:
+    def probe_member_status(self, pod: MySQLPod, session: 'ClassicSession', joined: bool, logger) -> None:
         # TODO use diagnose?
         member_id, role, status, view_id, version = shellutils.query_membership_info(
             session)
@@ -120,7 +121,7 @@ class ClusterController:
         else:
             pod.update_member_readiness_gate("ready", False)
 
-    def connect_to_primary(self, primary_pod: MySQLPod, logger) -> Cluster:
+    def connect_to_primary(self, primary_pod: MySQLPod, logger) -> 'Cluster':
         if primary_pod:
             self.dba = shellutils.connect_dba(
                 primary_pod.endpoint_co, logger, max_tries=2)
@@ -181,7 +182,7 @@ class ClusterController:
 
         return try_connect()
 
-    def log_mysql_info(self, pod: MySQLPod, session: ClassicSession, logger) -> None:
+    def log_mysql_info(self, pod: MySQLPod, session: 'ClassicSession', logger) -> None:
         row = session.run_sql(
             "select @@server_id, @@server_uuid, @@report_host").fetch_one()
         server_id, server_uuid, report_host = row
@@ -221,7 +222,7 @@ class ClusterController:
         # The operator manages GR, so turn off start_on_boot to avoid conflicts
         create_options = {
             "gtidSetIsComplete": assume_gtid_set_complete,
-            "startOnBoot": False,
+            "manualStartOnBoot": True,
             "memberSslMode": "REQUIRED"
         }
         create_options.update(common_gr_options)
@@ -276,7 +277,7 @@ class ClusterController:
 
             self.post_create_actions(dba, self.dba_cluster, seed_pod, logger)
 
-    def post_create_actions(self, dba: Dba, dba_cluster: Cluster, seed_pod: MySQLPod, logger) -> None:
+    def post_create_actions(self, dba: 'Dba', dba_cluster: 'Cluster', seed_pod: MySQLPod, logger) -> None:
         # create router account
         user, password = self.cluster.get_router_account()
 
@@ -396,7 +397,7 @@ class ClusterController:
                 # errants are lost.
                 logger.error(f"{pod.endpoint} is in state {status.status}")
 
-    def join_instance(self, pod: MySQLPod, logger, pod_dba_session: Dba) -> None:
+    def join_instance(self, pod: MySQLPod, logger, pod_dba_session: 'Dba') -> None:
         logger.info(f"Adding {pod.endpoint} to cluster")
 
         peer_pod = self.connect_to_cluster(logger)
@@ -427,7 +428,7 @@ class ClusterController:
 
         self.probe_member_status(pod, pod_dba_session.session, True, logger)
 
-    def rejoin_instance(self, pod: MySQLPod, logger, pod_dba_session: Dba) -> None:
+    def rejoin_instance(self, pod: MySQLPod, logger, pod_dba_session: 'Dba') -> None:
         logger.info(f"Rejoining {pod.endpoint} to cluster")
 
         peer_pod = self.connect_to_cluster(logger)
@@ -639,7 +640,7 @@ class ClusterController:
         shellutils.RetryLoop(logger).call(
             self.reconcile_pod, diag.primary, pod, logger)
 
-    def on_pod_deleted(self, pod: MySQLPod, pod_body: dict, logger) -> None:
+    def on_pod_deleted(self, pod: MySQLPod, pod_body: Body, logger) -> None:
         diag = self.probe_status(logger)
 
         logger.debug(

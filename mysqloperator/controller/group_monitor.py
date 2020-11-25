@@ -19,6 +19,12 @@
 # along with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
+from logging import Logger
+from typing import Callable, Optional, TYPE_CHECKING, Tuple
+
+from mysqloperator.controller.innodbcluster.cluster_api import InnoDBCluster
+
+from mysqloperator.controller.shellutils import RetryLoop
 from . import shellutils
 import threading
 import time
@@ -31,8 +37,11 @@ k_connect_retry_interval = 10
 
 
 class MonitoredCluster:
-    def __init__(self, cluster, handler):
+    def __init__(self, cluster: InnoDBCluster,
+                 account: Tuple[str, str],
+                 handler: Callable[[InnoDBCluster, list, bool], None]):
         self.cluster = cluster
+        self.account = account
 
         self.session = None
         self.target = None
@@ -44,14 +53,14 @@ class MonitoredCluster:
         self.handler = handler
 
     @property
-    def name(self):
+    def name(self) -> str:
         return self.cluster.name
 
     @property
-    def namespace(self):
+    def namespace(self) -> str:
         return self.cluster.namespace
 
-    def ensure_connected(self):
+    def ensure_connected(self) -> Optional['mysqlx.Session']:
         # TODO run a ping every X seconds
         if not self.session and (not self.last_connect_attempt or time.time() - self.last_connect_attempt > k_connect_retry_interval):
             print(
@@ -72,7 +81,7 @@ class MonitoredCluster:
 
         return self.session
 
-    def connect_to_primary(self):
+    def connect_to_primary(self) -> None:
         while True:
             session, is_primary = self.find_primary()
             if not is_primary:
@@ -103,9 +112,7 @@ class MonitoredCluster:
                 self.session = None
             break
 
-    def find_primary(self):
-        account = self.cluster.get_admin_account()
-
+    def find_primary(self) -> Tuple[Optional['mysqlx.Session'], bool]:
         not_primary = None
 
         pods = self.cluster.get_pods()
@@ -115,7 +122,7 @@ class MonitoredCluster:
             if member_info and member_info.get("role") == "PRIMARY":
                 session = self.try_connect(pod)
                 if session:
-                    s = shellutils.jump_to_primary(session, account)
+                    s = shellutils.jump_to_primary(session, self.account)
                     if s:
                         if s != session:
                             session.close()
@@ -127,7 +134,7 @@ class MonitoredCluster:
         for pod in pods:
             session = self.try_connect(pod)
             if session:
-                s = shellutils.jump_to_primary(session, account)
+                s = shellutils.jump_to_primary(session, self.account)
                 if s:
                     if s != session:
                         session.close()
@@ -137,7 +144,7 @@ class MonitoredCluster:
 
         return not_primary, False
 
-    def try_connect(self, pod):
+    def try_connect(self, pod) -> Optional['mysqlx.Session']:
         try:
             session = mysqlx.get_session(pod.xendpoint_co)
         except mysqlsh.Error as e:
@@ -146,7 +153,7 @@ class MonitoredCluster:
 
         return session
 
-    def handle_notice(self):
+    def handle_notice(self) -> None:
         while 1:
             try:
                 # TODO hack to force unexpected async notice to be read, xsession should read packets itself
@@ -166,7 +173,7 @@ class MonitoredCluster:
                 self.session = None
                 break
 
-    def on_view_change(self, view_id):
+    def on_view_change(self, view_id: Optional[str]) -> None:
         members = shellutils.query_members(self.session)
         self.handler(self.cluster, members, view_id != self.last_view_id)
         self.last_view_id = view_id
@@ -199,22 +206,27 @@ class GroupMonitor(threading.Thread):
         self.clusters = []
         self.stopped = False
 
-    def monitor_cluster(self, cluster, handler):
+    def monitor_cluster(self, cluster: InnoDBCluster,
+                        handler: Callable[[InnoDBCluster, list, bool], None],
+                        logger: Logger) -> None:
         for c in self.clusters:
             if c.name == cluster.name and c.namespace == cluster.namespace:
                 return
 
-        target = MonitoredCluster(cluster, handler)
+        # We could get called here before the Secret is ready
+        account = RetryLoop(logger).call(cluster.get_admin_account)
+
+        target = MonitoredCluster(cluster, account, handler)
         self.clusters.append(target)
         print(f"Added monitor for {cluster.namespace}/{cluster.name}")
 
-    def remove_cluster(self, cluster):
+    def remove_cluster(self, cluster: InnoDBCluster) -> None:
         for c in self.clusters:
             if c.name == cluster.name and c.namespace == cluster.namespace:
                 self.clusters.remove(c)
                 break
 
-    def run(self):
+    def run(self) -> None:
         last_ping = time.time()
         while not self.stopped:
             sessions = []
@@ -234,7 +246,7 @@ class GroupMonitor(threading.Thread):
                     if cluster.session and cluster.session in ready:
                         cluster.handle_notice()
 
-    def stop(self):
+    def stop(self) -> None:
         self.stopped = True
 
 

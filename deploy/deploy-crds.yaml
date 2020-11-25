@@ -34,6 +34,9 @@ spec:
                   type: string
                 instances:
                   type: integer
+                  minimum: 1
+                  maximum: 9
+                  default: 1
                 podSpec:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
@@ -44,6 +47,8 @@ spec:
                   type: string
                 routers:
                   type: integer
+                  minimum: 0
+                  default: 0
                 routerSpec:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true

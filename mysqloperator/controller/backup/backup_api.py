@@ -125,6 +125,8 @@ class MySQLBackupSpec:
                 f"One of spec.backupProfileName or spec.backupProfile must be set")
 
         try:
+            from ..innodbcluster.cluster_api import InnoDBCluster
+
             cluster = InnoDBCluster.read(self.clusterName, self.namespace)
         except ApiException as e:
             if e.status == 404:
@@ -186,11 +188,12 @@ class MySQLBackup:
     def namespace(self) -> str:
         return self.metadata["namespace"]
 
+    @property
+    def cluster_name(self) -> str:
+        return self.parsed_spec.clusterName
+
     def get_profile(self):
         pass
-
-    def get_cluster(self) -> InnoDBCluster:
-        return InnoDBCluster.read(self.parsed_spec.clusterName, self.namespace)
 
     def set_started(self, backup_name: str, start_time: str) -> None:
         patch = {"status": {

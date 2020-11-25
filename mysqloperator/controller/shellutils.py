@@ -22,11 +22,12 @@
 from logging import Logger
 from .innodbcluster.cluster_api import MySQLPod
 import typing
-from typing import Optional, Callable
+from typing import Optional, Callable, TYPE_CHECKING
 import mysqlsh
 import kopf
 import time
-from mysqlsh.dba import Dba, Cluster
+if TYPE_CHECKING:
+    from mysqlsh import Dba, Cluster
 
 mysql = mysqlsh.mysql
 mysqlx = mysqlsh.mysqlx
@@ -156,7 +157,7 @@ class SessionWrap:
 
 
 class DbaWrap:
-    def __init__(self, dba: Dba):
+    def __init__(self, dba: 'Dba'):
         self.dba = dba
 
     def __enter__(self):
@@ -170,7 +171,7 @@ class DbaWrap:
 
 
 class ClusterWrap:
-    def __init__(self, cluster: Cluster):
+    def __init__(self, cluster: 'Cluster'):
         self.cluster = cluster
 
     def __enter__(self):
@@ -183,7 +184,8 @@ class ClusterWrap:
         return getattr(self.cluster, name)
 
 
-def connect_dba(target: dict, logger: Logger, **kwargs) -> Dba:
+def connect_dba(target: dict, logger: Logger, **kwargs) -> 'Dba':
+    print("!!!!!!!", mysqlsh.__file__)
     return RetryLoop(logger, **kwargs).call(mysqlsh.connect_dba, target)
 
 

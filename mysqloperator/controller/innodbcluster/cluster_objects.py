@@ -19,6 +19,7 @@
 # along with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
+from logging import Logger
 from kubernetes.client import api_client
 from .. import utils, config, consts
 from .cluster_api import InnoDBCluster, InnoDBClusterSpec
@@ -470,13 +471,13 @@ def update_version(sts, spec: InnoDBClusterSpec) -> None:
     update_stateful_set_spec(sts, patch)
 
 
-def on_first_cluster_pod_created(cluster: InnoDBCluster, logger) -> None:
+def on_first_cluster_pod_created(cluster: InnoDBCluster, logger: Logger) -> None:
     # Add finalizer to the cluster object to prevent it from being deleted
     # until the last pod is properly deleted.
     cluster.add_cluster_finalizer()
 
 
-def on_last_cluster_pod_removed(cluster: InnoDBCluster, logger) -> None:
+def on_last_cluster_pod_removed(cluster: InnoDBCluster, logger: Logger) -> None:
     # Remove cluster finalizer because the last pod was deleted, this lets
     # the cluster object to be deleted too
     logger.info(

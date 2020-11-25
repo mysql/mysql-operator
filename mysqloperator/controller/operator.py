@@ -33,7 +33,7 @@ import logging
 #     return kopf.login_via_client(**kwargs)
 
 
-@kopf.on.startup()
+@kopf.on.startup()  # type: ignore
 def on_startup(settings: kopf.OperatorSettings, logger: Logger, *args, **_):
     utils.log_banner(__file__, logger)
 
@@ -48,11 +48,11 @@ def on_startup(settings: kopf.OperatorSettings, logger: Logger, *args, **_):
     #     name='operator.mysql.oracle.com/last-handled-configuration'
     # )
 
-    operator_cluster.monitor_existing_clusters()
+    operator_cluster.monitor_existing_clusters(logger)
 
     g_group_monitor.start()
 
 
-@kopf.on.cleanup()
+@kopf.on.cleanup()  # type: ignore
 def on_shutdown(logger: Logger, *args, **kwargs):
     g_group_monitor.stop()

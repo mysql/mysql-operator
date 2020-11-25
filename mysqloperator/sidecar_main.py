@@ -60,18 +60,19 @@
 
 from logging import Logger
 import subprocess
-from typing import Optional, Tuple, cast
+from typing import Optional, TYPE_CHECKING, Tuple, cast
 import mysqlsh
 import sys
 import os
 import logging
 import time
 import shutil
-
-from mysqlsh.mysql import ClassicSession
 from .controller import utils, mysqlutils, config
 from .controller.innodbcluster import initdb
 from .controller.innodbcluster.cluster_api import CloneInitDBSpec, DumpInitDBSpec, InnoDBCluster, InnoDBClusterSpec, MySQLPod
+
+if TYPE_CHECKING:
+    from mysqlsh.mysql import ClassicSession
 
 mysql = mysqlsh.mysql
 
@@ -137,7 +138,7 @@ def wipe_old_innodb_cluster(session, logger):
     session.run_sql("drop schema if exists mysql_innodb_cluster_metadata")
 
 
-def populate_with_clone(datadir: str, session: ClassicSession, cluster: InnoDBCluster, clone_spec: CloneInitDBSpec, pod: MySQLPod, logger: Logger):
+def populate_with_clone(datadir: str, session: 'ClassicSession', cluster: InnoDBCluster, clone_spec: CloneInitDBSpec, pod: MySQLPod, logger: Logger):
     """
     Initialize the DB using clone.
     Server may be restarted multiple times but will be back up on return.
@@ -181,7 +182,7 @@ def populate_with_clone(datadir: str, session: ClassicSession, cluster: InnoDBCl
     return session
 
 
-def populate_with_dump(datadir: str, session: ClassicSession, cluster: InnoDBCluster, init_spec: DumpInitDBSpec, pod: MySQLPod, logger: Logger):
+def populate_with_dump(datadir: str, session: 'ClassicSession', cluster: InnoDBCluster, init_spec: DumpInitDBSpec, pod: MySQLPod, logger: Logger):
     logger.info(f"Initializing mysql from a dump...")
 
     initdb.load_dump(session, cluster, pod, init_spec, logger)
@@ -191,7 +192,7 @@ def populate_with_dump(datadir: str, session: ClassicSession, cluster: InnoDBClu
     return session
 
 
-def populate_db(datadir, session, cluster, pod, logger: Logger) -> ClassicSession:
+def populate_db(datadir, session, cluster, pod, logger: Logger) -> 'ClassicSession':
     """
     Populate DB from source specified in the cluster spec.
     Also creates main root account specified by user.
@@ -237,7 +238,7 @@ def get_root_account_info(cluster: InnoDBCluster) -> Tuple[str, str, str]:
         f"Could not get secret with for root account information for {cluster.namespace}/{cluster.name}")
 
 
-def create_root_account(session: ClassicSession, cluster, logger: Logger) -> None:
+def create_root_account(session: 'ClassicSession', cluster, logger: Logger) -> None:
     """
     Create general purpose root account (owned by user) as specified by user.
     """
@@ -275,7 +276,7 @@ def create_admin_account(session, cluster, logger):
         "GRANT PROXY ON ''@'' TO ?@? WITH GRANT OPTION", [user, host])
 
 
-def connect(user: str, password: str, logger: Logger, timeout: Optional[int] = 60) -> ClassicSession:
+def connect(user: str, password: str, logger: Logger, timeout: Optional[int] = 60) -> 'ClassicSession':
     shell = mysqlsh.globals.shell
 
     i = 0

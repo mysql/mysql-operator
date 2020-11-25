@@ -21,14 +21,15 @@
 
 from .innodbcluster.cluster_api import InnoDBCluster, MySQLPod
 import typing
-from typing import Optional, Tuple, List, Set, Dict, cast
+from typing import Optional, TYPE_CHECKING, Tuple, List, Set, Dict, cast
 from . import shellutils, consts, errors
 import kopf
 import mysqlsh
-from mysqlsh.dba import Dba, Cluster
-from mysqlsh.mysql import ClassicSession
 import enum
 import time
+if TYPE_CHECKING:
+    from mysqlsh.mysql import ClassicSession
+    from mysqlsh import Dba, Cluster
 
 mysql = mysqlsh.mysql
 
@@ -70,7 +71,7 @@ class InstanceStatus:
     peers: Optional[dict] = None
 
 
-def diagnose_instance(pod: MySQLPod, logger, dba: Dba = None) -> InstanceStatus:
+def diagnose_instance(pod: MySQLPod, logger, dba: 'Dba' = None) -> InstanceStatus:
     """
     Check state of an instance in the given pod.
 
@@ -213,7 +214,7 @@ class CandidateStatus:
     bad_gtid_set: Optional[str] = None
 
 
-def check_errant_gtids(primary_session: ClassicSession, pod: MySQLPod, pod_dba: Dba, logger) -> Optional[str]:
+def check_errant_gtids(primary_session: 'ClassicSession', pod: MySQLPod, pod_dba: 'Dba', logger) -> Optional[str]:
     try:
         gtid_set = pod_dba.session.run_sql(
             "SELECT @@globals.GTID_EXECUTED").fetch_one()[0]
@@ -231,7 +232,7 @@ def check_errant_gtids(primary_session: ClassicSession, pod: MySQLPod, pod_dba: 
     return None
 
 
-def diagnose_cluster_candidate(primary_session: ClassicSession, cluster: Cluster, pod: MySQLPod, pod_dba: Dba, logger) -> CandidateStatus:
+def diagnose_cluster_candidate(primary_session: 'ClassicSession', cluster: 'Cluster', pod: MySQLPod, pod_dba: 'Dba', logger) -> CandidateStatus:
     """
     Check status of an instance that's about to be added to the cluster or
     rejoin it, relative to the given cluster. Also checks whether the instance

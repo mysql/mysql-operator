@@ -19,7 +19,7 @@
 # along with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
-from mysqlsh.mysql import ClassicSession
+from typing import TYPE_CHECKING
 from .cluster_api import DumpInitDBSpec, MySQLPod, InitDB, CloneInitDBSpec, InnoDBCluster
 from ..shellutils import SessionWrap
 from .. import mysqlutils
@@ -27,9 +27,11 @@ import mysqlsh
 import time
 import os
 from logging import Logger
+if TYPE_CHECKING:
+    from mysqlsh.mysql import ClassicSession
 
 
-def start_clone_seed_pod(session: mysqlsh.mysql.ClassicSession,
+def start_clone_seed_pod(session: 'ClassicSession',
                          cluster: InnoDBCluster,
                          seed_pod: MySQLPod, clone_spec: CloneInitDBSpec,
                          logger: Logger) -> bool:
@@ -72,14 +74,14 @@ def start_clone_seed_pod(session: mysqlsh.mysql.ClassicSession,
             raise
 
 
-def monitor_clone(session: ClassicSession, start_time: str, logger: Logger) -> None:
+def monitor_clone(session: 'ClassicSession', start_time: str, logger: Logger) -> None:
     logger.info("Waiting for clone...")
     while True:
         r = session.run_sql("select * from performance_schema.clone_progress")
         time.sleep(1)
 
 
-def finish_clone_seed_pod(session: ClassicSession, cluster: InnoDBCluster, logger: Logger) -> None:
+def finish_clone_seed_pod(session: 'ClassicSession', cluster: InnoDBCluster, logger: Logger) -> None:
     return
     logger.info(f"Finalizing clone")
 
@@ -89,7 +91,7 @@ def finish_clone_seed_pod(session: ClassicSession, cluster: InnoDBCluster, logge
     logger.info(f"Clone finished successfully")
 
 
-def load_dump(session: ClassicSession, cluster: InnoDBCluster, pod: MySQLPod, init_spec: DumpInitDBSpec, logger: Logger) -> None:
+def load_dump(session: 'ClassicSession', cluster: InnoDBCluster, pod: MySQLPod, init_spec: DumpInitDBSpec, logger: Logger) -> None:
     options = init_spec.loadOptions.copy()
 
     if init_spec.storage.ociObjectStorage:

@@ -25,10 +25,10 @@ cp ../mysql-shell/Dockerfile .
 
 # Copy mysqlsh binary
 mkdir -p usr
-(cd ../../../../bld-vagrant/usr/local; tar cf - *) | (cd usr; tar xf -)
+(cd ../../../../bld-vagrant/usr/local; tar cf - *) | (cd usr; pwd; tar xvf -)
 # Copy operator code
 (cd ../../../../bld; ninja)
-cp -r ../../mysqloperator usr/lib/mysqlsh/python-packages/
+cp -rv ../../mysqloperator usr/lib/mysqlsh/python-packages/
 
 if [ ! -d usr/lib/mysqlsh/lib/python3.7/site-packages/kopf ]; then
   # Install deps that should come bundled

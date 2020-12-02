@@ -303,7 +303,7 @@ def connect(user: str, password: str, logger: Logger, timeout: Optional[int] = 6
     return mysqlsh.globals.session
 
 
-def initialize(session, datadir, pod, cluster, logger):
+def initialize(session, datadir: str, pod: MySQLPod, cluster, logger: Logger) -> None:
     session.run_sql("SET sql_log_bin=0")
     create_root_account(session, cluster, logger)
     create_admin_account(session, cluster, logger)
@@ -323,13 +323,23 @@ def initialize(session, datadir, pod, cluster, logger):
     # session.run_sql("shutdown")
 
 
-def standby(pod, cluster, logger: Logger) -> None:
+def standby(pod: MySQLPod, cluster, logger: Logger) -> None:
     while True:
         import time
         time.sleep(1)
 
 
-def bootstrap(pod, datadir: str, logger: Logger) -> int:
+def metadata_schema_version(session: 'ClassicSession', logger: Logger) -> Optional[str]:
+    try:
+        r = session.run_sql(
+            "select * from mysql_innodb_cluster_metadata.schema_version").fetch_one()
+        return r[0]
+    except Exception as e:
+        logger.debug(f"Metadata check failed: {e}")
+        return None
+
+
+def bootstrap(pod: MySQLPod, datadir: str, logger: Logger) -> int:
     """
     Prepare MySQL instance for InnoDB cluster.
 
@@ -343,30 +353,36 @@ def bootstrap(pod, datadir: str, logger: Logger) -> int:
     name = pod.name
     namespace = pod.namespace
 
-    # we may have to wait for mysqld to startup, since the sidecar and mysql
-    # containers are started at the same time.
-    logger.info("Connecting to MySQL...")
-
-    # try to connect with the admin user first, if it succeeds skip init
-    user, password = pod.get_cluster().get_admin_account()
-    try:
-        session = connect(user, password, logger, timeout=None)
-
-        logger.info(
-            f"Connect with user {user} succeeded, skipping MySQL preparation.")
-
+    # Check if the Pod is already configured according to itself
+    gate = pod.get_member_readiness_gate("configured")
+    if gate:
+        logger.info(f"MySQL server was already initialized configured={gate}")
         return 0
-    except mysqlsh.Error as e:
-        logger.debug(
-            f"Connect as {user} failed, assuming Pod is not prepared: {e}")
 
-    logger.info(f"Preparing mysql pod {namespace}/{name}, datadir={datadir}")
+    # Connect using localroot and check if the metadata schema already exists
 
+    # note: we may have to wait for mysqld to startup, since the sidecar and
+    # mysql containers are started at the same time.
     session = connect("localroot", "", logger, timeout=None)
+
+    mdver = metadata_schema_version(session, logger)
+    if mdver:
+        logger.info(
+            f"InnoDB Cluster metadata (version={mdver}) found, skipping configuration...")
+        pod.update_member_readiness_gate("configured", True)
+        return 0
+
+    # Check if the datadir already existed
+
+    logger.info(
+        f"Configuring mysql pod {namespace}/{name}, configured={gate} datadir={datadir}")
 
     try:
         initialize(session, datadir, pod, pod.get_cluster(), logger)
-        logger.info("Bootstrap finished")
+
+        pod.update_member_readiness_gate("configured", True)
+
+        logger.info("Configuration finished")
     except Exception as e:
         import traceback
         traceback.print_exc()

@@ -154,6 +154,7 @@ spec:
     spec:
       subdomain: {spec.name}
       readinessGates:
+      - conditionType: "mysql.oracle.com/configured"
       - conditionType: "mysql.oracle.com/ready"
       initContainers:
       - name: initconf

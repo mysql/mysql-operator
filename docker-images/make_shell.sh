@@ -38,5 +38,9 @@ if [ ! -d usr/lib/mysqlsh/lib/python3.7/site-packages/kopf ]; then
   pip3 install typing_extensions iso8601 python-json-logger "aiohttp<4.0.0" aiojobs "chardet<4.0,>=2.0" "async-timeout<4.0,>=3.0" "yarl<2.0,>=1.0" "attrs>=17.3.0" "multidict<5.0,>=4.5" "requests>=2.12" "idna>=2.0" "certifi>=2017.4.17" "urllib3!=1.25.0,!=1.25.1,<1.26,>=1.21.1" --target=usr/lib/mysqlsh/lib/python3.7/site-packages/ --no-deps
 fi
 
-docker build . -t $image
+ARGS=""
+if test "$http_proxy" != ""; then
+    ARGS="--build-arg HTTP_PROXY=$HTTP_PROXY --build-arg HTTPS_PROXY=$HTTP_PROXY"
+fi
+docker build . $ARGS -t $image
 docker tag $image $registry/mysql-shell:latest

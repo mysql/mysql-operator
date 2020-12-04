@@ -1,0 +1,26 @@
+# Copyright (c) 2020, Oracle and/or its affiliates.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; version 2 of the License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
+
+FROM oraclelinux:8.1
+
+#RUN yum install -y oracle-softwarecollection-release-el7
+#RUN yum-config-manager --enable ol7_optional_latest
+#RUN yum install -y binutils devtoolset-9 ninja cmake3
+
+# Might be a bit too much, i.e. installs some Xorg things and Java
+RUN dnf groupinstall -y "Development Tools"
+RUN dnf install -y cmake openssl-devel  ncurses-devel libcurl-devel libtirpc-devel python38-devel
+
+# Needed for LDAP: openldap-devel cyrus-sasl-devel cyrus-sasl-scram

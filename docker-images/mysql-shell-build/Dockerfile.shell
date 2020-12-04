@@ -1,0 +1,30 @@
+# Copyright (c) 2020, Oracle and/or its affiliates.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; version 2 of the License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
+
+FROM oraclelinux:8.1
+
+RUN echo "PATH=${PATH}:/usr/local/bin" >> /etc/profile
+
+# TODO: To reduce size this could be multi-stage build, so that the final image
+#       doesn't contain gcc etc.; best probably by moving the Python module
+#       installations into CMake or even bundling the Python modules
+
+RUN dnf install -y gcc python38-devel python38-pip git && \
+  pip3 install git+https://github.com/kubernetes-client/python.git@release-11.0 --target=/usr/local/lib/mysqlsh/python-packages && \
+  pip3 install git+https://github.com/nolar/kopf.git@0.28 --target=/usr/local/lib/mysqlsh/python-packages --no-deps && \
+  # dependencies from kopf that we know are needed
+  pip3 install typing_extensions iso8601 python-json-logger "aiohttp<4.0.0" aiojobs "chardet<4.0,>=2.0" "async-timeout<4.0,>=3.0" "yarl<2.0,>=1.0" "attrs>=17.3.0" "multidict<5.0,>=4.5" "requests>=2.12" "idna>=2.0" "certifi>=2017.4.17" "urllib3!=1.25.0,!=1.25.1,<1.26,>=1.21.1" --target=/usr/local/lib/mysqlsh/python-packages --no-deps
+
+ADD usr /usr

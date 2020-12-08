@@ -11,32 +11,49 @@ spec:
       schema:
         openAPIV3Schema:
           type: object
+          required: ["spec"]
           properties:
+            metadata:
+              type: object
+              properties:
+                name:
+                  type: string
+                  maxLength: 40
             spec:
               type: object
+              required: ["secretName"]
               properties:
                 secretName:
                   type: string
+                  description: "Name of a Secret containing root/default account password"
                 sslSecretName:
                   type: string
                 version:
                   type: string
+                  pattern: '^\d+\.\d+\.\d+(-.+)?'
+                  description: "MySQL Server version number"
                 image:
                   type: string
                 shellImage:
                   type: string
                 baseServerId:
                   type: integer
+                  minimum: 0
+                  maximum: 4294967195
+                  default: 1000
+                  description: "Base value for MySQL server_id for instances in the cluster"
                 volumeClaimTemplates:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
                 mycnf:
                   type: string
+                  description: "Custom configuration additions for my.cnf"
                 instances:
                   type: integer
                   minimum: 1
                   maximum: 9
                   default: 1
+                  description: "Number of MySQL replica instances for the cluster"
                 podSpec:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
@@ -49,11 +66,13 @@ spec:
                   type: integer
                   minimum: 0
                   default: 0
+                  description: "Number of MySQL router instances to deploy"
                 routerSpec:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
                 backupProfiles:
                   type: array
+                  description: "Backup profile specifications for the cluster, which can be referenced from backup schedules and one-off backup jobs."
                   items:
                     type: object
                     properties:
@@ -67,6 +86,7 @@ spec:
                         x-kubernetes-preserve-unknown-fields: true
                 backupSchedules:
                   type: array
+                  description: "Schedules for periodically executed backups"
                   items:
                     type: object
                     properties:
@@ -138,6 +158,7 @@ spec:
           properties:
             spec:
               type: object
+              required: ["clusterName"]
               properties:
                 clusterName:
                   type: string
@@ -148,6 +169,7 @@ spec:
                   x-kubernetes-preserve-unknown-fields: true
                 deleteBackupData:
                   type: boolean
+                  default: false
       subresources:
         status: {}
       additionalPrinterColumns:

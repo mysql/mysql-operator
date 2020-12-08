@@ -19,6 +19,8 @@
 # along with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
+from re import L
+from kubernetes.client.rest import ApiException
 from .innodbcluster.cluster_api import InnoDBCluster, MySQLPod
 import typing
 from typing import Optional, TYPE_CHECKING, Tuple, List, Set, Dict, cast
@@ -440,7 +442,9 @@ class ClusterStatus:
 
 
 def do_diagnose_cluster(cluster: InnoDBCluster, logger) -> ClusterStatus:
-    cluster.reload()
+    if not cluster.deleting:
+        cluster.reload()
+
     all_pods = set(cluster.get_pods())
 
     last_known_quorum = cluster.get_last_known_quorum()

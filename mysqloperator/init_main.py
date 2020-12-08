@@ -24,11 +24,14 @@ import mysqlsh
 import sys
 import os
 import logging
-import time
 import shutil
 from typing import cast
-from .controller import utils, config
+from .controller import utils, k8sobject
 from .controller.innodbcluster.cluster_api import MySQLPod
+
+k8sobject.g_component = "initconf"
+k8sobject.g_host = os.getenv("HOSTNAME")
+
 
 mysql = mysqlsh.mysql
 

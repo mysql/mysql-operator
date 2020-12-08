@@ -24,12 +24,18 @@ from .controller import config as myconfig
 import mysqlsh
 import asyncio
 import kopf
-import logging
+import os
 import time
 # from kopf.config import configure as config_log
 
 # this will register operator event handlers
 from .controller import operator
+
+from .controller import k8sobject
+
+
+k8sobject.g_component = "operator"
+k8sobject.g_host = os.getenv("HOSTNAME")
 
 
 def main(argv):

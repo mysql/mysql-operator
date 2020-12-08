@@ -29,7 +29,6 @@ shell_image_pull_policy = "Always"
 # Constants
 OPERATOR_VERSION = "0.1.0"
 
-DEFAULT_BASE_SERVER_ID = 1000
 MIN_BASE_SERVER_ID = 1
 MAX_BASE_SERVER_ID = 4000000000
 

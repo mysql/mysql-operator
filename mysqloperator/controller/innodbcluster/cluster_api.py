@@ -21,21 +21,17 @@
 
 import typing
 from typing import Optional, List, Tuple, cast, overload
-import kopf
 from kopf.structs.bodies import Body
-from kubernetes.client.models.v1_secret import V1Secret
+from kopf.toolkits.hierarchies import K8sObject
 from .. import utils, config, consts
 from ..backup.backup_api import BackupProfile
 from ..storage_api import StorageSpec
 from ..api_utils import dget_dict, dget_str, dget_int, dget_list, ApiSpecError
-from ..utils import version_to_int
 from ..kubeutils import api_core, api_apps, api_customobj
 from ..kubeutils import client as api_client, ApiException
 from logging import Logger
-import yaml
 import json
 import datetime
-import time
 from kubernetes import client
 
 
@@ -141,7 +137,7 @@ class InnoDBClusterSpec:
     # number of MySQL instances (required)
     instances: int = 1
     # base value for server_id
-    baseServerId: int = config.DEFAULT_BASE_SERVER_ID
+    baseServerId: int
     # override volumeClaimTemplates for MySQL pods (optional)
     volumeClaimTemplates = None
     # additional MySQL configuration options
@@ -340,12 +336,12 @@ class InnoDBClusterSpec:
             return ""
 
 
-class InnoDBCluster:
+class InnoDBCluster(K8sObject):
     def __init__(self, cluster: Body):
-        self.obj: Body = cluster
+        super().__init__()
 
-        self.parsed_spec = InnoDBClusterSpec(
-            self.namespace, self.name, self.spec)
+        self.obj: Body = cluster
+        self._parsed_spec: Optional[InnoDBClusterSpec] = None
 
     def __str__(self):
         return f"{self.namespace}/{self.name}"
@@ -405,6 +401,31 @@ class InnoDBCluster:
     @property
     def deleting(self) -> bool:
         return "deletionTimestamp" in self.metadata and self.metadata["deletionTimestamp"] is not None
+
+    def self_ref(self, field_path: Optional[str] = None) -> dict:
+        ref = {
+            "apiVersion": consts.API_VERSION,
+            "kind": consts.INNODBCLUSTER_KIND,
+            "name": self.name,
+            "namespace": self.namespace,
+            "resourceVersion": self.metadata["resourceVersion"],
+            "uid": self.uid
+        }
+        if field_path:
+            ref["fieldPath"] = field_path
+        return ref
+
+    @property
+    def parsed_spec(self) -> InnoDBClusterSpec:
+        if not self._parsed_spec:
+            self.parse_spec()
+            assert self._parsed_spec
+
+        return self._parsed_spec
+
+    def parse_spec(self) -> None:
+        self._parsed_spec = InnoDBClusterSpec(
+            self.namespace, self.name, self.spec)
 
     def reload(self) -> None:
         self.obj = self._get(self.namespace, self.name)
@@ -655,8 +676,10 @@ def get_all_clusters() -> typing.List[InnoDBCluster]:
     return [InnoDBCluster(o) for o in objects["items"]]
 
 
-class MySQLPod:
+class MySQLPod(K8sObject):
     def __init__(self, pod: client.V1Pod):
+        super().__init__()
+
         self.pod: client.V1Pod = pod
 
         self.port = 3306
@@ -700,6 +723,19 @@ class MySQLPod:
     @property
     def metadata(self) -> api_client.V1ObjectMeta:
         return cast(api_client.V1ObjectMeta, self.pod.metadata)
+
+    def self_ref(self, field_path: Optional[str] = None) -> dict:
+        ref = {
+            "apiVersion": self.pod.api_version,
+            "kind": self.pod.kind,
+            "name": self.name,
+            "namespace": self.namespace,
+            "resourceVersion": self.metadata.resource_version,
+            "uid": self.metadata.uid
+        }
+        if field_path:
+            ref["fieldPath"] = field_path
+        return ref
 
     @property
     def status(self) -> api_client.V1PodStatus:

@@ -87,7 +87,8 @@ class ClusterController:
 
     def probe_status(self, logger) -> diagnose.ClusterStatus:
         diag = diagnose.diagnose_cluster(self.cluster, logger)
-        self.publish_status(diag)
+        if not self.cluster.deleting:
+            self.publish_status(diag)
         logger.info(
             f"cluster probe: status={diag.status} online={diag.online_members}")
         return diag
@@ -450,7 +451,7 @@ class ClusterController:
 
         self.probe_member_status(pod, pod_dba_session.session, False, logger)
 
-    def remove_instance(self, pod: MySQLPod, pod_body: dict, logger, force: bool = False) -> None:
+    def remove_instance(self, pod: MySQLPod, pod_body: Body, logger, force: bool = False) -> None:
         logger.info(f"Removing {pod.endpoint} from cluster")
 
         # TODO improve this check

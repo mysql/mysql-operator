@@ -62,19 +62,24 @@ from logging import Logger
 import subprocess
 from typing import Optional, TYPE_CHECKING, Tuple, cast
 import mysqlsh
-import sys
 import os
 import logging
 import time
 import shutil
-from .controller import utils, mysqlutils, config
+
+from .controller import utils, mysqlutils, k8sobject
 from .controller.innodbcluster import initdb
-from .controller.innodbcluster.cluster_api import CloneInitDBSpec, DumpInitDBSpec, InnoDBCluster, InnoDBClusterSpec, MySQLPod
+from .controller.innodbcluster.cluster_api import CloneInitDBSpec, DumpInitDBSpec, InnoDBCluster, MySQLPod
 
 if TYPE_CHECKING:
     from mysqlsh.mysql import ClassicSession
 
 mysql = mysqlsh.mysql
+
+
+k8sobject.g_component = "sidecar"
+k8sobject.g_host = os.getenv("HOSTNAME")
+
 
 # The time it takes for mysqld to restart after a clone can be very long,
 # because it has to apply redo logs. OTOH we monitor the error log to see
@@ -162,7 +167,11 @@ def populate_with_clone(datadir: str, session: 'ClassicSession', cluster: InnoDB
     logger.info("Restarting mysqld back up, this may take a while")
 
     # root credentials for the new instance are supposed to match in donor
-    user, host, password = get_root_account_info(cluster)
+    try:
+        user, host, password = get_root_account_info(cluster)
+    except Exception as e:
+        pod.error(action="InitDB", reason="InvalidArgument", message=f"{e}")
+        raise
 
     logger.info(f"Connecting as {user}")
     session = connect(user, password, logger)
@@ -208,7 +217,7 @@ def populate_db(datadir, session, cluster, pod, logger: Logger) -> 'ClassicSessi
             logger.warning(
                 "spec.initDB ignored because no supported initialization parameters found")
 
-    create_root_account(session, cluster, logger)
+    create_root_account(session, pod, cluster, logger)
 
     return session
 
@@ -221,7 +230,7 @@ def get_root_account_info(cluster: InnoDBCluster) -> Tuple[str, str, str]:
         password = secrets.data.get("rootPassword", None)
         if not password:
             raise Exception(
-                f"rootPassword missing in secret {secrets.metadata['name']}")
+                f"rootPassword missing in secret {cluster.parsed_spec.secretName}")
         if user:
             user = utils.b64decode(user)
         else:
@@ -235,14 +244,18 @@ def get_root_account_info(cluster: InnoDBCluster) -> Tuple[str, str, str]:
         return user, host, password
 
     raise Exception(
-        f"Could not get secret with for root account information for {cluster.namespace}/{cluster.name}")
+        f"Could not get secret '{cluster.parsed_spec.secretName}' with for root account information for {cluster.namespace}/{cluster.name}")
 
 
-def create_root_account(session: 'ClassicSession', cluster, logger: Logger) -> None:
+def create_root_account(session: 'ClassicSession', pod: MySQLPod, cluster: InnoDBCluster, logger: Logger) -> None:
     """
     Create general purpose root account (owned by user) as specified by user.
     """
-    user, host, password = get_root_account_info(cluster)
+    try:
+        user, host, password = get_root_account_info(cluster)
+    except Exception as e:
+        pod.error(action="InitDB", reason="InvalidArgument", message=f"{e}")
+        raise
 
     if user == "root" and host == "localhost":
         # Nothing to do here, password was already set by the container
@@ -305,7 +318,7 @@ def connect(user: str, password: str, logger: Logger, timeout: Optional[int] = 6
 
 def initialize(session, datadir: str, pod: MySQLPod, cluster, logger: Logger) -> None:
     session.run_sql("SET sql_log_bin=0")
-    create_root_account(session, cluster, logger)
+    create_root_account(session, pod, cluster, logger)
     create_admin_account(session, cluster, logger)
     session.run_sql("SET sql_log_bin=1")
 

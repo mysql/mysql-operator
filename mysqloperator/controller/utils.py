@@ -66,11 +66,11 @@ g_ephemeral_pod_state = EphemeralState()
 
 
 def isotime() -> str:
-    return datetime.datetime.now().replace(microsecond=0).isoformat()+"Z"
+    return datetime.datetime.utcnow().replace(microsecond=0).isoformat()+"Z"
 
 
 def timestamp() -> str:
-    return datetime.datetime.now().replace(microsecond=0).strftime("%Y%m%d-%H%M%S")
+    return datetime.datetime.utcnow().replace(microsecond=0).strftime("%Y%m%d-%H%M%S")
 
 
 def merge_patch_object(base: dict, patch: dict, prefix: str = "", key: str = "") -> None:

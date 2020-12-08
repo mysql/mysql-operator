@@ -23,6 +23,8 @@
 from typing import Any, Optional
 from kopf.structs.bodies import Body
 from kubernetes.client.rest import ApiException
+
+from mysqloperator.controller.api_utils import ApiSpecError
 from .. import consts, kubeutils, config, utils, errors, diagnose
 from .. import shellutils
 from ..group_monitor import g_group_monitor
@@ -62,13 +64,20 @@ def monitor_existing_clusters(logger: Logger) -> None:
 
 @kopf.on.create(consts.GROUP, consts.VERSION,
                 consts.INNODBCLUSTER_PLURAL)  # type: ignore
-def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body, logger: Logger, **kwargs) -> None:
+def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
+                            logger: Logger, **kwargs) -> None:
     logger.info(
         f"Initializing InnoDB Cluster name={name} namespace={namespace}")
 
     cluster = InnoDBCluster(body)
+    try:
+        cluster.parse_spec()
+    except ApiSpecError as e:
+        cluster.error(action="CreateCluster",
+                      reason="InvalidArgument", message=str(e))
+        raise kopf.TemporaryError(f"Error in InnoDBCluster spec: {e}")
+
     icspec = cluster.parsed_spec
-    icspec.validate(logger)
 
     def ignore_404(f) -> Any:
         try:
@@ -137,7 +146,8 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body, log
 
 @kopf.on.delete(consts.GROUP, consts.VERSION,
                 consts.INNODBCLUSTER_PLURAL)  # type: ignore
-def on_innodbcluster_delete(name: str, namespace: str, body: Body, logger: Logger, **kwargs):
+def on_innodbcluster_delete(name: str, namespace: str, body: Body,
+                            logger: Logger, **kwargs):
     cluster = InnoDBCluster(body)
 
     logger.info(f"Deleting cluster {name}")
@@ -160,7 +170,8 @@ def on_innodbcluster_delete(name: str, namespace: str, body: Body, logger: Logge
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
                field="spec.instances")  # type: ignore
-def on_innodbcluster_field_instances(old, new, body: Body, logger: Logger, **kwargs):
+def on_innodbcluster_field_instances(old, new, body: Body,
+                                     logger: Logger, **kwargs):
     cluster = InnoDBCluster(body)
 
     # ignore spec changes if the cluster is still being initialized
@@ -182,7 +193,8 @@ def on_innodbcluster_field_instances(old, new, body: Body, logger: Logger, **kwa
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
                field="spec.version")  # type: ignore
-def on_innodbcluster_field_version(old, new, body: Body, logger: Logger, **kwargs):
+def on_innodbcluster_field_version(old, new, body: Body,
+                                   logger: Logger, **kwargs):
     cluster = InnoDBCluster(body)
 
     # ignore spec changes if the cluster is still being initialized
@@ -196,7 +208,8 @@ def on_innodbcluster_field_version(old, new, body: Body, logger: Logger, **kwarg
     if sts and old != new:
         logger.info(
             f"Updating MySQL version for InnoDB Cluster StatefulSet pod template from {old} to {new}")
-        cluster.parsed_spec.validate(logger)
+
+        cluster.parse_spec()
 
         cluster_ctl = ClusterController(cluster)
 
@@ -240,7 +253,8 @@ def on_innodbcluster_field_image(old, new, body: Body, logger: Logger, **kwargs)
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
                field="spec.routers")  # type: ignore
-def on_innodbcluster_field_routers(old, new, body: Body, logger: Logger, **kwargs):
+def on_innodbcluster_field_routers(old, new, body: Body,
+                                   logger: Logger, **kwargs):
     cluster = InnoDBCluster(body)
 
     # ignore spec changes if the cluster is still being initialized

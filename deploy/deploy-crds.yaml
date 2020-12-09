@@ -32,10 +32,18 @@ spec:
                   type: string
                   pattern: '^\d+\.\d+\.\d+(-.+)?'
                   description: "MySQL Server version number"
-                image:
+                imageRepository:
                   type: string
-                shellImage:
+                  description: "Repository from where images must be pulled from. Default mysql"
+                imagePullPolicy:
                   type: string
+                imagePullSecrets:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
                 baseServerId:
                   type: integer
                   minimum: 0
@@ -60,8 +68,6 @@ spec:
                 initDB:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
-                routerImage:
-                  type: string
                 routers:
                   type: integer
                   minimum: 0

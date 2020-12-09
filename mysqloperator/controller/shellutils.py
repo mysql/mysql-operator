@@ -20,13 +20,15 @@
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 from logging import Logger
+
 from .innodbcluster.cluster_api import MySQLPod
 import typing
-from typing import Optional, Callable, TYPE_CHECKING
+from typing import Any, Optional, Callable, TYPE_CHECKING, Union
 import mysqlsh
 import kopf
 import time
 if TYPE_CHECKING:
+    from mysqlsh.mysql import ClassicSession
     from mysqlsh import Dba, Cluster
 
 mysql = mysqlsh.mysql
@@ -132,7 +134,7 @@ class RetryLoop:
 
 
 class SessionWrap:
-    def __init__(self, session):
+    def __init__(self, session: Union['ClassicSession', dict]) -> None:
         if isinstance(session, dict):
             try:
                 self.session = mysql.get_session(session)
@@ -146,13 +148,13 @@ class SessionWrap:
         else:
             self.session = session
 
-    def __enter__(self):
+    def __enter__(self) -> 'ClassicSession':
         return self.session
 
-    def __exit__(self, exc_type, exc_value, traceback):
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
         self.session.close()
 
-    def __getattr__(self, name):
+    def __getattr__(self, name) -> Any:
         return getattr(self.session, name)
 
 

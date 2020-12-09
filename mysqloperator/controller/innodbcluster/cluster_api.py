@@ -22,15 +22,17 @@
 import typing
 from typing import Optional, List, Tuple, cast, overload
 from kopf.structs.bodies import Body
-from kopf.toolkits.hierarchies import K8sObject
+
+from ..k8sobject import K8sInterfaceObject
 from .. import utils, config, consts
 from ..backup.backup_api import BackupProfile
 from ..storage_api import StorageSpec
-from ..api_utils import dget_dict, dget_str, dget_int, dget_list, ApiSpecError
+from ..api_utils import dget_dict, dget_str, dget_int, dget_list, ApiSpecError, ImagePullPolicy
 from ..kubeutils import api_core, api_apps, api_customobj
 from ..kubeutils import client as api_client, ApiException
 from logging import Logger
 import json
+import yaml
 import datetime
 from kubernetes import client
 
@@ -131,8 +133,12 @@ class InnoDBClusterSpec:
     # MySQL server version
     version: str = config.DEFAULT_VERSION_TAG
 
-    # TODO Router version, if user wants to override it (latest by default)
-    # routerVersion : Optional[str] = None
+    # Router version, if user wants to override it (latest by default)
+    routerVersion: Optional[str] = None
+
+    imagePullPolicy: ImagePullPolicy = config.default_image_pull_policy
+    imagePullSecrets: Optional[dict] = None
+    imageRepository: str = config.DEFAULT_IMAGE_REPOSITORY
 
     # number of MySQL instances (required)
     instances: int = 1
@@ -179,6 +185,16 @@ class InnoDBClusterSpec:
 
         if "version" in spec:
             self.version = dget_str(spec, "version", "spec")
+
+        if "imagePullPolicy" in spec:
+            self.imagePullPolicy = ImagePullPolicy[dget_str(
+                spec, "imagePullPolicy", "spec")]
+
+        if "imagePullSecrets" in spec:
+            self.imagePullSecrets = dget_dict(spec, "imagePullSecrets", "spec")
+
+        if "imageRepository" in spec:
+            self.imageRepository = dget_str(spec, "imageRepository", "spec")
 
         if "podSpec" in spec:  # TODO - replace with something more specific
             self.podSpec = spec.get("podSpec")
@@ -272,58 +288,39 @@ class InnoDBClusterSpec:
         # TODO ensure that if version is set, then image and routerImage are not
         # TODO should we support upgrading router only?
 
-        def check_image(image, option):
-            """
-            name, _, version = self.image.rpartition(":")
-            try:
-                if "-" in version:
-                    version = version.split("-")[0]
-                version = version_to_int(version)
-            except Exception as e:
-                logger.debug(f"Can't parse image name {image}: {e}")
-                raise ApiSpecError(
-                    f"spec.{option} has an invalid value {image}")
+        # TODO handle version
 
-            if version < version_to_int(config.MIN_SUPPORTED_MYSQL_VERSION):
-                raise ApiSpecError(
-                    f"spec.{option} is for an unsupported version {version}. Must be at least {config.MIN_SUPPORTED_MYSQL_VERSION}")
-
-            if version > version_to_int(config.MAX_SUPPORTED_MYSQL_VERSION):
-                raise ApiSpecError(
-                    f"spec.{option} is for an unsupported version {version}. Must be at most {config.MAX_SUPPORTED_MYSQL_VERSION}, unless the Operator is upgraded.")
-            """
-            pass
-
-        # TODO check version instead
-        #check_image(self.image, "image")
-        #check_image(self.routerImage, "routerImage")
+    def format_image(self, image, version):
+        if self.imageRepository:
+            return f"{self.imageRepository}/{image}:{version}"
+        return f"{image}:{version}"
 
     @property
     def mysql_image(self) -> str:
         # server image version is the one given by the user or latest by default
-        return f"{config.MYSQL_SERVER_IMAGE}:{self.version}"
+        return self.format_image(config.MYSQL_SERVER_IMAGE, self.version)
 
     @property
     def router_image(self) -> str:
         # router image version is always the latest
-        return f"{config.MYSQL_ROUTER_IMAGE}:{config.DEFAULT_ROUTER_VERSION_TAG}"
+        return self.format_image(config.MYSQL_ROUTER_IMAGE, config.DEFAULT_ROUTER_VERSION_TAG)
 
     @property
     def shell_image(self) -> str:
         # shell image version is the same as ours (operator)
-        return f"{config.MYSQL_SHELL_IMAGE}:{config.DEFAULT_SHELL_VERSION_TAG}"
+        return self.format_image(config.MYSQL_SHELL_IMAGE, config.DEFAULT_SHELL_VERSION_TAG)
 
     @property
     def mysql_image_pull_policy(self) -> str:
-        return config.mysql_image_pull_policy
+        return self.imagePullPolicy.value
 
     @property
     def router_image_pull_policy(self) -> str:
-        return config.router_image_pull_policy
+        return self.imagePullPolicy.value
 
     @property
     def shell_image_pull_policy(self) -> str:
-        return config.shell_image_pull_policy
+        return self.imagePullPolicy.value
 
     @property
     def extra_env(self) -> str:
@@ -335,9 +332,15 @@ class InnoDBClusterSpec:
         else:
             return ""
 
+    @property
+    def image_pull_secrets(self) -> str:
+        if self.imagePullSecrets:
+            return f"imagePullSecrets:\n{yaml.safe_dump(self.imagePullSecrets)}"
+        return ""
 
-class InnoDBCluster(K8sObject):
-    def __init__(self, cluster: Body):
+
+class InnoDBCluster(K8sInterfaceObject):
+    def __init__(self, cluster: Body) -> None:
         super().__init__()
 
         self.obj: Body = cluster
@@ -672,11 +675,10 @@ class InnoDBCluster(K8sObject):
 def get_all_clusters() -> typing.List[InnoDBCluster]:
     objects = cast(dict, api_customobj.list_cluster_custom_object(
         consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL))
-
     return [InnoDBCluster(o) for o in objects["items"]]
 
 
-class MySQLPod(K8sObject):
+class MySQLPod(K8sInterfaceObject):
     def __init__(self, pod: client.V1Pod):
         super().__init__()
 

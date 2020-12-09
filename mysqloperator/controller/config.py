@@ -19,12 +19,18 @@
 # along with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
+
+from mysqloperator.controller.api_utils import ImagePullPolicy
+import os
+
 debug = False
 enable_mysqld_general_log = False
-mysql_image_pull_policy = "Always"
-router_image_pull_policy = "Always"
-shell_image_pull_policy = "Always"
 
+pull_policy = os.getenv("MYSQL_OPERATOR_IMAGE_PULL_POLICY")
+if pull_policy:
+    default_image_pull_policy = ImagePullPolicy[pull_policy]
+else:
+    default_image_pull_policy = ImagePullPolicy.Always
 
 # Constants
 OPERATOR_VERSION = "0.1.0"
@@ -42,9 +48,11 @@ DEFAULT_ROUTER_VERSION_TAG = DEFAULT_VERSION_TAG
 
 DEFAULT_SHELL_VERSION_TAG = DEFAULT_VERSION_TAG
 
-MYSQL_SERVER_IMAGE = "mysql/mysql-server"
-MYSQL_ROUTER_IMAGE = "mysql/mysql-router"
-MYSQL_SHELL_IMAGE = "mysql/mysql-shell"
+DEFAULT_IMAGE_REPOSITORY = "mysql"
+
+MYSQL_SERVER_IMAGE = "mysql-server"
+MYSQL_ROUTER_IMAGE = "mysql-router"
+MYSQL_SHELL_IMAGE = "mysql-shell"
 
 CLUSTER_ADMIN_USER_NAME = "mysqladmin"
 ROUTER_METADATA_USER_NAME = "mysqlrouter"
@@ -53,21 +61,12 @@ BACKUP_USER_NAME = "mysqlbackup"
 
 def config_from_env() -> None:
     import mysqlsh
-    import os
 
     global debug
     global enable_mysqld_general_log
-    global mysql_image_pull_policy
-    global router_image_pull_policy
-    global shell_image_pull_policy
+    global default_image_pull_policy
 
     level = os.getenv("MYSQL_OPERATOR_DEBUG")
-
-    pull_policy = os.getenv("MYSQL_OPERATOR_IMAGE_PULL_POLICY")
-    if pull_policy:
-        mysql_image_pull_policy = pull_policy
-        router_image_pull_policy = pull_policy
-        shell_image_pull_policy = pull_policy
 
     if level:
         level = int(level)

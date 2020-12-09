@@ -153,6 +153,7 @@ spec:
         mysql.oracle.com/cluster: {spec.name}
     spec:
       subdomain: {spec.name}
+{utils.indent(spec.image_pull_secrets, 6)}
       readinessGates:
       - conditionType: "mysql.oracle.com/configured"
       - conditionType: "mysql.oracle.com/ready"

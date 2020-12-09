@@ -134,8 +134,9 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             kopf.adopt(secret)
             api_core.create_namespaced_secret(namespace=namespace, body=secret)
 
-        logger.info(
-            "Component objects created, switching status to PENDING")
+        cluster.info(action="CreateCluster", reason="ResourcesCreated",
+                     message="Dependency resources created, switching status to PENDING")
+
         cluster.set_status({
             "cluster": {
                 "status": "PENDING",

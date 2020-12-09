@@ -77,6 +77,12 @@ class ClusterController:
         self.dba: Optional[Dba] = None
         self.dba_cluster: Optional[Cluster] = None
 
+    @property
+    def dba_cluster_name(self) -> str:
+        """Return the name of the cluster as defined in the k8s resource
+        as a InnoDB Cluster compatible name."""
+        return self.cluster.name.replace("-", "_").replace(".", "_")
+
     def publish_status(self, diag: diagnose.ClusterStatus) -> None:
         cluster_status = {
             "status": diag.status.name,
@@ -251,7 +257,7 @@ class ClusterController:
 
                 try:
                     self.dba_cluster = dba.create_cluster(
-                        self.cluster.name, create_options)
+                        self.dba_cluster_name, create_options)
 
                     logger.info("create_cluster OK")
                 except mysqlsh.Error as e:

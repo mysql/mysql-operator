@@ -19,6 +19,7 @@
 # along with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
+from enum import Enum
 import typing
 from typing import Optional
 
@@ -27,6 +28,12 @@ T = typing.TypeVar("T")
 
 class ApiSpecError(Exception):
     pass
+
+
+class ImagePullPolicy(Enum):
+    Never = "Never"
+    IfNotPresent = "IfNotPresent"
+    Always = "Always"
 
 
 def typename(type: type) -> str:

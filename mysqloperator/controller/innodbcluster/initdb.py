@@ -38,11 +38,12 @@ def start_clone_seed_pod(session: 'ClassicSession',
     logger.info(
         f"Initializing seed instance. method=clone  pod={seed_pod}  source={clone_spec.uri}")
 
-    donor_root_co = mysqlsh.globals.shell.parse_uri(clone_spec.uri)
+    donor_root_co = dict(mysqlsh.globals.shell.parse_uri(clone_spec.uri))
     donor_root_co["user"] = clone_spec.root_user or "root"
     donor_root_co["password"] = clone_spec.get_password(cluster.namespace)
 
-    print(f"CONNECTING WITH {donor_root_co}")
+    print(
+        f"CONNECTING WITH {donor_root_co} {isinstance(donor_root_co, dict)} {type(donor_root_co)}")
 
     with SessionWrap(donor_root_co) as donor:
         clone_installed = False

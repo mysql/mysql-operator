@@ -55,13 +55,10 @@ class ClusterMutex:
         owner = utils.g_ephemeral_pod_state.testset(
             self.cluster, "cluster-mutex", self.pod.name if self.pod else self.cluster.name)
         if owner:
-            print(f"FAILED LOCK FOR {self.pod or self.cluster.name}")
             raise kopf.TemporaryError(
                 f"{self.cluster.name} busy.  lock_owner={owner}", delay=10)
-        print(f"ACQUIRED LOCK FOR {self.pod or self.cluster.name}")
 
     def __exit__(self, *args):
-        print(f"RELEASED LOCK FOR {self.pod or self.cluster.name}")
         utils.g_ephemeral_pod_state.set(self.cluster, "cluster-mutex", None)
 
 
@@ -84,6 +81,11 @@ class ClusterController:
         return self.cluster.name.replace("-", "_").replace(".", "_")
 
     def publish_status(self, diag: diagnose.ClusterStatus) -> None:
+        print(self.cluster.get_cluster_status()["status"], diag.status.name)
+        if self.cluster.get_cluster_status()["status"] != diag.status.name:
+            self.cluster.info(action="ClusterStatus", reason="StatusChange",
+                              message=f"Cluster status changed to {diag.status.name}. {len(diag.online_members)} member(s) ONLINE")
+
         cluster_status = {
             "status": diag.status.name,
             "onlineInstances": len(diag.online_members),
@@ -385,9 +387,13 @@ class ClusterController:
             # TODO check case where a member pod was deleted and then rejoins with the same address but different uuid
 
             if status.status == diagnose.CandidateDiagStatus.JOINABLE:
+                self.cluster.info(action="ReconcilePod", reason="Join",
+                                  message=f"Joining {pod.name} to cluster")
                 self.join_instance(pod, logger, pod_dba_session)
 
             elif status.status == diagnose.CandidateDiagStatus.REJOINABLE:
+                self.cluster.info(action="ReconcilePod", reason="Rejoin",
+                                  message=f"Rejoining {pod.name} to cluster")
                 self.rejoin_instance(pod, logger, pod_dba_session)
 
             elif status.status == diagnose.CandidateDiagStatus.MEMBER:
@@ -547,8 +553,9 @@ class ClusterController:
         elif diagnostic.status == diagnose.ClusterDiagStatus.OFFLINE:
             # Reboot cluster if this is pod-0
             if pod.index == 0:
-                logger.info(
-                    f"Rebooting cluster in state {diagnostic.status}...")
+                self.cluster.info(action="RestoreCluster", reason="Rebooting",
+                                  message="Restoring OFFLINE cluster")
+
                 shellutils.RetryLoop(logger).call(self.reboot_cluster, logger)
             else:
                 logger.info(f"Cluster in state {diagnostic.status}")
@@ -560,8 +567,9 @@ class ClusterController:
 
         elif diagnostic.status == diagnose.ClusterDiagStatus.NO_QUORUM:
             # Restore cluster
-            logger.info(
-                f"Forcing quorum on cluster in state {diagnostic.status}...")
+            self.cluster.info(action="RestoreCluster", reason="RestoreQuorum",
+                              message="Restoring quorum of cluster")
+
             shellutils.RetryLoop(logger).call(
                 self.force_quorum, diagnostic.quorum_candidates[0], logger)
 
@@ -572,6 +580,9 @@ class ClusterController:
                 f"Unreachable members found while in state {diagnostic.status}, waiting...")
 
         elif diagnostic.status == diagnose.ClusterDiagStatus.SPLIT_BRAIN:
+            self.cluster.error(action="UnrecoverableState", reason="SplitBrain",
+                               message="Cluster is in a SPLIT-BRAIN state and cannot be restored automatically.")
+
             # TODO check if recoverable case
             # Fatal error, user intervention required
             raise kopf.PermanentError(
@@ -579,6 +590,9 @@ class ClusterController:
 
         elif diagnostic.status == diagnose.ClusterDiagStatus.SPLIT_BRAIN_UNCERTAIN:
             # TODO check if recoverable case and if NOT, then throw a permanent error
+            self.cluster.error(action="UnrecoverableState", reason="SplitBrain",
+                               message="Cluster is in state SPLIT-BRAIN with unreachable instances and cannot be restored automatically.")
+
             raise kopf.PermanentError(
                 f"Unable to recover from current cluster state. User action required. state={diagnostic.status}")
             # TODO delete unconnectable pods after timeout, if enabled
@@ -591,6 +605,9 @@ class ClusterController:
                 f"No members of the cluster could be reached. state={diagnostic.status}")
 
         elif diagnostic.status == diagnose.ClusterDiagStatus.INVALID:
+            self.cluster.error(action="UnrecoverableState", reason="Invalid",
+                               message="Cluster state is invalid and cannot be restored automatically.")
+
             raise kopf.PermanentError(
                 f"Unable to recover from current cluster state. User action required. state={diagnostic.status}")
 

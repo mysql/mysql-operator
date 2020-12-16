@@ -88,55 +88,63 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             raise
 
     if not cluster.get_create_time():
-        if not ignore_404(cluster.get_initconf):
-            configs = cluster_objects.prepare_initconf(icspec)
-            kopf.adopt(configs)
-            api_core.create_namespaced_config_map(namespace, configs)
+        try:
+            if not ignore_404(cluster.get_initconf):
+                configs = cluster_objects.prepare_initconf(icspec)
+                kopf.adopt(configs)
+                api_core.create_namespaced_config_map(namespace, configs)
 
-        if not ignore_404(cluster.get_private_secrets):
-            secret = cluster_objects.prepare_secrets(icspec)
-            kopf.adopt(secret)
-            api_core.create_namespaced_secret(namespace=namespace, body=secret)
+            if not ignore_404(cluster.get_private_secrets):
+                secret = cluster_objects.prepare_secrets(icspec)
+                kopf.adopt(secret)
+                api_core.create_namespaced_secret(
+                    namespace=namespace, body=secret)
 
-        if not ignore_404(cluster.get_router_account):
-            secret = router_objects.prepare_router_secrets(icspec)
-            kopf.adopt(secret)
-            api_core.create_namespaced_secret(namespace=namespace, body=secret)
+            if not ignore_404(cluster.get_router_account):
+                secret = router_objects.prepare_router_secrets(icspec)
+                kopf.adopt(secret)
+                api_core.create_namespaced_secret(
+                    namespace=namespace, body=secret)
 
-        if not ignore_404(cluster.get_service):
-            service = cluster_objects.prepare_cluster_service(icspec)
-            kopf.adopt(service)
-            api_core.create_namespaced_service(
-                namespace=namespace, body=service)
+            if not ignore_404(cluster.get_service):
+                service = cluster_objects.prepare_cluster_service(icspec)
+                kopf.adopt(service)
+                api_core.create_namespaced_service(
+                    namespace=namespace, body=service)
 
-        if not ignore_404(cluster.get_stateful_set):
-            statefulset = cluster_objects.prepare_cluster_stateful_set(icspec)
-            kopf.adopt(statefulset)
-            api_apps.create_namespaced_stateful_set(
-                namespace=namespace, body=statefulset)
-
-        if not ignore_404(cluster.get_router_service):
-            router_service = router_objects.prepare_router_service(icspec)
-            kopf.adopt(router_service)
-            api_core.create_namespaced_service(
-                namespace=namespace, body=router_service)
-
-        if not ignore_404(cluster.get_router_replica_set):
-            if icspec.routers > 0:
-                router_replicaset = router_objects.prepare_router_replica_set(
+            if not ignore_404(cluster.get_stateful_set):
+                statefulset = cluster_objects.prepare_cluster_stateful_set(
                     icspec)
-                kopf.adopt(router_replicaset)
-                api_apps.create_namespaced_replica_set(
-                    namespace=namespace, body=router_replicaset)
+                kopf.adopt(statefulset)
+                api_apps.create_namespaced_stateful_set(
+                    namespace=namespace, body=statefulset)
 
-        if not ignore_404(cluster.get_backup_account):
-            secret = backup_objects.prepare_backup_secrets(icspec)
-            kopf.adopt(secret)
-            api_core.create_namespaced_secret(namespace=namespace, body=secret)
+            if not ignore_404(cluster.get_router_service):
+                router_service = router_objects.prepare_router_service(icspec)
+                kopf.adopt(router_service)
+                api_core.create_namespaced_service(
+                    namespace=namespace, body=router_service)
+
+            if not ignore_404(cluster.get_router_replica_set):
+                if icspec.routers > 0:
+                    router_replicaset = router_objects.prepare_router_replica_set(
+                        icspec)
+                    kopf.adopt(router_replicaset)
+                    api_apps.create_namespaced_replica_set(
+                        namespace=namespace, body=router_replicaset)
+
+            if not ignore_404(cluster.get_backup_account):
+                secret = backup_objects.prepare_backup_secrets(icspec)
+                kopf.adopt(secret)
+                api_core.create_namespaced_secret(
+                    namespace=namespace, body=secret)
+        except Exception as e:
+            cluster.warn(action="CreateCluster", reason="CreateResourceFailed",
+                         message=f"{e}")
+            raise
 
         cluster.info(action="CreateCluster", reason="ResourcesCreated",
                      message="Dependency resources created, switching status to PENDING")
-
         cluster.set_status({
             "cluster": {
                 "status": "PENDING",
@@ -391,8 +399,6 @@ def on_pod_delete(body: Body, logger: Logger, **kwargs):
     # check general assumption
     assert pod.deleting
 
-    logger.info(f"POD DELETED: pod={pod.name}")
-
     # removeInstance the pod
     cluster = pod.get_cluster()
 
@@ -408,6 +414,3 @@ def on_pod_delete(body: Body, logger: Logger, **kwargs):
         pod.remove_member_finalizer(body)
 
         logger.error(f"Owner cluster for {pod.name} does not exist anymore")
-        # raise kopf.PermanentError("Cluster object deleted before Pod")
-
-    logger.info(f"====> BODY={body['metadata'].get('finalizers')}")

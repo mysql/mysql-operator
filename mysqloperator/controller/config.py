@@ -20,7 +20,7 @@
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 
-from mysqloperator.controller.api_utils import ImagePullPolicy
+from mysqloperator.controller.api_utils import Edition, ImagePullPolicy
 import os
 
 debug = False
@@ -34,6 +34,7 @@ else:
 
 # Constants
 OPERATOR_VERSION = "0.1.0"
+OPERATOR_EDITION = Edition.community
 
 MIN_BASE_SERVER_ID = 1
 MAX_BASE_SERVER_ID = 4000000000
@@ -46,13 +47,17 @@ MAX_SUPPORTED_MYSQL_VERSION = "8.0.21"
 
 DEFAULT_ROUTER_VERSION_TAG = DEFAULT_VERSION_TAG
 
-DEFAULT_SHELL_VERSION_TAG = DEFAULT_VERSION_TAG
+DEFAULT_SHELL_VERSION_TAG = "8.0.22"
 
 DEFAULT_IMAGE_REPOSITORY = "mysql"
 
 MYSQL_SERVER_IMAGE = "mysql-server"
 MYSQL_ROUTER_IMAGE = "mysql-router"
 MYSQL_SHELL_IMAGE = "mysql-shell"
+
+MYSQL_SERVER_EE_IMAGE = "mysql-server"  # TODO
+MYSQL_ROUTER_EE_IMAGE = "mysql-router"
+MYSQL_SHELL_EE_IMAGE = "mysql-shell-commercial"
 
 CLUSTER_ADMIN_USER_NAME = "mysqladmin"
 ROUTER_METADATA_USER_NAME = "mysqlrouter"

@@ -31,7 +31,11 @@ spec:
                 version:
                   type: string
                   pattern: '^\d+\.\d+\.\d+(-.+)?'
-                  description: "MySQL Server version number"
+                  description: "MySQL Server version"
+                edition:
+                  type: string
+                  pattern: "^(commercial|enterprise)$"
+                  description: "MySQL Server Edition (commercial or enterprise)"
                 imageRepository:
                   type: string
                   description: "Repository from where images must be pulled from. Default mysql"

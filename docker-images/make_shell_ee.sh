@@ -7,21 +7,22 @@ if [ -z "$registry" ]; then
     registry=local
 fi
 if [ -z "$version" ]; then
-    version=8.0.21
+    version=8.0.22
 fi
 
-image=$registry/mysql-shell:$version
+image=$registry/mysql-shell-commercial:$version
 
 
-if [ -n "$clean" -o ! -d bld.mysql-shell ]; then
-    rm -fr bld.mysql-shell
-    mkdir bld.mysql-shell
-    cd bld.mysql-shell
+if [ -n "$clean" -o ! -d bld.mysql-shell-ee ]; then
+    rm -fr bld.mysql-shell-ee
+    mkdir bld.mysql-shell-ee
+    cd bld.mysql-shell-ee
 else
-    cd bld.mysql-shell
+    cd bld.mysql-shell-ee
 fi
 
-cp ../mysql-shell/Dockerfile .
+cp ../mysql-shell-ee/Dockerfile .
+cp ../mysql-shell-ee/*rpm .
 
 # Copy mysqlsh binary
 mkdir -p usr
@@ -43,4 +44,4 @@ if test "$http_proxy" != ""; then
     ARGS="--build-arg HTTP_PROXY=$HTTP_PROXY --build-arg HTTPS_PROXY=$HTTP_PROXY"
 fi
 docker build . $ARGS -t $image
-docker tag $image $registry/mysql-shell:latest
+docker tag $image $registry/mysql-shell-commercial:latest

@@ -19,6 +19,7 @@
 # along with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
+import enum
 import typing
 from typing import Optional, List, Tuple, cast, overload
 from kopf.structs.bodies import Body
@@ -27,7 +28,7 @@ from ..k8sobject import K8sInterfaceObject
 from .. import utils, config, consts
 from ..backup.backup_api import BackupProfile
 from ..storage_api import StorageSpec
-from ..api_utils import dget_dict, dget_str, dget_int, dget_list, ApiSpecError, ImagePullPolicy
+from ..api_utils import Edition, dget_dict, dget_enum, dget_str, dget_int, dget_list, ApiSpecError, ImagePullPolicy
 from ..kubeutils import api_core, api_apps, api_customobj
 from ..kubeutils import client as api_client, ApiException
 from logging import Logger
@@ -133,6 +134,8 @@ class InnoDBClusterSpec:
     # MySQL server version
     version: str = config.DEFAULT_VERSION_TAG
 
+    edition: Edition = config.OPERATOR_EDITION
+
     # Router version, if user wants to override it (latest by default)
     routerVersion: Optional[str] = None
 
@@ -157,6 +160,9 @@ class InnoDBClusterSpec:
     routers: int = 0
     # override pod template for Router (optional)
     routerSpec = None
+
+    # TODO resource allocation for server, router and sidecar
+    # TODO recommendation is that sidecar has 500MB RAM if MEB is used
 
     # Backup info
     backupProfiles: List[BackupProfile] = []
@@ -186,9 +192,16 @@ class InnoDBClusterSpec:
         if "version" in spec:
             self.version = dget_str(spec, "version", "spec")
 
+        if "edition" in spec:
+            self.edition = dget_enum(
+                spec, "edition", "spec", default_value=config.OPERATOR_EDITION,
+                enum_type=Edition)
+
         if "imagePullPolicy" in spec:
-            self.imagePullPolicy = ImagePullPolicy[dget_str(
-                spec, "imagePullPolicy", "spec")]
+            self.imagePullPolicy = dget_enum(
+                spec, "imagePullPolicy", "spec",
+                default_value=config.default_image_pull_policy,
+                enum_type=ImagePullPolicy)
 
         if "imagePullSecrets" in spec:
             self.imagePullSecrets = dget_dict(spec, "imagePullSecrets", "spec")
@@ -205,11 +218,15 @@ class InnoDBClusterSpec:
         if "mycnf" in spec:
             self.mycnf = dget_str(spec, "mycnf", "spec")
 
+        # Router Options
+
         if "routers" in spec:
             self.routers = dget_int(spec, "routers", "spec")
 
         if "routerSpec" in spec:  # TODO - replace with something more specific
             self.routerSpec = spec.get("routerSpec")
+
+        # Initialization Options
 
         if "initDB" in spec:
             self.load_initdb(dget_dict(spec, "initDB", "spec"))
@@ -268,6 +285,8 @@ class InnoDBClusterSpec:
             raise ApiSpecError(
                 f"spec.baseServerId must be between {config.MIN_BASE_SERVER_ID} and {config.MAX_BASE_SERVER_ID}")
 
+        # TODO validate against downgrades, invalid version jumps
+
         # check that the secret exists and it contains rootPassword
         if self.secretName:  # TODO
             pass
@@ -298,6 +317,7 @@ class InnoDBClusterSpec:
     @property
     def mysql_image(self) -> str:
         # server image version is the one given by the user or latest by default
+        # TODO EE image of server and router
         return self.format_image(config.MYSQL_SERVER_IMAGE, self.version)
 
     @property
@@ -308,7 +328,11 @@ class InnoDBClusterSpec:
     @property
     def shell_image(self) -> str:
         # shell image version is the same as ours (operator)
-        return self.format_image(config.MYSQL_SHELL_IMAGE, config.DEFAULT_SHELL_VERSION_TAG)
+        if self.edition == Edition.community:
+            image = config.MYSQL_SHELL_IMAGE
+        else:
+            image = config.MYSQL_SHELL_EE_IMAGE
+        return self.format_image(image, config.DEFAULT_SHELL_VERSION_TAG)
 
     @property
     def mysql_image_pull_policy(self) -> str:

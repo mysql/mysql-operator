@@ -110,11 +110,11 @@ class MySQLBackupSpec:
     def parse(self, spec: dict) -> Optional[ApiSpecError]:
         self.clusterName = dget_str(spec, "clusterName", "spec")
         self.backupProfileName = dget_str(
-            spec, "backupProfileName", "spec", "")
+            spec, "backupProfileName", "spec", default_value="")
         self.backupProfile = self.parse_backup_profile(
             dget_dict(spec, "backupProfile", "spec", {}), "spec.backupProfile")
         self.deleteBackupData = dget_bool(
-            spec, "deleteBackupData", "spec", False)
+            spec, "deleteBackupData", "spec", default_value=False)
 
         if self.backupProfileName and self.backupProfile:
             raise ApiSpecError(

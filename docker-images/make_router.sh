@@ -24,6 +24,8 @@ for src in ../mysql-router/*; do
     sed -e "s/@VERSION@/$version/g" $src > $dst
 done
 
+chmod +x run.sh
+
 ARGS=""
 if test "$http_proxy" != ""; then
     ARGS="--build-arg HTTP_PROXY=$HTTP_PROXY --build-arg HTTPS_PROXY=$HTTP_PROXY"

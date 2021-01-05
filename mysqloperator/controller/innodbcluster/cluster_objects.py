@@ -1,4 +1,4 @@
-# Copyright (c) 2020, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License, version 2.0,
@@ -324,7 +324,7 @@ spec:
 
 def prepare_initconf(spec: InnoDBClusterSpec) -> dict:
     liveness_probe = """#!/bin/bash
-# Copyright (c) 2020, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
 
 # Insert 1 success every this amount of failures
 # (assumes successThreshold is > 1)
@@ -368,7 +368,7 @@ fi
 """
 
     readiness_probe = """#!/bin/bash
-# Copyright (c) 2020, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
 
 # Once the container is ready, it's always ready.
 if [ -f /mysql-ready ]; then
@@ -392,7 +392,7 @@ metadata:
 data:
   initdb-localroot.sql: |
     set sql_log_bin=0;
-    # Create socket authenticated localroot@localhost account 
+    # Create socket authenticated localroot@localhost account
     CREATE USER localroot@localhost IDENTIFIED WITH auth_socket AS 'root';
     GRANT ALL ON *.* TO localroot@localhost WITH GRANT OPTION;
     GRANT PROXY ON ''@'' TO localroot@localhost WITH GRANT OPTION;
@@ -465,11 +465,29 @@ def update_stateful_set_spec(sts, patch: dict) -> None:
         sts.metadata.name, sts.metadata.namespace, body=patch)
 
 
-def update_version(sts, spec: InnoDBClusterSpec) -> None:
-    patch = {"spec": {"template": {"spec": {"containers": [
-        {"name": "mysql", "image": spec.mysql_image}
-    ]}}}}
+def update_mysql_image(sts, spec: InnoDBClusterSpec) -> None:
+    patch = {"spec": {"template":
+                      {"spec": {
+                          "containers": [
+                               {"name": "mysql", "image": spec.mysql_image}
+                          ],
+                          "initContainers": [
+                              {"name": "initmysql", "image": spec.mysql_image}
+                          ]}
+                       }}}
+    update_stateful_set_spec(sts, patch)
 
+
+def update_shell_image(sts, spec: InnoDBClusterSpec) -> None:
+    patch = {"spec": {"template":
+                      {"spec": {
+                          "containers": [
+                               {"name": "sidecar", "image": spec.shell_image}
+                          ],
+                          "initContainers": [
+                              {"name": "initconf", "image": spec.shell_image}
+                          ]}
+                       }}}
     update_stateful_set_spec(sts, patch)
 
 

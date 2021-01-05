@@ -72,14 +72,21 @@ spec:
                 initDB:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
-                routers:
-                  type: integer
-                  minimum: 0
-                  default: 0
-                  description: "Number of MySQL router instances to deploy"
-                routerSpec:
+                router:
                   type: object
-                  x-kubernetes-preserve-unknown-fields: true
+                  properties:
+                    instances:
+                      type: integer
+                      minimum: 0
+                      default: 0
+                      description: "Number of MySQL router instances to deploy"
+                    version:
+                      type: string
+                      pattern: '^\d+\.\d+\.\d+(-.+)?'
+                      description: "Override MySQL Router version"
+                    spec:
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
                 backupProfiles:
                   type: array
                   description: "Backup profile specifications for the cluster, which can be referenced from backup schedules and one-off backup jobs."
@@ -130,7 +137,7 @@ spec:
         - name: Routers
           type: integer
           description: Number of Router instances configured for the InnoDB Cluster
-          jsonPath: .spec.routers
+          jsonPath: .spec.router.instances
         - name: Age
           type: date
           jsonPath: .metadata.creationTimestamp

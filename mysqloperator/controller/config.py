@@ -1,4 +1,4 @@
-# Copyright (c) 2020, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License, version 2.0,
@@ -26,11 +26,12 @@ import os
 debug = False
 enable_mysqld_general_log = False
 
-pull_policy = os.getenv("MYSQL_OPERATOR_IMAGE_PULL_POLICY")
-if pull_policy:
-    default_image_pull_policy = ImagePullPolicy[pull_policy]
+_pull_policy = os.getenv("MYSQL_OPERATOR_IMAGE_PULL_POLICY")
+if _pull_policy:
+    default_image_pull_policy = ImagePullPolicy[_pull_policy]
 else:
     default_image_pull_policy = ImagePullPolicy.Always
+
 
 # Constants
 OPERATOR_VERSION = "0.1.0"
@@ -43,13 +44,14 @@ DEFAULT_VERSION_TAG = "8.0.21"
 
 DEFAULT_SERVER_VERSION_TAG = DEFAULT_VERSION_TAG
 MIN_SUPPORTED_MYSQL_VERSION = "8.0.21"
-MAX_SUPPORTED_MYSQL_VERSION = "8.0.21"
+MAX_SUPPORTED_MYSQL_VERSION = "8.0.22"
 
 DEFAULT_ROUTER_VERSION_TAG = DEFAULT_VERSION_TAG
 
-DEFAULT_SHELL_VERSION_TAG = "8.0.22"
+DEFAULT_SHELL_VERSION_TAG = DEFAULT_VERSION_TAG
 
-DEFAULT_IMAGE_REPOSITORY = "mysql"
+DEFAULT_IMAGE_REPOSITORY = os.getenv(
+    "MYSQL_OPERATOR_DEFAULT_REPOSITORY", default="mysql")
 
 MYSQL_SERVER_IMAGE = "mysql-server"
 MYSQL_ROUTER_IMAGE = "mysql-router"

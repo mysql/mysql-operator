@@ -1,4 +1,4 @@
-# Copyright (c) 2020, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License, version 2.0,
@@ -70,8 +70,10 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
         f"Initializing InnoDB Cluster name={name} namespace={namespace}")
 
     cluster = InnoDBCluster(body)
+
     try:
         cluster.parse_spec()
+        cluster.parsed_spec.validate(logger)
     except ApiSpecError as e:
         cluster.error(action="CreateCluster",
                       reason="InvalidArgument", message=str(e))
@@ -126,7 +128,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                     namespace=namespace, body=router_service)
 
             if not ignore_404(cluster.get_router_replica_set):
-                if icspec.routers > 0:
+                if icspec.router.instances > 0:
                     router_replicaset = router_objects.prepare_router_replica_set(
                         icspec)
                     kopf.adopt(router_replicaset)
@@ -147,7 +149,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                      message="Dependency resources created, switching status to PENDING")
         cluster.set_status({
             "cluster": {
-                "status": "PENDING",
+                "status":  diagnose.ClusterDiagStatus.PENDING.value,
                 "onlineInstances": 0,
                 "lastProbeTime": utils.isotime()
             }})
@@ -216,7 +218,7 @@ def on_innodbcluster_field_version(old, new, body: Body,
     sts = cluster.get_stateful_set()
     if sts and old != new:
         logger.info(
-            f"Updating MySQL version for InnoDB Cluster StatefulSet pod template from {old} to {new}")
+            f"Propagating spec.version={new} for {cluster.namespace}/{cluster.name} (was {old})")
 
         cluster.parse_spec()
 
@@ -228,12 +230,30 @@ def on_innodbcluster_field_version(old, new, body: Body,
             # revert version in the spec
             raise
 
-        cluster_objects.update_version(sts, cluster.parsed_spec)
+        cluster_objects.update_mysql_image(sts, cluster.parsed_spec)
+
+
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.imageRepository")  # type: ignore
+def on_innodbcluster_field_image_repository(old, new, body: Body,
+                                            logger: Logger, **kwargs):
+    cluster = InnoDBCluster(body)
+
+    sts = cluster.get_stateful_set()
+    if sts and old != new:
+        logger.info(
+            f"Propagating spec.imageRepository={new} for {cluster.namespace}/{cluster.name} (was {old})")
+
+        cluster.parse_spec()
+
+        cluster_objects.update_mysql_image(sts, cluster.parsed_spec)
+        cluster_objects.update_shell_image(sts, cluster.parsed_spec)
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
                field="spec.image")  # type: ignore
-def on_innodbcluster_field_image(old, new, body: Body, logger: Logger, **kwargs):
+def on_innodbcluster_field_image(old, new, body: Body,
+                                 logger: Logger, **kwargs):
     cluster = InnoDBCluster(body)
 
     # ignore spec changes if the cluster is still being initialized
@@ -257,18 +277,19 @@ def on_innodbcluster_field_image(old, new, body: Body, logger: Logger, **kwargs)
             # revert version in the spec
             raise
 
-        cluster_objects.update_version(sts, cluster.parsed_spec)
+        cluster_objects.update_mysql_image(sts, cluster.parsed_spec)
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
-               field="spec.routers")  # type: ignore
-def on_innodbcluster_field_routers(old, new, body: Body,
-                                   logger: Logger, **kwargs):
+               field="spec.router.instances")  # type: ignore
+def on_innodbcluster_field_router_instances(old, new, body: Body,
+                                            logger: Logger, **kwargs):
     cluster = InnoDBCluster(body)
 
     # ignore spec changes if the cluster is still being initialized
     if not cluster.get_create_time():
-        logger.debug(f"Ignoring spec.routers change for unready cluster")
+        logger.debug(
+            f"Ignoring spec.router.instances change for unready cluster")
         return
 
     with ClusterMutex(cluster):

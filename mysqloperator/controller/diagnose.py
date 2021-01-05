@@ -1,4 +1,4 @@
-# Copyright (c) 2020, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License, version 2.0,
@@ -365,6 +365,8 @@ class ClusterDiagStatus(enum.Enum):
 
     INVALID = "INVALID"
     # - A (currently) undiagnosable and unrecoverable mess that doesn't fit any other state
+
+    PENDING = "PENDING"
 
 
 def find_group_partitions(online_pod_info: Dict[str, InstanceStatus],

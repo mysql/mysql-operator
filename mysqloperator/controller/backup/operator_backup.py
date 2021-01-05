@@ -1,4 +1,4 @@
-# Copyright (c) 2020, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License, version 2.0,
@@ -29,7 +29,8 @@ import kopf
 from logging import Logger
 
 
-@kopf.on.create(consts.GROUP, consts.VERSION, consts.MYSQLBACKUP_PLURAL)
+@kopf.on.create(consts.GROUP, consts.VERSION,
+                consts.MYSQLBACKUP_PLURAL)  # type: ignore
 def on_mysqlbackup_create(name: str, namespace: str, spec: dict, body: dict, logger: Logger, **kwargs):
     logger.info(
         f"Initializing MySQL Backup job name={name} namespace={namespace}")

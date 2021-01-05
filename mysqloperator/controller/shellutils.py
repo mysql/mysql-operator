@@ -1,4 +1,4 @@
-# Copyright (c) 2020, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License, version 2.0,
@@ -187,7 +187,7 @@ class ClusterWrap:
 
 
 def connect_dba(target: dict, logger: Logger, **kwargs) -> 'Dba':
-    print("!!!!!!!", mysqlsh.__file__)
+    print("!!!!!!!", mysqlsh.__file__, target)
     return RetryLoop(logger, **kwargs).call(mysqlsh.connect_dba, target)
 
 

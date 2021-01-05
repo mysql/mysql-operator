@@ -1,4 +1,4 @@
-# Copyright (c) 2020, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License, version 2.0,
@@ -53,7 +53,8 @@ class CloneInitDBSpec:
 
     def parse(self, spec: dict, prefix: str) -> None:
         self.uri = dget_str(spec, "donorUrl", prefix)  # TODO make mandatory
-        self.root_user = dget_str(spec, "rootUser", prefix, "root")
+        self.root_user = dget_str(
+            spec, "rootUser", prefix, default_value="root")
         key_ref = dget_dict(spec, "secretKeyRef", prefix)
         self.password_secret_name = dget_str(
             key_ref, "name", prefix+".secretKeyRef")
@@ -81,7 +82,7 @@ class DumpInitDBSpec:
 
     def parse(self, spec: dict, prefix: str) -> None:
         # path can be "" if we're loading from a bucket
-        self.path = dget_str(spec, "path", prefix, "")
+        self.path = dget_str(spec, "path", prefix, default_value="")
 
         self.storage = StorageSpec()
         self.storage.parse(
@@ -125,6 +126,24 @@ class BackupSchedule:
     schedule = None
 
 
+class RouterSpec:
+    # number of Router instances (optional)
+    instances: int = 0
+
+    # Router version, if user wants to override it (latest by default)
+    version: str = config.DEFAULT_ROUTER_VERSION_TAG
+
+    def parse(self, spec: dict, prefix: str) -> None:
+        if "instances" in spec:
+            self.instances = dget_int(spec, "instances", prefix)
+
+        if "version" in spec:
+            self.version = dget_str(spec, "version", prefix)
+
+        if "spec" in spec:  # TODO - replace with something more specific
+            self.spec = spec.get("spec")
+
+
 class InnoDBClusterSpec:
     # name of user-provided secret containing root password and SSL certificates (optional)
     secretName: Optional[str] = None
@@ -135,9 +154,6 @@ class InnoDBClusterSpec:
     version: str = config.DEFAULT_VERSION_TAG
 
     edition: Edition = config.OPERATOR_EDITION
-
-    # Router version, if user wants to override it (latest by default)
-    routerVersion: Optional[str] = None
 
     imagePullPolicy: ImagePullPolicy = config.default_image_pull_policy
     imagePullSecrets: Optional[dict] = None
@@ -156,10 +172,7 @@ class InnoDBClusterSpec:
     # Initialize DB
     initDB: Optional[InitDB] = None
 
-    # number of Router instances (optional)
-    routers: int = 0
-    # override pod template for Router (optional)
-    routerSpec = None
+    router: RouterSpec = RouterSpec()
 
     # TODO resource allocation for server, router and sidecar
     # TODO recommendation is that sidecar has 500MB RAM if MEB is used
@@ -219,12 +232,9 @@ class InnoDBClusterSpec:
             self.mycnf = dget_str(spec, "mycnf", "spec")
 
         # Router Options
-
-        if "routers" in spec:
-            self.routers = dget_int(spec, "routers", "spec")
-
-        if "routerSpec" in spec:  # TODO - replace with something more specific
-            self.routerSpec = spec.get("routerSpec")
+        if "router" in spec:
+            self.router = RouterSpec()
+            self.router.parse(dget_dict(spec, "router", "spec"), "spec.router")
 
         # Initialization Options
 
@@ -277,13 +287,12 @@ class InnoDBClusterSpec:
             raise ApiSpecError(
                 f"spec.instances must be set and > 0. Got {self.instances!r}")
 
-        if self.routers is None:
+        if (not self.baseServerId or
+                self.baseServerId < config.MIN_BASE_SERVER_ID or
+                self.baseServerId > config.MAX_BASE_SERVER_ID):
             raise ApiSpecError(
-                f"spec.routers must be set. Got {self.routers!r}")
-
-        if not self.baseServerId or self.baseServerId < config.MIN_BASE_SERVER_ID or self.baseServerId > config.MAX_BASE_SERVER_ID:
-            raise ApiSpecError(
-                f"spec.baseServerId must be between {config.MIN_BASE_SERVER_ID} and {config.MAX_BASE_SERVER_ID}")
+                f"spec.baseServerId is {self.baseServerId} but must be between "
+                f"{config.MIN_BASE_SERVER_ID} and {config.MAX_BASE_SERVER_ID}")
 
         # TODO validate against downgrades, invalid version jumps
 
@@ -295,10 +304,6 @@ class InnoDBClusterSpec:
         if self.podSpec:
             pass
 
-        # validate routerSpec through the Kubernetes API
-        if self.routerSpec:
-            pass
-
         if self.mycnf:
             if "[mysqld]" not in self.mycnf:
                 logger.warning(
@@ -307,7 +312,19 @@ class InnoDBClusterSpec:
         # TODO ensure that if version is set, then image and routerImage are not
         # TODO should we support upgrading router only?
 
-        # TODO handle version
+        # validate version
+        if self.version:
+            # note: format of the version string is defined in the CRD
+            version = utils.version_to_int(self.version)
+            min_version = utils.version_to_int(
+                config.MIN_SUPPORTED_MYSQL_VERSION)
+            max_version = utils.version_to_int(
+                config.MAX_SUPPORTED_MYSQL_VERSION)
+            if not max_version >= version >= min_version:
+                raise ApiSpecError(
+                    f"spec.version is {self.version} but must be between "
+                    f"{config.MIN_SUPPORTED_MYSQL_VERSION} and "
+                    f"{config.MAX_SUPPORTED_MYSQL_VERSION}")
 
     def format_image(self, image, version):
         if self.imageRepository:
@@ -323,7 +340,10 @@ class InnoDBClusterSpec:
     @property
     def router_image(self) -> str:
         # router image version is always the latest
-        return self.format_image(config.MYSQL_ROUTER_IMAGE, config.DEFAULT_ROUTER_VERSION_TAG)
+        if self.router and self.router.version:
+            return self.format_image(config.MYSQL_ROUTER_IMAGE, self.router.version)
+        else:
+            return self.format_image(config.MYSQL_ROUTER_IMAGE, config.DEFAULT_ROUTER_VERSION_TAG)
 
     @property
     def shell_image(self) -> str:

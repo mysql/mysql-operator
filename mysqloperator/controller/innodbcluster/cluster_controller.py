@@ -1,4 +1,4 @@
-# Copyright (c) 2020, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License, version 2.0,
@@ -81,8 +81,8 @@ class ClusterController:
         return self.cluster.name.replace("-", "_").replace(".", "_")
 
     def publish_status(self, diag: diagnose.ClusterStatus) -> None:
-        print(self.cluster.get_cluster_status()["status"], diag.status.name)
-        if self.cluster.get_cluster_status()["status"] != diag.status.name:
+        cluster_status = self.cluster.get_cluster_status()
+        if cluster_status and cluster_status["status"] != diag.status.name:
             self.cluster.info(action="ClusterStatus", reason="StatusChange",
                               message=f"Cluster status changed to {diag.status.name}. {len(diag.online_members)} member(s) ONLINE")
 

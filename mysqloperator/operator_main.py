@@ -1,4 +1,4 @@
-# Copyright (c) 2020, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License, version 2.0,
@@ -26,7 +26,6 @@ import asyncio
 import kopf
 import os
 import time
-# from kopf.config import configure as config_log
 
 # this will register operator event handlers
 from .controller import operator

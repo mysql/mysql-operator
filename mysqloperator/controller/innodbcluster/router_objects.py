@@ -66,7 +66,8 @@ data:
     return yaml.safe_load(tmpl)
 
 
-def prepare_router_replica_set(spec: InnoDBClusterSpec) -> dict:
+def prepare_router_replica_set(spec: InnoDBClusterSpec, *,
+                               init_only: bool = False) -> dict:
     # Start the router replicaset with 0 replicas and only set it to the desired
     # value once the cluster is ONLINE, otherwise the router bootstraps could
     # timeout and fail unnecessarily.
@@ -82,7 +83,7 @@ metadata:
     tier: mysql
     mysql.oracle.com/cluster: {spec.name}
 spec:
-  replicas: {spec.router.instances or 0}
+  replicas: {spec.router.instances or 0 if not init_only else 0}
   selector:
     matchLabels:
       component: mysqlrouter
@@ -109,16 +110,13 @@ spec:
             secretKeyRef:
               name: {spec.name}-router
               key: routerUsername
-        - name: MYSQL_ROUTER_USER
-          valueFrom:
-            secretKeyRef:
-              name: {spec.name}-router
-              key: routerUsername
         - name: MYSQL_PASSWORD
           valueFrom:
             secretKeyRef:
               name: {spec.name}-router
               key: routerPassword
+        - name: MYSQL_CREATE_ROUTER_USER
+          value: "0"
         ports:
         - containerPort: {spec.router_rwport}
           name: mysqlrw

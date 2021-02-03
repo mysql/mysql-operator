@@ -117,6 +117,8 @@ class RouterSpec:
     # Router version, if user wants to override it (latest by default)
     version: str = config.DEFAULT_ROUTER_VERSION_TAG
 
+    podSpec: dict = {}
+
     def parse(self, spec: dict, prefix: str) -> None:
         if "instances" in spec:
             self.instances = dget_int(spec, "instances", prefix)
@@ -124,8 +126,8 @@ class RouterSpec:
         if "version" in spec:
             self.version = dget_str(spec, "version", prefix)
 
-        if "spec" in spec:  # TODO - replace with something more specific
-            self.spec = spec.get("spec")
+        if "podSpec" in spec:  # TODO - replace with something more specific
+            self.podSpec = dget_dict(spec, "podSpec", prefix)
 
 
 class InnoDBClusterSpec:
@@ -140,7 +142,7 @@ class InnoDBClusterSpec:
     edition: Edition = config.OPERATOR_EDITION
 
     imagePullPolicy: ImagePullPolicy = config.default_image_pull_policy
-    imagePullSecrets: Optional[dict] = None
+    imagePullSecrets: Optional[List[dict]] = None
     imageRepository: str = config.DEFAULT_IMAGE_REPOSITORY
 
     # number of MySQL instances (required)
@@ -152,7 +154,8 @@ class InnoDBClusterSpec:
     # additional MySQL configuration options
     mycnf: str = ""
     # override pod template for MySQL (optional)
-    podSpec = None
+    podSpec: dict = {}
+
     # Initialize DB
     initDB: Optional[InitDB] = None
 
@@ -201,13 +204,14 @@ class InnoDBClusterSpec:
                 enum_type=ImagePullPolicy)
 
         if "imagePullSecrets" in spec:
-            self.imagePullSecrets = dget_dict(spec, "imagePullSecrets", "spec")
+            self.imagePullSecrets = dget_list(
+                spec, "imagePullSecrets", "spec", content_type=dict)
 
         if "imageRepository" in spec:
             self.imageRepository = dget_str(spec, "imageRepository", "spec")
 
         if "podSpec" in spec:  # TODO - replace with something more specific
-            self.podSpec = spec.get("podSpec")
+            self.podSpec = dget_dict(spec, "podSpec", "spec")
 
         if "volumeClaimTemplates" in spec:
             self.volumeClaimTemplates = spec.get("volumeClaimTemplates")

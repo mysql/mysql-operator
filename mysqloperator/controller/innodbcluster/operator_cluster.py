@@ -114,7 +114,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             if not ignore_404(cluster.get_router_replica_set):
                 if icspec.router.instances > 0:
                     router_replicaset = router_objects.prepare_router_replica_set(
-                        icspec)
+                        icspec, init_only=True)
                     kopf.adopt(router_replicaset)
                     api_apps.create_namespaced_replica_set(
                         namespace=namespace, body=router_replicaset)

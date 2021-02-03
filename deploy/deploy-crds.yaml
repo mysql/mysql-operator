@@ -84,7 +84,7 @@ spec:
                       type: string
                       pattern: '^\d+\.\d+\.\d+(-.+)?'
                       description: "Override MySQL Router version"
-                    spec:
+                    podSpec:
                       type: object
                       x-kubernetes-preserve-unknown-fields: true
                 backupProfiles:

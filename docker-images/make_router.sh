@@ -1,4 +1,4 @@
-# Copyright (c) 2020, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
 
 registry=$1
 version=$2
@@ -7,7 +7,7 @@ if [ -z "$registry" ]; then
     registry=local
 fi
 if [ -z "$version" ]; then
-    version=8.0.21
+    version=8.0.23
 fi
 
 image=$registry/mysql-router:$version

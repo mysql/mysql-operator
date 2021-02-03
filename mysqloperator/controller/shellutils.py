@@ -171,7 +171,6 @@ class ClusterWrap:
 
 
 def connect_dba(target: dict, logger: Logger, **kwargs) -> 'Dba':
-    print("!!!!!!!", mysqlsh.__file__, target)
     return RetryLoop(logger, **kwargs).call(mysqlsh.connect_dba, target)
 
 
@@ -195,7 +194,7 @@ def connect_to_pod(pod: MySQLPod, logger: Logger, **kwargs):
 def jump_to_primary(session, account):
     # Check if we're already the PRIMARY
     res = session.run_sql(
-        "SELECT member_role, member_host, (member_host = coalesce(@@report_host, @@hostname)) as me"
+        "SELECT member_role, member_host, (member_host = cast(coalesce(@@report_host, @@hostname) as char ascii)) as me"
         " FROM performance_schema.replication_group_members"
         " ORDER BY member_host")
 

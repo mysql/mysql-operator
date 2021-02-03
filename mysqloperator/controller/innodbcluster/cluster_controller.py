@@ -293,7 +293,7 @@ class ClusterController:
         mysqlutils.setup_backup_account(dba.session, user, password)
 
         # update the router replicaset
-        n = self.cluster.spec.get("routers")
+        n = self.cluster.parsed_spec.router.instances
         if n:
             logger.debug(f"Setting router replicas to {n}")
             router_objects.update_size(self.cluster, n, logger)

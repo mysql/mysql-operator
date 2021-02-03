@@ -10,17 +10,17 @@ if [ -z "$version" ]; then
     version=8.0.23
 fi
 
-image=$registry/mysql-server:$version
+image=$registry/mysql-enterprise-server:$version
 
 
-if [ -n "$clean" -o ! -d bld.mysql-server ]; then
-    rm -fr bld.mysql-server
-    mkdir bld.mysql-server
+if [ -n "$clean" -o ! -d bld.mysql-server-ee ]; then
+    rm -fr bld.mysql-server-ee
+    mkdir bld.mysql-server-ee
 fi
-cd bld.mysql-server
+cd bld.mysql-server-ee
 
 
-for src in ../mysql-server/*; do
+for src in ../mysql-server-ee/*; do
     dst=`basename $src`
     sed -e "s/@VERSION@/$version/g" $src > $dst
     chmod +x $dst

@@ -1,4 +1,4 @@
-# Copyright (c) 2008, 2020, Oracle and/or its affiliates.
+# Copyright (c) 2008, 2021, Oracle and/or its affiliates.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -14,8 +14,8 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
 FROM oraclelinux:7-slim
 
-ARG MYSQL_SERVER_PACKAGE=mysql-community-server-minimal-8.0.21
-ARG MYSQL_ROUTER_PACKAGE=mysql-router-community-8.0.21
+ARG MYSQL_SERVER_PACKAGE=mysql-community-server-minimal-@VERSION@
+ARG MYSQL_ROUTER_PACKAGE=mysql-router-community-@VERSION@
 
 RUN yum install -y https://repo.mysql.com/mysql-community-minimal-release-el7.rpm \
       https://repo.mysql.com/mysql-community-release-el7.rpm \

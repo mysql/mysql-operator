@@ -9,9 +9,9 @@ case $only in
     *) server=1; router=1; shell=1 ;;
 esac
 
-version1=8.0.23
-version0=8.0.22
-version_shell=8.0.23
+version1=8.0.24
+version0=8.0.23
+version_shell=8.0.24
 
 DOCKER_IMAGE_DIR=${DOCKER_IMAGE_DIR:-/tmp/docker-images}
 mkdir -p $DOCKER_IMAGE_DIR
@@ -37,11 +37,32 @@ function build() {
     echo $repo/$image:$ver >> $path.txt
 }
 
+function pull() {
+    repo=$1
+    image=$2
+    ver=$3
+
+    source=mydocker.no.oracle.com/qa
+
+    echo
+    echo "$repo/$image:$ver"
+    echo
+    docker pull $source/$image:$ver
+    image_id=$(docker image ls $source/$image:$ver|awk '{print($3)}'|tail -1)
+    docker tag $source/$image:$ver $repo/$image:$ver
+
+    path=$DOCKER_IMAGE_DIR/$image:$ver
+    docker image save $repo/$image:$ver -o $path
+    echo $image_id > $path.txt
+    echo $repo/$image:$ver >> $path.txt
+}
+
+
 if [ $server -ne 0 ]; then
-    build ./make_server.sh mysql mysql-server $version1
+    pull mysql mysql-server $version1
     build ./make_server.sh mysql mysql-server $version0
 
-    build ./make_server_ee.sh mysql mysql-enterprise-server $version1
+    pull mysql mysql-enterprise-server $version1
     build ./make_server_ee.sh mysql mysql-enterprise-server $version0
 fi
 
@@ -51,7 +72,10 @@ if [ $shell -ne 0 ]; then
 fi
 
 if [ $router -ne 0 ]; then
-    build ./make_router.sh mysql mysql-router $version1
+    pull mysql mysql-router $version1
     build ./make_router.sh mysql mysql-router $version0
+
+
+    pull mysql mysql-enterprise-router $version1
 fi
 

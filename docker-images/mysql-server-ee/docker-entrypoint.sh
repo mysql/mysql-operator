@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) 2017, 2020, Oracle and/or its affiliates.
+# Copyright (c) 2017, 2021, Oracle and/or its affiliates.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -205,15 +205,15 @@ EOF
 	touch /mysql-init-complete
 	chown -R mysql:mysql "$DATADIR"
 
-	if [ -n "$MYSQL_INIT_ONLY" ]; then
-		echo "[Entrypoint] MYSQL_INIT_ONLY is set, exiting without starting MySQL..."
+	if [ -n "$MYSQL_INITIALIZE_ONLY" ]; then
+		echo "[Entrypoint] MYSQL_INITIALIZE_ONLY is set, exiting without starting MySQL..."
 		exit 0
 	else
 		echo "[Entrypoint] Starting MySQL @VERSION@-1.1.17"
 	fi
 else
-	if [ -n "$MYSQL_INIT_ONLY" ]; then
-		echo "[Entrypoint] MySQL already initialized and MYSQL_INIT_ONLY is set, exiting without starting MySQL..."
+	if [ -n "$MYSQL_INITIALIZE_ONLY" ]; then
+		echo "[Entrypoint] MySQL already initialized and MYSQL_INITIALIZE_ONLY is set, exiting without starting MySQL..."
 		exit 0
 	fi
 fi

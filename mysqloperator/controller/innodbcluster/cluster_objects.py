@@ -168,7 +168,7 @@ spec:
         imagePullPolicy: {spec.mysql_image_pull_policy}
         args: {mysql_argv}
         env:
-        - name: MYSQL_INIT_ONLY
+        - name: MYSQL_INITIALIZE_ONLY
           value: "1"
         - name: MYSQL_ROOT_PASSWORD
           valueFrom:

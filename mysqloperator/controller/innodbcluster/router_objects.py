@@ -96,6 +96,7 @@ spec:
         tier: mysql
         mysql.oracle.com/cluster: {spec.name}
     spec:
+{utils.indent(spec.image_pull_secrets, 6)}
       containers:
       - name: router
         image: {spec.router_image}

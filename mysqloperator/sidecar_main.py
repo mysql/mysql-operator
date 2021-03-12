@@ -82,7 +82,7 @@ def create_local_accounts(session, logger):
     """
     sql = [
         "SET sql_log_bin=0;",
-        "CREATE USER IF NOT EXISTS 'localroot'@localhost IDENTIFIED WITH auth_socket AS 'root';",
+        "CREATE USER IF NOT EXISTS 'localroot'@localhost;",
         "GRANT ALL ON *.* TO 'localroot'@localhost WITH GRANT OPTION;",
         "GRANT PROXY ON ''@'' TO 'localroot'@localhost WITH GRANT OPTION;",
         "SET sql_log_bin=1;"

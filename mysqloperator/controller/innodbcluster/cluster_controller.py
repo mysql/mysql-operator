@@ -26,7 +26,8 @@ common_gr_options = {
     # Abort the server if member is kicked out of the group, which would trigger
     # an event from the container restart, which we can catch and act upon.
     # This also makes autoRejoinTries irrelevant.
-    "exitStateAction": "ABORT_SERVER"
+    "exitStateAction": "ABORT_SERVER",
+    "ipWhitelist":"10.0.0.0/8,127.0.0.1/8,::1/128"
 }
 
 

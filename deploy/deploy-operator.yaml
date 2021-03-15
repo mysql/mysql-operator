@@ -30,7 +30,7 @@ spec:
         - name: mysql-operator
           image: akkojima/mysql-shell:8.0.21
           imagePullPolicy: Always
-          args: ["mysqlsh", "--pym", "mysqloperator", "operator"]
+          args: ["mysqlsh", "--log-level=@INFO", "--log-file=", "--pym", "mysqloperator", "operator"]
           env:
             - name: MYSQL_OPERATOR_DEBUG
               value: "1"

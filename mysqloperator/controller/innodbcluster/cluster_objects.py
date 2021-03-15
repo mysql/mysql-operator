@@ -145,7 +145,7 @@ spec:
       - name: initconf
         image: {spec.shell_image}
         imagePullPolicy: {spec.shell_image_pull_policy}
-        command: ["mysqlsh", "--pym", "mysqloperator", "init"]
+        command: ["mysqlsh", "--log-level=@INFO", "--log-file=", "--pym", "mysqloperator", "init"]
         env:
         - name: MY_POD_NAME
           valueFrom:

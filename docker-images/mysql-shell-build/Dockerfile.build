@@ -1,4 +1,4 @@
-# Copyright (c) 2020, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -25,7 +25,8 @@ ARG BOOST_DOWNLOAD_URL="https://dl.bintray.com/boostorg/release/1.73.0/source/${
 
 # Might be a bit too much, i.e. installs some Xorg things and Java
 RUN dnf groupinstall -y "Development Tools"
-RUN dnf install -y cmake openssl-devel  ncurses-devel libcurl-devel libtirpc-devel python38-devel wget
+RUN dnf install -y cmake openssl-devel ncurses-devel libcurl-devel libtirpc-devel python38-devel wget \
+        gcc-toolset-10
 
 # Needed for LDAP: openldap-devel cyrus-sasl-devel cyrus-sasl-scram
 

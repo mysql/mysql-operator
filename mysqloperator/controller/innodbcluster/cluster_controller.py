@@ -22,12 +22,15 @@ import kopf
 import datetime
 import time
 
+DEFAULT_GR_IP_WHITELIST = os.getenv("MYSQL_OPERATOR_DEFAULT_GR_IP_WHITELIST", default="10.0.0.0/8")+",127.0.0.1/8,::1/128"
+
+
 common_gr_options = {
     # Abort the server if member is kicked out of the group, which would trigger
     # an event from the container restart, which we can catch and act upon.
     # This also makes autoRejoinTries irrelevant.
     "exitStateAction": "ABORT_SERVER",
-    "ipWhitelist":"10.0.0.0/8,127.0.0.1/8,::1/128"
+    "ipWhitelist": DEFAULT_GR_IP_WHITELIST
 }
 
 

@@ -22,16 +22,21 @@ import kopf
 import datetime
 import time
 
-DEFAULT_GR_IP_WHITELIST = os.getenv("MYSQL_OPERATOR_DEFAULT_GR_IP_WHITELIST", default="10.0.0.0/8")+",127.0.0.1/8,::1/128"
-
+MYSQL_OPERATOR_GR_IP_ALLOWLIST_EXTRA = os.getenv("MYSQL_OPERATOR_IP_ALLOWLIST_EXTRA", default="")
+MYSQL_OPERATOR_GR_IP_ALLOWLIST_EXTRA += "," if MYSQL_OPERATOR_GR_IP_ALLOWLIST_EXTRA else ""
+MYSQL_OPERATOR_GR_IP_ALLOWLIST_EXTRA += "127.0.0.1/8,::1/128"
 
 common_gr_options = {
     # Abort the server if member is kicked out of the group, which would trigger
     # an event from the container restart, which we can catch and act upon.
     # This also makes autoRejoinTries irrelevant.
-    "exitStateAction": "ABORT_SERVER",
-    "ipWhitelist": DEFAULT_GR_IP_WHITELIST
+    "exitStateAction": "ABORT_SERVER"
 }
+
+def create_allow_list(pod: MySQLPod, logger) -> str:
+    allowlist = pod.pod_ip_address + "/8," + MYSQL_OPERATOR_GR_IP_ALLOWLIST_EXTRA
+    logger.info(f"allow_list for {pod.name}: ipAllowlist={allowlist}")
+    return allowlist
 
 
 class ClusterMutex:
@@ -216,11 +221,13 @@ class ClusterController:
                 "incrementalRecoveryAllowed": True
             })
 
+
         # The operator manages GR, so turn off start_on_boot to avoid conflicts
         create_options = {
             "gtidSetIsComplete": assume_gtid_set_complete,
             "manualStartOnBoot": True,
-            "memberSslMode": "REQUIRED"
+            "memberSslMode": "REQUIRED",
+            "ipAllowlist": create_allow_list(seed_pod, logger)
         }
         create_options.update(common_gr_options)
 
@@ -410,7 +417,10 @@ class ClusterController:
         if self.cluster.incremental_recovery_allowed():
             recovery_method = "incremental"
 
-        add_options = {"recoveryMethod": recovery_method}
+        add_options = {
+            "recoveryMethod": recovery_method,
+            "ipAllowlist": create_allow_list(pod, logger)
+        }
         add_options.update(common_gr_options)
 
         logger.info(

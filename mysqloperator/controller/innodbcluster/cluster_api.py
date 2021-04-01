@@ -812,6 +812,10 @@ class MySQLPod(K8sInterfaceObject):
         return self.name+"."+cast(str, self.spec.subdomain)+"."+self.namespace+".svc.cluster.local"
 
     @property
+    def pod_ip_address(self) -> str:
+        return self.pod.status.pod_ip
+
+    @property
     def endpoint(self) -> str:
         return self.address_fqdn + ":" + str(self.port)
 

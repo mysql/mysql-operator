@@ -149,8 +149,8 @@ class InnoDBClusterSpec:
     instances: int = 1
     # base value for server_id
     baseServerId: int
-    # override volumeClaimTemplates for MySQL pods (optional)
-    volumeClaimTemplates = None
+    # override volumeClaimTemplates for datadir in MySQL pods (optional)
+    datadirVolumeClaimTemplate = None
     # additional MySQL configuration options
     mycnf: str = ""
     # override pod template for MySQL (optional)
@@ -213,8 +213,8 @@ class InnoDBClusterSpec:
         if "podSpec" in spec:  # TODO - replace with something more specific
             self.podSpec = dget_dict(spec, "podSpec", "spec")
 
-        if "volumeClaimTemplates" in spec:
-            self.volumeClaimTemplates = spec.get("volumeClaimTemplates")
+        if "datadirVolumeClaimTemplate" in spec:
+            self.datadirVolumeClaimTemplate = spec.get("datadirVolumeClaimTemplate")
 
         if "mycnf" in spec:
             self.mycnf = dget_str(spec, "mycnf", "spec")

@@ -54,9 +54,10 @@ spec:
                   maximum: 4294967195
                   default: 1000
                   description: "Base value for MySQL server_id for instances in the cluster"
-                volumeClaimTemplates:
+                datadirVolumeClaimTemplate:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
+                  description: "Template for a PersistentVolumeClaim, to be used as datadir"
                 mycnf:
                   type: string
                   description: "Custom configuration additions for my.cnf"

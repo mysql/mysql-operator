@@ -298,10 +298,9 @@ spec:
         utils.merge_patch_object(statefulset["spec"]["template"]["spec"],
                                  spec.podSpec, "spec.podSpec")
 
-    if spec.volumeClaimTemplates:
-        utils.merge_patch_object(statefulset["spec"]["volumeClaimTemplates"],
-                                 spec.volumeClaimTemplates, "spec.volumeClaimTemplates",
-                                 key=".metadata.name")
+    if spec.datadirVolumeClaimTemplate:
+        utils.merge_patch_object(statefulset["spec"]["volumeClaimTemplates"][0]["spec"],
+                                 spec.datadirVolumeClaimTemplate, "spec.volumeClaimTemplates[0].spec")
 
     return statefulset
 

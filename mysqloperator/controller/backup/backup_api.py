@@ -110,7 +110,7 @@ class MySQLBackupSpec:
         try:
             from ..innodbcluster.cluster_api import InnoDBCluster
 
-            cluster = InnoDBCluster.read(self.clusterName, self.namespace)
+            cluster = InnoDBCluster.read(self.namespace, self.clusterName)
         except ApiException as e:
             if e.status == 404:
                 return ApiSpecError(f"Invalid clusterName {self.namespace}/{self.clusterName}")

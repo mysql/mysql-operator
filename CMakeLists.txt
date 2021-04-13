@@ -4,7 +4,10 @@
 #
 
 SET(DEPLOY_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/deploy/deploy-crd-peerings.yaml
     ${CMAKE_CURRENT_SOURCE_DIR}/deploy/deploy-crds.yaml
+    ${CMAKE_CURRENT_SOURCE_DIR}/deploy/deploy-sa.yaml
+    ${CMAKE_CURRENT_SOURCE_DIR}/deploy/deploy-rbac.yaml
     ${CMAKE_CURRENT_SOURCE_DIR}/deploy/deploy-peering.yaml
     ${CMAKE_CURRENT_SOURCE_DIR}/deploy/deploy-operator.yaml
     )

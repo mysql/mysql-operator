@@ -28,12 +28,7 @@ spec:
     spec:
       containers:
         - name: mysql-operator
-          image: akkojima/mysql-shell:8.0.21
+          image: mysql/mysql-shell:8.0.24
           imagePullPolicy: Always
           args: ["mysqlsh", "--log-level=@INFO", "--log-file=", "--pym", "mysqloperator", "operator"]
-          env:
-            - name: MYSQL_OPERATOR_DEBUG
-              value: "1"
-            - name: MYSQL_OPERATOR_DEFAULT_REPOSITORY
-              value: akkojima
       serviceAccountName: mysql-operator-sa

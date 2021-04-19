@@ -82,6 +82,8 @@ class MySQLBackupSpec:
     backupProfileName: str = ""
     backupProfile = None
     deleteBackupData: bool = False
+    shell_image: str = ""
+    shell_image_pull_policy: str = ""
 
     def __init__(self, namespace: str, name: str, spec: dict):
         self.namespace = namespace
@@ -116,6 +118,9 @@ class MySQLBackupSpec:
                 return ApiSpecError(f"Invalid clusterName {self.namespace}/{self.clusterName}")
             raise
 
+        self.shell_image = cluster.parsed_spec.shell_image
+        self.shell_image_pull_policy = cluster.parsed_spec.shell_image_pull_policy
+
         if self.backupProfileName:
             self.backupProfile = cluster.parsed_spec.get_backup_profile(
                 self.backupProfileName)
@@ -143,6 +148,17 @@ class MySQLBackup:
 
     def __repr__(self) -> str:
         return f"<MySQLBackup {self.name}>"
+
+    def get_cluster(self):
+        try:
+            from ..innodbcluster.cluster_api import InnoDBCluster
+
+            cluster = InnoDBCluster.read(self.namespace, self.cluster_name)
+        except ApiException as e:
+            if e.status == 404:
+                return ApiSpecError(f"Invalid clusterName {self.namespace}/{self.cluster_name}")
+            raise
+        return cluster
 
     @classmethod
     def read(cls, name: str, namespace: str) -> 'MySQLBackup':

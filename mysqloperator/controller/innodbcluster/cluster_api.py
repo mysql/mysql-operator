@@ -386,10 +386,15 @@ class InnoDBCluster(K8sInterfaceObject):
 
     @classmethod
     def _get(cls, ns: str, name: str) -> Body:
-        return cast(Body,
-                    api_customobj.get_namespaced_custom_object(
-                        consts.GROUP, consts.VERSION, ns,
-                        consts.INNODBCLUSTER_PLURAL, name))
+        try:
+            ret = cast(Body,
+                        api_customobj.get_namespaced_custom_object(
+                            consts.GROUP, consts.VERSION, ns,
+                            consts.INNODBCLUSTER_PLURAL, name))
+        except ApiException as e:
+            raise e
+    
+        return ret
 
     @classmethod
     def _patch(cls, ns: str, name: str, patch: dict) -> Body:

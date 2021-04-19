@@ -15,6 +15,15 @@ from .controller.innodbcluster.cluster_api import InnoDBCluster
 import logging
 from typing import Optional
 
+BACKUP_OCI_USER_NAME = "OCI_USER_NAME"
+BACKUP_OCI_FINGERPRINT = "OCI_FINGERPRINT"
+BACKUP_OCI_TENANCY = "OCI_TENANCY"
+BACKUP_OCI_REGION = "OCI_REGION"
+BACKUP_OCI_PASSPHRASE = "OCI_PASSPHRASE"
+OCI_CONFIG_NAME = "OCI_CONFIG_NAME"
+OCI_API_KEY_NAME = "OCI_API_KEY_NAME"
+OCI_CONFIG_FILE_NAME = "config"
+
 
 def get_dir_size(d):
     size = 0
@@ -24,7 +33,7 @@ def get_dir_size(d):
     return size
 
 
-def execute_dump_instance(backup_source, profile, backupdir, backup_name, logger):
+def execute_dump_instance(backup_source, profile, backupdir, backup_name, oci_config : dict, logger : logging.Logger):
     shell = mysqlsh.globals.shell
     util = mysqlsh.globals.util
 
@@ -36,9 +45,9 @@ def execute_dump_instance(backup_source, profile, backupdir, backup_name, logger
 
     if profile.storage.ociObjectStorage:
         options["osBucketName"] = profile.storage.ociObjectStorage.bucketName
-        options["ociConfigFile"] = "/.oci/config"
-        options["ociProfile"] = "DEFAULT"
-
+        options["ociConfigFile"] = oci_config["config"]
+        options["ociProfile"] = oci_config["profile"]
+        logger.info(f"options={options}")
         if profile.storage.ociObjectStorage.prefix:
             output = os.path.join(
                 profile.storage.ociObjectStorage.prefix, backup_name)
@@ -67,7 +76,7 @@ def execute_dump_instance(backup_source, profile, backupdir, backup_name, logger
 
     if profile.storage.ociObjectStorage:
         tenancy = [line.split("=")[1].strip() for line in open(
-            "/.oci/config", "r").readlines() if line.startswith("tenancy")][0]
+            options["ociConfigFile"], "r").readlines() if line.startswith("tenancy")][0]
 
         info = {
             "method": "dump-instance/oci-bucket",
@@ -93,7 +102,7 @@ def execute_dump_instance(backup_source, profile, backupdir, backup_name, logger
     return info
 
 
-def execute_clone_snapshot(backup_source, profile, backupdir: Optional[str], backup_name: str, logger: logging.Logger) -> dict:
+def execute_clone_snapshot(backup_source, profile, backupdir: Optional[str], backup_name: str, oci_config : dict, logger: logging.Logger) -> dict:
     ...
 
 
@@ -147,14 +156,13 @@ def pick_source_instance(cluster, logger: logging.Logger):
         f"No instances available to backup from in cluster {cluster.name}")
 
 
-def do_backup(backup, job_name: str, start, backupdir: Optional[str], logger: logging.Logger) -> dict:
+def do_backup(backup : MySQLBackup, job_name: str, start, backupdir: Optional[str], oci_config: dict, logger: logging.Logger) -> dict:
     logger.info(
         f"Starting backup of {backup.namespace}/{backup.parsed_spec.clusterName}  profile={backup.parsed_spec.backupProfileName}  backupdir={backupdir}")
 
     cluster = backup.get_cluster()
 
-    profile = cluster.parsed_spec.get_backup_profile(
-        backup.parsed_spec.backupProfileName)
+    profile = cluster.parsed_spec.get_backup_profile(backup.parsed_spec.backupProfileName)
     if not profile:
         raise Exception(
             f"Unknown backup profile {backup.parsed_spec.backupProfileName} in cluster {backup.namespace}/{backup.parsed_spec.clusterName}")
@@ -162,11 +170,77 @@ def do_backup(backup, job_name: str, start, backupdir: Optional[str], logger: lo
     backup_source = pick_source_instance(cluster, logger)
 
     if profile.dumpInstance:
-        return execute_dump_instance(backup_source, profile.dumpInstance, backupdir, job_name, logger)
+        return execute_dump_instance(backup_source, profile.dumpInstance, backupdir, job_name, oci_config, logger)
     elif profile.cloneSnapshot:
-        return execute_clone_snapshot(backup_source, profile.cloneSnapshot, backupdir, job_name, logger)
+        return execute_clone_snapshot(backup_source, profile.cloneSnapshot, backupdir, job_name, oci_config, logger)
     else:
         raise Exception(f"Invalid backup method in profile {profile.name}")
+
+def create_oci_config_file_from_envs(env_vars: dict,  logger : logging.Logger) -> dict:
+    backup_oci_user_name = env_vars.get(BACKUP_OCI_USER_NAME)
+    backup_oci_fingerprint = env_vars.get(BACKUP_OCI_FINGERPRINT)
+    backup_oci_tenancy = env_vars.get(BACKUP_OCI_TENANCY)
+    backup_oci_region = env_vars.get(BACKUP_OCI_REGION)
+    backup_oci_passphrase = env_vars.get(BACKUP_OCI_PASSPHRASE)
+    oci_config_name = env_vars.get(OCI_CONFIG_NAME)
+    oci_api_key_name = env_vars.get(OCI_API_KEY_NAME)
+
+    if backup_oci_user_name is None:
+        raise Exception(f"No env var {BACKUP_OCI_USER_NAME} passed")
+    elif not backup_oci_user_name:
+        raise Exception(f"Empty value for {BACKUP_OCI_USER_NAME} passed")
+        
+    if backup_oci_fingerprint is None:
+        raise Exception(f"No env var {BACKUP_OCI_FINGERPRINT} passed")
+    elif not backup_oci_fingerprint:
+        raise Exception(f"Empty value for {BACKUP_OCI_FINGERPRINT} passed")
+
+    if backup_oci_tenancy is None:
+        raise Exception(f"No env var {BACKUP_OCI_TENANCY} passed")
+    elif not backup_oci_tenancy:
+        raise Exception(f"Empty value for {BACKUP_OCI_TENANCY} passed")
+    
+    if backup_oci_region is None:
+        raise Exception(f"No env var {BACKUP_OCI_REGION} passed")
+    elif not backup_oci_region:
+        raise Exception(f"Empty value for {BACKUP_OCI_REGION} passed")
+
+    if backup_oci_passphrase is None:
+        raise Exception(f"No env var {BACKUP_OCI_PASSPHRASE} passed")
+
+    if oci_config_name is None:
+        raise Exception(f"No env var {OCI_CONFIG_NAME} passed")
+    elif not oci_config_name:
+        raise Exception(f"Empty value for {OCI_CONFIG_NAME} passed")
+    elif os.path.isfile(oci_config_name):
+        raise Exception(f"{oci_api_key_name} already exists, won't overwrite")
+
+    if oci_api_key_name is None:
+        raise Exception(f"No env var {OCI_API_KEY_NAME} passed")
+    elif not oci_api_key_name:
+        raise Exception(f"Empty value for {OCI_API_KEY_NAME} passed")
+    elif not os.path.isfile(oci_api_key_name):
+        raise Exception(f"{oci_api_key_name} is not a file")
+
+    import configparser
+    config_profile = "DEFAULT"
+    config = configparser.ConfigParser()
+    config[config_profile] = {
+        "user" : backup_oci_user_name,
+        "fingerprint" : backup_oci_fingerprint,
+        "tenancy": backup_oci_tenancy,
+        "region": backup_oci_region,
+        "passphrase": backup_oci_passphrase,
+        "key_file" : oci_api_key_name,
+    }
+
+    with open(oci_config_name, 'w') as configfile:
+        config.write(configfile)
+
+    return {
+        "config": oci_config_name,
+        "profile" : config_profile,
+    }
 
 
 def main(argv):
@@ -197,15 +271,20 @@ def main(argv):
     ns = argv[1]
     name = argv[2]
     jobname = argv[3]
+    backupdir = os.environ.get('DUMP_MOUNT_PATH', None)
+    logger.info(f"backupdir={backupdir}")
     if len(argv) > 4:
         backupdir = argv[4]
-    else:
-        backupdir = None
+   
     start = utils.isotime()
     backup = MySQLBackup.read(name=name, namespace=ns)
     try:
         backup.set_started(jobname, start)
-        info = do_backup(backup, jobname, start, backupdir, logger)
+
+        oci_config = create_oci_config_file_from_envs(os.environ, logger)
+ 
+        info = do_backup(backup, jobname, start, backupdir, oci_config, logger)
+
         backup.set_succeeded(jobname, start, utils.isotime(), info)
     except Exception as e:
         import traceback

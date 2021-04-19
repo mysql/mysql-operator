@@ -36,14 +36,15 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: {jobname}
+  namespace: {spec.namespace}
 spec:
   template:
     spec:
       containers:
       - name: shell
-        image: {config.MYSQL_SHELL_IMAGE}:{config.DEFAULT_SHELL_VERSION_TAG}
-        imagePullPolicy: IfNotPresent
-        command: ["mysqlsh", "-f", "/usr/lib/mysqlsh/kubernetes/backup.py", "{spec.namespace}", "{spec.name}", "{jobname}", "/mnt/storage"]
+        image: {spec.shell_image}
+        imagePullPolicy: {spec.shell_image_pull_policy}
+        command: ["mysqlsh", "--pym", "mysqloperator", "backup", "{spec.namespace}", "{spec.name}", "{jobname}", "/mnt/storage"]
       restartPolicy: Never
 """
 

@@ -22,10 +22,14 @@ class PVCStorageSpec:
     raw_data = None
 
     def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
+        # /mnt/storage is passed as parameter to the backup_main.py
         patch = f"""
 spec:
     containers:
     - name: {container_name}
+      env:
+      - name: DUMP_MOUNT_PATH
+        value: /mnt/storage
       volumeMounts:
       - name: tmp-storage
         mountPath: /mnt/storage
@@ -42,29 +46,65 @@ spec:
 class OCIOSStorageSpec:
     bucketName: str = ""
     prefix: str = ""
-    apiKeySecretName: str = ""
+    ociCredentials: str = ""
 
     def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
+        # The value for OCI_MOUNT_PATH should be the mountPath of the secrets-volume 
+        # OCI_API_KEY_NAME is the only key in the secret which holds the API key
+        # The secrets volume is not readOnly because we need to write the config file into it
         patch = f"""
 spec:
     containers:
     - name: {container_name}
+      env:
+      - name: OCI_USER_NAME
+        valueFrom:
+          secretKeyRef:
+            name: {self.ociCredentials}
+            key: user
+      - name: OCI_FINGERPRINT
+        valueFrom:
+          secretKeyRef:
+            name: {self.ociCredentials}
+            key: fingerprint
+      - name: OCI_TENANCY
+        valueFrom:
+          secretKeyRef:
+            name: {self.ociCredentials}
+            key: tenancy
+      - name: OCI_REGION
+        valueFrom:
+          secretKeyRef:
+            name: {self.ociCredentials}
+            key: region
+      - name: OCI_PASSPHRASE
+        valueFrom:
+          secretKeyRef:
+            name: {self.ociCredentials}
+            key: passphrase
+      - name: OCI_CONFIG_NAME
+        value: "/oci_config"
+      - name: OCI_API_KEY_NAME
+        value: "/.oci/privatekey.pem"
       volumeMounts:
-      - name: secrets-volume
+      - name: privatekey-volume
         readOnly: true
         mountPath: "/.oci"
     volumes:
-    - name: secrets-volume
+    - name: privatekey-volume
       secret:
-        defaultMode: 400
-        secretName: {self.apiKeySecretName}
+        secretName: {self.ociCredentials}
+        items:
+        - key: privatekey
+          path: privatekey.pem
+          mode: 400
 """
         merge_patch_object(pod_spec, yaml.safe_load(patch))
 
     def parse(self, spec: dict, prefix: str) -> None:
         self.bucketName = dget_str(spec, "bucketName", prefix)
 
-        self.apiKeySecretName = dget_str(spec, "apiKeySecretName", prefix)
+        self.ociCredentials = dget_str(spec, "credentials", prefix)
 
 
 ALL_STORAGE_SPEC_TYPES = {
@@ -86,8 +126,7 @@ class StorageSpec:
         if self.ociObjectStorage:
             self.ociObjectStorage.add_to_pod_spec(pod_spec, container_name)
         if self.persistentVolumeClaim:
-            self.persistentVolumeClaim.add_to_pod_spec(
-                pod_spec, container_name)
+            self.persistentVolumeClaim.add_to_pod_spec(pod_spec, container_name)
 
     def parse(self, spec: dict, prefix: str) -> None:
         storage_spec = None

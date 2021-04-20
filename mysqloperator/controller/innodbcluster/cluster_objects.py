@@ -222,7 +222,7 @@ spec:
           preStop:
             exec:
               command: ["mysqladmin", "-ulocalroot", "shutdown"]
-        terminationGracePeriodSeconds: 60 # TODO check how long this has to be
+        terminationGracePeriodSeconds: 90
         startupProbe:
           exec:
             command: ["/livenessprobe.sh", "8"]

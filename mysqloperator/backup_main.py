@@ -189,7 +189,7 @@ def create_oci_config_file_from_envs(env_vars: dict,  logger : logging.Logger) -
         raise Exception(f"No env var {BACKUP_OCI_USER_NAME} passed")
     elif not backup_oci_user_name:
         raise Exception(f"Empty value for {BACKUP_OCI_USER_NAME} passed")
-        
+
     if backup_oci_fingerprint is None:
         raise Exception(f"No env var {BACKUP_OCI_FINGERPRINT} passed")
     elif not backup_oci_fingerprint:
@@ -199,7 +199,7 @@ def create_oci_config_file_from_envs(env_vars: dict,  logger : logging.Logger) -
         raise Exception(f"No env var {BACKUP_OCI_TENANCY} passed")
     elif not backup_oci_tenancy:
         raise Exception(f"Empty value for {BACKUP_OCI_TENANCY} passed")
-    
+
     if backup_oci_region is None:
         raise Exception(f"No env var {BACKUP_OCI_REGION} passed")
     elif not backup_oci_region:
@@ -275,14 +275,14 @@ def main(argv):
     logger.info(f"backupdir={backupdir}")
     if len(argv) > 4:
         backupdir = argv[4]
-   
+
     start = utils.isotime()
     backup = MySQLBackup.read(name=name, namespace=ns)
     try:
         backup.set_started(jobname, start)
 
         oci_config = create_oci_config_file_from_envs(os.environ, logger)
- 
+
         info = do_backup(backup, jobname, start, backupdir, oci_config, logger)
 
         backup.set_succeeded(jobname, start, utils.isotime(), info)

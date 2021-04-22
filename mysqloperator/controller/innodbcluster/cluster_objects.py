@@ -403,6 +403,7 @@ data:
     datadir=/var/lib/mysql
     loose_mysqlx_socket=/var/run/mysql/mysqlx.sock
     socket=/var/run/mysql/mysql.sock
+    local-infile=1
 
     [mysql]
     socket=/var/run/mysql/mysql.sock

@@ -3,10 +3,12 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from .cluster_api import DumpInitDBSpec, MySQLPod, InitDB, CloneInitDBSpec, InnoDBCluster
 from ..shellutils import SessionWrap
-from .. import mysqlutils
+from .. import mysqlutils, utils
+from ..kubeutils import api_core, api_apps, api_customobj
+from ..kubeutils import client as api_client, ApiException
 import mysqlsh
 import time
 import os
@@ -67,8 +69,9 @@ def monitor_clone(session: 'ClassicSession', start_time: str, logger: Logger) ->
 
 
 def finish_clone_seed_pod(session: 'ClassicSession', cluster: InnoDBCluster, logger: Logger) -> None:
+    logger.info(f"Finalizing clone - Not implemented")
     return
-    logger.info(f"Finalizing clone")
+
 
     # copy sysvars that affect data, if any
     # TODO
@@ -77,13 +80,58 @@ def finish_clone_seed_pod(session: 'ClassicSession', cluster: InnoDBCluster, log
 
 
 def load_dump(session: 'ClassicSession', cluster: InnoDBCluster, pod: MySQLPod, init_spec: DumpInitDBSpec, logger: Logger) -> None:
+    def get_secret(secret_name: str, namespace: str, loger: Logger) -> dict:
+        logger.info(f"load_dump::get_secret")
+
+        if not secret_name:
+            raise Exception(f"No secret provided")
+
+        ret = {}
+        try:
+            secret = cast(api_client.V1Secret, api_core.read_namespaced_secret(secret_name, namespace))
+            for k, v in secret.data.items():
+                ret[k] = utils.b64decode(v)
+        except Exception:
+            raise Exception(f"Secret {secret_name} in namespace {namespace} cannot be found")
+
+        return ret
+
+    def create_oci_config(oci_credentials: dict) -> dict:
+        import configparser
+        oci_config_file = "/.oci_config"
+        oci_privatekey_file = "/.oci_privatekey.pem"
+        privatekey = None
+        config_profile = "DEFAULT"
+        config = configparser.ConfigParser()
+        for k, v in oci_credentials.items():
+            if k != "privatekey":
+                config[config_profile][k] = v
+            else:
+                privatekey = v
+                config[config_profile]["key_file"] = oci_privatekey_file
+
+        with open(oci_config_file, 'w') as f:
+            config.write(f)
+
+        with open(oci_privatekey_file, 'w') as f:
+            f.write(privatekey)
+
+        return {
+            "ociConfigFile" : oci_config_file,
+            "ociProfile" : config_profile,
+        }
+
+
+    logger.info("::load_dump")
     options = init_spec.loadOptions.copy()
 
+    oci_credentials = None
     if init_spec.storage.ociObjectStorage:
-        path = init_spec.storage.ociObjectStorage.prefix
-        options["osBucketName"] = init_spec.storage.ociObjectStorage.bucketName
-        options["ociConfigFile"] = "/.oci/config"
-        options["ociProfile"] = "DEFAULT"
+        oci_credentials = get_secret(init_spec.storage.ociObjectStorage.ociCredentials, cluster.namespace, logger)
+        if isinstance(oci_credentials, dict):
+            path = init_spec.storage.ociObjectStorage.prefix
+            options["osBucketName"] = init_spec.storage.ociObjectStorage.bucketName
+            options.update(create_oci_config(oci_credentials))
     else:
         path = init_spec.path
 
@@ -92,6 +140,7 @@ def load_dump(session: 'ClassicSession', cluster: InnoDBCluster, pod: MySQLPod, 
     assert path
     try:
         mysqlsh.globals.util.load_dump(path, options)
+        logger.info("Load_dump finished")
     except mysqlsh.Error as e:
         logger.error(f"Error loading dump: {e}")
         raise

@@ -102,8 +102,8 @@ spec:
         merge_patch_object(pod_spec, yaml.safe_load(patch))
 
     def parse(self, spec: dict, prefix: str) -> None:
+        self.prefix = dget_str(spec, "prefix", prefix)
         self.bucketName = dget_str(spec, "bucketName", prefix)
-
         self.ociCredentials = dget_str(spec, "credentials", prefix)
 
 

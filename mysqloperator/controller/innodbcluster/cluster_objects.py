@@ -222,7 +222,7 @@ spec:
           preStop:
             exec:
               command: ["mysqladmin", "-ulocalroot", "shutdown"]
-        terminationGracePeriodSeconds: 60 # TODO check how long this has to be
+        terminationGracePeriodSeconds: 90
         startupProbe:
           exec:
             command: ["/livenessprobe.sh", "8"]
@@ -403,6 +403,7 @@ data:
     datadir=/var/lib/mysql
     loose_mysqlx_socket=/var/run/mysql/mysqlx.sock
     socket=/var/run/mysql/mysql.sock
+    local-infile=1
 
     [mysql]
     socket=/var/run/mysql/mysql.sock

@@ -103,6 +103,7 @@ def configure_for_innodb_cluster(dba, logger):
     options = {}
     logger.info("Configuring instance for InnoDB Cluster")
     dba.configure_instance(None, options)
+    logger.info("Instance configured")
 
 
 def wipe_old_innodb_cluster(session, logger):
@@ -140,6 +141,7 @@ def populate_with_clone(datadir: str, session: 'ClassicSession', cluster: InnoDB
 
     start_time = session.run_sql("select now(6)").fetch_one()[0]
 
+    logger.info(f"Starting at {start_time}")
     # TODO monitor clone from a thread and dump progress
     # initdb.monitor_clone(session, start_time, logger)
 
@@ -157,7 +159,7 @@ def populate_with_clone(datadir: str, session: 'ClassicSession', cluster: InnoDB
         pod.error(action="InitDB", reason="InvalidArgument", message=f"{e}")
         raise
 
-    logger.info(f"Connecting as {user}")
+    logger.info(f"Connecting as {user}@{host}")
     session = connect(user, password, logger)
 
     initdb.finish_clone_seed_pod(session, cluster, logger)
@@ -194,8 +196,10 @@ def populate_db(datadir, session, cluster, pod, logger: Logger) -> 'ClassicSessi
     """
     if cluster.parsed_spec.initDB:
         if cluster.parsed_spec.initDB.clone:
+            logger.info("Populate with clone")
             return populate_with_clone(datadir, session, cluster, cluster.parsed_spec.initDB.clone, pod, logger)
         elif cluster.parsed_spec.initDB.dump:
+            logger.info("Populate with dump")
             return populate_with_dump(datadir, session, cluster, cluster.parsed_spec.initDB.dump, pod, logger)
         else:
             logger.warning(
@@ -271,6 +275,7 @@ def create_admin_account(session, cluster, logger):
     session.run_sql("GRANT ALL ON *.* TO ?@? WITH GRANT OPTION", [user, host])
     session.run_sql(
         "GRANT PROXY ON ''@'' TO ?@? WITH GRANT OPTION", [user, host])
+    logger.info("Admin account created")
 
 
 def connect(user: str, password: str, logger: Logger, timeout: Optional[int] = 60) -> 'ClassicSession':
@@ -407,8 +412,10 @@ def main(argv):
 
     utils.log_banner(__file__, logger)
 
+    logger.info("Bootstrapping")
     r = bootstrap(pod, datadir, logger)
     if r != 0:
+        logger.info(f"Bootstrap error {r}")
         return r
 
     logger.info("Waiting for Operator requests...")

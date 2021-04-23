@@ -28,6 +28,12 @@ RUN dnf groupinstall -y "Development Tools"
 RUN dnf install -y cmake openssl-devel ncurses-devel libcurl-devel libtirpc-devel python38-devel wget \
         gcc-toolset-10
 
+# enable EPEL repo ol8_codeready_builder to get rpcgen
+# http://yum.oracle.com/repo/OracleLinux/OL8/codeready/builder/x86_64/index.html
+# /etc/yum.repos.d/oracle-linux-ol8.repo
+RUN dnf config-manager --set-enabled ol8_codeready_builder && \
+    dnf install -y rpcgen
+
 # Needed for LDAP: openldap-devel cyrus-sasl-devel cyrus-sasl-scram
 
 RUN wget $BOOST_DOWNLOAD_URL && tar xf $BOOST_TARBALL && rm $BOOST_TARBALL
@@ -35,10 +41,7 @@ RUN wget $BOOST_DOWNLOAD_URL && tar xf $BOOST_TARBALL && rm $BOOST_TARBALL
 ARG MYSQL_SERVER_GIT_REPO=https://github.com/mysql/mysql-server.git
 ARG MYSQL_SERVER_GIT_BRANCH=mysql-8.0
 
-# TODO: Figure out why this container doesn't have rpcgen, which is need by group replication in CMake
-
 RUN git clone --branch $MYSQL_SERVER_GIT_BRANCH --depth=1 $MYSQL_SERVER_GIT_REPO /mysql-server-src && \
-    rm -r /mysql-server-src/plugin/group_replication && \
     mkdir /mysql-server-build && cd /mysql-server-build && \
     cmake3 /mysql-server-src -Dprotobuf_BUILD_SHARED_LIBS=OFF -DWITH_AUTHENTICATION_LDAP=OFF \
             -DWITH_BOOST=/${BOOST_PACKAGE_NAME} -DBUILD_TESTING=OFF && \

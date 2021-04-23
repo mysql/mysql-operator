@@ -1,0 +1,3 @@
+{"_id":{"$oid":"5bfe3d5ff6d2f36d067c6fea"},"name":"Sample String","timestamp":{"$timestamp":{"t":1543388511,"i":1}},"nestedDoc":{"_id":{"$oid":"5bfe3d5ff6d2f36d067c6fe9"},"date":{"$date":"2018-11-28T07:01:51.691Z"}}}
+{"_id":{"$oid":"5bfe3d64f6d2f36d067c6feb"},"integers":[8535,{"$numberLong":"4522"},{"$numberInt":"850"}],"decimals":[85.23,{"$numberDecimal":"1385.30000000000"},{"$numberDecimal":"8645.87"}]}
+{"_id":{"$oid":"5bfe3d68f6d2f36d067c6fec"},"regExpression":{"$regex":"^some*","$options":"i"},"binaryData":{"$binary":"SGVsbG8gV29ybGQh","$type":"00"}}

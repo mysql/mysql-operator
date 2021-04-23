@@ -1,0 +1,43 @@
+{
+    "options": {
+        "schema": "stackoverflow",
+        "table": "Posts",
+        "columns": [
+            "Id",
+            "PostTypeId",
+            "AcceptedAnswerId",
+            "ParentId",
+            "CreationDate",
+            "DeletionDate",
+            "Score",
+            "ViewCount",
+            "Body",
+            "OwnerUserId",
+            "OwnerDisplayName",
+            "LastEditorUserId",
+            "LastEditorDisplayName",
+            "LastEditDate",
+            "LastActivityDate",
+            "Title",
+            "Tags",
+            "AnswerCount",
+            "CommentCount",
+            "FavoriteCount",
+            "ClosedDate",
+            "CommunityOwnedDate"
+        ],
+        "primaryIndex": "Id",
+        "compression": "zstd",
+        "defaultCharacterSet": "utf8mb4",
+        "fieldsTerminatedBy": "\t",
+        "fieldsEnclosedBy": "",
+        "fieldsOptionallyEnclosed": false,
+        "fieldsEscapedBy": "\\",
+        "linesTerminatedBy": "\n"
+    },
+    "triggers": [],
+    "includesData": true,
+    "includesDdl": true,
+    "extension": "tsv.zst",
+    "chunking": true
+}

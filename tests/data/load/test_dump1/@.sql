@@ -1,0 +1,5 @@
+-- MySQLShell dump 1.0.0  Distrib Ver 8.0.21 for Linux on x86_64 - for MySQL 8.0.21 (MySQL Community Server (GPL)), for Linux (x86_64)
+--
+-- Host: localhost
+-- ------------------------------------------------------
+-- Server version	8.0.21

@@ -1,0 +1,73 @@
+# Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License, version 2.0,
+# as published by the Free Software Foundation.
+#
+# This program is also distributed with certain software (including
+# but not limited to OpenSSL) that is licensed under separate terms, as
+# designated in a particular file or component or in included license
+# documentation.  The authors of MySQL hereby grant you an additional
+# permission to link the program and your derivative works with the
+# separately licensed software that they have included with MySQL.
+# This program is distributed in the hope that it will be useful,  but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See
+# the GNU General Public License, version 2.0, for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
+
+
+[group1]
+option = value
+
+[mysqld]
+option_to_delete_with_value = 20 # delete this
+option_to_delete_without_value  # this as well
+master-info-repository = TABLE
+master-info_repository = FILE
+user=mysql  # inline coments
+pid-file=/var/run/mysqld/mysqld.pid
+socket=/var/run/mysqld/mysqld2.sock
+port=1001
+basedir=/usr
+datadir=/var/lib/mysql
+tmpdir = /tmp # other inline comment and spaces
+to_override # this option is going to be overridden
+to_override_with_value = old_val  # this is also to be overridden
+no_comment_no_value
+lc-messages-dir=/usr/share/mysql
+skip-external-locking  # another inline comment
+binlog=True # ignore this comment
+   multivalue =   Noooooooooooooooo #; Ignore this one as well
+semi-colon=;
+
+# leading and training spaces are ignored
+   bind-address =   127.0.0.1
+
+log_error=/var/log/mysql/error.log # value to be removed
+
+bool_true1 = Yes
+bool_true2 = True
+bool_true3 = 1
+bool_false1 = No
+bool_false2 = False
+bool_false3 = 0
+positive_int = "123456"
+negative_int = -123456
+invalid_int = "123 letters"
+zero_int = 0
+zero_int2 = -0
+
+backspace=\b
+tab=\t
+newline=\n
+carriage-return=\r
+backslash=\\
+space=\s
+not_esc_seq_char=\S
+
+[client]
+port = 3306

@@ -1,0 +1,16 @@
+apiVersion: mysql.oracle.com/v2alpha1
+kind: InnoDBCluster
+metadata:
+  name: clus
+spec:
+  instances: 1
+  secretName: mypwds
+  baseServerId: 2000
+  image: akkojima/mysql-server:8.0.21
+  initDB:
+    clone:
+      donorUrl: root@mycluster-0.mycluster-instances.testns.svc.cluster.local:3306
+      secretKeyRef:
+        name: mypwds
+        rootPasswordKey: rootPassword
+        clonePasswordKey: rootPassword

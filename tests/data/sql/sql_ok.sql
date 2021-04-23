@@ -1,0 +1,1 @@
+select "first_result" as myresult;

@@ -1,0 +1,29 @@
+{
+    "schema": "stackoverflow",
+    "includesDdl": true,
+    "includesData": true,
+    "tables": [
+        "Badges",
+        "Comments",
+        "PostHistory",
+        "PostLinks",
+        "Posts",
+        "Tags",
+        "Users",
+        "Votes"
+    ],
+    "views": [],
+    "events": [],
+    "functions": [],
+    "procedures": [],
+    "basenames": {
+        "Badges": "stackoverflow@Badges",
+        "Comments": "stackoverflow@Comments",
+        "PostHistory": "stackoverflow@PostHistory",
+        "PostLinks": "stackoverflow@PostLinks",
+        "Posts": "stackoverflow@Posts",
+        "Tags": "stackoverflow@Tags",
+        "Users": "stackoverflow@Users",
+        "Votes": "stackoverflow@Votes"
+    }
+}

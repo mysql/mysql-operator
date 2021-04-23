@@ -1,0 +1,26 @@
+{
+    "options": {
+        "schema": "stackoverflow",
+        "table": "Tags",
+        "columns": [
+            "Id",
+            "TagName",
+            "Count",
+            "ExcerptPostId",
+            "WikiPostId"
+        ],
+        "primaryIndex": "Id",
+        "compression": "zstd",
+        "defaultCharacterSet": "utf8mb4",
+        "fieldsTerminatedBy": "\t",
+        "fieldsEnclosedBy": "",
+        "fieldsOptionallyEnclosed": false,
+        "fieldsEscapedBy": "\\",
+        "linesTerminatedBy": "\n"
+    },
+    "triggers": [],
+    "includesData": true,
+    "includesDdl": true,
+    "extension": "tsv.zst",
+    "chunking": true
+}

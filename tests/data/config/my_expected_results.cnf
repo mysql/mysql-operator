@@ -1,0 +1,97 @@
+# Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License, version 2.0,
+# as published by the Free Software Foundation.
+#
+# This program is also distributed with certain software (including
+# but not limited to OpenSSL) that is licensed under separate terms, as
+# designated in a particular file or component or in included license
+# documentation.  The authors of MySQL hereby grant you an additional
+# permission to link the program and your derivative works with the
+# separately licensed software that they have included with MySQL.
+# This program is distributed in the hope that it will be useful,  but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See
+# the GNU General Public License, version 2.0, for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
+
+# Regular comments
+
+# Make sure default section is handled properly
+# Not a special section according to MySQL documentation (no precedence, etc.)
+[DEFAULT]
+password=54321
+
+# Group names are not case sensitive, unlike opt_name.
+[cLieNt]
+password=12345
+port=1000
+socket=/var/run/mysqld/mysqld.sock
+ssl-ca=dummyCA
+ssl-cert=dummyCert
+ssl-key=dummyKey
+ssl-cipher=AES256-SHA:CAMELLIA256-SHA
+CaseSensitiveOptions=Yes
+
+; Another comment
+
+[mysqld_safe]
+socket=/var/run/mysqld/mysqld1.sock
+
+# spaces can be used around '='
+nice =   0
+# values can include '#' if enclose with single or double quotes
+valid_value_1 = 'include comment ( #) symbol' # comment
+valid_value_2 = "modified include # symbol" # comment
+
+[mysqld]
+master-info-repository = 'TABLE' #This value has been changed
+master-info_repository = 'TABLE' #This value has been changed
+user=mysql  # inline coments
+pid-file=/var/run/mysqld/mysqld.pid
+socket=/var/run/mysqld/mysqld2.sock
+port=1001
+basedir=/usr
+datadir=/var/lib/mysql
+tmpdir = /tmp # other inline comment and spaces
+to_override = overridden # this option is going to be overridden
+to_override_with_value = new_value  # this is also be be overridden
+no_comment_no_value = 'look a value #'
+lc-messages-dir=/usr/share/mysql
+skip-external-locking  # another inline comment
+binlog=True # ignore this comment
+   multivalue =   Noooooooooooooooo #; Ignore this one as well
+semi-colon=;
+
+# leading and training spaces are ignored
+   bind-address =   127.0.0.1
+
+log_error # value to be removed
+
+new_option_existing_section = new_value
+new_option_existing_section_no_value
+
+[escape_sequences]
+backspace=\b
+tab=\t
+newline=\n
+carriage-return=\r
+backslash=\\
+space=\s
+not_esc_seq_char=\S
+
+[path_options]
+win_path_no_esc_seq_char1="C:\Program Files\MySQL\MySQL Server 5.7"
+win_path_no_esc_seq_char2="C:\\Program Files\\MySQL\\MySQL Server 5.7"
+win_path_esc_seq_char=C:\\Program\sFiles\\MySQL\\MySQL\sServer\s5.7
+win_path_with_posix_sep="C:/Program Files/MySQL/MySQL Server 5.7"
+
+[empty section]
+
+[new_section]
+new_option = new_value
+option_no_value

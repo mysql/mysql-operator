@@ -1,0 +1,36 @@
+{
+    "options": {
+        "schema": "stackoverflow",
+        "table": "Users",
+        "columns": [
+            "Id",
+            "Reputation",
+            "CreationDate",
+            "DisplayName",
+            "LastAccessDate",
+            "WebsiteUrl",
+            "Location",
+            "AboutMe",
+            "Views",
+            "UpVotes",
+            "DownVotes",
+            "ProfileImageUrl",
+            "EmailHash",
+            "Age",
+            "AccountId"
+        ],
+        "primaryIndex": "Id",
+        "compression": "zstd",
+        "defaultCharacterSet": "utf8mb4",
+        "fieldsTerminatedBy": "\t",
+        "fieldsEnclosedBy": "",
+        "fieldsOptionallyEnclosed": false,
+        "fieldsEscapedBy": "\\",
+        "linesTerminatedBy": "\n"
+    },
+    "triggers": [],
+    "includesData": true,
+    "includesDdl": true,
+    "extension": "tsv.zst",
+    "chunking": true
+}

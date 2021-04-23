@@ -1,0 +1,19 @@
+{
+    "dumper": "mysqlsh Ver 8.0.21 for Linux on x86_64 - for MySQL 8.0.21 (MySQL Community Server (GPL))",
+    "version": "1.0.0",
+    "schemas": [
+        "stackoverflow"
+    ],
+    "basenames": {
+        "stackoverflow": "stackoverflow"
+    },
+    "defaultCharacterSet": "utf8mb4",
+    "tzUtc": true,
+    "user": "root",
+    "hostname": "linux-perf",
+    "server": "linux-perf",
+    "serverVersion": "8.0.21",
+    "gtidExecuted": "",
+    "consistent": false,
+    "begin": "2020-07-08 21:38:18"
+}

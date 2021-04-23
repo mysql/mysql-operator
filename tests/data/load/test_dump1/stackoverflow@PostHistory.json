@@ -1,0 +1,30 @@
+{
+    "options": {
+        "schema": "stackoverflow",
+        "table": "PostHistory",
+        "columns": [
+            "Id",
+            "PostHistoryTypeId",
+            "PostId",
+            "RevisionGUID",
+            "CreationDate",
+            "UserId",
+            "UserDisplayName",
+            "Comment",
+            "Text"
+        ],
+        "primaryIndex": "Id",
+        "compression": "zstd",
+        "defaultCharacterSet": "utf8mb4",
+        "fieldsTerminatedBy": "\t",
+        "fieldsEnclosedBy": "",
+        "fieldsOptionallyEnclosed": false,
+        "fieldsEscapedBy": "\\",
+        "linesTerminatedBy": "\n"
+    },
+    "triggers": [],
+    "includesData": true,
+    "includesDdl": true,
+    "extension": "tsv.zst",
+    "chunking": true
+}

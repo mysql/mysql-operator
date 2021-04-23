@@ -1,0 +1,30 @@
+{
+    "options": {
+        "schema": "stackoverflow",
+        "table": "Badges",
+        "columns": [
+            "Id",
+            "UserId",
+            "Name",
+            "Date",
+            "Class",
+            "TagBased"
+        ],
+        "decodeColumns": {
+            "TagBased": "FROM_BASE64"
+        },
+        "primaryIndex": "Id",
+        "compression": "zstd",
+        "defaultCharacterSet": "utf8mb4",
+        "fieldsTerminatedBy": "\t",
+        "fieldsEnclosedBy": "",
+        "fieldsOptionallyEnclosed": false,
+        "fieldsEscapedBy": "\\",
+        "linesTerminatedBy": "\n"
+    },
+    "triggers": [],
+    "includesData": true,
+    "includesDdl": true,
+    "extension": "tsv.zst",
+    "chunking": true
+}

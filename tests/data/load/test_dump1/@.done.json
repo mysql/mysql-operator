@@ -1,0 +1,16 @@
+{
+    "end": "2020-07-08 21:46:35",
+    "dataBytes": 216942629791,
+    "tableDataBytes": {
+        "stackoverflow": {
+            "PostHistory": 121784087291,
+            "Users": 2337475199,
+            "Comments": 15500462093,
+            "Posts": 65759031742,
+            "Votes": 8970502064,
+            "PostLinks": 333972145,
+            "Badges": 2254977119,
+            "Tags": 2122138
+        }
+    }
+}

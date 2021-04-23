@@ -1,0 +1,27 @@
+{
+    "options": {
+        "schema": "stackoverflow",
+        "table": "Votes",
+        "columns": [
+            "Id",
+            "PostId",
+            "VoteTypeId",
+            "UserId",
+            "CreationDate",
+            "BountyAmount"
+        ],
+        "primaryIndex": "Id",
+        "compression": "zstd",
+        "defaultCharacterSet": "utf8mb4",
+        "fieldsTerminatedBy": "\t",
+        "fieldsEnclosedBy": "",
+        "fieldsOptionallyEnclosed": false,
+        "fieldsEscapedBy": "\\",
+        "linesTerminatedBy": "\n"
+    },
+    "triggers": [],
+    "includesData": true,
+    "includesDdl": true,
+    "extension": "tsv.zst",
+    "chunking": true
+}

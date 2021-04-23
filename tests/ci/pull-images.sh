@@ -1,0 +1,35 @@
+#!/bin/bash
+# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+
+# pull test images
+# usage: <images-list>
+# e.g.: ./images-list.txt
+# input sample (every three lines are in order LABEL, IMAGE_TO_PULL, IMAGE_TO_TEST, separator ---)
+# <images-list.txt>
+# mysql-server:8.0.24
+# mydocker.no.oracle.com/qa/mysql-server:8.0.24
+# mysql/mysql-server:8.0.24
+# ---
+# mysql-router:8.0.24
+# mydocker.no.oracle.com/qa/mysql-router:8.0.24
+# mysql/mysql-router:8.0.24
+# ---
+# [...]
+# </images-list.txt>
+
+if [ "$#" -ne 1 ]; then
+    echo "usage: <images-list>"
+	exit 1
+fi
+
+images_to_process=$(mktemp)
+cat "$1" | awk 'BEGIN { RS = "---" } { print $2 " " $3 }' > $images_to_process
+
+while read -r image_info
+do
+	read IMAGE_TO_PULL IMAGE_TO_TEST <<< "$image_info"
+	docker pull $IMAGE_TO_PULL
+	docker tag $IMAGE_TO_PULL $IMAGE_TO_TEST
+done < $images_to_process
+
+rm $images_to_process

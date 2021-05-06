@@ -305,13 +305,17 @@ def on_pod_create(body: Body, logger: Logger, **kwargs):
         # example, unbound volume claims, initconf not finished etc
         raise kopf.TemporaryError(f"{pod.name} is not ready yet", delay=10)
 
+    # If we are here all containers have started. This means, that if we are initializing
+    # the database from a donor (cloning) the sidecar has already started a seed instance
+    # and cloned from the donor into it (see initdb.py::start_clone_seed_pod())
     cluster = pod.get_cluster()
     logger.info(f"CLUSTER DELETING={cluster.deleting}")
 
     assert cluster
 
     with ClusterMutex(cluster, pod):
-        if pod.index == 0 and not cluster.get_create_time():
+        first_pod = pod.index == 0 and not cluster.get_create_time()
+        if first_pod:
             cluster_objects.on_first_cluster_pod_created(cluster, logger)
 
             g_group_monitor.monitor_cluster(

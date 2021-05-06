@@ -31,6 +31,8 @@ def start_clone_seed_pod(session: 'ClassicSession',
     print(
         f"CONNECTING WITH {donor_root_co} {isinstance(donor_root_co, dict)} {type(donor_root_co)}")
 
+    # Let's check if the donor has the CLONE plugin and if not install it
+    # It's not possible to clone without this plugin being installed
     with SessionWrap(donor_root_co) as donor:
         clone_installed = False
         for row in iter(donor.run_sql("SHOW PLUGINS").fetch_one, None):
@@ -41,6 +43,7 @@ def start_clone_seed_pod(session: 'ClassicSession',
 
         if not clone_installed:
             logger.info(f"Installing clone plugin at {donor.uri}")
+            # A: Check here if the plugin reall got installed before continuing?
             donor.run_sql("install plugin clone soname 'mysql_clone.so'")
 
         # TODO copy other installed plugins(?)
@@ -51,6 +54,7 @@ def start_clone_seed_pod(session: 'ClassicSession',
         donor_co["password"] = clone_spec.get_password(cluster.namespace)
 
         with SessionWrap(donor_co) as donor:
+            logger.info(f"Starting server clone from {clone_spec.uri}")
             return mysqlutils.clone_server(donor_co, donor, session, logger)
     except mysqlsh.Error as e:
         if mysqlutils.is_client_error(e.code) or e.code == mysqlsh.mysql.ErrorCode.ER_ACCESS_DENIED_ERROR:

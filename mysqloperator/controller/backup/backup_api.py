@@ -102,6 +102,7 @@ class MySQLBackupSpec:
         self.deleteBackupData = dget_bool(
             spec, "deleteBackupData", "spec", default_value=False)
 
+        print(f"self.clusterName={self.clusterName} self.backupProfileName={self.backupProfileName} self.backupProfile={self.backupProfile}  self.deleteBackupData={self.deleteBackupData}")
         if self.backupProfileName and self.backupProfile:
             raise ApiSpecError(
                 f"Only one of spec.backupProfileName or spec.backupProfile must be set")
@@ -140,6 +141,8 @@ class MySQLBackup:
     def __init__(self, backup: dict):
         self.obj: dict = backup
 
+        # self.namespace and self.name here will call the getters, which in turn will
+        # look into self.obj['metadata']
         self.parsed_spec = MySQLBackupSpec(
             self.namespace, self.name, self.spec)
 

@@ -210,8 +210,22 @@ class ClusterController:
                     "initialDataSource": f"clone={self.cluster.parsed_spec.initDB.clone.uri}",
                     "incrementalRecoveryAllowed": False
                 })
+            elif self.cluster.parsed_spec.initDB.dump and seed_pod.index == 0: # A : Should we check for index?
+                if self.cluster.parsed_spec.initDB.dump.storage.ociObjectStorage:
+                    self.cluster.update_cluster_info({
+                        "initialDataSource": f"dump={self.cluster.parsed_spec.initDB.dump.storage.ociObjectStorage.bucketName}",
+                        "incrementalRecoveryAllowed": True  # A: what should be the value of this
+                    })
+                elif self.cluster.parse_spec.initDB.dump.storage.persistentVolumeClaim:
+                    self.cluster.update_cluster_info({
+                        "initialDataSource": f"dump={self.cluster.parsed_spec.initDB.dump.storage.ociObjectStorage.bucketName}",
+                        "incrementalRecoveryAllowed": False  # A: what should be the value of this
+                    })
+                    # A : How to import from a dump?
+                else:
+                    assert 0, "Unknown Dump storage mechanism"
             else:
-                assert 0, "internal error"
+                assert 0, "Unknown initDB source"
         else:
             # We're creating the cluster from scratch, so GTID set is sure to be complete
             assume_gtid_set_complete = True
@@ -630,8 +644,7 @@ class ClusterController:
                     raise kopf.PermanentError(
                         f"Internal inconsistency: cluster marked as initialized, but create requested again")
 
-                shellutils.RetryLoop(logger).call(
-                    self.create_cluster, pod, logger)
+                shellutils.RetryLoop(logger).call(self.create_cluster, pod, logger)
 
                 # Mark the cluster object as already created
                 self.cluster.set_create_time(datetime.datetime.now())

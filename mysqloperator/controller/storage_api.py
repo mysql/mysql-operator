@@ -35,7 +35,8 @@ spec:
         mountPath: /mnt/storage
     volumes:
     - name: tmp-storage
-{indent(yaml.safe_dump(self.raw_data), 6)}
+      persistentVolumeClaim:
+{indent(yaml.safe_dump(self.raw_data), 8)}
 """
         merge_patch_object(pod_spec, yaml.safe_load(patch))
 
@@ -102,7 +103,7 @@ spec:
         merge_patch_object(pod_spec, yaml.safe_load(patch))
 
     def parse(self, spec: dict, prefix: str) -> None:
-        self.prefix = dget_str(spec, "prefix", prefix)
+        self.prefix = dget_str(spec, "prefix", prefix, default_value = "")
         self.bucketName = dget_str(spec, "bucketName", prefix)
         self.ociCredentials = dget_str(spec, "credentials", prefix)
 

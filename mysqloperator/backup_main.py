@@ -33,7 +33,7 @@ def get_dir_size(d):
     return size
 
 
-def execute_dump_instance(backup_source, profile, backupdir, backup_name, oci_config : dict, logger : logging.Logger):
+def execute_dump_instance(backup_source, profile, backupdir, backup_name, logger : logging.Logger):
     shell = mysqlsh.globals.shell
     util = mysqlsh.globals.util
 
@@ -44,6 +44,7 @@ def execute_dump_instance(backup_source, profile, backupdir, backup_name, oci_co
         options["threads"] = multiprocessing.cpu_count()
 
     if profile.storage.ociObjectStorage:
+        oci_config = create_oci_config_file_from_envs(os.environ, logger)
         options["osBucketName"] = profile.storage.ociObjectStorage.bucketName
         options["ociConfigFile"] = oci_config["config"]
         options["ociProfile"] = oci_config["profile"]
@@ -102,7 +103,7 @@ def execute_dump_instance(backup_source, profile, backupdir, backup_name, oci_co
     return info
 
 
-def execute_clone_snapshot(backup_source, profile, backupdir: Optional[str], backup_name: str, oci_config : dict, logger: logging.Logger) -> dict:
+def execute_clone_snapshot(backup_source, profile, backupdir: Optional[str], backup_name: str, logger: logging.Logger) -> dict:
     ...
 
 
@@ -156,7 +157,7 @@ def pick_source_instance(cluster, logger: logging.Logger):
         f"No instances available to backup from in cluster {cluster.name}")
 
 
-def do_backup(backup : MySQLBackup, job_name: str, start, backupdir: Optional[str], oci_config: dict, logger: logging.Logger) -> dict:
+def do_backup(backup : MySQLBackup, job_name: str, start, backupdir: Optional[str], logger: logging.Logger) -> dict:
     logger.info(
         f"Starting backup of {backup.namespace}/{backup.parsed_spec.clusterName}  profile={backup.parsed_spec.backupProfileName}  backupdir={backupdir}")
 
@@ -170,9 +171,9 @@ def do_backup(backup : MySQLBackup, job_name: str, start, backupdir: Optional[st
     backup_source = pick_source_instance(cluster, logger)
 
     if profile.dumpInstance:
-        return execute_dump_instance(backup_source, profile.dumpInstance, backupdir, job_name, oci_config, logger)
+        return execute_dump_instance(backup_source, profile.dumpInstance, backupdir, job_name, logger)
     elif profile.cloneSnapshot:
-        return execute_clone_snapshot(backup_source, profile.cloneSnapshot, backupdir, job_name, oci_config, logger)
+        return execute_clone_snapshot(backup_source, profile.cloneSnapshot, backupdir, job_name, logger)
     else:
         raise Exception(f"Invalid backup method in profile {profile.name}")
 
@@ -244,6 +245,7 @@ def create_oci_config_file_from_envs(env_vars: dict,  logger : logging.Logger) -
 
 
 def main(argv):
+    import time
     import datetime
 
     debug = False
@@ -281,9 +283,7 @@ def main(argv):
     try:
         backup.set_started(jobname, start)
 
-        oci_config = create_oci_config_file_from_envs(os.environ, logger)
-
-        info = do_backup(backup, jobname, start, backupdir, oci_config, logger)
+        info = do_backup(backup, jobname, start, backupdir, logger)
 
         backup.set_succeeded(jobname, start, utils.isotime(), info)
     except Exception as e:
@@ -294,7 +294,6 @@ def main(argv):
 
         if debug:
             logger.info(f"Waiting for 1h...")
-            import time
             time.sleep(60*60)
 
         return 1

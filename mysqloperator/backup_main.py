@@ -163,10 +163,7 @@ def do_backup(backup : MySQLBackup, job_name: str, start, backupdir: Optional[st
 
     cluster = backup.get_cluster()
 
-    profile = cluster.parsed_spec.get_backup_profile(backup.parsed_spec.backupProfileName)
-    if not profile:
-        raise Exception(
-            f"Unknown backup profile {backup.parsed_spec.backupProfileName} in cluster {backup.namespace}/{backup.parsed_spec.clusterName}")
+    profile = backup.get_profile()
 
     backup_source = pick_source_instance(cluster, logger)
 

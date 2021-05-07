@@ -128,8 +128,10 @@ class MySQLBackupSpec:
             if not self.backupProfile:
                 return ApiSpecError(f"Invalid backupProfileName '{self.backupProfileName}' in cluster {self.namespace}/{self.clusterName}")
 
+        print(f"backupProfile={self.backupProfile}")
+
     def parse_backup_profile(self, profile: dict, prefix: str) -> Optional[BackupProfile]:
-        # TODO
+        # TODO ?
         if profile:
             p = BackupProfile()
             p.parse(profile, prefix)
@@ -195,7 +197,16 @@ class MySQLBackup:
         return self.parsed_spec.clusterName
 
     def get_profile(self):
-        pass
+        if self.parsed_spec.backupProfile:
+            return self.parsed_spec.backupProfile
+
+        cluster = self.get_cluster()
+        profile = cluster.parsed_spec.get_backup_profile(self.parsed_spec.backupProfileName)
+        if not profile:
+            raise Exception(
+                f"Unknown backup profile {self.parsed_spec.backupProfileName} in cluster {self.namespace}/{self.parsed_spec.clusterName}")
+
+        return profile
 
     def set_started(self, backup_name: str, start_time: str) -> None:
         patch = {"status": {

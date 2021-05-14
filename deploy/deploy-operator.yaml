@@ -28,7 +28,7 @@ spec:
     spec:
       containers:
         - name: mysql-operator
-          image: mysql/mysql-shell:8.0.24
-          imagePullPolicy: Always
-          args: ["mysqlsh", "--log-level=@INFO", "--log-file=", "--pym", "mysqloperator", "operator"]
+          image: registry.localhost:5000/mysql-operator:8.0.26
+          imagePullPolicy: Never
+          args: ["mysqlsh", "--log-level=@INFO", "--pym", "mysqloperator", "operator"]
       serviceAccountName: mysql-operator-sa

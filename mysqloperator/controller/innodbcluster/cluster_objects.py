@@ -113,6 +113,7 @@ def prepare_cluster_stateful_set(spec: InnoDBClusterSpec) -> dict:
     if config.enable_mysqld_general_log:
         mysql_argv.append("--general-log=1")
 
+    # TODO re-add "--log-file=",
     tmpl = f"""
 apiVersion: apps/v1
 kind: StatefulSet
@@ -145,7 +146,7 @@ spec:
       - name: initconf
         image: {spec.shell_image}
         imagePullPolicy: {spec.shell_image_pull_policy}
-        command: ["mysqlsh", "--log-level=@INFO", "--log-file=", "--pym", "mysqloperator", "init"]
+        command: ["mysqlsh", "--log-level=@INFO", "--pym", "mysqloperator", "init"]
         env:
         - name: MY_POD_NAME
           valueFrom:

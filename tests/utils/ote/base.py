@@ -107,6 +107,7 @@ class BaseEnvironment:
             print(" ".join(args))
             subprocess.call(args)
         # TODO change operator image to :latest
+        # TODO re-add: "--log-file=", 
         y = f"""
 apiVersion: v1
 kind: Namespace
@@ -141,7 +142,7 @@ spec:
         - name: mysql-operator
           image: "mysql/mysql-shell:{config.DEFAULT_SHELL_VERSION_TAG}"
           imagePullPolicy: Never
-          args: ["mysqlsh", "--log-level=@INFO", "--log-file=", "--pym", "mysqloperator", "operator"]
+          args: ["mysqlsh", "--log-level=@INFO", "--pym", "mysqloperator", "operator"]
           env:
             - name: MYSQL_OPERATOR_DEBUG
               value: "{self.opt_operator_debug_level}"

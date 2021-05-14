@@ -39,7 +39,7 @@ DEFAULT_IMAGE_REPOSITORY = os.getenv(
 
 MYSQL_SERVER_IMAGE = "mysql-server"
 MYSQL_ROUTER_IMAGE = "mysql-router"
-MYSQL_SHELL_IMAGE = "mysql-shell"
+MYSQL_SHELL_IMAGE = "mysql-operator"
 
 MYSQL_SERVER_EE_IMAGE = "mysql-server"  # TODO
 MYSQL_ROUTER_EE_IMAGE = "mysql-router"

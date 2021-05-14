@@ -1,10 +1,3 @@
-FROM oraclelinux:8.1 AS pip-stage-3.8
-
-RUN dnf install -y gcc python38-devel python38-pip git
-COPY requirements.txt .
-RUN pip3 install --target=/tmp/site-packages -r requirements.txt
-#############################
-
 FROM oraclelinux:8.1 AS pip-stage
 
 ARG PYTHON_TARBALL

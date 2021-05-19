@@ -84,6 +84,7 @@ class MySQLBackupSpec:
     deleteBackupData: bool = False
     shell_image: str = ""
     shell_image_pull_policy: str = ""
+    image_pull_secrets: str = ""
 
     def __init__(self, namespace: str, name: str, spec: dict):
         self.namespace = namespace
@@ -121,6 +122,7 @@ class MySQLBackupSpec:
 
         self.shell_image = cluster.parsed_spec.shell_image
         self.shell_image_pull_policy = cluster.parsed_spec.shell_image_pull_policy
+        self.image_pull_secrets = cluster.parsed_spec.image_pull_secrets
 
         if self.backupProfileName:
             self.backupProfile = cluster.parsed_spec.get_backup_profile(

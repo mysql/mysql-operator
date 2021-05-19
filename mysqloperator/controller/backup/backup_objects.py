@@ -45,6 +45,7 @@ spec:
         image: {spec.shell_image}
         imagePullPolicy: {spec.shell_image_pull_policy}
         command: ["mysqlsh", "--pym", "mysqloperator", "backup", "{spec.namespace}", "{spec.name}", "{jobname}", "/mnt/storage"]
+{utils.indent(spec.image_pull_secrets, 6)}
       restartPolicy: Never
 """
 

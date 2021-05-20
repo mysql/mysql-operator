@@ -115,7 +115,7 @@ class RouterSpec:
     instances: int = 0
 
     # Router version, if user wants to override it (latest by default)
-    version: str = config.DEFAULT_ROUTER_VERSION_TAG
+    version: str = None # config.DEFAULT_ROUTER_VERSION_TAG
 
     podSpec: dict = {}
 
@@ -327,11 +327,14 @@ class InnoDBClusterSpec:
 
     @property
     def router_image(self) -> str:
-        # router image version is always the latest
         if self.router and self.router.version:
-            return self.format_image(config.MYSQL_ROUTER_IMAGE, self.router.version)
+            version = self.router.version
+        elif self.version:
+            version = self.version
         else:
-            return self.format_image(config.MYSQL_ROUTER_IMAGE, config.DEFAULT_ROUTER_VERSION_TAG)
+            version = config.DEFAULT_ROUTER_VERSION_TAG
+
+        return self.format_image(config.MYSQL_ROUTER_IMAGE, version)
 
     @property
     def shell_image(self) -> str:

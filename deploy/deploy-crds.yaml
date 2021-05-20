@@ -188,6 +188,19 @@ spec:
                 deleteBackupData:
                   type: boolean
                   default: false
+            status:
+              type: object
+              properties:
+                status:
+                  type: string
+                startTime:
+                  type: string
+                completionTime:
+                  type: string
+                elapsedTime:
+                  type: string
+                output:
+                  type: string
       subresources:
         status: {}
       additionalPrinterColumns:

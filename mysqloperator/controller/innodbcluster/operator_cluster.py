@@ -75,43 +75,57 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
 
     if not cluster.get_create_time():
         try:
+            print("1. Initconf")
             if not ignore_404(cluster.get_initconf):
+                print("Preparing...")
                 configs = cluster_objects.prepare_initconf(icspec)
                 kopf.adopt(configs)
                 api_core.create_namespaced_config_map(namespace, configs)
 
+            print("2. Prepare private secrets")
             if not ignore_404(cluster.get_private_secrets):
+                print("Preparing...")
                 secret = cluster_objects.prepare_secrets(icspec)
                 kopf.adopt(secret)
                 api_core.create_namespaced_secret(
                     namespace=namespace, body=secret)
 
+            print("3. Prepare router accounts")
             if not ignore_404(cluster.get_router_account):
+                print("Preparing...")
                 secret = router_objects.prepare_router_secrets(icspec)
                 kopf.adopt(secret)
                 api_core.create_namespaced_secret(
                     namespace=namespace, body=secret)
 
+            print("4. Prepare cluster service")
             if not ignore_404(cluster.get_service):
+                print("Preparing...")
                 service = cluster_objects.prepare_cluster_service(icspec)
                 kopf.adopt(service)
                 api_core.create_namespaced_service(
                     namespace=namespace, body=service)
 
+            print("5. Prepare cluster StatefulSet")
             if not ignore_404(cluster.get_stateful_set):
+                print("Preparing...")
                 statefulset = cluster_objects.prepare_cluster_stateful_set(
                     icspec)
                 kopf.adopt(statefulset)
                 api_apps.create_namespaced_stateful_set(
                     namespace=namespace, body=statefulset)
 
+            print("6. Prepare router service")
             if not ignore_404(cluster.get_router_service):
+                print("Preparing...")
                 router_service = router_objects.prepare_router_service(icspec)
                 kopf.adopt(router_service)
                 api_core.create_namespaced_service(
                     namespace=namespace, body=router_service)
 
+            print("7. Prepare router ReplicaSet")
             if not ignore_404(cluster.get_router_replica_set):
+                print("Preparing...")
                 if icspec.router.instances > 0:
                     router_replicaset = router_objects.prepare_router_replica_set(
                         icspec, init_only=True)
@@ -119,7 +133,9 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                     api_apps.create_namespaced_replica_set(
                         namespace=namespace, body=router_replicaset)
 
+            print("8. Prepare Backup secrets")
             if not ignore_404(cluster.get_backup_account):
+                print("Preparing...")
                 secret = backup_objects.prepare_backup_secrets(icspec)
                 kopf.adopt(secret)
                 api_core.create_namespaced_secret(

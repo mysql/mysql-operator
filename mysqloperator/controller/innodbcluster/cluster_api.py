@@ -138,6 +138,8 @@ class InnoDBClusterSpec:
 
     # MySQL server version
     version: str = config.DEFAULT_VERSION_TAG
+    # Sidecar version: used for initconf, sidecar, batchjob (backup)
+    sidecarVersion: str = config.DEFAULT_SHELL_VERSION_TAG
 
     edition: Edition = config.OPERATOR_EDITION
 
@@ -343,7 +345,9 @@ class InnoDBClusterSpec:
             image = config.MYSQL_SHELL_IMAGE
         else:
             image = config.MYSQL_SHELL_EE_IMAGE
-        return self.format_image(image, config.DEFAULT_SHELL_VERSION_TAG)
+
+        return self.format_image(image, self.sidecarVersion)
+
 
     @property
     def mysql_image_pull_policy(self) -> str:

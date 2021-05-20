@@ -201,6 +201,18 @@ spec:
                   type: string
                 output:
                   type: string
+                method:
+                  type: string
+                source:
+                  type: string
+                bucket:
+                  type: string
+                ociTenancy:
+                  type: string
+                spaceAvailable:
+                  type: string
+                size:
+                  type: string
       subresources:
         status: {}
       additionalPrinterColumns:

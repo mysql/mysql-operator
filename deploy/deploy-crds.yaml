@@ -48,6 +48,8 @@ spec:
                     properties:
                       name:
                         type: string
+                serviceAccountName:
+                  type: string
                 baseServerId:
                   type: integer
                   minimum: 0

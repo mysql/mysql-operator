@@ -147,6 +147,8 @@ class InnoDBClusterSpec:
     imagePullSecrets: Optional[List[dict]] = None
     imageRepository: str = config.DEFAULT_IMAGE_REPOSITORY
 
+    serviceAccountName: Optional[str] = None
+
     # number of MySQL instances (required)
     instances: int = 1
     # base value for server_id
@@ -208,6 +210,9 @@ class InnoDBClusterSpec:
         if "imagePullSecrets" in spec:
             self.imagePullSecrets = dget_list(
                 spec, "imagePullSecrets", "spec", content_type=dict)
+
+        if "serviceAccountName" in spec:
+            self.serviceAccountName = dget_str(spec, "serviceAccountName", "spec")
 
         if "imageRepository" in spec:
             self.imageRepository = dget_str(spec, "imageRepository", "spec")
@@ -375,6 +380,12 @@ class InnoDBClusterSpec:
     def image_pull_secrets(self) -> str:
         if self.imagePullSecrets:
             return f"imagePullSecrets:\n{yaml.safe_dump(self.imagePullSecrets)}"
+        return ""
+
+    @property
+    def service_account_name(self) -> str:
+        if self.serviceAccountName:
+            return f"serviceAccountName: {self.serviceAccountName}"
         return ""
 
 

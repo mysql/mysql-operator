@@ -142,6 +142,7 @@ spec:
       readinessGates:
       - conditionType: "mysql.oracle.com/configured"
       - conditionType: "mysql.oracle.com/ready"
+{utils.indent(spec.service_account_name, 6)}
       initContainers:
       - name: initconf
         image: {spec.shell_image}

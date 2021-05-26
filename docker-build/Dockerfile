@@ -1,0 +1,16 @@
+# Copyright (c) 2021, Oracle and/or its affiliates.
+#
+# Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
+#
+
+FROM %%MYSQL_OPERATOR_PYTHON_DEPS%%
+
+
+RUN rpm -U %%MYSQL_REPO_URL%%/mysql80-community-release-el8.rpm \
+  && microdnf update && echo "[main]" > /etc/dnf/dnf.conf \
+  && microdnf install -y --disablerepo=mysql-tools-community --enablerepo=mysql-tools-preview %%MYSQL_SHELL_PACKAGE%% \
+  && microdnf remove mysql80-community-release \
+  && microdnf clean all
+
+COPY mysqloperator/ /usr/lib/mysqlsh/python-packages/mysqloperator
+

@@ -145,8 +145,8 @@ spec:
 {utils.indent(spec.service_account_name, 6)}
       initContainers:
       - name: initconf
-        image: {spec.shell_image}
-        imagePullPolicy: {spec.shell_image_pull_policy}
+        image: {spec.operator_image}
+        imagePullPolicy: {spec.operator_image_pull_policy}
         command: ["mysqlsh", "--log-level=@INFO", "--pym", "mysqloperator", "init"]
         env:
         - name: MY_POD_NAME
@@ -193,8 +193,8 @@ spec:
           subPath: my.cnf
       containers:
       - name: sidecar
-        image: {spec.shell_image}
-        imagePullPolicy: {spec.shell_image_pull_policy}
+        image: {spec.operator_image}
+        imagePullPolicy: {spec.operator_image_pull_policy}
         command: ["mysqlsh", "--pym", "mysqloperator", "sidecar"]
         env:
         - name: MY_POD_NAME
@@ -464,14 +464,14 @@ def update_mysql_image(sts, spec: InnoDBClusterSpec) -> None:
     update_stateful_set_spec(sts, patch)
 
 
-def update_shell_image(sts, spec: InnoDBClusterSpec) -> None:
+def update_operator_image(sts, spec: InnoDBClusterSpec) -> None:
     patch = {"spec": {"template":
                       {"spec": {
                           "containers": [
-                               {"name": "sidecar", "image": spec.shell_image}
+                               {"name": "sidecar", "image": spec.operator_image}
                           ],
                           "initContainers": [
-                              {"name": "initconf", "image": spec.shell_image}
+                              {"name": "initconf", "image": spec.operator_image}
                           ]}
                        }}}
     update_stateful_set_spec(sts, patch)

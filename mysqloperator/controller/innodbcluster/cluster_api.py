@@ -139,7 +139,7 @@ class InnoDBClusterSpec:
     # MySQL server version
     version: str = config.DEFAULT_VERSION_TAG
     # Sidecar version: used for initconf, sidecar, batchjob (backup)
-    sidecarVersion: str = config.DEFAULT_SHELL_VERSION_TAG
+    sidecarVersion: str = config.DEFAULT_OPERATOR_VERSION_TAG
 
     edition: Edition = config.OPERATOR_EDITION
 
@@ -344,12 +344,12 @@ class InnoDBClusterSpec:
         return self.format_image(config.MYSQL_ROUTER_IMAGE, version)
 
     @property
-    def shell_image(self) -> str:
+    def operator_image(self) -> str:
         # shell image version is the same as ours (operator)
         if self.edition == Edition.community:
-            image = config.MYSQL_SHELL_IMAGE
+            image = config.MYSQL_OPERATOR_IMAGE
         else:
-            image = config.MYSQL_SHELL_EE_IMAGE
+            image = config.MYSQL_OPERATOR_EE_IMAGE
 
         return self.format_image(image, self.sidecarVersion)
 
@@ -363,7 +363,7 @@ class InnoDBClusterSpec:
         return self.router.podSpec.get("imagePullPolicy", self.imagePullPolicy.value)
 
     @property
-    def shell_image_pull_policy(self) -> str:
+    def operator_image_pull_policy(self) -> str:
         return self.imagePullPolicy.value
 
     @property

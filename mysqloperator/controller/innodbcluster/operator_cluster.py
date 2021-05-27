@@ -247,7 +247,7 @@ def on_innodbcluster_field_image_repository(old, new, body: Body,
         cluster.parse_spec()
 
         cluster_objects.update_mysql_image(sts, cluster.parsed_spec)
-        cluster_objects.update_shell_image(sts, cluster.parsed_spec)
+        cluster_objects.update_operator_image(sts, cluster.parsed_spec)
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,

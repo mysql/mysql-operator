@@ -41,9 +41,9 @@ spec:
   template:
     spec:
       containers:
-      - name: shell
-        image: {spec.shell_image}
-        imagePullPolicy: {spec.shell_image_pull_policy}
+      - name: operator-backup-job
+        image: {spec.operator_image}
+        imagePullPolicy: {spec.operator_image_pull_policy}
         command: ["mysqlsh", "--pym", "mysqloperator", "backup", "{spec.namespace}", "{spec.name}", "{jobname}", "/mnt/storage"]
 {utils.indent(spec.image_pull_secrets, 6)}
 {utils.indent(spec.service_account_name, 6)}
@@ -52,6 +52,6 @@ spec:
 
     job = yaml.safe_load(tmpl)
 
-    spec.add_to_pod_spec(job["spec"]["template"], "shell")
+    spec.add_to_pod_spec(job["spec"]["template"], "operator-backup-job")
 
     return job

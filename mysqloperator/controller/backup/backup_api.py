@@ -82,8 +82,8 @@ class MySQLBackupSpec:
     backupProfileName: str = ""
     backupProfile = None
     deleteBackupData: bool = False
-    shell_image: str = ""
-    shell_image_pull_policy: str = ""
+    operator_image: str = ""
+    operator_image_pull_policy: str = ""
     image_pull_secrets: Optional[str] = None
     service_account_name: Optional[str] = None
 
@@ -121,8 +121,8 @@ class MySQLBackupSpec:
                 return ApiSpecError(f"Invalid clusterName {self.namespace}/{self.clusterName}")
             raise
 
-        self.shell_image = cluster.parsed_spec.shell_image
-        self.shell_image_pull_policy = cluster.parsed_spec.shell_image_pull_policy
+        self.operator_image = cluster.parsed_spec.operator_image
+        self.operator_image_pull_policy = cluster.parsed_spec.operator_image_pull_policy
         self.image_pull_secrets = cluster.parsed_spec.image_pull_secrets
         self.service_account_name = cluster.parsed_spec.service_account_name
 

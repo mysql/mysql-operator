@@ -120,7 +120,10 @@ def pick_source_instance(cluster, logger: logging.Logger):
         try:
             with shellutils.DbaWrap(shellutils.connect_dba(pod.endpoint_co, logger, max_tries=3)) as dba:
                 try:
-                    status = dba.get_cluster().member_status({"extended": 1})
+                    tmp = dba.get_cluster().status({"extended": 1})["defaultReplicaSet"]
+                    cluster_status = tmp["status"]
+                    self_uuid = dba.session.run_sql("select @@server_uuid")
+                    member_status = [x for x in tmp["topology"].values() if x["memberId"] == self_uuid][0]
                 except mysqlsh.Error as e:
                     logger.warning(
                         f"Could not get cluster status from {pod}: {e}")
@@ -134,11 +137,11 @@ def pick_source_instance(cluster, logger: logging.Logger):
             continue
 
         logger.info(
-            f"Cluster status from {pod} is {status}, applier_queue_size={applier_queue_size}")
-        if not status["clusterStatus"].startswith("OK") or status["memberState"] != "ONLINE":
+            f"Cluster status from {pod} is {cluster_status}, member_status={member_status} applier_queue_size={applier_queue_size}")
+        if not cluster_status.startswith("OK") or member_status["memberState"] != "ONLINE":
             continue
 
-        if status["memberRole"] == "SECONDARY":
+        if member_status["memberRole"] == "SECONDARY":
             if not best_secondary or applier_queue_size < best_secondary_applier_queue_size:
                 best_secondary = pod.endpoint_co
                 best_secondary_applier_queue_size = applier_queue_size

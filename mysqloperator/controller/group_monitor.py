@@ -12,6 +12,7 @@ from mysqloperator.controller.shellutils import RetryLoop
 from . import shellutils
 import threading
 import time
+import select
 import mysqlsh
 
 mysql = mysqlsh.mysql
@@ -213,22 +214,21 @@ class GroupMonitor(threading.Thread):
     def run(self) -> None:
         last_ping = time.time()
         while not self.stopped:
-            sessions = []
+            session_fds_to_cluster = {}
             for cluster in self.clusters:
                 cluster.ensure_connected()
                 if cluster.session:
-                    sessions.append(cluster.session)
+                    session_fds_to_cluster[cluster.session._get_socket_fd()] = cluster
 
             # wait for 1s at most so that newly added session don't wait much
             # TODO replace poll_sessions() with something to get the session fd
             # - do the poll loop in python
             # - add a socket_pair() to allow interrupting the poll when a new
             # cluster is added and increase the timeout
-            ready = mysql.poll_sessions(sessions, 1000)
-            if ready:
-                for i, cluster in enumerate(self.clusters):
-                    if cluster.session and cluster.session in ready:
-                        cluster.handle_notice()
+
+            ready, _, _ = select.select(session_fds_to_cluster.keys(), [], [], 1000)
+            for fd in ready:
+                session_fds_to_cluster[fd].handle_notice()
 
     def stop(self) -> None:
         self.stopped = True

@@ -122,7 +122,7 @@ def pick_source_instance(cluster, logger: logging.Logger):
                 try:
                     tmp = dba.get_cluster().status({"extended": 1})["defaultReplicaSet"]
                     cluster_status = tmp["status"]
-                    self_uuid = dba.session.run_sql("select @@server_uuid")
+                    self_uuid = dba.session.run_sql("select @@server_uuid").fetch_one()[0]
                     member_status = [x for x in tmp["topology"].values() if x["memberId"] == self_uuid][0]
                 except mysqlsh.Error as e:
                     logger.warning(

@@ -1,5 +1,9 @@
 #!/bin/bash
 # Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+#
+# Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
+#
+
 
 # ensure minikube uses proper k8s-shell image
 # we've noticed that 'minikube image load' may work weirdly when another image with

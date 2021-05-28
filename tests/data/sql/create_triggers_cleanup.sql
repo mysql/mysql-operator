@@ -1,2 +1,0 @@
-DROP SCHEMA IF EXISTS test;
-DROP USER test@'%';

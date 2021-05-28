@@ -79,7 +79,7 @@ Kubernetes cluster.
 
     $ kubectl get service mycluster
     NAME          TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                               AGE
-    myclusteryay   ClusterIP   10.43.203.248   <none>        6446/TCP,6448/TCP,6447/TCP,6449/TCP   1h
+    mycluster     ClusterIP   10.43.203.248   <none>        6446/TCP,6448/TCP,6447/TCP,6449/TCP   1h
 
 The exported ports represent Read-write and read-only ports for the
 MySQL Protocol and the X Protocol. Using `describe` more information can be seen
@@ -90,7 +90,7 @@ MySQL Protocol and the X Protocol. Using `describe` more information can be seen
     Labels:            mysql.oracle.com/cluster=mycluster
                        tier=mysql
     Annotations:       <none>
-    Selector:          component=mysqlrouter,mysql.oracle.com/cluster=myclusteryay,tier=mysql
+    Selector:          component=mysqlrouter,mysql.oracle.com/cluster=mycluster,tier=mysql
     Type:              ClusterIP
     IP Families:       <none>
     IP:                10.43.203.248

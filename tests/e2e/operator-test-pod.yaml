@@ -13,7 +13,7 @@ spec:
   containers:
   - name: shell
     command: ["mysqlsh", "--log-level=@INFO", "--log-file=", "--pym", "mysqloperator", "operator"]
-    image: akkojima/mysql-shell:8.0.21
+    image: mysql/mysql-operator:8.0.25-2.0.1
     imagePullPolicy: Never
     env:
     - name: MYSQL_OPERATOR_DEBUG

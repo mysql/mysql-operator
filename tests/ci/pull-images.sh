@@ -7,11 +7,11 @@
 # input sample (every three lines are in order LABEL, IMAGE_TO_PULL, IMAGE_TO_TEST, separator ---)
 # <images-list.txt>
 # mysql-server:8.0.24
-# mydocker.no.oracle.com/qa/mysql-server:8.0.24
+# mysql/mysql-server:8.0.24
 # mysql/mysql-server:8.0.24
 # ---
 # mysql-router:8.0.24
-# mydocker.no.oracle.com/qa/mysql-router:8.0.24
+# mysql/mysql-router:8.0.24
 # mysql/mysql-router:8.0.24
 # ---
 # [...]

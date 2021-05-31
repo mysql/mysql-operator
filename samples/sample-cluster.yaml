@@ -3,9 +3,7 @@ kind: InnoDBCluster
 metadata:
   name: mycluster
 spec:
+  secretName: mypwds
   instances: 3
-  routers: 1
-  mycnf: |
-    [mysqld]
-    innodb_buffer_pool_size=13421772800
-    innodb_log_file_size=4G
+  router:
+    instances: 1

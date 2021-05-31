@@ -33,8 +33,13 @@ Installation of the MySQL Operator
 
 The MYSQL Operator can be installed using `kubectl`:
 
-    $ kubectl apply -f https://raw.githubusercontent.com/mysql/mysql-operator/trunk/deploy/deploy-crds.yaml
-    $ kubectl apply -f https://raw.githubusercontent.com/mysql/mysql-operator/trunk/deploy/deploy-operator.yaml
+```sh
+kubectl apply -f https://raw.githubusercontent.com/mysql/mysql-operator/trunk/deploy/deploy-crds.yaml
+```
+
+```sh
+kubectl apply -f https://raw.githubusercontent.com/mysql/mysql-operator/trunk/deploy/deploy-operator.yaml
+```
 
 Note: The propagation of the CRDs can take a few seconds depending on the size
 of your Kubernetes cluster. Best is to wait a second or two between those
@@ -44,9 +49,16 @@ time.
 To verify the operator is running check the deployment managing the 
 operator, inside the `mysql-operator` namespace.
 
-    $ kubectl get deployment -n mysql-operator mysql-operator
-    NAME             READY   UP-TO-DATE   AVAILABLE   AGE
-    mysql-operator   1/1     1            1           1h
+```sh
+kubectl get deployment -n mysql-operator mysql-operator
+```
+
+Once the Operator is ready the putput should be like
+
+``` 
+NAME             READY   UP-TO-DATE   AVAILABLE   AGE
+mysql-operator   1/1     1            1           1h
+```
 
 Using the MySQL Operator to setup a MySQL InnoDB Cluster
 -------------------------------------------------------
@@ -54,22 +66,30 @@ Using the MySQL Operator to setup a MySQL InnoDB Cluster
 For creating an InnoDB Cluster you first have to create a secret containing
 credentials for a MySQL root user which is to be created:
 
-    $ kubectl create secret generic  mypwds \
+```
+kubectl create secret generic  mypwds \
         --from-literal=rootUser=root \
         --from-literal=rootHost=% \
-        --from-literal=rootPassword=sakila
+        --from-literal=rootPassword="your secret password, REPLACE ME"
+```
 
 With that the sample cluster can be created:
 
-    $ kubectl apply -f https://raw.githubusercontent.com/mysql/mysql-operator/trunk/samples/sample-cluster.yaml
+```sh
+kubectl apply -f https://raw.githubusercontent.com/mysql/mysql-operator/trunk/samples/sample-cluster.yaml
+```
 
 This sample will create an InnoDB Cluster with three MySQL server instances
 and one MySQL Router instance. The process can be observed using
 
-    $ kubectl get innodbcluster --watch
-    NAME          STATUS    ONLINE   INSTANCES   ROUTERS   AGE
-    mycluster     PENDING   0        3           1         10s
+```sh
+kubectl get innodbcluster --watch
+```
 
+```
+NAME          STATUS    ONLINE   INSTANCES   ROUTERS   AGE
+mycluster     PENDING   0        3           1         10s
+```
 
 Connecting to the MYSQL InnoDB Cluster
 -------------------------------------
@@ -77,14 +97,22 @@ Connecting to the MYSQL InnoDB Cluster
 For connecting to the InnoDB Cluster a `Service` is created inside the 
 Kubernetes cluster.
 
-    $ kubectl get service mycluster
-    NAME          TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                               AGE
-    mycluster     ClusterIP   10.43.203.248   <none>        6446/TCP,6448/TCP,6447/TCP,6449/TCP   1h
+```sh
+kubectl get service mycluster
+```
+
+```
+NAME          TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                               AGE
+mycluster     ClusterIP   10.43.203.248   <none>        6446/TCP,6448/TCP,6447/TCP,6449/TCP   1h
+```
 
 The exported ports represent Read-write and read-only ports for the
 MySQL Protocol and the X Protocol. Using `describe` more information can be seen
 
-    $ kubectl describe service mycluster
+```sh
+kubectl describe service mycluster
+```
+
     Name:              mycluster
     Namespace:         default
     Labels:            mysql.oracle.com/cluster=mycluster
@@ -116,6 +144,16 @@ Workbench to inspect or using the server.
 
 For a read-write connection to the primary using MYSQL protocol:
 
-    $ kubectl port-forward service/mycluster mysql
-    $ mysqlsh -h127.0.0.1 -P6446 -uroot -psakila
+```sh
+kubectl port-forward service/mycluster mysql
+```
+
+And then in a second terminal:
+
+```sh
+mysqlsh -h127.0.0.1 -P6446 -uroot -p
+```
+
+When promted enter the password used, when creating the Secret above.
+
 

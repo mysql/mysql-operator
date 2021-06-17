@@ -314,12 +314,13 @@ def on_pod_create(body: Body, logger: Logger, **kwargs):
     # check general assumption
     assert not pod.deleting
 
-    ready = pod.check_containers_ready()
-    logger.info(f"POD CREATED: pod={pod.name} containers_ready={ready}")
-    if not ready:
+    logger.info(f"POD CREATED: pod={pod.name} ContainersReady={pod.check_condition('ContainersReady')} Ready={pod.check_condition('Ready')} gate[configured]={pod.get_member_readiness_gate('configured')}")
+
+    configured = pod.get_member_readiness_gate("configured")
+    if not configured:
         # TODO add extra diagnostics about why the pod is not ready yet, for
         # example, unbound volume claims, initconf not finished etc
-        raise kopf.TemporaryError(f"{pod.name} is not ready yet", delay=10)
+        raise kopf.TemporaryError(f"Sidecar of {pod.name} is not yet configured", delay=10)
 
     # If we are here all containers have started. This means, that if we are initializing
     # the database from a donor (cloning) the sidecar has already started a seed instance

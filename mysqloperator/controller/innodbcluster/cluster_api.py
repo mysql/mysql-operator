@@ -734,6 +734,8 @@ def get_all_clusters() -> typing.List[InnoDBCluster]:
 
 
 class MySQLPod(K8sInterfaceObject):
+    logger: Optional[Logger] = None
+
     def __init__(self, pod: client.V1Pod):
         super().__init__()
 

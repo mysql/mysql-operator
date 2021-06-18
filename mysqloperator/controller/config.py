@@ -18,7 +18,7 @@ else:
 
 
 # Constants
-OPERATOR_VERSION = "0.1.0"
+OPERATOR_VERSION = "2.0.2"
 OPERATOR_EDITION = Edition.community
 
 MIN_BASE_SERVER_ID = 1

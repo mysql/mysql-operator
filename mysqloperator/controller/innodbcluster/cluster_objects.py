@@ -136,6 +136,7 @@ spec:
         component: mysqld
         tier: mysql
         mysql.oracle.com/cluster: {spec.name}
+        sidecar.istio.io/inject: "false"
     spec:
       subdomain: {spec.name}
 {utils.indent(spec.image_pull_secrets, 6)}

@@ -69,6 +69,26 @@ data:
     return yaml.safe_load(tmpl)
 
 
+def prepare_cluster_pod_disruption_budget(spec: InnoDBClusterSpec) -> dict:
+    tmpl = f"""
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: {spec.name}-pdb
+  namespace: andrey
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      component: mysqld
+      tier: mysql
+      mysql.oracle.com/cluster: {spec.name}
+"""
+    pdb = yaml.safe_load(tmpl.replace("\n\n", "\n"))
+
+    return pdb
+
+
 # TODO - check if we need to add a finalizer to the sts and svc (and if so, what's the condition to remove them)
 # TODO - check if we need to make readinessProbe take into account innodb recovery times
 
@@ -223,8 +243,8 @@ spec:
         lifecycle:
           preStop:
             exec:
-              command: ["mysqladmin", "-ulocalroot", "shutdown"]
-        terminationGracePeriodSeconds: 90
+              command: ["sh", "-c", "sleep 20 && mysqladmin -ulocalroot shutdown"]
+        terminationGracePeriodSeconds: 110
         startupProbe:
           exec:
             command: ["/livenessprobe.sh", "8"]

@@ -22,6 +22,7 @@ api_core: client.CoreV1Api = client.CoreV1Api()
 api_customobj: client.CustomObjectsApi = client.CustomObjectsApi()
 api_apps: client.AppsV1Api = client.AppsV1Api()
 api_batch: client.BatchV1Api = client.BatchV1Api()
+api_policy: client.PolicyV1beta1Api = client.PolicyV1beta1Api()
 
 T = TypeVar("T")
 

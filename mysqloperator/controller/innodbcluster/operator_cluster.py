@@ -13,7 +13,7 @@ from .. import consts, kubeutils, config, utils, errors, diagnose
 from .. import shellutils
 from ..group_monitor import g_group_monitor
 from ..utils import g_ephemeral_pod_state
-from ..kubeutils import api_core, api_apps
+from ..kubeutils import api_core, api_apps, api_policy
 from ..backup import backup_objects
 from .cluster_controller import ClusterController, ClusterMutex
 from . import cluster_objects, router_objects, cluster_api
@@ -115,7 +115,16 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 api_apps.create_namespaced_stateful_set(
                     namespace=namespace, body=statefulset)
 
-            print("6. Prepare router service")
+            print("6. Prepare cluster PodDisruptionBudget")
+            if not ignore_404(cluster.get_disruption_budget):
+                print("Preparing...")
+                disruption_budget = cluster_objects.get_disruption_budget(
+                    icspec)
+                kopf.adopt(disruption_budget)
+                api_policy.create_namespaced_pod_disruption_budget(
+                    namespace=namespace, body=disruption_budget)
+
+            print("7. Prepare router service")
             if not ignore_404(cluster.get_router_service):
                 print("Preparing...")
                 router_service = router_objects.prepare_router_service(icspec)
@@ -123,7 +132,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 api_core.create_namespaced_service(
                     namespace=namespace, body=router_service)
 
-            print("7. Prepare router ReplicaSet")
+            print("8. Prepare router ReplicaSet")
             if not ignore_404(cluster.get_router_replica_set):
                 print("Preparing...")
                 if icspec.router.instances > 0:
@@ -133,7 +142,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                     api_apps.create_namespaced_replica_set(
                         namespace=namespace, body=router_replicaset)
 
-            print("8. Prepare Backup secrets")
+            print("9. Prepare Backup secrets")
             if not ignore_404(cluster.get_backup_account):
                 print("Preparing...")
                 secret = backup_objects.prepare_backup_secrets(icspec)

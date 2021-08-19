@@ -13,7 +13,7 @@ from .. import utils, config, consts
 from ..backup.backup_api import BackupProfile
 from ..storage_api import StorageSpec
 from ..api_utils import Edition, dget_dict, dget_enum, dget_str, dget_int, dget_list, ApiSpecError, ImagePullPolicy
-from ..kubeutils import api_core, api_apps, api_customobj
+from ..kubeutils import api_core, api_apps, api_customobj, api_policy
 from ..kubeutils import client as api_client, ApiException
 from logging import Logger
 import json
@@ -516,6 +516,17 @@ class InnoDBCluster(K8sInterfaceObject):
         try:
             return cast(api_client.V1Service,
                         api_core.read_namespaced_service(self.name+"-instances", self.namespace))
+        except ApiException as e:
+            if e.status == 404:
+                return None
+            raise
+
+    # As of K8s 1.21 this is no more beta.
+    # Thus, eventually this needs to be upgraded to V1PodDisruptionBudget and api_policy to PolicyV1Api
+    def get_disruption_budget(self) -> typing.Optional[api_client.V1beta1PodDisruptionBudget]:
+        try:
+            return cast(api_client.V1beta1PodDisruptionBudget,
+                        api_policy.read_namespaced_pod_disruption_budget(self.name + "-pdb", self.namespace))
         except ApiException as e:
             if e.status == 404:
                 return None

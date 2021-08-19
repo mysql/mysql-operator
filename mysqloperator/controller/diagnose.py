@@ -41,6 +41,9 @@ class InstanceDiagStatus(enum.Enum):
     # in addition to being OFFLINE
     NOT_MANAGED = "NOT_MANAGED"
 
+    # Instance of an unmanaged replication group. Probably was already member but got removed
+    UNMANAGED = "UNMANAGED"
+
     # Uncertain because we can't connect or query it
     UNKNOWN = "UNKNOWN"
 
@@ -56,6 +59,8 @@ class InstanceStatus:
     in_quorum: Optional[bool] = None
     peers: Optional[dict] = None
 
+    def __repr__(self) -> str:
+        return f"InstanceStatus: pod={self.pod} status={self.status} connect_error={self.connect_error} view_id={self.view_id} is_primary={self.is_primary} in_quorum={self.in_quorum} peers={self.peers}"
 
 def diagnose_instance(pod: MySQLPod, logger, dba: 'Dba' = None) -> InstanceStatus:
     """
@@ -112,6 +117,13 @@ def diagnose_instance(pod: MySQLPod, logger, dba: 'Dba' = None) -> InstanceStatu
                 if shellutils.check_fatal(
                         e, pod.endpoint_url_safe, "get_cluster()", logger):
                     raise
+                status.status = InstanceDiagStatus.UNKNOWN
+        except RuntimeError as e:
+            e_str = str(e)
+            if e_str.find("unmanaged replication group"):
+                status.status = InstanceDiagStatus.UNMANAGED
+            else:
+                logger.info(f"diagnose_instance: 2 Runtime Error [{e}]")
                 status.status = InstanceDiagStatus.UNKNOWN
 
     if cluster:
@@ -234,7 +246,7 @@ def diagnose_cluster_candidate(primary_session: 'ClassicSession', cluster: 'Clus
     elif istatus.status in (InstanceDiagStatus.ONLINE, InstanceDiagStatus.RECOVERING):
         status.status = CandidateDiagStatus.MEMBER
         logger.debug(f"{pod} is {istatus.status} -> {status.status}")
-    elif istatus.status == InstanceDiagStatus.NOT_MANAGED:
+    elif istatus.status in (InstanceDiagStatus.NOT_MANAGED, InstanceDiagStatus.UNMANAGED):
         status.bad_gtid_set = check_errant_gtids(
             primary_session, pod, pod_dba, logger)
         if status.bad_gtid_set:
@@ -372,8 +384,7 @@ def find_group_partitions(online_pod_info: Dict[str, InstanceStatus],
         # logger.info(f"{ep}:  {'QUORUM' if p.in_quorum else 'NOQUORUM'} {'PRIM' if p.is_primary else 'SEC'} ONLINE_PODS={online_pod_info.keys()}")
         # logger.info(f"PEERS OF {ep}={p.peers}")
         if p.in_quorum:
-            online_peers = [peer for peer, state in p.peers.items(
-            ) if state in ("ONLINE", "RECOVERING")]
+            online_peers = [peer for peer, state in p.peers.items() if state in ("ONLINE", "RECOVERING")] # A: UNMANAGED ?
             missing = set(online_peers) - set(online_pod_info.keys())
             if missing:
                 logger.info(
@@ -382,7 +393,7 @@ def find_group_partitions(online_pod_info: Dict[str, InstanceStatus],
                     "Cluster status results inconsistent", delay=5)
 
             part = [online_pod_info[peer] for peer,
-                    state in p.peers.items() if state in ("ONLINE", "RECOVERING")]
+                    state in p.peers.items() if state in ("ONLINE", "RECOVERING")] # A: NOT_MANAGED ?
             if p.is_primary:
                 active_partitions.append(part)
             else:
@@ -401,16 +412,17 @@ def find_group_partitions(online_pod_info: Dict[str, InstanceStatus],
         return None
 
     # print()
-    for ep, p in online_pod_info.items():
-        #     print(ep, p.status, p.in_quorum, p.peers)
-        if not p.in_quorum:
-            part = active_partition_with(p)
-            assert not part, f"Inconsistent group view, {p} not expected to be in {part}"
-
-            part = set([all_pods[peer] for peer, state in p.peers.items()
-                        if state not in ("(MISSING)", "UNREACHABLE")])
-            if part not in blocked_partitions:
-                blocked_partitions.append(part)
+# A: Delivered !tested
+#    for ep, p in online_pod_info.items():
+#        #     print(ep, p.status, p.in_quorum, p.peers)
+#        if not p.in_quorum:
+#            part = active_partition_with(p)
+#            assert not part, f"Inconsistent group view, {p} not expected to be in {part}"
+#
+#            part = set([all_pods[peer] for peer, state in p.peers.items()
+#                        if state not in ("(MISSING)", "UNREACHABLE")])
+#            if part not in blocked_partitions:
+#                blocked_partitions.append(part)
     # print("ACTIVE PARTS", active_partitions)
     # print("BLOCKED PARTS", blocked_partitions)
     # print()
@@ -456,16 +468,17 @@ def do_diagnose_cluster(cluster: InnoDBCluster, logger) -> ClusterStatus:
 
     online_pod_statuses = {}
     for pod in all_pods:
-        if pod.deleting:
-            logger.info(f"instance {pod} is deleting")
-            continue
+        # Diagnose the instance even if deleting - so we can remove it from the cluster and later re-add it
+#        if pod.deleting:
+#            logger.info(f"instance {pod} is deleting")
+#            continue
         status = diagnose_instance(pod, logger)
         logger.info(
             f"diag instance {pod} --> {status.status} quorum={status.in_quorum}")
         if status.status == InstanceDiagStatus.UNKNOWN:
             unsure_pods.add(pod)
             all_member_pods.add(pod)
-        elif status.status in (InstanceDiagStatus.OFFLINE, InstanceDiagStatus.ERROR):
+        elif status.status in (InstanceDiagStatus.OFFLINE, InstanceDiagStatus.ERROR, InstanceDiagStatus.UNMANAGED):
             offline_pods.add(pod)
             all_member_pods.add(pod)
         elif status.status in (InstanceDiagStatus.ONLINE, InstanceDiagStatus.RECOVERING):

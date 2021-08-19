@@ -43,8 +43,8 @@ MYSQL_ROUTER_IMAGE = "mysql-router"
 MYSQL_OPERATOR_IMAGE = "mysql-operator"
 
 # TODO
-MYSQL_SERVER_EE_IMAGE = "mysql-server"
-MYSQL_ROUTER_EE_IMAGE = "mysql-router"
+MYSQL_SERVER_EE_IMAGE = "enterprise-server"
+MYSQL_ROUTER_EE_IMAGE = "enterprise-router"
 MYSQL_OPERATOR_EE_IMAGE = "mysql-operator-commercial"
 
 CLUSTER_ADMIN_USER_NAME = "mysqladmin"

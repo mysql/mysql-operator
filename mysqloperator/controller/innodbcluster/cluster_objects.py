@@ -75,7 +75,6 @@ apiVersion: policy/v1beta1
 kind: PodDisruptionBudget
 metadata:
   name: {spec.name}-pdb
-  namespace: andrey
 spec:
   maxUnavailable: 1
   selector:

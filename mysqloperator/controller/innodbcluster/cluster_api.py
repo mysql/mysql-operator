@@ -550,10 +550,10 @@ class InnoDBCluster(K8sInterfaceObject):
                 return None
             raise
 
-    def get_router_replica_set(self) -> typing.Optional[api_client.V1ReplicaSet]:
+    def get_router_deployment(self) -> typing.Optional[api_client.V1Deployment]:
         try:
-            return cast(api_client.V1ReplicaSet,
-                        api_apps.read_namespaced_replica_set(self.name+"-router", self.namespace))
+            return cast(api_client.V1Deployment,
+                        api_apps.read_namespaced_deployment(self.name+"-router", self.namespace))
         except ApiException as e:
             if e.status == 404:
                 return None

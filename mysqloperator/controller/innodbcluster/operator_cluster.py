@@ -132,15 +132,15 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 api_core.create_namespaced_service(
                     namespace=namespace, body=router_service)
 
-            print("8. Prepare router ReplicaSet")
-            if not ignore_404(cluster.get_router_replica_set):
+            print("8. Prepare router Deployment")
+            if not ignore_404(cluster.get_router_deployment):
                 print("Preparing...")
                 if icspec.router.instances > 0:
-                    router_replicaset = router_objects.prepare_router_replica_set(
+                    router_deployment = router_objects.prepare_router_deployment(
                         icspec, init_only=True)
-                    kopf.adopt(router_replicaset)
-                    api_apps.create_namespaced_replica_set(
-                        namespace=namespace, body=router_replicaset)
+                    kopf.adopt(router_deployment)
+                    api_apps.create_namespaced_deployment(
+                        namespace=namespace, body=router_deployment)
 
             print("9. Prepare Backup secrets")
             if not ignore_404(cluster.get_backup_account):
@@ -175,7 +175,7 @@ def on_innodbcluster_delete(name: str, namespace: str, body: Body,
     g_group_monitor.remove_cluster(cluster)
 
     # Scale down routers to 0
-    logger.info(f"Updating Router ReplicaSet.replicas to 0")
+    logger.info(f"Updating Router Deployment.replicas to 0")
     router_objects.update_size(cluster, 0, logger)
 
     # Scale down the cluster to 0
@@ -302,7 +302,7 @@ def on_innodbcluster_field_router_instances(old, new, body: Body,
         return
 
     with ClusterMutex(cluster):
-        logger.info(f"Updating Router ReplicaSet.replicas from {old} to {new}")
+        logger.info(f"Updating Router Deployment.replicas from {old} to {new}")
         cluster.parsed_spec.validate(logger)
 
         router_objects.update_size(cluster, new, logger)

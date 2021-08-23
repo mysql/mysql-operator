@@ -66,9 +66,9 @@ data:
     return yaml.safe_load(tmpl)
 
 
-def prepare_router_replica_set(spec: InnoDBClusterSpec, *,
+def prepare_router_deployment(spec: InnoDBClusterSpec, *,
                                init_only: bool = False) -> dict:
-    # Start the router replicaset with 0 replicas and only set it to the desired
+    # Start the router deployment with 0 replicas and only set it to the desired
     # value once the cluster is ONLINE, otherwise the router bootstraps could
     # timeout and fail unnecessarily.
 
@@ -76,7 +76,7 @@ def prepare_router_replica_set(spec: InnoDBClusterSpec, *,
     # TODO setup http
     tmpl = f"""
 apiVersion: apps/v1
-kind: ReplicaSet
+kind: Deployment
 metadata:
   name: {spec.name}-router
   label:
@@ -135,21 +135,21 @@ spec:
 
 
 def update_size(cluster: InnoDBCluster, size: int, logger: Logger) -> None:
-    rs = cluster.get_router_replica_set()
-    if rs:
+    deploy = cluster.get_router_deployment()
+    if deploy:
         if size:
             patch = {"spec": {"replicas": size}}
-            api_apps.patch_namespaced_replica_set(
-                rs.metadata.name, rs.metadata.namespace, body=patch)
+            api_apps.patch_namespaced_deployment(
+                deploy.metadata.name, deploy.metadata.namespace, body=patch)
         else:
-            logger.info(f"Deleting Router ReplicaSet")
-            api_apps.delete_namespaced_replica_set(
+            logger.info(f"Deleting Router Deployment")
+            api_apps.delete_namespaced_deployment(
                 f"{cluster.name}-router", cluster.namespace)
     else:
         if size:
-            logger.info(f"Creating Router ReplicaSet with replicas={size}")
+            logger.info(f"Creating Router Deployment with replicas={size}")
 
-            router_replicaset = prepare_router_replica_set(cluster.parsed_spec)
-            kopf.adopt(router_replicaset)
-            api_apps.create_namespaced_replica_set(
-                namespace=cluster.namespace, body=router_replicaset)
+            router_deployment = prepare_router_deployment(cluster.parsed_spec)
+            kopf.adopt(router_deployment)
+            api_apps.create_namespaced_deployment(
+                namespace=cluster.namespace, body=router_deployment)

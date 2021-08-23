@@ -41,16 +41,16 @@ def check_cluster_object(test, icobj, name):
 
     # router replicaset
     try:
-        rs = kutil.get_rs(meta["namespace"], meta["name"]+"-router")
+        deployment = kutil.get_deply(meta["namespace"], meta["name"]+"-router")
     except kutil.subprocess.CalledProcessError as e:
         if "(NotFound)" in e.stderr.decode("utf8"):
-            rs = None
+            deployment = None
         else:
             raise
     if icobj["spec"].get("router") and icobj["spec"]["router"].get("instances"):
-        test.assertTrue(rs)
+        test.assertTrue(deployment)
     else:
-        test.assertFalse(rs)
+        test.assertFalse(deployment)
 
     # main router service
     svc = kutil.get_svc(meta["namespace"], meta["name"])
@@ -82,7 +82,7 @@ def check_cluster_spec_compliant(test, icobj):
 
     # router replicaset
     try:
-        rs = kutil.get_rs(meta["namespace"], meta["name"]+"-router")
+        rs = kutil.get_deploy(meta["namespace"], meta["name"]+"-router")
     except kutil.subprocess.CalledProcessError as e:
         if "(NotFound)" in e.stderr.decode("utf8"):
             rs = None

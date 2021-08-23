@@ -19,7 +19,7 @@ logger = logging.getLogger("kutil")
 
 debug_kubectl = False
 
-ALL_RSRC_TYPES = ["ic", "mbk", "po", "sts", "rs",
+ALL_RSRC_TYPES = ["ic", "mbk", "po", "sts", "rs", "deploy",
                   "svc", "cm", "secret", "jobs", "deploy", "pvc", "sa"]
 
 
@@ -213,6 +213,10 @@ def ls_rs(ns):
     return __ls(ns, "rs")
 
 
+def ls_deploy(ns):
+    return __ls(ns, "deploy")
+
+
 def ls_svc(ns):
     return __ls(ns, "svc")
 
@@ -276,6 +280,10 @@ def get_sts(ns, name, jpath=None):
 
 def get_rs(ns, name, jpath=None):
     return get(ns, "rs", name)
+
+
+def get_deploy(ns, name, jpath=None):
+    return get(ns, "deploy", name)
 
 
 def get_svc(ns, name, jpath=None):
@@ -369,6 +377,10 @@ def delete_sts(ns, name, timeout=5):
 
 def delete_rs(ns, name, timeout=5):
     delete(ns, "rs", name, timeout=timeout)
+
+
+def delete_deploy(ns, name, timeout=5):
+    delete(ns, "deploy", name, timeout=timeout)
 
 
 def delete_svc(ns, name, timeout=5):

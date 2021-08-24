@@ -15,6 +15,7 @@ from ..group_monitor import g_group_monitor
 from ..utils import g_ephemeral_pod_state
 from ..kubeutils import api_core, api_apps, api_policy
 from ..backup import backup_objects
+from ..config import DEFAULT_OPERATOR_VERSION_TAG
 from .cluster_controller import ClusterController, ClusterMutex
 from . import cluster_objects, router_objects, cluster_api
 from .cluster_api import InnoDBCluster, InnoDBClusterSpec, MySQLPod
@@ -75,78 +76,87 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
 
     if not cluster.ready:
         try:
-            print("1. Initconf")
+            print("1. Initial Configuration ConfigMap and Container Probes")
             if not ignore_404(cluster.get_initconf):
-                print("Preparing...")
+                print("\tPreparing...")
                 configs = cluster_objects.prepare_initconf(icspec)
                 kopf.adopt(configs)
+                print("\tCreating...")
                 api_core.create_namespaced_config_map(namespace, configs)
 
-            print("2. Prepare private secrets")
+            print("2. Cluster Accounts")
             if not ignore_404(cluster.get_private_secrets):
-                print("Preparing...")
+                print("\tPreparing...")
                 secret = cluster_objects.prepare_secrets(icspec)
                 kopf.adopt(secret)
+                print("\tCreating...")
                 api_core.create_namespaced_secret(
                     namespace=namespace, body=secret)
 
-            print("3. Prepare router accounts")
+            print("3. Router Accounts")
             if not ignore_404(cluster.get_router_account):
-                print("Preparing...")
+                print("\tPreparing...")
                 secret = router_objects.prepare_router_secrets(icspec)
                 kopf.adopt(secret)
+                print("\tCreating...")
                 api_core.create_namespaced_secret(
                     namespace=namespace, body=secret)
 
-            print("4. Prepare cluster service")
+            print("4. Cluster Service")
             if not ignore_404(cluster.get_service):
-                print("Preparing...")
+                print("\tCreating...")
                 service = cluster_objects.prepare_cluster_service(icspec)
                 kopf.adopt(service)
+                print("\tCreating...")
                 api_core.create_namespaced_service(
                     namespace=namespace, body=service)
 
-            print("5. Prepare cluster StatefulSet")
+            print("5. Cluster StatefulSet")
             if not ignore_404(cluster.get_stateful_set):
-                print("Preparing...")
+                print("\tPreparing...")
                 statefulset = cluster_objects.prepare_cluster_stateful_set(
                     icspec)
                 kopf.adopt(statefulset)
+                print("\tCreating...")
                 api_apps.create_namespaced_stateful_set(
                     namespace=namespace, body=statefulset)
 
-            print("6. Prepare cluster PodDisruptionBudget")
+            print("6. Cluster PodDisruptionBudget")
             if not ignore_404(cluster.get_disruption_budget):
-                print("Preparing...")
+                print("\tPreparing...")
                 disruption_budget = cluster_objects.prepare_cluster_pod_disruption_budget(
                     icspec)
                 kopf.adopt(disruption_budget)
+                print("\tCreating...")
                 api_policy.create_namespaced_pod_disruption_budget(
                     namespace=namespace, body=disruption_budget)
 
-            print("7. Prepare router service")
+            print("7. Router Service")
             if not ignore_404(cluster.get_router_service):
-                print("Preparing...")
+                print("\tPreparing...")
                 router_service = router_objects.prepare_router_service(icspec)
                 kopf.adopt(router_service)
+                print("\tCreating...")
                 api_core.create_namespaced_service(
                     namespace=namespace, body=router_service)
 
-            print("8. Prepare router Deployment")
+            print("8. Router Deployment")
             if not ignore_404(cluster.get_router_deployment):
-                print("Preparing...")
+                print("\tPreparing...")
                 if icspec.router.instances > 0:
                     router_deployment = router_objects.prepare_router_deployment(
                         icspec, init_only=True)
                     kopf.adopt(router_deployment)
+                    print("\tCreating...")
                     api_apps.create_namespaced_deployment(
                         namespace=namespace, body=router_deployment)
 
-            print("9. Prepare Backup secrets")
+            print("9. Backup Secrets")
             if not ignore_404(cluster.get_backup_account):
-                print("Preparing...")
+                print("\tPreparing...")
                 secret = backup_objects.prepare_backup_secrets(icspec)
                 kopf.adopt(secret)
+                print("\tCreating...")
                 api_core.create_namespaced_secret(
                     namespace=namespace, body=secret)
         except Exception as e:
@@ -154,6 +164,8 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                          message=f"{e}")
             raise
 
+        print(f"10. Setting operator version for the IC to {DEFAULT_OPERATOR_VERSION_TAG}")
+        cluster.set_operator_version(DEFAULT_OPERATOR_VERSION_TAG)
         cluster.info(action="CreateCluster", reason="ResourcesCreated",
                      message="Dependency resources created, switching status to PENDING")
         cluster.set_status({

@@ -435,6 +435,10 @@ class InnoDBCluster(K8sInterfaceObject):
         return self.obj["metadata"]
 
     @property
+    def annotations(self) -> dict:
+        return self.metadata["annotations"]
+
+    @property
     def spec(self) -> dict:
         return self.obj["spec"]
 
@@ -658,9 +662,8 @@ class InnoDBCluster(K8sInterfaceObject):
 
     # TODO remove field
     def get_cluster_info(self, field: typing.Optional[str] = None) -> typing.Optional[dict]:
-        if self.metadata["annotations"]:
-            info = self.metadata["annotations"].get(
-                "mysql.oracle.com/cluster-info", None)
+        if self.annotations:
+            info = self.annotations.get("mysql.oracle.com/cluster-info", None)
             if info:
                 info = json.loads(info)
                 if field:
@@ -724,6 +727,19 @@ class InnoDBCluster(K8sInterfaceObject):
             # modify the JSON data used internally by kopf to update its finalizer list
             cluster_body["metadata"]["finalizers"].remove(
                 "mysql.oracle.com/cluster")
+
+    def set_operator_version(self, version: str) -> None:
+        v = self.operator_version
+        if v != version:
+            patch = {"metadata": {"annotations": {"mysql.oracle.com/mysql-operator-version": version}}}
+
+            # TODO store the current server/router version + timestamp
+            # store previous versions in a version history log
+            self.obj = self._patch(self.namespace, self.name, patch)
+
+    @property
+    def operator_version(self) -> Optional[str]:
+        return self.metadata.get("mysql.oracle.com/mysql-operator-version")
 
     def set_current_version(self, version: str) -> None:
         v = self.status.get("version")

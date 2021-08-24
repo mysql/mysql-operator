@@ -73,7 +73,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 return None
             raise
 
-    if not cluster.get_create_time():
+    if not cluster.ready:
         try:
             print("1. Initconf")
             if not ignore_404(cluster.get_initconf):
@@ -118,7 +118,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             print("6. Prepare cluster PodDisruptionBudget")
             if not ignore_404(cluster.get_disruption_budget):
                 print("Preparing...")
-                disruption_budget = cluster_objects.get_disruption_budget(
+                disruption_budget = cluster_objects.prepare_cluster_pod_disruption_budget(
                     icspec)
                 kopf.adopt(disruption_budget)
                 api_policy.create_namespaced_pod_disruption_budget(

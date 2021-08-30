@@ -104,7 +104,7 @@ spec:
         imagePullPolicy: {spec.router_image_pull_policy}
         env:
         - name: MYSQL_HOST
-          value: {spec.name}-0.{spec.name}-instances.{spec.namespace}.svc.cluster.local
+          value: {spec.name}-instances.{spec.namespace}.svc.cluster.local
         - name: MYSQL_PORT
           value: "3306"
         - name: MYSQL_USER

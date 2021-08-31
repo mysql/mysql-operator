@@ -182,6 +182,7 @@ class ClusterFromDumpOCI(tutil.OperatorTest):
     Create cluster and initialize from a shell dump stored in an OCI bucket.
     """
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    dump_name = "cluster-from-dump-test-oci1"
 
     @classmethod
     def setUpClass(cls):
@@ -231,6 +232,7 @@ spec:
     dumpInstance:
       storage:
         ociObjectStorage:
+          prefix : /
           bucketName: {bucket}
           credentials: backup-apikey
 """
@@ -250,14 +252,12 @@ spec:
             self.orig_tables = [r[0]
                                 for r in s.run_sql("show tables in sakila").fetch_all()]
 
-        self.dump_name = "dump-test-oci1-20200729-004252"
-
         # create a dump in a bucket
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2alpha1
 kind: MySQLBackup
 metadata:
-  name: initdb-test
+  name: {self.dump_name}
 spec:
   clusterName: mycluster
   backupProfileName: fulldump-oci
@@ -267,7 +267,7 @@ spec:
         # wait for backup to be done
         def check_mbk(l):
             for item in l:
-                if item["NAME"] == "dump-test-oci1" and item["STATUS"] == "Completed":
+                if item["NAME"] == self.dump_name and item["STATUS"] == "Completed":
                     return item
             return None
 
@@ -311,6 +311,7 @@ spec:
       name: {self.dump_name}
       storage:
         ociObjectStorage:
+          prefix : /
           bucketName: {bucket}
           credentials: restore-apikey
 """
@@ -390,6 +391,7 @@ spec:
         - sakila
       storage:
         ociObjectStorage:
+          prefix : /
           bucketName: {bucket}
           credentials: restore-apikey
 """

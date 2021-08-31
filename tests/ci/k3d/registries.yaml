@@ -1,0 +1,4 @@
+mirrors:
+  docker.io:
+    endpoint:
+      - http://registry.localhost:5000

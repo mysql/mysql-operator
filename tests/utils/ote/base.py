@@ -15,6 +15,7 @@ class BaseEnvironment:
 
     def __init__(self):
         super().__init__()
+        self._setup = True
         self._cleanup = True
         self._registry = None
         self._opeator_image = None
@@ -25,12 +26,14 @@ class BaseEnvironment:
     def __exit__(self, type, value, tb):
         self.destroy()
 
-    def setup_cluster(self, nodes=None, version=None, skip_cleanup=False):
+    def setup_cluster(self, nodes=None, version=None, perform_setup=True, skip_cleanup=False):
+        self._setup = perform_setup
         self._cleanup = not skip_cleanup
 
-        self.delete_cluster()
+        if self._setup:
+          self.delete_cluster()
 
-        self.start_cluster(nodes, version)
+          self.start_cluster(nodes, version)
 
         subprocess.call(["kubectl", "cluster-info"])
 
@@ -124,7 +127,7 @@ spec:
       serviceAccountName: mysql-operator-sa
       containers:
         - name: mysql-operator
-          image: "mysql/mysql-shell:{config.DEFAULT_SHELL_VERSION_TAG}"
+          image: "mysql/mysql-shell:{config.DEFAULT_OPERATOR_VERSION_TAG}"
           imagePullPolicy: Never
           args: ["mysqlsh", "--log-level=@INFO", "--pym", "mysqloperator", "operator"]
           env:

@@ -68,6 +68,7 @@ spec:
     dumpInstance:
       storage:
         ociObjectStorage:
+          prefix : /
           bucketName: {bucket or "not-set"}
           credentials: backup-apikey
   - name: snapshot
@@ -166,7 +167,7 @@ spec:
         # TODO add and check details about the profile used
         # check backup data, ensure that excluded DB is not included etc
 
-    @unittest.skipIf(not os.getenv("OPERATOR_TEST_BACKUP_OCI_APIKEY_PATH") or os.getenv("OPERATOR_TEST_BACKUP_OCI_BUCKET"), "OPERATOR_TEST_BACKUP_OCI_APIKEY_PATH and/or OPERATOR_TEST_BACKUP_OCI_BUCKET not set")
+    @unittest.skipIf(not os.getenv("OPERATOR_TEST_BACKUP_OCI_APIKEY_PATH") or not os.getenv("OPERATOR_TEST_BACKUP_OCI_BUCKET"), "OPERATOR_TEST_BACKUP_OCI_APIKEY_PATH and/or OPERATOR_TEST_BACKUP_OCI_BUCKET not set")
     def test_1_backup_to_oci_bucket(self):
         # Set this environment variable to the location of the OCI API Key
         # to use for backups to OCI Object Storage
@@ -243,6 +244,9 @@ spec:
         self.wait_pod_gone("mycluster-1")
         self.wait_pod_gone("mycluster-0")
         self.wait_ic_gone("mycluster")
+
+        kutil.delete_secret(self.ns, "backup-apikey")
+        kutil.delete_secret(self.ns, "mypwds")
 
 # TODO test that the backup is done using the backup account and fails if it's gone/missing privs but can recover when restored
 

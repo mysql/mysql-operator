@@ -421,6 +421,8 @@ spec:
         self.wait_pod_gone("mycluster-0")
         self.wait_ic_gone("mycluster")
 
+        kutil.delete_secret(self.ns, "mypwds")
+
 
 class ClusterSpecRuntimeChecksModification(tutil.OperatorTest):
     """
@@ -505,6 +507,8 @@ spec:
         self.wait_pod_gone("mycluster-1")
         self.wait_pod_gone("mycluster-0")
         self.wait_ic_gone("mycluster")
+
+        kutil.delete_secret(self.ns, "mypwds")
 
 
 # test only 1 or 2 bad syntax spec values and do the rest as unit-tests

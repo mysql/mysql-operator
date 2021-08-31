@@ -16,6 +16,8 @@ from . import check_adminapi
 from . import check_routing
 from utils.tutil import g_full_log
 from utils.optesting import DEFAULT_MYSQL_ACCOUNTS, COMMON_OPERATOR_ERRORS
+import os
+import unittest
 
 # TODO
 # setup with ssl
@@ -24,7 +26,7 @@ from utils.optesting import DEFAULT_MYSQL_ACCOUNTS, COMMON_OPERATOR_ERRORS
 # multinode test where 1 of the nodes get drained, make sure data matches everywhere
 # ensure that crashed/stopped members don't get router traffic
 
-g_target_old_version = "8.0.23"
+g_target_old_version = config.MIN_SUPPORTED_MYSQL_VERSION
 
 
 def check_sidecar_health(test, ns, pod):
@@ -504,16 +506,16 @@ spec:
 
         image = container_spec(
             pod["spec"]["initContainers"], "initconf")["image"]
-        self.assertIn(":"+config.DEFAULT_SHELL_VERSION_TAG, image, "initconf")
-        self.assertIn(config.MYSQL_SHELL_IMAGE+":", image, "initconf")
+        self.assertIn(":"+config.DEFAULT_OPERATOR_VERSION_TAG, image, "initconf")
+        self.assertIn(config.MYSQL_OPERATOR_IMAGE+":", image, "initconf")
 
         image = container_spec(pod["spec"]["containers"], "mysql")["image"]
         self.assertIn(":"+config.DEFAULT_VERSION_TAG, image, "mysql")
         self.assertIn(config.MYSQL_SERVER_IMAGE+":", image, "mysql")
 
         image = container_spec(pod["spec"]["containers"], "sidecar")["image"]
-        self.assertIn(":"+config.DEFAULT_SHELL_VERSION_TAG, image, "sidecar")
-        self.assertIn(config.MYSQL_SHELL_IMAGE+":", image, "sidecar")
+        self.assertIn(":"+config.DEFAULT_OPERATOR_VERSION_TAG, image, "sidecar")
+        self.assertIn(config.MYSQL_OPERATOR_IMAGE+":", image, "sidecar")
 
         # check router version and edition
         p = kutil.ls_po(self.ns, pattern="mycluster-router-.*")[0]
@@ -543,6 +545,7 @@ spec:
                 "SELECT concat(user,'@',host) FROM mysql.user").fetch_all()])
             self.assertSetEqual(accts, expected_accounts)
 
+    @unittest.skipIf(not os.getenv("OPERATOR_TEST_JS_ENABLED"), "js disabled")
     def test_1_routing(self):
         """
         Check routing from a standalone pod in a different namespace
@@ -557,7 +560,7 @@ metadata:
 spec:
   containers:
     - name: shell
-      image: "{config.DEFAULT_IMAGE_REPOSITORY}/mysql-shell:{config.DEFAULT_SHELL_VERSION_TAG}"
+      image: "{config.DEFAULT_IMAGE_REPOSITORY}/mysql-shell:{config.DEFAULT_OPERATOR_VERSION_TAG}"
       command: ["mysqlsh", "--js", "-e", "os.sleep(600)"]
 """
         kutil.create_ns("appns")
@@ -1103,11 +1106,11 @@ spec:
 class ClusterCustomConf(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
 
-    cluster_name = "my-valid-cluster-name-with-fourty-charsx"
+    cluster_name = "myvalid-cluster-name-28-char"
 
     @classmethod
     def setUpClass(cls):
-        assert len(cls.cluster_name) == 40
+        assert len(cls.cluster_name) == 28
 
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
@@ -1125,7 +1128,7 @@ class ClusterCustomConf(tutil.OperatorTest):
     def test_0_create(self):
         """
         Checks:
-        - cluster name can be 40chars long
+        - cluster name can be 28chars long
         - root user name and host can be customized
         - base server id can be changed
         - version can be customized
@@ -1191,7 +1194,7 @@ spec:
             self, pod, "sidecar", None, True)
         self.assertEqual(
             cont["image"],
-            f"mysql/mysql-shell:{config.DEFAULT_SHELL_VERSION_TAG}")
+            f"mysql/mysql-shell:{config.DEFAULT_OPERATOR_VERSION_TAG}")
 
         # check version of router images
         pods = kutil.ls_po(self.ns, pattern=self.cluster_name+"-.*-router")
@@ -1276,7 +1279,7 @@ spec:
             self, pod, "sidecar", None, True)
         self.assertEqual(
             cont["image"],
-            f"mysql/mysql-shell:{config.DEFAULT_SHELL_VERSION_TAG}")
+            f"mysql/mysql-shell:{config.DEFAULT_OPERATOR_VERSION_TAG}")
 
         # check router pod
         pods = kutil.ls_po(self.ns, pattern="mycluster-.*-router")
@@ -1297,6 +1300,8 @@ spec:
 
         self.wait_pod_gone("mycluster-0")
         self.wait_ic_gone("mycluster")
+
+        kutil.delete_secret(self.ns, "mypwds")
 
 
 # ClusterErrors():

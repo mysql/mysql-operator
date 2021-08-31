@@ -4,59 +4,83 @@
 #
 
 from .base import BaseEnvironment
+from datetime import datetime
 import subprocess
 import os
+import sys
 
 
 class MinikubeEnvironment(BaseEnvironment):
     name = "Minikube"
 
     def load_images(self, images):
-        loaded = []
-        for img, is_latest in images:
-            md = open(img+".txt")
+        self.list_images()
+        for img_info_path, is_latest in images:
+            md = open(img_info_path + ".txt")
             image_id = md.readline().strip()
-            name = md.readline().strip()
-            if self.image_exists(image_id):
-                print(f"{img} ({image_id}) already exists")
+            image_name = md.readline().strip()
+            if self.image_exists_by_id(image_name, image_id):
+                print(f"{image_name} ({image_id}) already exists")
             else:
-                loaded.append((img, name, image_id))
-                self.load_image(img, name)
-            # TODO tag :latest
-        print("Reloading cache...")
-        subprocess.run("minikube cache reload", shell=True)
+                self.load_image(image_name, image_id)
+                if not self.image_exists_by_id(image_name, image_id):
+                    print(f"Cannot load image {image_name} ({image_id})")
+                    self.list_images()
+                    sys.exit(1)
+        self.list_images()
 
-        # Sometimes the 1st load doesn't work for whatever reason
-        for img, name, image_id in loaded:
-            while not self.image_exists(image_id):
-                print(f"Reloading {img} ({image_id})...")
-                self.load_image(img, name)
-
-        subprocess.run("minikube cache reload", shell=True)
-
-    def image_exists(self, image_id, node="minikube"):
-        cmd = f"minikube ssh -n{node} docker image ls"
-        p = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE)
-        for line in p.stdout.decode("utf8").strip().split("\n"):
+    def image_exists_by_id(self, image_name, image_id, node="minikube"):
+        for line in self.get_images(image_name, node):
             name, version, image = line.split()[:3]
             if image == image_id:
                 return True
         return False
 
-    def load_image(self, image, name):
-        print(f"Caching image {name} ({image})")
+    def image_exists_by_name(self, image_name, node="minikube"):
+        for line in self.get_images(image_name, node):
+            name, version, image = line.split()[:3]
+            if name == image_name:
+                return True
+        return False
 
-        # make sure image is in local docker env
-        subprocess.run(f"docker image import {image}", shell=True)
+    def list_images(self):
+        for line in self.get_images():
+            name, version, image = line.split()[:3]
+            print(f"{name}/{version}:{image}")
 
-        # delete the old image from minikube
-        subprocess.run(
-            f"minikube ssh 'docker image rm {name} || true'", shell=True)
+    def get_images(self, filter="", node="minikube"):
+        cmd = f"minikube ssh -n{node} docker image ls {filter}"
+        p = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE)
+        return p.stdout.decode("utf8").strip().split("\n")
+
+    def load_image(self, image_name, image_id, node="minikube"):
+        print(f"Loading image {image_name} ({image_id})")
+
+        if self.image_exists_by_name(image_name, node):
+            # delete the old image from minikube
+            self.run_command(f"minikube ssh -n{node} docker image rm {image_name}")
+            self.run_command(f"minikube cache delete {image_name}")
 
         # load from local docker env into minikube
-        subprocess.run(
-            f"echo 'deleting {name}...'; minikube cache delete {name} ; echo 'adding {name}...'; minikube cache add {name}; echo done", shell=True)
-        print()
+        # we've noticed that 'minikube image load' may work weirdly when another image with
+        # the same name was already loaded in the past, i.e. it may not be updated at all
+        # the workaround: in docker tag with a fancy name the image we want to load
+        # load it to minikube, tag it with the proper name
+        # remove the fancy image from docker and minikube
+        timestamp = datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
+        tmp_image_name = f"{image_name}-{timestamp}"
+        self.run_command(f"docker tag {image_name} {tmp_image_name}")
+        self.run_command(f"minikube image load {tmp_image_name}")
+        self.run_command(f"minikube ssh docker image tag {tmp_image_name} {image_name}")
+        self.run_command(f"minikube ssh docker rmi {tmp_image_name}")
+        self.run_command(f"docker rmi {tmp_image_name}")
+
+    def run_command(self, command, verbose = True):
+        if verbose:
+            print(command)
+        subprocess.run(command, shell=True)
+        if verbose:
+            print('done')
 
     def start_cluster(self, nodes, version):
         args = ["minikube", "start", f"--nodes={nodes}"]

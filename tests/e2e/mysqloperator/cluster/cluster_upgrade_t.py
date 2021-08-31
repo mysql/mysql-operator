@@ -94,7 +94,7 @@ spec:
 
     def test_1_upgrade(self):
         """
-        version is now 8.0.20, but we upgrade it to 8.0.21
+        version is now 8.0.{VERSION}, but we upgrade it to 8.0.{VERSION+1}
         This will upgrade MySQL only, not the Router since it's already latest.
         """
 
@@ -149,6 +149,8 @@ spec:
         self.wait_pod_gone("mycluster-1")
         self.wait_pod_gone("mycluster-0")
         self.wait_ic_gone("mycluster")
+
+        kutil.delete_secret(self.ns, "mypwds")
 
 
 # TODO bind router to an old version, then let it get upgraded automatically

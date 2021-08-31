@@ -105,16 +105,16 @@ spec:
 
         image = container_spec(
             pod["spec"]["initContainers"], "initconf")["image"]
-        self.assertIn(":"+config.DEFAULT_SHELL_VERSION_TAG, image, "initconf")
-        self.assertIn(config.MYSQL_SHELL_EE_IMAGE+":", image, "initconf")
+        self.assertIn(":"+config.DEFAULT_OPERATOR_VERSION_TAG, image, "initconf")
+        self.assertIn(config.MYSQL_OPERATOR_EE_IMAGE+":", image, "initconf")
 
         image = container_spec(pod["spec"]["containers"], "mysql")["image"]
         self.assertIn(":"+config.DEFAULT_VERSION_TAG, image, "mysql")
         self.assertIn(config.MYSQL_SERVER_EE_IMAGE+":", image, "mysql")
 
         image = container_spec(pod["spec"]["containers"], "sidecar")["image"]
-        self.assertIn(":"+config.DEFAULT_SHELL_VERSION_TAG, image, "sidecar")
-        self.assertIn(config.MYSQL_SHELL_EE_IMAGE+":", image, "sidecar")
+        self.assertIn(":"+config.DEFAULT_OPERATOR_VERSION_TAG, image, "sidecar")
+        self.assertIn(config.MYSQL_OPERATOR_EE_IMAGE+":", image, "sidecar")
 
         # check router version and edition
         p = kutil.ls_po(self.ns, pattern="mycluster-router-.*")[0]
@@ -128,3 +128,5 @@ spec:
 
         self.wait_pod_gone("mycluster-0")
         self.wait_ic_gone("mycluster")
+
+        kutil.delete_secret(self.ns, "mypwds")

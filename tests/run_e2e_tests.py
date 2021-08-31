@@ -97,8 +97,7 @@ def parse_filter(f: str) -> Tuple[list, list]:
 
 
 if __name__ == '__main__':
-    deploy_files = ["deploy-crds.yaml", "deploy-peering.yaml",
-                    "deploy-rbac.yaml", "deploy-sa.yaml"]
+    deploy_files = ["deploy-crds.yaml", "deploy-operator.yaml"]
 
     basedir: str = os.path.dirname(os.path.abspath(__file__))
     os.chdir(basedir)
@@ -113,6 +112,8 @@ if __name__ == '__main__':
     verbosity = 2
     opt_nodes = 1
     opt_kube_version = None
+    opt_setup = True
+    opt_load_images = True
     opt_deploy = True
     env_name = "minikube"
     registry = "local"  # local | <registry-name>
@@ -147,6 +148,10 @@ if __name__ == '__main__':
             tutil.tracer.enabled = True
         elif arg == "--noclean":
             no_cleanup = True
+        elif arg == "--nosetup":
+            opt_setup = False
+        elif arg == "--noload":
+            opt_load_images = False
         elif arg == "--nodeploy":
             opt_deploy = False
         elif arg == "--dkube":
@@ -162,9 +167,11 @@ if __name__ == '__main__':
             opt_exclude += exc
 
     image_dir = os.getenv("DOCKER_IMAGE_DIR") or "/tmp/docker-images"
-    images = ["mysql-server:8.0.24", "mysql-router:8.0.24",
+    images = ["mysql-server:8.0.25", "mysql-router:8.0.25",
+              "mysql-server:8.0.24", "mysql-router:8.0.24",
               "mysql-server:8.0.23", "mysql-router:8.0.23",
-              "mysql-shell:8.0.24", "mysql-shell-commercial:8.0.24"]
+              "mysql-operator:8.0.25-2.0.1", "mysql-operator-commercial:8.0.25-2.0.1",
+              "mysql-shell:8.0.25-2.0.2", "mysql-shell-commercial:8.0.25-2.0.2"]
 
     suites = load_test_suite(basedir, opt_include, opt_exclude)
     if not suites or suites.countTestCases() == 0:
@@ -181,18 +188,17 @@ if __name__ == '__main__':
     print(
         f"Using environment {env_name} with kubernetes version {opt_kube_version or 'latest'}...")
 
-    deploy_dir = os.path.join(basedir, "../python/kubernetes/deploy")
-    assert len(deploy_files) == len(
-        [f for f in os.listdir(deploy_dir)
-         if f not in ["deploy-all.yaml", "deploy-operator.yaml"]]), "deploy files check"
+    deploy_dir = os.path.join(basedir, "./deploy")
     deploy_files = [os.path.join(deploy_dir, f) for f in deploy_files]
+    assert len(deploy_files) == len(
+        [f for f in deploy_files if os.path.isfile(f)]), "deploy files check"
 
     with get_driver(env_name) as driver:
         if cmd in ("run", "setup"):
             driver.setup_cluster(
-                nodes=opt_nodes, version=opt_kube_version, skip_cleanup=no_cleanup)
+                nodes=opt_nodes, version=opt_kube_version, perform_setup=opt_setup, skip_cleanup=no_cleanup)
 
-            if registry == "local":
+            if opt_load_images and registry == "local":
                 driver.cache_images(image_dir, images)
 
             if opt_deploy:

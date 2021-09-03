@@ -1,0 +1,37 @@
+# The main role for the operator
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mysql-operator
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "configmaps"]
+    verbs: ["get", "list", "patch", "update", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/status"]
+    verbs: ["get", "patch", "update", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets", "configmaps", "services"]
+    verbs: ["get", "patch", "update", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["patch", "update", "create"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["create", "get", "delete"]
+  - apiGroups: ["batch", "extensions"]
+    resources: ["jobs"]
+    verbs: ["create"]
+  - apiGroups: ["apps"]
+    resources: ["*"]
+    verbs: ["*"]
+  - apiGroups: ["mysql.oracle.com"]
+    resources: ["*"]
+    verbs: ["*"]
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["validatingwebhookconfigurations", "mutatingwebhookconfigurations" ] 
+    verbs: ["create", "patch", "update", "get", "delete", "list", "watch"]
+  - apiGroups: ["zalando.org"]
+    #resources: ["clusterkopfpeerings", "kopfpeerings"]
+    resources: ["*"]
+    verbs: ["get", "patch", "list", "watch"]

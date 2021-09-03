@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-operator
+  namespace: mysql-operator
+  labels:
+    version: "{{ default .Chart.AppVersion }}"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: mysql-operator
+  template:
+    metadata:
+      labels:
+        name: mysql-operator
+    spec:
+      containers:
+        - name: mysql-operator
+          image: {{ .Values.image.registry }}{{- if .Values.image.registry }}/{{- end }}{{ .Values.image.repository }}/{{ .Values.image.name }}:{{ .Values.image.tag | default .Chart.AppVersion }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["mysqlsh", "--log-level=@INFO", "--pym", "mysqloperator", "operator"]
+          env:{{ if .Values.envs.imagesDefaultRegistry }}
+          - name: MYSQL_OPERATOR_DEFAULT_REPOSITORY
+            value: {{ .Values.envs.imagesDefaultRegistry }}/{{ .Values.envs.imagesDefaultRepository }}
+          {{ else if .Values.envs.imagesDefaultRepository }}
+          - name: MYSQL_OPERATOR_DEFAULT_REPOSITORY
+            value: {{ .Values.envs.imagesDefaultRepository }}
+          {{ end }}
+          {{ if .Values.envs.imagesPullPolicy }}
+          - name: MYSQL_OPERATOR_IMAGE_PULL_POLICY
+            value: {{ .Values.envs.imagesPullPolicy }}
+          {{ end }}
+      serviceAccountName: mysql-operator-sa

@@ -1,0 +1,65 @@
+apiVersion: mysql.oracle.com/v2alpha1
+kind: InnoDBCluster
+metadata:
+  name: {{ .Release.Name | default "mycluster" }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  instances: {{ required "serverInstances is required" .Values.serverInstances }}
+  router:
+    instances: {{ required "routerInstances is required" .Values.routerInstances }}
+  secretName: {{ .Release.Name }}-cluster-secret
+  imagePullPolicy : {{ required "image.pullPolicy is required" .Values.image.pullPolicy }}
+  baseServerId: {{ required "baseServerId is required" .Values.baseServerId }}
+  version: {{ .Chart.AppVersion }}
+  serviceAccountName: {{ .Release.Name }}-sidecar-sa
+
+{{ if .Values.datadirVolumeClaimTemplate }}
+  datadirVolumeClaimTemplate:
+{{ if .Values.datadirVolumeClaimTemplate.accessModes }}
+    accessModes: [ "{{ .Values.datadirVolumeClaimTemplate.accessModes}}" ]
+{{ end }} # .Values.datadirVolumeClaimTemplate.accessModes
+    resources:
+      requests:
+{{ if .Values.datadirVolumeClaimTemplate.resources.requests.storage }}
+        storage: "{{ .Values.datadirVolumeClaimTemplate.resources.requests.storage }}"
+{{ end }} # .Values.datadirVolumeClaimTemplate.resources.requests.storage
+{{ end }} # .Values.datadirVolumeClaimTemplate
+
+{{ if and (and .Values.initDB.dump .Values.initDB.dump.name) (and .Values.initDB.clone .Values.initDB.donorUrl) }}
+{{ fail "Dump and Clone are mutually exclusive" }}
+{{ end }} # if dump and clone 
+
+{{ if .Values.initDB }}
+  initDB:
+{{ if .Values.initDB.dump }}
+    dump:
+{{ if .Values.initDB.dump.name }}
+      name: {{ .Values.initDB.dump.name }}
+{{ if .Values.initDB.dump.options }}
+      options:
+{{ if .Values.initDB.dump.options.includeSchemas}}
+##        includeSchemas:
+## We have to loop here
+##        - sakila
+{{ end }} # .Values.initDB.dump.options.includeSchemas
+{{ end }} # .Values.initDB.dump.options
+      storage:
+{{ if .Values.initDB.dump.ociObjectStorage }}
+        ociObjectStorage:
+          prefix: {{ required "initDB.dump.ociObjectStorage.prefix is required" .Values.initDB.dump.ociObjectStorage.prefix }}
+          bucketName: {{ required "initDB.dump.ociObjectStorage.bucketName is required" .Values.initDB.dump.ociObjectStorage.bucketName }}
+          credentials: {{ required "initDB.dump.ociObjectStorage.credentials is required" .Values.initDB.dump.ociObjectStorage.credentials }} 
+{{ end }} # .Values.initDB.dump.ociObjectStorage
+{{ end }} # .Values.initDB.dump.name
+{{ end }} # .Values.initDB.dump
+{{ if and .Values.initDB.clone .Values.initDB.clone.donorUrl }}
+    clone:
+      donorUrl: {{ required "initDB.clone.donorUrl is required" .Values.initDB.clone.donorUrl }}
+      rootUser: {{ .Values.initDB.clone.rootUser | default "root" }}
+      credentials: {{ required "initDB.clone.credentials is required" .Values.initDB.clone.credentials }}
+{{ end }} # .Values.initDB.clone
+{{ end }} # .Values.initDB
+
+{{ if .Values.backupProfiles }}
+  backupProfiles:
+{{ end }} # .Values.backupProfiles

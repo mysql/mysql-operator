@@ -560,7 +560,7 @@ metadata:
 spec:
   containers:
     - name: shell
-      image: "{defaults.DEFAULT_IMAGE_REPOSITORY}/mysql-shell:{defaults.DEFAULT_OPERATOR_VERSION_TAG}"
+      image: "{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_OPERATOR_IMAGE}:{defaults.DEFAULT_OPERATOR_VERSION_TAG}"
       command: ["mysqlsh", "--js", "-e", "os.sleep(600)"]
 """
         kutil.create_ns("appns")
@@ -1189,12 +1189,12 @@ spec:
         cont = check_apiobjects.check_pod_container(
             self, pod, "mysql", None, True)
         self.assertEqual(
-            cont["image"], f"mysql/mysql-server:{g_target_old_version}")
+            cont["image"], f"{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_SERVER_IMAGE}:{g_target_old_version}")
         cont = check_apiobjects.check_pod_container(
             self, pod, "sidecar", None, True)
         self.assertEqual(
             cont["image"],
-            f"mysql/mysql-shell:{defaults.DEFAULT_OPERATOR_VERSION_TAG}")
+            f"{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_OPERATOR_IMAGE}:{defaults.DEFAULT_OPERATOR_VERSION_TAG}")
 
         # check version of router images
         pods = kutil.ls_po(self.ns, pattern=self.cluster_name+"-.*-router")
@@ -1204,7 +1204,7 @@ spec:
                 self, pod, None, None, True)
             self.assertEqual(
                 cont["image"],
-                f"mysql/mysql-router:{defaults.DEFAULT_VERSION_TAG}", p["NAME"])
+                f"{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_ROUTER_IMAGE}:{defaults.DEFAULT_VERSION_TAG}", p["NAME"])
 
     # TODO config change in spec (and decide what to do)
 
@@ -1274,12 +1274,12 @@ spec:
         cont = check_apiobjects.check_pod_container(
             self, pod, "mysql", None, True)
         self.assertEqual(
-            cont["image"], f"mysql/mysql-server:{g_target_old_version}")
+            cont["image"], f"{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_SERVER_IMAGE}:{g_target_old_version}")
         cont = check_apiobjects.check_pod_container(
             self, pod, "sidecar", None, True)
         self.assertEqual(
             cont["image"],
-            f"mysql/mysql-shell:{defaults.DEFAULT_OPERATOR_VERSION_TAG}")
+            f"{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_OPERATOR_IMAGE}:{defaults.DEFAULT_OPERATOR_VERSION_TAG}")
 
         # check router pod
         pods = kutil.ls_po(self.ns, pattern="mycluster-.*-router")
@@ -1293,7 +1293,7 @@ spec:
                 self, pod, None, None, True)
             self.assertEqual(
                 cont["image"],
-                f"mysql/mysql-router:{defaults.DEFAULT_VERSION_TAG}", p["NAME"])
+                f"{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_ROUTER_IMAGE}:{defaults.DEFAULT_VERSION_TAG}", p["NAME"])
 
     def test_9_destroy(self):
         kutil.delete_ic(self.ns, "mycluster")

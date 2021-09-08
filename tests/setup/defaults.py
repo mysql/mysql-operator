@@ -24,16 +24,19 @@ MAX_SUPPORTED_MYSQL_VERSION = "8.0.26"
 
 DEFAULT_ROUTER_VERSION_TAG = DEFAULT_VERSION_TAG
 
-# # This is used for the sidecar. The operator version is deploy-operator.yaml
-DEFAULT_OPERATOR_VERSION_TAG = "8.0.25-2.0.1"
-DEFAULT_OPERATOR_PULL_POLICY = "IfNotPresent"
-
 DEFAULT_IMAGE_REPOSITORY = os.getenv(
     "MYSQL_OPERATOR_DEFAULT_REPOSITORY", default="mysql")
 
+DEFAULT_OPERATOR_VERSION_TAG = os.getenv(
+    "MYSQL_TEST_OPERATOR_VERSION_TAG", default="8.0.25-2.0.1")
+
+DEFAULT_OPERATOR_PULL_POLICY = os.getenv(
+    "MYSQL_TEST_OPERATOR_PULL_POLICY", default="IfNotPresent")
+
 MYSQL_SERVER_IMAGE = "mysql-server"
 MYSQL_ROUTER_IMAGE = "mysql-router"
-MYSQL_OPERATOR_IMAGE = "mysql-operator"
+MYSQL_OPERATOR_IMAGE = os.getenv(
+    "MYSQL_TEST_OPERATOR_IMAGE", default="mysql-operator")
 
 # # TODO
 # MYSQL_SERVER_EE_IMAGE = "enterprise-server"
@@ -42,4 +45,5 @@ MYSQL_OPERATOR_IMAGE = "mysql-operator"
 
 MYSQL_SERVER_EE_IMAGE = "mysql-server"
 MYSQL_ROUTER_EE_IMAGE = "mysql-router"
-MYSQL_OPERATOR_EE_IMAGE = "mysql-operator"
+MYSQL_OPERATOR_EE_IMAGE = os.getenv(
+    "MYSQL_TEST_OPERATOR_EE_IMAGE", default="mysql-operator")

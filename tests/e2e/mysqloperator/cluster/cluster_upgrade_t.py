@@ -86,11 +86,11 @@ spec:
             cont = check_apiobjects.check_pod_container(
                 self, pod, "mysql", None, True)
             self.assertEqual(
-                cont["image"], f"mysql/mysql-server:{g_target_old_version}")
+                cont["image"], f"{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_SERVER_IMAGE}:{g_target_old_version}")
             cont = check_apiobjects.check_pod_container(
                 self, pod, "sidecar", None, True)
             self.assertEqual(
-                cont["image"], f"mysql/mysql-shell:{defaults.DEFAULT_VERSION_TAG}")
+                cont["image"], f"{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_OPERATOR_IMAGE}:{defaults.DEFAULT_VERSION_TAG}")
 
     def test_1_upgrade(self):
         """
@@ -125,11 +125,11 @@ spec:
             cont = check_apiobjects.check_pod_container(
                 self, pod, "mysql", None, True)
             self.assertEqual(
-                cont["image"], f"mysql/mysql-server:{defaults.DEFAULT_VERSION_TAG}")
+                cont["image"], f"{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_SERVER_IMAGE}:{defaults.DEFAULT_VERSION_TAG}")
             cont = check_apiobjects.check_pod_container(
                 self, pod, "sidecar", None, True)
             self.assertEqual(
-                cont["image"], f"mysql/mysql-shell:{defaults.DEFAULT_VERSION_TAG}")
+                cont["image"], f"{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_OPERATOR_IMAGE}:{defaults.DEFAULT_VERSION_TAG}")
 
         # TODO check router still 8.0.21
 

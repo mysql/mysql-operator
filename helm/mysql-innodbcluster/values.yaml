@@ -1,0 +1,73 @@
+image:
+  registry:
+  repository: mysql
+  name: mysql-server
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+  pullSecrets:
+    enabled: false
+    secretName:
+    registry:
+    username:
+    password:
+    email:
+
+credentials:
+  root:
+    user: root
+    password: sakila
+    host: "%"
+
+serverInstances: 3
+routerInstances: 3
+baseServerId: 1000
+
+datadirVolumeClaimTemplate:
+  accessModes:
+  resources:
+    requests:
+      storage:
+
+initDB:
+  dump:
+    name:
+    options:
+      includeSchemas:
+    ociObjectStorage:
+      prefix:
+      bucketName:
+      credentials:
+  clone:
+    donorUrl:
+    rootUser:
+    credentials:
+
+# Unused
+backupProfiles:
+
+# Unused
+serviceAccount:
+  annotations: {}
+
+# Unused
+podAnnotations: {}
+
+# Unused
+podSecurityContext: {}
+  # fsGroup: 2000
+
+# Unused
+securityContext: {}
+
+# Unused
+resources: {}
+
+# Unused
+nodeSelector: {}
+
+# Unused
+tolerations: []
+
+# Unused
+affinity: {}

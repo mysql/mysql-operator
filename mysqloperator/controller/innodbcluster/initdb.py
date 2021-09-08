@@ -25,6 +25,10 @@ def start_clone_seed_pod(session: 'ClassicSession',
         f"Initializing seed instance. method=clone  pod={seed_pod}  source={clone_spec.uri}")
 
     donor_root_co = dict(mysqlsh.globals.shell.parse_uri(clone_spec.uri))
+    # Here we get only the password from the cluster secret. The secret
+    # might contain also rootUser and rootHost (mask from where the user connects)
+    # shouldn't we respect rootUser and not ask for rootUser in clone_spec?
+    # Or...this is different kind of secret?
     donor_root_co["user"] = clone_spec.root_user or "root"
     donor_root_co["password"] = clone_spec.get_password(cluster.namespace)
 
@@ -51,6 +55,10 @@ def start_clone_seed_pod(session: 'ClassicSession',
     # clone
     try:
         donor_co = dict(mysqlsh.globals.shell.parse_uri(clone_spec.uri))
+        # Here we get only the password from the cluster secret. The secret
+        # might contain also rootUser and rootHost (mask from where the user connects)
+        # shouldn't we respect rootUser although the clone_spec.uri might already contain it?
+        # spec : root@xyz.abc.dev
         donor_co["password"] = clone_spec.get_password(cluster.namespace)
 
         with SessionWrap(donor_co) as donor:

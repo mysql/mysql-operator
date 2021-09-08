@@ -4,8 +4,8 @@
 #
 
 import unittest
-from mysqloperator.controller.utils import isotime
-from mysqloperator.controller import config
+from utils.auxutil import isotime
+from setup import defaults
 from utils import tutil
 from utils import kutil
 import logging
@@ -314,7 +314,7 @@ spec:
 
         # fixing the version should let the cluster resume creation
         kutil.patch_ic(self.ns, "mycluster", {"spec": {
-            "version": config.DEFAULT_VERSION_TAG
+            "version": defaults.DEFAULT_VERSION_TAG
         }}, type="merge")
 
         # check cluster ok now
@@ -396,7 +396,7 @@ spec:
 
         # fixing the imageRepository should let the cluster resume creation
         kutil.patch_ic(self.ns, "mycluster", {"spec": {
-            "imageRepository": config.DEFAULT_IMAGE_REPOSITORY
+            "imageRepository": defaults.DEFAULT_IMAGE_REPOSITORY
         }}, type="merge")
 
         # NOTE: seems we have to delete the pod to force it to be recreated
@@ -489,7 +489,7 @@ spec:
 
         # revert the version
         kutil.patch_ic(self.ns, "mycluster", {"spec": {
-            "version": config.DEFAULT_SERVER_VERSION_TAG
+            "version": defaults.DEFAULT_SERVER_VERSION_TAG
         }}, type="merge")
 
         # delete the pod in error state so it can recover

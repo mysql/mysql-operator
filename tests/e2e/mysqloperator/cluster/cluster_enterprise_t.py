@@ -3,11 +3,11 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
-from mysqloperator.controller.utils import isotime
+from utils.auxutil import isotime
 from utils import tutil
 from utils import kutil
 from utils import mutil
-from mysqloperator.controller import config
+from setup import defaults
 import logging
 from utils.tutil import g_full_log
 from utils.optesting import DEFAULT_MYSQL_ACCOUNTS, COMMON_OPERATOR_ERRORS
@@ -80,7 +80,7 @@ spec:
 
     def test_1_check_accounts(self):
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
-            accts = set([row[0] for row in s.run_sql(
+            accts = set([row[0] for row in s.query_sql(
                 "SELECT concat(user,'@',host) FROM mysql.user").fetch_all()])
             self.assertSetEqual(accts, set([
                 "root@%", "localroot@localhost", "mysqladmin@%",
@@ -100,28 +100,28 @@ spec:
         pod = kutil.get_po(self.ns, "mycluster-0")
         image = container_spec(
             pod["spec"]["initContainers"], "initmysql")["image"]
-        self.assertIn(":"+config.DEFAULT_VERSION_TAG, image, "initmysql")
-        self.assertIn(config.MYSQL_SERVER_EE_IMAGE+":", image, "initmysql")
+        self.assertIn(":"+defaults.DEFAULT_VERSION_TAG, image, "initmysql")
+        self.assertIn(defaults.MYSQL_SERVER_EE_IMAGE+":", image, "initmysql")
 
         image = container_spec(
             pod["spec"]["initContainers"], "initconf")["image"]
-        self.assertIn(":"+config.DEFAULT_OPERATOR_VERSION_TAG, image, "initconf")
-        self.assertIn(config.MYSQL_OPERATOR_EE_IMAGE+":", image, "initconf")
+        self.assertIn(":"+defaults.DEFAULT_OPERATOR_VERSION_TAG, image, "initconf")
+        self.assertIn(defaults.MYSQL_OPERATOR_EE_IMAGE+":", image, "initconf")
 
         image = container_spec(pod["spec"]["containers"], "mysql")["image"]
-        self.assertIn(":"+config.DEFAULT_VERSION_TAG, image, "mysql")
-        self.assertIn(config.MYSQL_SERVER_EE_IMAGE+":", image, "mysql")
+        self.assertIn(":"+defaults.DEFAULT_VERSION_TAG, image, "mysql")
+        self.assertIn(defaults.MYSQL_SERVER_EE_IMAGE+":", image, "mysql")
 
         image = container_spec(pod["spec"]["containers"], "sidecar")["image"]
-        self.assertIn(":"+config.DEFAULT_OPERATOR_VERSION_TAG, image, "sidecar")
-        self.assertIn(config.MYSQL_OPERATOR_EE_IMAGE+":", image, "sidecar")
+        self.assertIn(":"+defaults.DEFAULT_OPERATOR_VERSION_TAG, image, "sidecar")
+        self.assertIn(defaults.MYSQL_OPERATOR_EE_IMAGE+":", image, "sidecar")
 
         # check router version and edition
         p = kutil.ls_po(self.ns, pattern="mycluster-router-.*")[0]
         pod = kutil.get_po(self.ns, p["NAME"])
         image = container_spec(pod["spec"]["containers"], "router")["image"]
-        self.assertIn(":"+config.DEFAULT_VERSION_TAG, image, "router")
-        self.assertIn(config.MYSQL_ROUTER_EE_IMAGE + ":", image, "router")
+        self.assertIn(":"+defaults.DEFAULT_VERSION_TAG, image, "router")
+        self.assertIn(defaults.MYSQL_ROUTER_EE_IMAGE + ":", image, "router")
 
     def test_9_destroy(self):
         kutil.delete_ic(self.ns, "mycluster")

@@ -13,10 +13,9 @@ from e2e.mysqloperator.cluster import check_apiobjects
 from e2e.mysqloperator.cluster import check_group
 from e2e.mysqloperator.cluster import check_adminapi
 from e2e.mysqloperator.cluster import check_routing
-import mysqlsh
 import unittest
 from utils.tutil import g_full_log
-from mysqloperator.controller.utils import b64encode
+from utils.auxutil import b64encode
 from utils.optesting import DEFAULT_MYSQL_ACCOUNTS, COMMON_OPERATOR_ERRORS
 
 
@@ -91,9 +90,9 @@ spec:
         mutil.load_script(self.ns, ("mycluster-0", "mysql"), script)
 
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
-            s.run_sql("create schema excludeme")
-            s.run_sql("create table excludeme.country like sakila.country")
-            s.run_sql(
+            s.exec_sql("create schema excludeme")
+            s.exec_sql("create table excludeme.country like sakila.country")
+            s.exec_sql(
                 "insert into excludeme.country select * from sakila.country")
 
         # create a test volume to store backups

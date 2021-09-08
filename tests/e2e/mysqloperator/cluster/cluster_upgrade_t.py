@@ -13,7 +13,7 @@ from e2e.mysqloperator.cluster import check_apiobjects
 from e2e.mysqloperator.cluster import check_group
 from e2e.mysqloperator.cluster import check_adminapi
 from e2e.mysqloperator.cluster import check_routing
-from mysqloperator.controller import config
+from setup import defaults
 import unittest
 from utils.tutil import g_full_log
 from utils.optesting import COMMON_OPERATOR_ERRORS
@@ -90,7 +90,7 @@ spec:
             cont = check_apiobjects.check_pod_container(
                 self, pod, "sidecar", None, True)
             self.assertEqual(
-                cont["image"], f"mysql/mysql-shell:{config.DEFAULT_VERSION_TAG}")
+                cont["image"], f"mysql/mysql-shell:{defaults.DEFAULT_VERSION_TAG}")
 
     def test_1_upgrade(self):
         """
@@ -99,7 +99,7 @@ spec:
         """
 
         kutil.patch_ic(self.ns, "mycluster", {"spec": {
-            "version": config.DEFAULT_VERSION_TAG
+            "version": defaults.DEFAULT_VERSION_TAG
         }}, type="merge")
 
         def check_done(pod):
@@ -108,16 +108,16 @@ spec:
             return json.loads(po["metadata"].get("annotations", {}).get("mysql.oracle.com/membership-info", "{}")).get("version", "")
 
         self.wait(check_done, args=("mycluster-2", ),
-                  check=lambda s: s.startswith(config.DEFAULT_VERSION_TAG), timeout=150, delay=10)
+                  check=lambda s: s.startswith(defaults.DEFAULT_VERSION_TAG), timeout=150, delay=10)
         self.wait(check_done, args=("mycluster-1", ),
-                  check=lambda s: s.startswith(config.DEFAULT_VERSION_TAG), timeout=150, delay=10)
+                  check=lambda s: s.startswith(defaults.DEFAULT_VERSION_TAG), timeout=150, delay=10)
         self.wait(check_done, args=("mycluster-0", ),
-                  check=lambda s: s.startswith(config.DEFAULT_VERSION_TAG), timeout=150, delay=10)
+                  check=lambda s: s.startswith(defaults.DEFAULT_VERSION_TAG), timeout=150, delay=10)
 
         self.wait_ic("mycluster", "ONLINE", 3)
 
         # TODO check that mysql is upgraded ok
-        check_all(self, self.ns, "mycluster", version=config.DEFAULT_VERSION_TAG,
+        check_all(self, self.ns, "mycluster", version=defaults.DEFAULT_VERSION_TAG,
                   instances=3, routers=2, primary=None)
 
         for pod_name in ["mycluster-0", "mycluster-1", "mycluster-2"]:
@@ -125,11 +125,11 @@ spec:
             cont = check_apiobjects.check_pod_container(
                 self, pod, "mysql", None, True)
             self.assertEqual(
-                cont["image"], f"mysql/mysql-server:{config.DEFAULT_VERSION_TAG}")
+                cont["image"], f"mysql/mysql-server:{defaults.DEFAULT_VERSION_TAG}")
             cont = check_apiobjects.check_pod_container(
                 self, pod, "sidecar", None, True)
             self.assertEqual(
-                cont["image"], f"mysql/mysql-shell:{config.DEFAULT_VERSION_TAG}")
+                cont["image"], f"mysql/mysql-shell:{defaults.DEFAULT_VERSION_TAG}")
 
         # TODO check router still 8.0.21
 

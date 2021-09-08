@@ -5,7 +5,7 @@
 
 import os
 import subprocess
-from mysqloperator.controller import config
+from setup import defaults
 
 # Operator Test Environment
 
@@ -43,9 +43,10 @@ class BaseEnvironment:
         self.deploy_operator(deploy_files)
 
     def destroy(self):
-        if self._cleanup:
+        if self._setup:
             self.stop_cluster()
-            self.delete_cluster()
+            if self._cleanup:
+                self.delete_cluster()
 
     def cache_images(self, image_dir, images):
         versions = {}
@@ -96,17 +97,6 @@ class BaseEnvironment:
         # TODO change operator image to :latest
         # TODO re-add: "--log-file=",
         y = f"""
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: mysql-operator
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: mysql-operator-sa
-  namespace: mysql-operator
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -127,18 +117,18 @@ spec:
       serviceAccountName: mysql-operator-sa
       containers:
         - name: mysql-operator
-          image: "mysql/mysql-shell:{config.DEFAULT_OPERATOR_VERSION_TAG}"
-          imagePullPolicy: Never
+          image: "{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_OPERATOR_IMAGE}:{defaults.DEFAULT_OPERATOR_VERSION_TAG}"
+          imagePullPolicy: {defaults.DEFAULT_OPERATOR_PULL_POLICY}
           args: ["mysqlsh", "--log-level=@INFO", "--pym", "mysqloperator", "operator"]
           env:
             - name: MYSQL_OPERATOR_DEBUG
               value: "{self.opt_operator_debug_level}"
             - name: MYSQL_OPERATOR_IMAGE_PULL_POLICY
-              value: Never
+              value: IfNotPresent
             - name: MYSQL_OPERATOR_DEFAULT_GR_IP_WHITELIST
               value: "172.17.0.0/8"
 """
-        subprocess.run(["kubectl", "create", "-f", "-"],
+        subprocess.run(["kubectl", "apply", "-f", "-"],
                        input=y.encode("utf8"), check=True)
 
     def prepare_oci_bucket(self):

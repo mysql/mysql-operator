@@ -4,23 +4,11 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
-
 export TESTPOD_NAME=testpod
 
 NAMESPACE=mysql-operator
 
-if [ -z "$MYSQLSH_BASEDIR" ]; then
-    MYSQLSH_BASEDIR=../bld/
-fi
-
-if [ ! -f "$MYSQLSH_BASEDIR/bin/mysqlsh" ]; then
-    echo "Please set MYSQLSH_BASEDIR to the mysqlsh installation basedir"
-    exit 1
-fi
-echo "Using mysqlsh installation at $MYSQLSH_BASEDIR"
-
 export PYTHONPATH=`dirname $PWD`
 
-"$MYSQLSH_BASEDIR/bin/mysqlsh" -f ./run_e2e_tests.py run $*
+python3 ./run_e2e_tests.py run $*
 echo "Tests finished. rc=$?"
-

@@ -40,7 +40,6 @@ def get_fingerprint(key):
 
 def create_api_key(secret_name = None, key_name = None):
     # Get the current config
-    import oci.identity
     import time
     import os.path
     from pathlib import Path

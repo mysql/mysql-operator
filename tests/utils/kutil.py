@@ -7,6 +7,7 @@
 
 # Use kubectl instead of the API so we go through the same code path as an end-user
 
+import os
 import subprocess
 import logging
 import threading
@@ -14,6 +15,7 @@ import time
 import re
 import yaml
 import base64
+import pathlib
 
 logger = logging.getLogger("kutil")
 

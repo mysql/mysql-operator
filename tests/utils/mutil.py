@@ -4,10 +4,45 @@
 #
 
 from . import kutil
-import mysqlsh
+import mysql.connector
 from kubernetes import client
 from kubernetes.stream import stream
 from kubernetes.client.rest import ApiException
+
+class MySQLDbResult:
+    def __init__(self, cursor):
+        self.cursor = cursor
+
+    def fetch_one(self):
+        result = self.cursor.fetchone()
+        self.cursor.close()
+        return result
+
+    def fetch_all(self):
+        result = self.cursor.fetchall()
+        self.cursor.close()
+        return result
+
+
+class MySQLDbSession:
+    def __init__(self, user, password, host, port, database):
+        self.session = mysql.connector.connect(user=user, password=password,
+                            host=host, port=port, database=database)
+
+    def close(self):
+        if self.session:
+            self.session.close()
+            self.session = None
+
+    def exec_sql(self, query, params=None):
+        cursor = self.session.cursor()
+        cursor.execute(query, params)
+        cursor.close()
+
+    def query_sql(self, query, params=None):
+        cursor = self.session.cursor()
+        cursor.execute(query, params)
+        return MySQLDbResult(cursor)
 
 
 class MySQLPodSession:
@@ -16,8 +51,10 @@ class MySQLPodSession:
         self.proc = None
         self.proc, self.port = kutil.portfw(ns, podname, 3306)
         try:
-            self.session = mysqlsh.globals.mysql.get_session(
-                {"scheme": "mysql", "user": user, "host": "127.0.0.1", "port": self.port, "password": password})
+            self.session = MySQLDbSession(user=user, password=password,
+                              host='127.0.0.1',
+                              port=self.port,
+                              database='mysql')
         except:
             print(ns, "/", podname, "port=", self.port, "pass=", password)
             raise
@@ -38,7 +75,6 @@ class MySQLPodSession:
         if self.proc:
             self.proc.terminate()
             self.proc = None
-
 
 def load_script(ns, podname, script):
     if type(podname) is str or len(podname) == 1:

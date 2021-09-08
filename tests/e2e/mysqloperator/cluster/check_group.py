@@ -17,7 +17,7 @@ def check_group(test, icobj, all_pods, user="root", password="sakila"):
     info = {}
 
     with mutil.MySQLPodSession(icobj["metadata"]["namespace"], icobj["metadata"]["name"]+"-0", user, password) as session:
-        members = session.run_sql(
+        members = session.query_sql(
             "SELECT member_id, member_host, member_port, member_state, member_role FROM performance_schema.replication_group_members ORDER BY member_host").fetch_all()
         test.assertEqual(len(members), icobj["spec"]["instances"])
 
@@ -47,9 +47,8 @@ def check_instance(test, icobj, all_pods, pod, is_primary, num_sessions=None, ve
     base_id = icobj["spec"].get("baseServerId", 1000)
 
     with mutil.MySQLPodSession(pod["metadata"]["namespace"], pod["metadata"]["name"], user, password) as session:
-
         # check that the Pod info matches
-        server_id, server_uuid, report_host, sro, ver = session.run_sql(
+        server_id, server_uuid, report_host, sro, ver = session.query_sql(
             "select @@server_id, @@server_uuid, @@report_host, @@super_read_only, @@version").fetch_one()
         if is_primary:
             test.assertFalse(sro, f"{name} PRIMARY sro=0")
@@ -73,7 +72,7 @@ def check_instance(test, icobj, all_pods, pod, is_primary, num_sessions=None, ve
                 test.assertEqual(ver.split("-")[0], version, name)
 
         # check that the GR config is as expected
-        grvars = dict(session.run_sql(
+        grvars = dict(session.query_sql(
             "show global variables like 'group_replication%'").fetch_all())
 
         test.assertEqual(
@@ -93,7 +92,7 @@ def check_instance(test, icobj, all_pods, pod, is_primary, num_sessions=None, ve
         #test.assertSetEqual(set(grvars["group_replication_ip_whitelist"].split(",")), group_seeds)
 
         # check that SSL is enabled for recovery
-        row = session.run_sql(
+        row = session.query_sql(
             "select ssl_allowed, coalesce(tls_version, '') from performance_schema.replication_connection_configuration where channel_name='group_replication_recovery'").fetch_one()
         # there's no recovery channel in the seed
         if row:
@@ -103,7 +102,7 @@ def check_instance(test, icobj, all_pods, pod, is_primary, num_sessions=None, ve
 
         if num_sessions is not None:
             sessions = [tuple(row)
-                        for row in session.run_sql("show processlist").fetch_all()
+                        for row in session.query_sql("show processlist").fetch_all()
                         if row["User"] not in ("event_scheduler", "system user")
                         and row["Command"] not in ("Binlog Dump GTID", )]
             test.assertEqual(len(sessions), num_sessions+1, repr(sessions))
@@ -111,12 +110,12 @@ def check_instance(test, icobj, all_pods, pod, is_primary, num_sessions=None, ve
 
 def schema_report(session, schema):
     table_info = {}
-    for table, in session.run_sql("SHOW TABLES IN !", [schema]).fetch_all():
-        count = session.run_sql("SELECT count(*) FROM !.!",
-                                [schema, table]).fetch_one()[0]
+    for table, in session.query_sql("SHOW TABLES IN %s", (schema,)).fetch_all():
+        count = session.query_sql("SELECT count(*) FROM %s.%s",
+                                (schema, table)).fetch_one()[0]
 
-        checksum = session.run_sql("CHECKSUM TABLE !.!",
-                                   [schema, table]).fetch_one()[0]
+        checksum = session.query_sql("CHECKSUM TABLE %s.%s",
+                                   (schema, table)).fetch_one()[0]
 
         table_info[table] = {"rows": count, "checksum": checksum}
     return table_info
@@ -131,10 +130,10 @@ def check_data(test, all_pods, user="root", password="sakila", primary=0):
     with mutil.MySQLPodSession(
             all_pods[primary]["metadata"]["namespace"], all_pods[primary]["metadata"]["name"],
             user, password) as session0:
-        gtid_set0 = session0.run_sql("SELECT @@gtid_executed").fetch_one()[0]
+        gtid_set0 = session0.query_sql("SELECT @@gtid_executed").fetch_one()[0]
 
         schemas0 = set([r[0]
-                        for r in session0.run_sql("SHOW SCHEMAS").fetch_all()])
+                        for r in session0.query_sql("SHOW SCHEMAS").fetch_all()])
 
         schema_table_info0 = {}
         for schema in schemas0:
@@ -147,16 +146,16 @@ def check_data(test, all_pods, user="root", password="sakila", primary=0):
             with mutil.MySQLPodSession(
                     pod["metadata"]["namespace"], pod["metadata"]["name"],
                     user, password) as s:
-                r = s.run_sql(
+                r = s.query_sql(
                     "select WAIT_FOR_EXECUTED_GTID_SET(?, 1)", [gtid_set0])
                 test.assertEqual(r.fetch_one()[0], 0)
 
-                gtid_set = s.run_sql("SELECT @@gtid_executed").fetch_one()[0]
+                gtid_set = s.query_sql("SELECT @@gtid_executed").fetch_one()[0]
 
                 test.assertEqual(gtid_set0, gtid_set, pod["metadata"]["name"])
 
                 test.assertSetEqual(schemas0, set([r[0]
-                                                   for r in s.run_sql("SHOW SCHEMAS").fetch_all()]),
+                                                   for r in s.query_sql("SHOW SCHEMAS").fetch_all()]),
                                     pod["metadata"]["name"])
 
                 for schema in schemas0:

@@ -102,7 +102,7 @@ if __name__ == '__main__':
     basedir: str = os.path.dirname(os.path.abspath(__file__))
     os.chdir(basedir)
 
-    tutil.g_test_data_dir = "../unittest/data"
+    tutil.g_test_data_dir = os.path.join(basedir, "data")
 
     opt_include = []
     opt_exclude = []
@@ -113,7 +113,7 @@ if __name__ == '__main__':
     opt_nodes = 1
     opt_kube_version = None
     opt_setup = True
-    opt_load_images = True
+    opt_load_images = False
     opt_deploy = True
     env_name = "minikube"
     registry = "local"  # local | <registry-name>
@@ -150,8 +150,8 @@ if __name__ == '__main__':
             no_cleanup = True
         elif arg == "--nosetup":
             opt_setup = False
-        elif arg == "--noload":
-            opt_load_images = False
+        elif arg == "--load":
+            opt_load_images = True
         elif arg == "--nodeploy":
             opt_deploy = False
         elif arg == "--dkube":
@@ -169,9 +169,7 @@ if __name__ == '__main__':
     image_dir = os.getenv("DOCKER_IMAGE_DIR") or "/tmp/docker-images"
     images = ["mysql-server:8.0.25", "mysql-router:8.0.25",
               "mysql-server:8.0.24", "mysql-router:8.0.24",
-              "mysql-server:8.0.23", "mysql-router:8.0.23",
-              "mysql-operator:8.0.25-2.0.1", "mysql-operator-commercial:8.0.25-2.0.1",
-              "mysql-shell:8.0.25-2.0.2", "mysql-shell-commercial:8.0.25-2.0.2"]
+              "mysql-operator:8.0.25-2.0.1", "mysql-operator-commercial:8.0.25-2.0.1"]
 
     suites = load_test_suite(basedir, opt_include, opt_exclude)
     if not suites or suites.countTestCases() == 0:
@@ -188,7 +186,7 @@ if __name__ == '__main__':
     print(
         f"Using environment {env_name} with kubernetes version {opt_kube_version or 'latest'}...")
 
-    deploy_dir = os.path.join(basedir, "./deploy")
+    deploy_dir = os.path.join(basedir, "../deploy")
     deploy_files = [os.path.join(deploy_dir, f) for f in deploy_files]
     assert len(deploy_files) == len(
         [f for f in deploy_files if os.path.isfile(f)]), "deploy files check"

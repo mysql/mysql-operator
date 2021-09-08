@@ -12,11 +12,10 @@ from . import check_apiobjects
 from . import check_group
 from . import check_adminapi
 from . import check_routing
-import mysqlsh
 import os
 import unittest
 from utils.tutil import g_full_log
-from mysqloperator.controller.utils import b64encode
+from utils.auxutil import b64encode
 from utils.optesting import DEFAULT_MYSQL_ACCOUNTS, COMMON_OPERATOR_ERRORS
 
 
@@ -75,8 +74,8 @@ spec:
         mutil.load_script(self.ns, ["mycluster-0", "mysql"], script)
 
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
-            s.run_sql("create user clone@'%' identified by 'clonepass'")
-            s.run_sql("grant backup_admin on *.* to clone@'%'")
+            s.exec_sql("create user clone@'%' identified by 'clonepass'")
+            s.exec_sql("grant backup_admin on *.* to clone@'%'")
 
     def test_1_create_clone(self):
         # TODO add support for using different root password between clusters
@@ -112,20 +111,20 @@ spec:
         self.wait_ic("copycluster", "ONLINE", 1, ns="clone", timeout=300)
 
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
-            orig_tables = [r[0] for r in s.run_sql(
+            orig_tables = [r[0] for r in s.query_sql(
                 "show tables in sakila").fetch_all()]
 
         with mutil.MySQLPodSession("clone", "copycluster-0", "root", "sakila") as s:
-            clone_tables = [r[0] for r in s.run_sql(
+            clone_tables = [r[0] for r in s.query_sql(
                 "show tables in sakila").fetch_all()]
 
             # add some data with binlog disabled to make sure that all members of this
             # cluster are cloned
-            s.run_sql("set session sql_log_bin=0")
-            s.run_sql("create schema unlogged_db")
-            s.run_sql("create table unlogged_db.tbl (a int primary key)")
-            s.run_sql("insert into unlogged_db.tbl values (42)")
-            s.run_sql("set session sql_log_bin=1")
+            s.exec_sql("set session sql_log_bin=0")
+            s.exec_sql("create schema unlogged_db")
+            s.exec_sql("create table unlogged_db.tbl (a int primary key)")
+            s.exec_sql("insert into unlogged_db.tbl values (42)")
+            s.exec_sql("set session sql_log_bin=1")
 
         self.assertEqual(set(orig_tables), set(clone_tables))
 
@@ -148,7 +147,7 @@ spec:
         # check that the new instance was cloned
         with mutil.MySQLPodSession("clone", "copycluster-1", "root", "sakila") as s:
             self.assertEqual(
-                str(s.run_sql("select * from unlogged_db.tbl").fetch_all()), str([[42]]))
+                str(s.query_sql("select * from unlogged_db.tbl").fetch_all()), str([[42]]))
 
     def test_3_routing(self):
         pass  # TODO
@@ -250,7 +249,7 @@ spec:
         self.orig_tables = []
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
             self.orig_tables = [r[0]
-                                for r in s.run_sql("show tables in sakila").fetch_all()]
+                                for r in s.query_sql("show tables in sakila").fetch_all()]
 
         # create a dump in a bucket
         yaml = f"""
@@ -324,17 +323,17 @@ spec:
 
         with mutil.MySQLPodSession(self.ns, "newcluster-0", "root", "sakila") as s:
             tables = [r[0]
-                      for r in s.run_sql("show tables in sakila").fetch_all()]
+                      for r in s.query_sql("show tables in sakila").fetch_all()]
 
             self.assertEqual(set(self.orig_tables), set(tables))
 
             # add some data with binlog disabled to allow testing that new
             # members added to this cluster use clone for provisioning
-            s.run_sql("set session sql_log_bin=0")
-            s.run_sql("create schema unlogged_db")
-            s.run_sql("create table unlogged_db.tbl (a int primary key)")
-            s.run_sql("insert into unlogged_db.tbl values (42)")
-            s.run_sql("set session sql_log_bin=1")
+            s.exec_sql("set session sql_log_bin=0")
+            s.exec_sql("create schema unlogged_db")
+            s.exec_sql("create table unlogged_db.tbl (a int primary key)")
+            s.exec_sql("insert into unlogged_db.tbl values (42)")
+            s.exec_sql("set session sql_log_bin=1")
 
         check_routing.check_pods(self, self.ns, "newcluster", 1)
 
@@ -354,7 +353,7 @@ spec:
         # check that the new instance was provisioned through clone and not incremental
         with mutil.MySQLPodSession(self.ns, "newcluster-1", "root", "sakila") as s:
             self.assertEqual(
-                str(s.run_sql("select * from unlogged_db.tbl").fetch_all()), str([[42]]))
+                str(s.query_sql("select * from unlogged_db.tbl").fetch_all()), str([[42]]))
 
     def test_1_2_destroy(self):
         kutil.delete_ic(self.ns, "newcluster")
@@ -404,7 +403,7 @@ spec:
 
         with mutil.MySQLPodSession(self.ns, "newcluster-0", "root", "sakila") as s:
             tables = [r[0]
-                      for r in s.run_sql("show tables in sakila").fetch_all()]
+                      for r in s.query_sql("show tables in sakila").fetch_all()]
 
             self.assertEqual(set(self.orig_tables), set(tables))
 

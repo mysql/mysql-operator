@@ -3,11 +3,11 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
-from mysqloperator.controller.utils import isotime
+from utils.auxutil import isotime
 from utils import tutil
 from utils import kutil
 from utils import mutil
-from mysqloperator.controller import config
+from setup import defaults
 import logging
 import json
 from . import check_apiobjects
@@ -26,7 +26,7 @@ import unittest
 # multinode test where 1 of the nodes get drained, make sure data matches everywhere
 # ensure that crashed/stopped members don't get router traffic
 
-g_target_old_version = config.MIN_SUPPORTED_MYSQL_VERSION
+g_target_old_version = defaults.MIN_SUPPORTED_MYSQL_VERSION
 
 
 def check_sidecar_health(test, ns, pod):
@@ -92,14 +92,14 @@ def cross_sync_gtids(ns, pods, user, password):
     s0 = sessions[0]
 
     for s in sessions[1:]:
-        gs = s.session.run_sql("select @@gtid_executed").fetch_one()[0]
-        assert s0.session.run_sql(
-            "select WAIT_FOR_EXECUTED_GTID_SET(?, 0)", [gs]).fetch_one()[0] == 0
+        gs = s.session.query_sql("select @@gtid_executed").fetch_one()[0]
+        assert s0.session.query_sql(
+            "select WAIT_FOR_EXECUTED_GTID_SET(%s, 0)", (gs,)).fetch_one()[0] == 0
 
     for s in sessions[1:]:
-        gs = s0.session.run_sql("select @@gtid_executed").fetch_one()[0]
-        assert s.session.run_sql(
-            "select WAIT_FOR_EXECUTED_GTID_SET(?, 1)", [gs]).fetch_one()[0] == 0
+        gs = s0.session.query_sql("select @@gtid_executed").fetch_one()[0]
+        assert s.session.query_sql(
+            "select WAIT_FOR_EXECUTED_GTID_SET(%s, 1)", (gs,)).fetch_one()[0] == 0
 
     for s in sessions:
         s.close()
@@ -165,7 +165,7 @@ spec:
 
     def test_1_check_accounts(self):
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
-            accts = set([row[0] for row in s.run_sql(
+            accts = set([row[0] for row in s.query_sql(
                 "SELECT concat(user,'@',host) FROM mysql.user").fetch_all()])
             self.assertSetEqual(accts, set(["root@%",
                                             "localroot@localhost", "mysqladmin@%", "mysqlbackup@%", "mysqlrouter@%",
@@ -331,7 +331,7 @@ spec:
         apply_time = isotime()
 
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
-            s.run_sql("restart")
+            s.exec_sql("restart")
 
         # wait for operator to notice it gone
         self.wait_ic("mycluster", ["OFFLINE", "OFFLINE_UNCERTAIN"])
@@ -362,7 +362,7 @@ spec:
         apply_time = isotime()
 
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
-            s.run_sql("shutdown")
+            s.exec_sql("shutdown")
 
         # wait for operator to notice it gone
         self.wait_ic("mycluster", ["OFFLINE", "OFFLINE_UNCERTAIN"])
@@ -415,7 +415,7 @@ spec:
     def test_6_recover_stop_1(self):
         return
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0:
-            s0.run_sql("stop group_replication")
+            s0.exec_sql("stop group_replication")
 
         # wait for operator to notice it OFFLINE
         self.wait_ic("mycluster", "OFFLINE")
@@ -501,28 +501,28 @@ spec:
         pod = kutil.get_po(self.ns, "mycluster-0")
         image = container_spec(
             pod["spec"]["initContainers"], "initmysql")["image"]
-        self.assertIn(":"+config.DEFAULT_VERSION_TAG, image, "initmysql")
-        self.assertIn(config.MYSQL_SERVER_IMAGE+":", image, "initmysql")
+        self.assertIn(":"+defaults.DEFAULT_VERSION_TAG, image, "initmysql")
+        self.assertIn(defaults.MYSQL_SERVER_IMAGE+":", image, "initmysql")
 
         image = container_spec(
             pod["spec"]["initContainers"], "initconf")["image"]
-        self.assertIn(":"+config.DEFAULT_OPERATOR_VERSION_TAG, image, "initconf")
-        self.assertIn(config.MYSQL_OPERATOR_IMAGE+":", image, "initconf")
+        self.assertIn(":"+defaults.DEFAULT_OPERATOR_VERSION_TAG, image, "initconf")
+        self.assertIn(defaults.MYSQL_OPERATOR_IMAGE+":", image, "initconf")
 
         image = container_spec(pod["spec"]["containers"], "mysql")["image"]
-        self.assertIn(":"+config.DEFAULT_VERSION_TAG, image, "mysql")
-        self.assertIn(config.MYSQL_SERVER_IMAGE+":", image, "mysql")
+        self.assertIn(":"+defaults.DEFAULT_VERSION_TAG, image, "mysql")
+        self.assertIn(defaults.MYSQL_SERVER_IMAGE+":", image, "mysql")
 
         image = container_spec(pod["spec"]["containers"], "sidecar")["image"]
-        self.assertIn(":"+config.DEFAULT_OPERATOR_VERSION_TAG, image, "sidecar")
-        self.assertIn(config.MYSQL_OPERATOR_IMAGE+":", image, "sidecar")
+        self.assertIn(":"+defaults.DEFAULT_OPERATOR_VERSION_TAG, image, "sidecar")
+        self.assertIn(defaults.MYSQL_OPERATOR_IMAGE+":", image, "sidecar")
 
         # check router version and edition
         p = kutil.ls_po(self.ns, pattern="mycluster-router-.*")[0]
         pod = kutil.get_po(self.ns, p["NAME"])
         image = container_spec(pod["spec"]["containers"], "router")["image"]
-        self.assertIn(":"+config.DEFAULT_VERSION_TAG, image, "router")
-        self.assertIn(config.MYSQL_ROUTER_IMAGE + ":", image, "router")
+        self.assertIn(":"+defaults.DEFAULT_VERSION_TAG, image, "router")
+        self.assertIn(defaults.MYSQL_ROUTER_IMAGE + ":", image, "router")
 
     def test_1_check_accounts(self):
         expected_accounts = set(["root@%",
@@ -531,17 +531,17 @@ spec:
                                  "mysql_innodb_cluster_1001@%", "mysql_innodb_cluster_1002@%"] + DEFAULT_MYSQL_ACCOUNTS)
 
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
-            accts = set([row[0] for row in s.run_sql(
+            accts = set([row[0] for row in s.query_sql(
                 "SELECT concat(user,'@',host) FROM mysql.user").fetch_all()])
             self.assertSetEqual(accts, expected_accounts)
 
         with mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s:
-            accts = set([row[0] for row in s.run_sql(
+            accts = set([row[0] for row in s.query_sql(
                 "SELECT concat(user,'@',host) FROM mysql.user").fetch_all()])
             self.assertSetEqual(accts, expected_accounts)
 
         with mutil.MySQLPodSession(self.ns, "mycluster-2", "root", "sakila") as s:
-            accts = set([row[0] for row in s.run_sql(
+            accts = set([row[0] for row in s.query_sql(
                 "SELECT concat(user,'@',host) FROM mysql.user").fetch_all()])
             self.assertSetEqual(accts, expected_accounts)
 
@@ -560,7 +560,7 @@ metadata:
 spec:
   containers:
     - name: shell
-      image: "{config.DEFAULT_IMAGE_REPOSITORY}/mysql-shell:{config.DEFAULT_OPERATOR_VERSION_TAG}"
+      image: "{defaults.DEFAULT_IMAGE_REPOSITORY}/mysql-shell:{defaults.DEFAULT_OPERATOR_VERSION_TAG}"
       command: ["mysqlsh", "--js", "-e", "os.sleep(600)"]
 """
         kutil.create_ns("appns")
@@ -852,7 +852,7 @@ spec:
         """
         return
         with mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s0:
-            s0.run_sql("stop group_replication")
+            s0.exec_sql("stop group_replication")
 
         # TODO ensure router traffic is not ending up there
 
@@ -861,7 +861,7 @@ spec:
 
         # restart GR and wait until everything is back to normal
         with mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s0:
-            s0.run_sql("start group_replication")
+            s0.exec_sql("start group_replication")
 
         # wait for operator to restore everything
         self.wait_ic("mycluster", "ONLINE", 3)
@@ -874,8 +874,8 @@ spec:
         return
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0,\
                 mutil.MySQLPodSession(self.ns, "mycluster-2", "root", "sakila") as s2:
-            s0.run_sql("stop group_replication")
-            s2.run_sql("stop group_replication")
+            s0.exec_sql("stop group_replication")
+            s2.exec_sql("stop group_replication")
 
         # wait for operator to notice it ONLINE_PARTIAL
         self.wait_ic("mycluster", "ONLINE_PARTIAL", 1)
@@ -892,9 +892,9 @@ spec:
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0,\
                 mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s1,\
                 mutil.MySQLPodSession(self.ns, "mycluster-2", "root", "sakila") as s2:
-            s0.run_sql("stop group_replication")
-            s1.run_sql("stop group_replication")
-            s2.run_sql("stop group_replication")
+            s0.exec_sql("stop group_replication")
+            s1.exec_sql("stop group_replication")
+            s2.exec_sql("stop group_replication")
 
         # wait for operator to notice it OFFLINE
         self.wait_ic("mycluster", "OFFLINE", 0)
@@ -908,7 +908,7 @@ spec:
 
     def test_4_recover_restart_1_of_3(self):
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0:
-            s0.run_sql("restart")
+            s0.exec_sql("restart")
 
         # wait for operator to notice it OFFLINE
         self.wait_ic("mycluster", "ONLINE_PARTIAL")
@@ -924,8 +924,8 @@ spec:
     def test_4_recover_restart_2_of_3(self):
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0,\
                 mutil.MySQLPodSession(self.ns, "mycluster-2", "root", "sakila") as s2:
-            s0.run_sql("restart")
-            s2.run_sql("restart")
+            s0.exec_sql("restart")
+            s2.exec_sql("restart")
 
         # wait for operator to notice it ONLINE_PARTIAL
         self.wait_ic("mycluster", "ONLINE_PARTIAL", 1)
@@ -941,9 +941,9 @@ spec:
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0,\
                 mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s1,\
                 mutil.MySQLPodSession(self.ns, "mycluster-2", "root", "sakila") as s2:
-            s0.run_sql("restart")
-            s1.run_sql("restart")
-            s2.run_sql("restart")
+            s0.exec_sql("restart")
+            s1.exec_sql("restart")
+            s2.exec_sql("restart")
 
         # wait for operator to notice it OFFLINE
         self.wait_ic("mycluster", "OFFLINE", 0)
@@ -1164,24 +1164,24 @@ spec:
                   primary=0, user="admin", password="secret")
 
         with mutil.MySQLPodSession(self.ns, self.cluster_name+"-0", user="admin", password="secret") as session:
-            aport, sid, ver = session.run_sql(
+            aport, sid, ver = session.query_sql(
                 "select @@admin_port, @@server_id, @@version").fetch_one()
             self.assertEqual(aport, 3333)
             self.assertEqual(sid, 3210)
             self.assertEqual(ver, g_target_old_version)
 
-            users = list(session.run_sql(
+            users = list(session.query_sql(
                 "select user,host from mysql.user where user='root'").fetch_all())
             self.assertEqual(users, [])
 
         with mutil.MySQLPodSession(self.ns, self.cluster_name+"-1", user="admin", password="secret") as session:
-            aport, sid, ver = session.run_sql(
+            aport, sid, ver = session.query_sql(
                 "select @@admin_port, @@server_id, @@version").fetch_one()
             self.assertEqual(aport, 3333)
             self.assertEqual(sid, 3211)
             self.assertEqual(ver, g_target_old_version)
 
-            users = list(session.run_sql(
+            users = list(session.query_sql(
                 "select user,host from mysql.user where user='root'").fetch_all())
             self.assertEqual(users, [])
 
@@ -1194,7 +1194,7 @@ spec:
             self, pod, "sidecar", None, True)
         self.assertEqual(
             cont["image"],
-            f"mysql/mysql-shell:{config.DEFAULT_OPERATOR_VERSION_TAG}")
+            f"mysql/mysql-shell:{defaults.DEFAULT_OPERATOR_VERSION_TAG}")
 
         # check version of router images
         pods = kutil.ls_po(self.ns, pattern=self.cluster_name+"-.*-router")
@@ -1204,7 +1204,7 @@ spec:
                 self, pod, None, None, True)
             self.assertEqual(
                 cont["image"],
-                f"mysql/mysql-router:{config.DEFAULT_VERSION_TAG}", p["NAME"])
+                f"mysql/mysql-router:{defaults.DEFAULT_VERSION_TAG}", p["NAME"])
 
     # TODO config change in spec (and decide what to do)
 
@@ -1279,7 +1279,7 @@ spec:
             self, pod, "sidecar", None, True)
         self.assertEqual(
             cont["image"],
-            f"mysql/mysql-shell:{config.DEFAULT_OPERATOR_VERSION_TAG}")
+            f"mysql/mysql-shell:{defaults.DEFAULT_OPERATOR_VERSION_TAG}")
 
         # check router pod
         pods = kutil.ls_po(self.ns, pattern="mycluster-.*-router")
@@ -1293,7 +1293,7 @@ spec:
                 self, pod, None, None, True)
             self.assertEqual(
                 cont["image"],
-                f"mysql/mysql-router:{config.DEFAULT_VERSION_TAG}", p["NAME"])
+                f"mysql/mysql-router:{defaults.DEFAULT_VERSION_TAG}", p["NAME"])
 
     def test_9_destroy(self):
         kutil.delete_ic(self.ns, "mycluster")

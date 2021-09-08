@@ -4,7 +4,7 @@
 #
 
 import time
-from mysqloperator.controller import config
+from setup import defaults
 from utils import kutil
 
 
@@ -41,7 +41,7 @@ def check_cluster_object(test, icobj, name):
 
     # router replicaset
     try:
-        deployment = kutil.get_deply(meta["namespace"], meta["name"]+"-router")
+        deployment = kutil.get_deploy(meta["namespace"], meta["name"]+"-router")
     except kutil.subprocess.CalledProcessError as e:
         if "(NotFound)" in e.stderr.decode("utf8"):
             deployment = None
@@ -110,7 +110,7 @@ def check_cluster_spec_compliant(test, icobj):
     # if "image" in spec:
     #     test.assertEqual(icobj["status"]["version"], spec["image"])
     # else:
-    #     test.assertEqual(icobj["status"]["version"], config.DEFAULT_SERVER_VERSION_TAG)
+    #     test.assertEqual(icobj["status"]["version"], defaults.DEFAULT_SERVER_VERSION_TAG)
 
 
 def check_pod_spec_compliant(test, icobj, pod):

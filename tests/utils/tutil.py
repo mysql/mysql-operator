@@ -13,7 +13,7 @@ import subprocess
 import logging
 import os
 
-from mysqloperator.controller.utils import isotime
+from utils.auxutil import isotime
 from . import fmt
 from . import kutil
 import yaml

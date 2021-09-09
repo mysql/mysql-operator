@@ -145,7 +145,7 @@ class InnoDBClusterSpec:
 
     imagePullPolicy: ImagePullPolicy = config.default_image_pull_policy
     imagePullSecrets: Optional[List[dict]] = None
-    imageRepository: str = config.DEFAULT_IMAGE_REPOSITORY
+    imageRepository: str = config.DEFAULT_IMAGE_REPOSITORY if edition == Edition.community else config.DEFAULT_IMAGE_REPOSITORY_EE
 
     serviceAccountName: Optional[str] = None
 
@@ -200,6 +200,11 @@ class InnoDBClusterSpec:
             self.edition = dget_enum(
                 spec, "edition", "spec", default_value=config.OPERATOR_EDITION,
                 enum_type=Edition)
+
+            # The Repository depends on the edition, by default, but user can override
+            if "imageRepository" not in spec:
+                self.imageRepository = config.DEFAULT_IMAGE_REPOSITORY if self.edition == Edition.community else config.DEFAULT_IMAGE_REPOSITORY_EE
+
 
         if "imagePullPolicy" in spec:
             self.imagePullPolicy = dget_enum(
@@ -329,8 +334,8 @@ class InnoDBClusterSpec:
     @property
     def mysql_image(self) -> str:
         # server image version is the one given by the user or latest by default
-        # TODO EE image of server and router
-        return self.format_image(config.MYSQL_SERVER_IMAGE, self.version)
+        image = config.MYSQL_SERVER_IMAGE if self.edition == Edition.community else config.MYSQL_SERVER_EE_IMAGE
+        return self.format_image(image, self.version)
 
     @property
     def router_image(self) -> str:
@@ -341,10 +346,15 @@ class InnoDBClusterSpec:
         else:
             version = config.DEFAULT_ROUTER_VERSION_TAG
 
-        return self.format_image(config.MYSQL_ROUTER_IMAGE, version)
+        image = config.MYSQL_ROUTER_IMAGE if self.edition == Edition.community else config.MYSQL_ROUTER_EE_IMAGE
+
+        return self.format_image(image, version)
 
     @property
     def operator_image(self) -> str:
+        # TODO - We always use community image here, need to change with GA, when we publish enterprise edition!
+        return f"{config.DEFAULT_IMAGE_REPOSITORY}/{config.MYSQL_OPERATOR_IMAGE}:{self.sidecarVersion}"
+
         # shell image version is the same as ours (operator)
         if self.edition == Edition.community:
             image = config.MYSQL_OPERATOR_IMAGE

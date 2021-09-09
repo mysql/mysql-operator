@@ -35,8 +35,12 @@ DEFAULT_ROUTER_VERSION_TAG = DEFAULT_VERSION_TAG
 # This is used for the sidecar. The operator version is deploy-operator.yaml
 DEFAULT_OPERATOR_VERSION_TAG = "8.0.25-2.0.1"
 
+# TODO - unify those two settings (if we use OCR for community as well we can use the same thing)
 DEFAULT_IMAGE_REPOSITORY = os.getenv(
     "MYSQL_OPERATOR_DEFAULT_REPOSITORY", default="mysql")
+
+DEFAULT_IMAGE_REPOSITORY_EE = os.getenv(
+    "MYSQL_OPERATOR_DEFAULT_REPOSITORY", default="container-registry.oracle.com/mysql")
 
 MYSQL_SERVER_IMAGE = "mysql-server"
 MYSQL_ROUTER_IMAGE = "mysql-router"

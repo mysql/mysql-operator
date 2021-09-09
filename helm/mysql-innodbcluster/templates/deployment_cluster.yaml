@@ -27,22 +27,26 @@ spec:
 
 {{ if and (and .Values.initDB.dump .Values.initDB.dump.name) (and .Values.initDB.clone .Values.initDB.donorUrl) }}
 {{ fail "Dump and Clone are mutually exclusive" }}
-{{ end }} # if dump and clone 
+{{ end }} # if and .dump .clone 
 
-{{ if .Values.initDB }}
+{{ if and .Values.initDB .Values.initDB.clone }}
   initDB:
-{{ if .Values.initDB.dump }}
+    clone:
+      donorUrl: {{ required "initDB.clone.donorUrl is required" .Values.initDB.clone.donorUrl }}
+      rootUser: {{ .Values.initDB.clone.rootUser | default "root" }}
+      credentials: {{ required "initDB.clone.credentials is required" .Values.initDB.clone.credentials }}
+{{ end }} # if and .Values.initDB  .Values.initDB.clone
+
+{{ if and .Values.initDB .Values.initDB.dump }}
+{{ if and .Values.initDB.dump.name (and .Values.initDB.dump.storage (or .Values.initDB.dump.ociObjectStorage .Values.initDB.dump.persistentVolumeClaim)) }}
+  initDB:
     dump:
 {{ if .Values.initDB.dump.name }}
       name: {{ .Values.initDB.dump.name }}
-{{ if .Values.initDB.dump.options }}
-      options:
-{{ if .Values.initDB.dump.options.includeSchemas}}
-##        includeSchemas:
-## We have to loop here
-##        - sakila
-{{ end }} # .Values.initDB.dump.options.includeSchemas
-{{ end }} # .Values.initDB.dump.options
+{{ end }}
+{{ if .Values.initDB.dump.path }}
+      path: {{ .Values.initDB.dump.path }}
+{{ end }}
       storage:
 {{ if .Values.initDB.dump.ociObjectStorage }}
         ociObjectStorage:
@@ -50,15 +54,12 @@ spec:
           bucketName: {{ required "initDB.dump.ociObjectStorage.bucketName is required" .Values.initDB.dump.ociObjectStorage.bucketName }}
           credentials: {{ required "initDB.dump.ociObjectStorage.credentials is required" .Values.initDB.dump.ociObjectStorage.credentials }} 
 {{ end }} # .Values.initDB.dump.ociObjectStorage
-{{ end }} # .Values.initDB.dump.name
-{{ end }} # .Values.initDB.dump
-{{ if and .Values.initDB.clone .Values.initDB.clone.donorUrl }}
-    clone:
-      donorUrl: {{ required "initDB.clone.donorUrl is required" .Values.initDB.clone.donorUrl }}
-      rootUser: {{ .Values.initDB.clone.rootUser | default "root" }}
-      credentials: {{ required "initDB.clone.credentials is required" .Values.initDB.clone.credentials }}
-{{ end }} # .Values.initDB.clone
-{{ end }} # .Values.initDB
+{{ if .Values.initDB.dump.persistentVolumeClaim }}
+        persistentVolumeClaim:
+          {{- toYaml .Values.initDB.dump.persistentVolumeClaim | nindent 10}}
+{{ end }} # .Values.initDB.dump.persistentVolumeClaim
+{{ end }} # and .Values.initDB.dump.name (and .Values.initDB.dump.storage (or .Values.initDB.dump.ociObjectStorage .Values.initDB.dump.persistentVolumeClaim))
+{{ end }} # and .Values.initDB .Values.initDB.dump
 
 {{ if .Values.backupProfiles }}
   backupProfiles:

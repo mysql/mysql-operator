@@ -32,16 +32,18 @@ datadirVolumeClaimTemplate:
 initDB:
   dump:
     name:
+    path:
     options:
       includeSchemas:
     ociObjectStorage:
       prefix:
       bucketName:
       credentials:
-  clone:
-    donorUrl:
-    rootUser:
-    credentials:
+#    persistentVolumeClaim:     
+#  clone:
+#    donorUrl:
+#    rootUser:
+#    credentials:
 
 # Unused
 backupProfiles:

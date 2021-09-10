@@ -147,7 +147,13 @@ spec:
         - containerPort: {spec.router_httpport}
           name: http
 """
-    return yaml.safe_load(tmpl)
+    deployment = yaml.safe_load(tmpl)
+    if spec.router.podSpec:
+        utils.merge_patch_object(deployment["spec"]["template"]["spec"],
+                                 spec.router.podSpec, "spec.router.podSpec")
+
+    return deployment
+
 
 
 def update_size(cluster: InnoDBCluster, size: int, logger: Logger) -> None:

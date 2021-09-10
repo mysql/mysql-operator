@@ -19,6 +19,7 @@ credentials:
     password: sakila
     host: "%"
 
+#serverVersion: 8.0.26
 serverInstances: 3
 routerInstances: 3
 baseServerId: 1000

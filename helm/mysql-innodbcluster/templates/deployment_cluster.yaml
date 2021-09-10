@@ -10,7 +10,7 @@ spec:
   secretName: {{ .Release.Name }}-cluster-secret
   imagePullPolicy : {{ required "image.pullPolicy is required" .Values.image.pullPolicy }}
   baseServerId: {{ required "baseServerId is required" .Values.baseServerId }}
-  version: {{ .Chart.AppVersion }}
+  version: {{ .Values.serverVersion | default .Chart.AppVersion }}
   serviceAccountName: {{ .Release.Name }}-sidecar-sa
 
 {{ if .Values.datadirVolumeClaimTemplate }}

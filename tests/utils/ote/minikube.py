@@ -12,6 +12,7 @@ import sys
 
 class MinikubeEnvironment(BaseEnvironment):
     name = "Minikube"
+    _mount_operator_path = None
 
     def load_images(self, images):
         self.list_images()
@@ -82,10 +83,16 @@ class MinikubeEnvironment(BaseEnvironment):
         if verbose:
             print('done')
 
+    def mount_operator_path(self, path):
+        self.operator_host_path = os.path.join("/tmp", os.path.basename(path))
+        self._mount_operator_path = path
+
     def start_cluster(self, nodes, version):
         args = ["minikube", "start", f"--nodes={nodes}"]
         if version:
             args.append(f"--kubernetes-version={version}")
+        if self._mount_operator_path:
+            args += ["--mount", f"--mount-string={self._mount_operator_path}:{self.operator_host_path}"]
         subprocess.check_call(args)
 
     def stop_cluster(self):

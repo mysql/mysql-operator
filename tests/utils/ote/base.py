@@ -7,6 +7,7 @@ import os
 import subprocess
 from setup import defaults
 
+
 # Operator Test Environment
 
 
@@ -19,6 +20,8 @@ class BaseEnvironment:
         self._cleanup = True
         self._registry = None
         self._opeator_image = None
+
+        self.operator_host_path = None
 
     def __enter__(self):
         return self
@@ -79,6 +82,10 @@ class BaseEnvironment:
     def load_images(self, image_list):
         pass
 
+    def mount_operator_path(self, path):
+        # overriders must set self.operator_host_path
+        raise Exception("mounting operator code not yet supported for this driver")
+
     def start_cluster(self, nodes, version):
         pass
 
@@ -127,6 +134,19 @@ spec:
               value: IfNotPresent
             - name: MYSQL_OPERATOR_DEFAULT_GR_IP_WHITELIST
               value: "172.17.0.0/8"
+"""
+
+        if self.operator_host_path:
+            y = y.rstrip()
+            y += f"""
+          volumeMounts:
+            - name: operator-code
+              mountPath: "/usr/lib/mysqlsh/kubernetes/mysqloperator"
+      volumes:
+        - name: operator-code
+          hostPath:
+            path: "{self.operator_host_path}"
+            type: Directory
 """
         subprocess.run(["kubectl", "apply", "-f", "-"],
                        input=y.encode("utf8"), check=True)

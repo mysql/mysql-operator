@@ -115,6 +115,7 @@ if __name__ == '__main__':
     opt_setup = True
     opt_load_images = False
     opt_deploy = True
+    opt_mount_operator_path = None
     env_name = "minikube"
     registry = "local"  # local | <registry-name>
 
@@ -158,6 +159,8 @@ if __name__ == '__main__':
             kutil.debug_kubectl = True
         elif arg == "--doperator":
             BaseEnvironment.opt_operator_debug_level = 3
+        elif arg == "--mount-operator" or arg == "-O":
+            opt_mount_operator_path = os.path.join(os.path.dirname(basedir), "mysqloperator")
         elif arg.startswith("-"):
             print(f"Invalid option {arg}")
             sys.exit(1)
@@ -188,11 +191,18 @@ if __name__ == '__main__':
 
     deploy_dir = os.path.join(basedir, "../deploy")
     deploy_files = [os.path.join(deploy_dir, f) for f in deploy_files]
+
+    if opt_mount_operator_path:
+        print(f"Overriding mysqloperator code with local copy at {opt_mount_operator_path}")
+
     assert len(deploy_files) == len(
         [f for f in deploy_files if os.path.isfile(f)]), "deploy files check"
 
     with get_driver(env_name) as driver:
         if cmd in ("run", "setup"):
+            if opt_mount_operator_path:
+                driver.mount_operator_path(opt_mount_operator_path)
+
             driver.setup_cluster(
                 nodes=opt_nodes, version=opt_kube_version, perform_setup=opt_setup, skip_cleanup=no_cleanup)
 

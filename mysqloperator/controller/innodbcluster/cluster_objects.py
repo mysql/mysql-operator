@@ -165,7 +165,7 @@ spec:
       initContainers:
       - name: initconf
         image: {spec.operator_image}
-        imagePullPolicy: {spec.operator_image_pull_policy}
+        imagePullPolicy: {spec.sidecar_image_pull_policy}
         command: ["mysqlsh", "--log-level=@INFO", "--pym", "mysqloperator", "init"]
         env:
         - name: MY_POD_NAME
@@ -213,7 +213,7 @@ spec:
       containers:
       - name: sidecar
         image: {spec.operator_image}
-        imagePullPolicy: {spec.operator_image_pull_policy}
+        imagePullPolicy: {spec.sidecar_image_pull_policy}
         command: ["mysqlsh", "--pym", "mysqloperator", "sidecar"]
         env:
         - name: MY_POD_NAME
@@ -491,6 +491,21 @@ def update_operator_image(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec
                           ],
                           "initContainers": [
                               {"name": "initconf", "image": spec.operator_image}
+                          ]}
+                       }}}
+    update_stateful_set_spec(sts, patch)
+
+
+def update_pull_policy(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec, logger: Logger) -> None:
+    patch = {"spec": {"template":
+                      {"spec": {
+                          "initContainers": [
+                              {"name": "initconf", "imagePullPolicy": spec.sidecar_image_pull_policy},
+                              {"name": "initmysql", "imagePullPolicy": spec.mysql_image_pull_policy}
+                          ],
+                          "containers": [
+                               {"name": "sidecar", "imagePullPolicy": spec.sidecar_image_pull_policy},
+                               {"name": "mysql", "imagePullPolicy": spec.mysql_image_pull_policy}
                           ]}
                        }}}
     update_stateful_set_spec(sts, patch)

@@ -260,6 +260,11 @@ def on_innodbcluster_field_image_repository(old, new, body: Body,
                                             logger: Logger, **kwargs):
     cluster = InnoDBCluster(body)
 
+    # ignore spec changes if the cluster is still being initialized
+    if not cluster.ready:
+        logger.debug(f"Ignoring spec.imageRepository change for unready cluster")
+        return
+
     sts = cluster.get_stateful_set()
     if sts and old != new:
         logger.info(
@@ -272,6 +277,30 @@ def on_innodbcluster_field_image_repository(old, new, body: Body,
         router_deploy = cluster.get_router_deployment()
         if router_deploy:
             router_objects.update_router_image(router_deploy, cluster.parsed_spec, logger)
+
+
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.imagePullPolicy")  # type: ignore
+def on_innodbcluster_field_image_pull_policy(old, new, body: Body,
+                                            logger: Logger, **kwargs):
+    cluster = InnoDBCluster(body)
+
+    # ignore spec changes if the cluster is still being initialized
+    if not cluster.ready:
+        logger.debug(f"Ignoring spec.imagePullPolicy change for unready cluster")
+        return
+
+    sts = cluster.get_stateful_set()
+    if sts and old != new:
+        logger.info(
+            f"Propagating spec.imagePullPolicy={new} for {cluster.namespace}/{cluster.name} (was {old})")
+
+        cluster.parse_spec()
+
+        cluster_objects.update_pull_policy(sts, cluster.parsed_spec, logger)
+        router_deploy = cluster.get_router_deployment()
+        if router_deploy:
+            router_objects.update_pull_policy(router_deploy, cluster.parsed_spec, logger)
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,

@@ -161,11 +161,13 @@ def update_deployment_spec(dpl: api_client.V1Deployment, patch: dict) -> None:
         dpl.metadata.name, dpl.metadata.namespace, body=patch)
 
 
-def update_router_image(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, logger: Logger) -> None:
+def update_router_container_template_property(dpl: api_client.V1Deployment,
+                                              property_name: str, property_value: str,
+                                              logger: Logger) -> None:
     patch = {"spec": {"template":
                       {"spec": {
                           "containers": [
-                               {"name": "router", "image": spec.router_image}
+                               {"name": "router", property_name: property_value}
                           ]
                         }
                       }
@@ -173,7 +175,19 @@ def update_router_image(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, l
             }
     update_deployment_spec(dpl, patch)
 
+
+def update_router_image(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, logger: Logger) -> None:
+    update_router_container_template_property(dpl, "image", spec.router_image)
+
+
 def update_router_version(cluster: InnoDBCluster, logger: Logger) -> None:
-      dpl = cluster.get_router_deployment()
-      if dpl:
-        return update_router_image(dpl, cluster.parsed_spec, logger)
+    dpl = cluster.get_router_deployment()
+    if dpl:
+      return update_router_image(dpl, cluster.parsed_spec, logger)
+
+
+def update_pull_policy(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, logger: Logger) -> None:
+    # NOTE: We are using spec.mysql_image_pull_policy and not spec.router_image_pull_policy
+    #       (both are decorated), becase the latter will read the value from the Router Deployment
+    #       and thus the value will be constant. We are using the former to push the value down
+    update_router_container_template_property(dpl, "imagePullPolicy", spec.mysql_image_pull_policy, logger)

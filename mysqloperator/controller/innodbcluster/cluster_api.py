@@ -369,6 +369,10 @@ class InnoDBClusterSpec:
         return self.imagePullPolicy.value
 
     @property
+    def sidecar_image_pull_policy(self) -> str:
+        return self.imagePullPolicy.value
+
+    @property
     def router_image_pull_policy(self) -> str:
         return self.router.podSpec.get("imagePullPolicy", self.imagePullPolicy.value)
 

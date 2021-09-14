@@ -730,6 +730,12 @@ class ClusterController:
                     pod.update_member_readiness_gate("ready", False)
                 break
 
+    def on_server_image_change(self, version: str) -> None:
+        return self.on_upgrade(version = version)
+
+    def on_server_version_change(self, version: str) -> None:
+        return self.on_upgrade(version = version)
+
     def on_upgrade(self, version: str) -> None:
         # TODO check if version change is valid
         pass

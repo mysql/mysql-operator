@@ -242,16 +242,16 @@ def on_innodbcluster_field_version(old, new, body: Body,
             f"Propagating spec.version={new} for {cluster.namespace}/{cluster.name} (was {old})")
 
         cluster.parse_spec()
-
         cluster_ctl = ClusterController(cluster)
-
         try:
-            cluster_ctl.on_upgrade(new)
+            cluster_ctl.on_server_version_change(new)
         except:
             # revert version in the spec
             raise
-
         cluster_objects.update_mysql_image(sts, cluster.parsed_spec)
+        router_deploy = cluster.get_router_deployment()
+        if router_deploy:
+            router_objects.update_router_image(router_deploy, cluster.parsed_spec, logger)
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
@@ -269,6 +269,9 @@ def on_innodbcluster_field_image_repository(old, new, body: Body,
 
         cluster_objects.update_mysql_image(sts, cluster.parsed_spec)
         cluster_objects.update_operator_image(sts, cluster.parsed_spec)
+        router_deploy = cluster.get_router_deployment()
+        if router_deploy:
+            router_objects.update_router_image(router_deploy, cluster.parsed_spec, logger)
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
@@ -293,7 +296,7 @@ def on_innodbcluster_field_image(old, new, body: Body,
         cluster_ctl = ClusterController(cluster)
 
         try:
-            cluster_ctl.on_upgrade(new)
+            cluster_ctl.on_server_image_change(new)
         except:
             # revert version in the spec
             raise
@@ -303,7 +306,7 @@ def on_innodbcluster_field_image(old, new, body: Body,
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
                field="spec.router.instances")  # type: ignore
-def on_innodbcluster_field_router_instances(old, new, body: Body,
+def on_innodbcluster_field_router_instances(old: int, new: int, body: Body,
                                             logger: Logger, **kwargs):
     cluster = InnoDBCluster(body)
 
@@ -318,6 +321,28 @@ def on_innodbcluster_field_router_instances(old, new, body: Body,
         cluster.parsed_spec.validate(logger)
 
         router_objects.update_size(cluster, new, logger)
+
+
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.router.version")  # type: ignore
+def on_innodbcluster_field_router_version(old: str, new: str, body: Body,
+                                          logger: Logger, **kwargs):
+    if old == new:
+        return
+
+    cluster = InnoDBCluster(body)
+
+    # ignore spec changes if the cluster is still being initialized
+    if not cluster.get_create_time():
+        logger.debug(
+            f"Ignoring spec.router.version change for unready cluster")
+        return
+
+    cluster.parsed_spec.validate(logger)
+    with ClusterMutex(cluster):
+        router_deploy = cluster.get_router_deployment()
+        if router_deploy:
+            router_objects.update_router_image(router_deploy, cluster.parsed_spec, logger)
 
 
 @kopf.on.create("", "v1", "pods",

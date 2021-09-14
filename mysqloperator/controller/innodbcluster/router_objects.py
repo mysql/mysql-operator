@@ -4,6 +4,7 @@
 #
 
 from .cluster_api import InnoDBCluster, InnoDBClusterSpec
+from ..kubeutils import client as api_client, ApiException
 from .. import config, utils
 import yaml
 from ..kubeutils import api_apps
@@ -153,3 +154,26 @@ def update_size(cluster: InnoDBCluster, size: int, logger: Logger) -> None:
             kopf.adopt(router_deployment)
             api_apps.create_namespaced_deployment(
                 namespace=cluster.namespace, body=router_deployment)
+
+
+def update_deployment_spec(dpl: api_client.V1Deployment, patch: dict) -> None:
+    api_apps.patch_namespaced_deployment(
+        dpl.metadata.name, dpl.metadata.namespace, body=patch)
+
+
+def update_router_image(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, logger: Logger) -> None:
+    patch = {"spec": {"template":
+                      {"spec": {
+                          "containers": [
+                               {"name": "router", "image": spec.router_image}
+                          ]
+                        }
+                      }
+                    }
+            }
+    update_deployment_spec(dpl, patch)
+
+def update_router_version(cluster: InnoDBCluster, logger: Logger) -> None:
+      dpl = cluster.get_router_deployment()
+      if dpl:
+        return update_router_image(dpl, cluster.parsed_spec, logger)

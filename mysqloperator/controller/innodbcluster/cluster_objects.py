@@ -4,7 +4,7 @@
 #
 
 from logging import Logger
-from kubernetes.client import api_client
+from ..kubeutils import client as api_client, ApiException
 from .. import utils, config, consts
 from .cluster_api import InnoDBCluster, InnoDBClusterSpec
 import yaml
@@ -470,7 +470,7 @@ def update_stateful_set_spec(sts, patch: dict) -> None:
         sts.metadata.name, sts.metadata.namespace, body=patch)
 
 
-def update_mysql_image(sts, spec: InnoDBClusterSpec) -> None:
+def update_mysql_image(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec) -> None:
     patch = {"spec": {"template":
                       {"spec": {
                           "containers": [
@@ -483,7 +483,7 @@ def update_mysql_image(sts, spec: InnoDBClusterSpec) -> None:
     update_stateful_set_spec(sts, patch)
 
 
-def update_operator_image(sts, spec: InnoDBClusterSpec) -> None:
+def update_operator_image(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec) -> None:
     patch = {"spec": {"template":
                       {"spec": {
                           "containers": [

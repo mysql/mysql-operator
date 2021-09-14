@@ -82,7 +82,7 @@ spec:
                       type: integer
                       minimum: 0
                       default: 0
-                      description: "Number of MySQL router instances to deploy"
+                      description: "Number of MySQL Router instances to deploy"
                     version:
                       type: string
                       pattern: '^\d+\.\d+\.\d+(-.+)?'

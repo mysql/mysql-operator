@@ -6,7 +6,7 @@
 #!/bin/bash
 
 MYSQL_OPERATOR_PYTHON_DEPS="mysql-operator-python-deps:3.7.7"
-MYSQL_SHELL_PACKAGE="mysql-shell-8.0.25"
+MYSQL_SHELL_PACKAGE="mysql-shell-8.0.26"
 MYSQL_REPO_URL="http://repo.mysql.com"
 if [ -n "${1}" ]; then
   MYSQL_REPO_URL="${1}"

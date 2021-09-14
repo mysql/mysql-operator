@@ -8,7 +8,7 @@ FROM %%MYSQL_OPERATOR_PYTHON_DEPS%%
 
 RUN rpm -U %%MYSQL_REPO_URL%%/mysql80-community-release-el8.rpm \
   && microdnf update && echo "[main]" > /etc/dnf/dnf.conf \
-  && microdnf install -y --disablerepo=mysql-tools-community --enablerepo=mysql-tools-preview %%MYSQL_SHELL_PACKAGE%% \
+  && microdnf install -y %%MYSQL_SHELL_PACKAGE%% \
   && microdnf remove mysql80-community-release \
   && microdnf clean all
 

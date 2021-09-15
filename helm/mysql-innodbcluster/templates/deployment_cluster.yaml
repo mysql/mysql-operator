@@ -11,7 +11,7 @@ spec:
   imagePullPolicy : {{ required "image.pullPolicy is required" .Values.image.pullPolicy }}
   baseServerId: {{ required "baseServerId is required" .Values.baseServerId }}
   version: {{ .Values.serverVersion | default .Chart.AppVersion }}
-  serviceAccountName: {{ .Release.Name }}-sidecar-sa
+  serviceAccountName: {{ .Release.Name }}-sa
 
 {{ if .Values.datadirVolumeClaimTemplate }}
   datadirVolumeClaimTemplate:

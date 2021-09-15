@@ -191,3 +191,8 @@ def update_pull_policy(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, lo
     #       (both are decorated), becase the latter will read the value from the Router Deployment
     #       and thus the value will be constant. We are using the former to push the value down
     update_router_container_template_property(dpl, "imagePullPolicy", spec.mysql_image_pull_policy, logger)
+
+
+def update_deployment_template_property(dpl: api_client.V1Deployment, property_name: str, property_value: str, logger: Logger) -> None:
+    patch = {"spec": {"template": {"spec": { property_name: property_value }}}}
+    update_deployment_spec(dpl, patch)

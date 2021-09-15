@@ -510,6 +510,10 @@ def update_pull_policy(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec, l
                        }}}
     update_stateful_set_spec(sts, patch)
 
+def update_template_property(sts: api_client.V1StatefulSet, property_name: str, property_value: str, logger: Logger) -> None:
+    patch = {"spec": {"template": {"spec": { property_name: property_value }}}}
+    update_stateful_set_spec(sts, patch)
+
 
 def on_first_cluster_pod_created(cluster: InnoDBCluster, logger: Logger) -> None:
     # Add finalizer to the cluster object to prevent it from being deleted

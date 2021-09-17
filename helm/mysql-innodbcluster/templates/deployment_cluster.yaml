@@ -14,53 +14,59 @@ spec:
   serviceAccountName: {{ .Release.Name }}-sa
 
 {{ if .Values.datadirVolumeClaimTemplate }}
+{{ with .Values.datadirVolumeClaimTemplate }}
   datadirVolumeClaimTemplate:
-{{ if .Values.datadirVolumeClaimTemplate.accessModes }}
-    accessModes: [ "{{ .Values.datadirVolumeClaimTemplate.accessModes}}" ]
-{{ end }} # .Values.datadirVolumeClaimTemplate.accessModes
+{{ if .accessModes }}
+    accessModes: [ "{{ .accessModes }}" ]
+{{ end }}
     resources:
       requests:
-{{ if .Values.datadirVolumeClaimTemplate.resources.requests.storage }}
-        storage: "{{ .Values.datadirVolumeClaimTemplate.resources.requests.storage }}"
-{{ end }} # .Values.datadirVolumeClaimTemplate.resources.requests.storage
-{{ end }} # .Values.datadirVolumeClaimTemplate
+{{- if .resources.requests.storage }}
+        storage: "{{ .resources.requests.storage }}"
+{{ end }}# if .resources.requests.storage
+{{ end }}# with .Values.datadirVolumeClaimTemplate
+{{ end }}# .Values.datadirVolumeClaimTemplate
 
 {{ if and (and .Values.initDB.dump .Values.initDB.dump.name) (and .Values.initDB.clone .Values.initDB.donorUrl) }}
 {{ fail "Dump and Clone are mutually exclusive" }}
-{{ end }} # if and .dump .clone 
+{{ end }}# if and .dump .clone
 
 {{ if and .Values.initDB .Values.initDB.clone }}
+{{ with .Values.initDB.clone }}
   initDB:
     clone:
-      donorUrl: {{ required "initDB.clone.donorUrl is required" .Values.initDB.clone.donorUrl }}
-      rootUser: {{ .Values.initDB.clone.rootUser | default "root" }}
-      credentials: {{ required "initDB.clone.credentials is required" .Values.initDB.clone.credentials }}
-{{ end }} # if and .Values.initDB  .Values.initDB.clone
+      donorUrl: {{ required "initDB.clone.donorUrl is required" .donorUrl }}
+      rootUser: {{ .rootUser | default "root" }}
+      credentials: {{ required "initDB.clone.credentials is required" .credentials }}
+{{ end }}# with .Values.initDB.clone
+{{ end }}# if and .Values.initDB .Values.initDB.clone
 
 {{ if and .Values.initDB .Values.initDB.dump }}
-{{ if and .Values.initDB.dump.name (and .Values.initDB.dump.storage (or .Values.initDB.dump.ociObjectStorage .Values.initDB.dump.persistentVolumeClaim)) }}
+{{ with .Values.initDB.dump }}
+{{ if and .name (or .ociObjectStorage .persistentVolumeClaim) }}
   initDB:
     dump:
-{{ if .Values.initDB.dump.name }}
-      name: {{ .Values.initDB.dump.name }}
+{{ if .name }}
+      name: {{ .name }}
 {{ end }}
-{{ if .Values.initDB.dump.path }}
-      path: {{ .Values.initDB.dump.path }}
+{{ if .path }}
+      path: {{ .path }}
 {{ end }}
       storage:
-{{ if .Values.initDB.dump.ociObjectStorage }}
+{{ if .ociObjectStorage }}
         ociObjectStorage:
-          prefix: {{ required "initDB.dump.ociObjectStorage.prefix is required" .Values.initDB.dump.ociObjectStorage.prefix }}
-          bucketName: {{ required "initDB.dump.ociObjectStorage.bucketName is required" .Values.initDB.dump.ociObjectStorage.bucketName }}
-          credentials: {{ required "initDB.dump.ociObjectStorage.credentials is required" .Values.initDB.dump.ociObjectStorage.credentials }} 
-{{ end }} # .Values.initDB.dump.ociObjectStorage
-{{ if .Values.initDB.dump.persistentVolumeClaim }}
+          prefix: {{ required "initDB.dump.ociObjectStorage.prefix is required" .ociObjectStorage.prefix }}
+          bucketName: {{ required "initDB.dump.ociObjectStorage.bucketName is required" .ociObjectStorage.bucketName }}
+          credentials: {{ required "initDB.dump.ociObjectStorage.credentials is required" .ociObjectStorage.credentials }} 
+{{ end }}# .ociObjectStorage
+{{ if .persistentVolumeClaim }}
         persistentVolumeClaim:
-          {{- toYaml .Values.initDB.dump.persistentVolumeClaim | nindent 10}}
-{{ end }} # .Values.initDB.dump.persistentVolumeClaim
-{{ end }} # and .Values.initDB.dump.name (and .Values.initDB.dump.storage (or .Values.initDB.dump.ociObjectStorage .Values.initDB.dump.persistentVolumeClaim))
-{{ end }} # and .Values.initDB .Values.initDB.dump
+          {{- toYaml .persistentVolumeClaim | nindent 10}}
+{{ end }}# .persistentVolumeClaim
+{{ end }}# and .name (or .ociObjectStorage .persistentVolumeClaim)
+{{ end }}# with .Values.initDB.dump
+{{ end }}# and .Values.initDB .Values.initDB.dump
 
 {{ if .Values.backupProfiles }}
   backupProfiles:
-{{ end }} # .Values.backupProfiles
+{{ end }}# .Values.backupProfiles

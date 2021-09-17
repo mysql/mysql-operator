@@ -141,6 +141,11 @@ metadata:
   labels:
     tier: mysql
     mysql.oracle.com/cluster: {spec.name}
+    app.kubernetes.io/name: mysql-innodbcluster
+    app.kubernetes.io/instance: mysql-innodbcluster-{spec.name}
+    app.kubernetes.io/component: database
+    app.kubernetes.io/managed-by: mysql-operator
+    app.kubernetes.io/created-by: mysql-operator
 spec:
   serviceName: {spec.name}-instances
   replicas: {spec.instances}
@@ -149,12 +154,22 @@ spec:
       component: mysqld
       tier: mysql
       mysql.oracle.com/cluster: {spec.name}
+      app.kubernetes.io/name: mysql-innodbcluster-mysql-server
+      app.kubernetes.io/instance: mysql-innodbcluster-{spec.name}-mysql-server
+      app.kubernetes.io/component: database
+      app.kubernetes.io/managed-by: mysql-operator
+      app.kubernetes.io/created-by: mysql-operator
   template:
     metadata:
       labels:
         component: mysqld
         tier: mysql
         mysql.oracle.com/cluster: {spec.name}
+        app.kubernetes.io/name: mysql-innodbcluster-mysql-server
+        app.kubernetes.io/instance: mysql-innodbcluster-{spec.name}-mysql-server
+        app.kubernetes.io/component: database
+        app.kubernetes.io/managed-by: mysql-operator
+        app.kubernetes.io/created-by: mysql-operator
     spec:
       subdomain: {spec.name}
 {utils.indent(spec.image_pull_secrets, 6)}

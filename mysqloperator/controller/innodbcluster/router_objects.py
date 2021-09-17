@@ -83,6 +83,11 @@ metadata:
   label:
     tier: mysql
     mysql.oracle.com/cluster: {spec.name}
+    app.kubernetes.io/name: mysql-innodbcluster
+    app.kubernetes.io/instance: mysql-innodbcluster-{spec.name}-router
+    app.kubernetes.io/component: router
+    app.kubernetes.io/managed-by: mysql-operator
+    app.kubernetes.io/created-by: mysql-operator
 spec:
   replicas: {spec.router.instances or 0 if not init_only else 0}
   selector:
@@ -90,12 +95,22 @@ spec:
       component: mysqlrouter
       tier: mysql
       mysql.oracle.com/cluster: {spec.name}
+      app.kubernetes.io/name: mysql-router
+      app.kubernetes.io/instance: mysql-innodbcluster-{spec.name}-router
+      app.kubernetes.io/component: router
+      app.kubernetes.io/managed-by: mysql-operator
+      app.kubernetes.io/created-by: mysql-operator
   template:
     metadata:
       labels:
         component: mysqlrouter
         tier: mysql
         mysql.oracle.com/cluster: {spec.name}
+        app.kubernetes.io/name: mysql-router
+        app.kubernetes.io/instance: mysql-innodbcluster-{spec.name}-router
+        app.kubernetes.io/component: router
+        app.kubernetes.io/managed-by: mysql-operator
+        app.kubernetes.io/created-by: mysql-operator
     spec:
 {utils.indent(spec.service_account_name, 6)}
 {utils.indent(spec.image_pull_secrets, 6)}

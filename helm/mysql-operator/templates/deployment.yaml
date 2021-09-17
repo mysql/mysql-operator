@@ -5,6 +5,12 @@ metadata:
   namespace: mysql-operator
   labels:
     version: "{{ default .Chart.AppVersion }}"
+    app.kubernetes.io/name: mysql-operator
+    app.kubernetes.io/instance: mysql-operator
+    app.kubernetes.io/version: "{{ default .Chart.AppVersion }}"
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/managed-by: helm
+    app.kubernetes.io/created-by: helm
 spec:
   replicas: 1
   selector:

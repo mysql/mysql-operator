@@ -13,60 +13,95 @@ spec:
   version: {{ .Values.serverVersion | default .Chart.AppVersion }}
   serviceAccountName: {{ .Release.Name }}-sa
 
-{{ if .Values.datadirVolumeClaimTemplate }}
-{{ with .Values.datadirVolumeClaimTemplate }}
+{{- if .Values.datadirVolumeClaimTemplate }}
+  {{- with .Values.datadirVolumeClaimTemplate }}
   datadirVolumeClaimTemplate:
-{{ if .accessModes }}
+    {{- if .accessModes }}
     accessModes: [ "{{ .accessModes }}" ]
-{{ end }}
+    {{- end }}
+    {{- if .resources.requests.storage }}
     resources:
       requests:
-{{- if .resources.requests.storage }}
         storage: "{{ .resources.requests.storage }}"
-{{ end }}# if .resources.requests.storage
-{{ end }}# with .Values.datadirVolumeClaimTemplate
-{{ end }}# .Values.datadirVolumeClaimTemplate
+    {{- end }}
+  {{- end }}
+{{- end }}
 
-{{ if and (and .Values.initDB.dump .Values.initDB.dump.name) (and .Values.initDB.clone .Values.initDB.donorUrl) }}
-{{ fail "Dump and Clone are mutually exclusive" }}
-{{ end }}# if and .dump .clone
+{{- if and (and .Values.initDB.dump .Values.initDB.dump.name) (and .Values.initDB.clone .Values.initDB.donorUrl) }}
+  {{- fail "Dump and Clone are mutually exclusive" }}
+{{- end }}
 
-{{ if and .Values.initDB .Values.initDB.clone }}
-{{ with .Values.initDB.clone }}
+{{- if and .Values.initDB .Values.initDB.clone }}
+  {{- with .Values.initDB.clone }}
   initDB:
     clone:
       donorUrl: {{ required "initDB.clone.donorUrl is required" .donorUrl }}
       rootUser: {{ .rootUser | default "root" }}
       credentials: {{ required "initDB.clone.credentials is required" .credentials }}
-{{ end }}# with .Values.initDB.clone
-{{ end }}# if and .Values.initDB .Values.initDB.clone
+  {{- end }}
+{{- end }}
 
-{{ if and .Values.initDB .Values.initDB.dump }}
-{{ with .Values.initDB.dump }}
-{{ if and .name (or .ociObjectStorage .persistentVolumeClaim) }}
+{{- if and .Values.initDB .Values.initDB.dump }}
+  {{- with .Values.initDB.dump }}
+    {{- if and .name (or .ociObjectStorage .persistentVolumeClaim) }}
   initDB:
     dump:
-{{ if .name }}
+      {{- if .name }}
       name: {{ .name }}
-{{ end }}
-{{ if .path }}
+      {{- end }}
+      {{- if .path }}
       path: {{ .path }}
-{{ end }}
+      {{- end }}
       storage:
-{{ if .ociObjectStorage }}
+      {{- if .ociObjectStorage }}
         ociObjectStorage:
           prefix: {{ required "initDB.dump.ociObjectStorage.prefix is required" .ociObjectStorage.prefix }}
           bucketName: {{ required "initDB.dump.ociObjectStorage.bucketName is required" .ociObjectStorage.bucketName }}
           credentials: {{ required "initDB.dump.ociObjectStorage.credentials is required" .ociObjectStorage.credentials }} 
-{{ end }}# .ociObjectStorage
-{{ if .persistentVolumeClaim }}
+      {{- end }}
+      {{- if .persistentVolumeClaim }}
         persistentVolumeClaim:
           {{- toYaml .persistentVolumeClaim | nindent 10}}
-{{ end }}# .persistentVolumeClaim
-{{ end }}# and .name (or .ociObjectStorage .persistentVolumeClaim)
-{{ end }}# with .Values.initDB.dump
-{{ end }}# and .Values.initDB .Values.initDB.dump
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}
 
-{{ if .Values.backupProfiles }}
+{{- if .Values.backupProfiles }}
   backupProfiles:
-{{ end }}# .Values.backupProfiles
+  {{ $isDumpInstance := false }}
+  {{ $isSnapshot := false }}
+  {{- range $_, $profile := .Values.backupProfiles }}
+    {{- if $profile.name }}
+  - name: {{ $profile.name -}}
+      {{- $isDumpInstance = hasKey $profile "dumpInstance" }}
+      {{- $isSnapshot = hasKey $profile "snapshot" }}
+      {{- if or $isDumpInstance $isSnapshot }}
+        {{- $backupProfile := ternary $profile.dumpInstance $profile.snapshot $isDumpInstance }}
+        {{- if $isDumpInstance }}
+    dumpInstance:
+        {{- else if $isSnapshot }}
+    snapshot:
+        {{- else }}
+          {{- fail "Impossible backup type" }}
+        {{ end }}
+        {{- if not (hasKey $backupProfile "storage") }}
+          {{- fail "dumpInstance backup profile $profile.name has no storage section" }}
+        {{- else if hasKey $backupProfile.storage "ociObjectStorage" }}
+      storage:
+        ociObjectStorage:
+          prefix: {{ required "prefix is required" $backupProfile.storage.ociObjectStorage.prefix }}
+          bucketName: {{ required "bucketName is required"  $backupProfile.storage.ociObjectStorage.bucketName }}
+          credentials: {{ required "credentials is required"  $backupProfile.storage.ociObjectStorage.credentials }}
+        {{- else if hasKey $backupProfile.storage "persistentVolumeClaim" }}
+      storage:
+        persistentVolumeClaim: {{ toYaml $backupProfile.storage.persistentVolumeClaim | nindent 12}}
+        {{- else -}}
+          {{- fail "dumpInstance backup profile $profile.name has empty storage section - neither ociObjectStorage nor persistentVolumeClaim defined" }}
+        {{- end -}}
+      {{- else }}
+        {{- fail "One of dumpInstance or snapshot must be methods of a backupProfile" }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}

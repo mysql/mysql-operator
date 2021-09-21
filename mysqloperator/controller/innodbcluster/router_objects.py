@@ -192,7 +192,7 @@ def update_router_container_template_property(dpl: api_client.V1Deployment,
 
 
 def update_router_image(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, logger: Logger) -> None:
-    update_router_container_template_property(dpl, "image", spec.router_image)
+    update_router_container_template_property(dpl, "image", spec.router_image, logger)
 
 
 def update_router_version(cluster: InnoDBCluster, logger: Logger) -> None:

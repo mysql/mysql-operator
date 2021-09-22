@@ -15,6 +15,7 @@ from e2e.mysqloperator.cluster import check_adminapi
 from e2e.mysqloperator.cluster import check_routing
 import unittest
 from utils.tutil import g_full_log
+from setup.config import g_ts_cfg
 from utils.auxutil import b64encode
 from utils.optesting import DEFAULT_MYSQL_ACCOUNTS, COMMON_OPERATOR_ERRORS
 
@@ -44,7 +45,7 @@ class DumpInstance(tutil.OperatorTest):
         backup_volume_name = "test-backup-storage"
         backupdir = "/tmp/backups"
 
-        bucket = os.getenv("OPERATOR_TEST_BACKUP_OCI_BUCKET")
+        bucket = g_ts_cfg.oci_backup_bucket
 
         # create cluster with mostly default configs
         yaml = f"""
@@ -166,11 +167,12 @@ spec:
         # TODO add and check details about the profile used
         # check backup data, ensure that excluded DB is not included etc
 
-    @unittest.skipIf(not os.getenv("OPERATOR_TEST_BACKUP_OCI_APIKEY_PATH") or not os.getenv("OPERATOR_TEST_BACKUP_OCI_BUCKET"), "OPERATOR_TEST_BACKUP_OCI_APIKEY_PATH and/or OPERATOR_TEST_BACKUP_OCI_BUCKET not set")
+    @unittest.skipIf(g_ts_cfg.oci_skip or not g_ts_cfg.oci_backup_apikey_path or not g_ts_cfg.oci_backup_bucket,
+      "OCI backup apikey path and/or backup bucket not set")
     def test_1_backup_to_oci_bucket(self):
         # Set this environment variable to the location of the OCI API Key
         # to use for backups to OCI Object Storage
-        apikey_path = os.getenv("OPERATOR_TEST_BACKUP_OCI_APIKEY_PATH")
+        apikey_path = g_ts_cfg.oci_backup_apikey_path
         if apikey_path:
             kutil.create_apikey_secret(self.ns, "backup-apikey", apikey_path)
 

@@ -11,36 +11,36 @@ from kubernetes.client.rest import ApiException
 
 class MySQLDbResult:
     def __init__(self, cursor):
-        self.cursor = cursor
+        self._cursor = cursor
 
     def fetch_one(self):
-        result = self.cursor.fetchone()
-        self.cursor.close()
+        result = self._cursor.fetchone()
+        self._cursor.close()
         return result
 
     def fetch_all(self):
-        result = self.cursor.fetchall()
-        self.cursor.close()
+        result = self._cursor.fetchall()
+        self._cursor.close()
         return result
 
 
 class MySQLDbSession:
     def __init__(self, user, password, host, port, database):
-        self.session = mysql.connector.connect(user=user, password=password,
+        self._session = mysql.connector.connect(user=user, password=password,
                             host=host, port=port, database=database)
 
     def close(self):
-        if self.session:
-            self.session.close()
-            self.session = None
+        if self._session:
+            self._session.close()
+            self._session = None
 
     def exec_sql(self, query, params=None):
-        cursor = self.session.cursor()
+        cursor = self._session.cursor()
         cursor.execute(query, params)
         cursor.close()
 
     def query_sql(self, query, params=None):
-        cursor = self.session.cursor()
+        cursor = self._session.cursor()
         cursor.execute(query, params)
         return MySQLDbResult(cursor)
 

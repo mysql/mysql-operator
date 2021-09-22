@@ -16,8 +16,9 @@ from e2e.mysqloperator.cluster import check_routing
 from setup import defaults
 import unittest
 from utils.tutil import g_full_log
+from setup.config import g_ts_cfg
 from utils.optesting import COMMON_OPERATOR_ERRORS
-from .cluster_t import check_all, g_target_old_version
+from .cluster_t import check_all
 
 
 class BadVersionChanges(tutil.OperatorTest):
@@ -65,7 +66,7 @@ spec:
   router:
     instances: 2
   secretName: mypwds
-  version: "{g_target_old_version}"
+  version: "{g_ts_cfg.get_old_version_tag()}"
 """
 
         kutil.apply(self.ns, yaml)
@@ -76,7 +77,7 @@ spec:
 
         self.wait_ic("mycluster", "ONLINE", 3)
 
-        check_all(self, self.ns, "mycluster", version=g_target_old_version,
+        check_all(self, self.ns, "mycluster", version=g_ts_cfg.get_old_version_tag(),
                   instances=3, routers=2, primary=0)
 
         # TODO check that router version is the latest by default
@@ -86,11 +87,11 @@ spec:
             cont = check_apiobjects.check_pod_container(
                 self, pod, "mysql", None, True)
             self.assertEqual(
-                cont["image"], f"{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_SERVER_IMAGE}:{g_target_old_version}")
+                cont["image"], g_ts_cfg.get_old_server_image())
             cont = check_apiobjects.check_pod_container(
                 self, pod, "sidecar", None, True)
             self.assertEqual(
-                cont["image"], f"{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_OPERATOR_IMAGE}:{defaults.DEFAULT_VERSION_TAG}")
+                cont["image"], g_ts_cfg.get_operator_image())
 
     def test_1_upgrade(self):
         """
@@ -99,7 +100,7 @@ spec:
         """
 
         kutil.patch_ic(self.ns, "mycluster", {"spec": {
-            "version": defaults.DEFAULT_VERSION_TAG
+            "version": g_ts_cfg.version_tag
         }}, type="merge")
 
         def check_done(pod):
@@ -108,16 +109,16 @@ spec:
             return json.loads(po["metadata"].get("annotations", {}).get("mysql.oracle.com/membership-info", "{}")).get("version", "")
 
         self.wait(check_done, args=("mycluster-2", ),
-                  check=lambda s: s.startswith(defaults.DEFAULT_VERSION_TAG), timeout=150, delay=10)
+                  check=lambda s: s.startswith(g_ts_cfg.version_tag), timeout=150, delay=10)
         self.wait(check_done, args=("mycluster-1", ),
-                  check=lambda s: s.startswith(defaults.DEFAULT_VERSION_TAG), timeout=150, delay=10)
+                  check=lambda s: s.startswith(g_ts_cfg.version_tag), timeout=150, delay=10)
         self.wait(check_done, args=("mycluster-0", ),
-                  check=lambda s: s.startswith(defaults.DEFAULT_VERSION_TAG), timeout=150, delay=10)
+                  check=lambda s: s.startswith(g_ts_cfg.version_tag), timeout=150, delay=10)
 
         self.wait_ic("mycluster", "ONLINE", 3)
 
         # TODO check that mysql is upgraded ok
-        check_all(self, self.ns, "mycluster", version=defaults.DEFAULT_VERSION_TAG,
+        check_all(self, self.ns, "mycluster", version=g_ts_cfg.version_tag,
                   instances=3, routers=2, primary=None)
 
         for pod_name in ["mycluster-0", "mycluster-1", "mycluster-2"]:
@@ -125,11 +126,11 @@ spec:
             cont = check_apiobjects.check_pod_container(
                 self, pod, "mysql", None, True)
             self.assertEqual(
-                cont["image"], f"{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_SERVER_IMAGE}:{defaults.DEFAULT_VERSION_TAG}")
+                cont["image"], g_ts_cfg.get_server_image())
             cont = check_apiobjects.check_pod_container(
                 self, pod, "sidecar", None, True)
             self.assertEqual(
-                cont["image"], f"{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_OPERATOR_IMAGE}:{defaults.DEFAULT_VERSION_TAG}")
+                cont["image"], g_ts_cfg.get_operator_image())
 
         # TODO check router still 8.0.21
 

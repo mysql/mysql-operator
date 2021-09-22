@@ -11,6 +11,7 @@ from utils import kutil
 import logging
 import re
 from utils.tutil import g_full_log
+from setup.config import g_ts_cfg
 from utils.optesting import DEFAULT_MYSQL_ACCOUNTS, COMMON_OPERATOR_ERRORS
 
 # TODO additional checks that could be done via webhooks
@@ -314,7 +315,7 @@ spec:
 
         # fixing the version should let the cluster resume creation
         kutil.patch_ic(self.ns, "mycluster", {"spec": {
-            "version": defaults.DEFAULT_VERSION_TAG
+            "version": g_ts_cfg.version_tag
         }}, type="merge")
 
         # check cluster ok now
@@ -355,7 +356,8 @@ spec:
         self.assertEqual(len(kutil.ls_sts(self.ns)), 1)
 
         def pod_error():
-            return kutil.ls_po(self.ns)[0]["STATUS"] == "Init:ErrImageNeverPull"
+            clusterStatus = kutil.ls_po(self.ns)[0]["STATUS"]
+            return clusterStatus in ("Init:ErrImageNeverPull", "Init:ErrImagePull")
 
         self.wait(pod_error)
 
@@ -390,13 +392,14 @@ spec:
         self.assertEqual(len(kutil.ls_sts(self.ns)), 1)
 
         def pod_error():
-            return kutil.ls_po(self.ns)[0]["STATUS"] == "Init:ErrImageNeverPull"
+            clusterStatus = kutil.ls_po(self.ns)[0]["STATUS"]
+            return clusterStatus in ("Init:ErrImageNeverPull", "Init:ErrImagePull")
 
         self.wait(pod_error)
 
         # fixing the imageRepository should let the cluster resume creation
         kutil.patch_ic(self.ns, "mycluster", {"spec": {
-            "imageRepository": defaults.DEFAULT_IMAGE_REPOSITORY
+            "imageRepository": g_ts_cfg.get_image_registry_repository()
         }}, type="merge")
 
         # NOTE: seems we have to delete the pod to force it to be recreated
@@ -479,17 +482,18 @@ spec:
 
         # Wait for mycluster-2 to fail upgrading
         def check(pods):
-            print(pods[2]["STATUS"])
-            return pods[2]["STATUS"] == "Init:ErrImageNeverPull"
+            clusterStatus = pods[2]["STATUS"]
+            print(clusterStatus)
+            return clusterStatus in ("Init:ErrImageNeverPull", "Init:ErrImagePull")
 
         self.wait(kutil.ls_po, (self.ns,), check, delay=10, timeout=100)
 
         # check status of the cluster
-        self.wait_ic("mycluster", ["ONLINE"], 2)
+        self.wait_ic("mycluster", ["ONLINE_PARTIAL"], 2)
 
         # revert the version
         kutil.patch_ic(self.ns, "mycluster", {"spec": {
-            "version": defaults.DEFAULT_SERVER_VERSION_TAG
+            "version": g_ts_cfg.server_version_tag
         }}, type="merge")
 
         # delete the pod in error state so it can recover

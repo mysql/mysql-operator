@@ -5,8 +5,7 @@
 
 import os
 import subprocess
-from setup import defaults
-
+from setup.config import g_ts_cfg
 
 # Operator Test Environment
 
@@ -18,10 +17,8 @@ class BaseEnvironment:
         super().__init__()
         self._setup = True
         self._cleanup = True
-        self._registry = None
-        self._opeator_image = None
-
         self.operator_host_path = None
+        self.operator_mount_path = None
 
     def __enter__(self):
         return self
@@ -29,27 +26,24 @@ class BaseEnvironment:
     def __exit__(self, type, value, tb):
         self.destroy()
 
-    def setup_cluster(self, nodes=None, version=None, perform_setup=True, skip_cleanup=False):
+    def setup_cluster(self, nodes=None, version=None, registry_cfg_path=None, perform_setup=True, cleanup=False):
         self._setup = perform_setup
-        self._cleanup = not skip_cleanup
+        self._cleanup = cleanup
 
         if self._setup:
           self.delete_cluster()
 
-          self.start_cluster(nodes, version)
+          self.start_cluster(nodes, version, registry_cfg_path)
 
         subprocess.call(["kubectl", "cluster-info"])
 
-    def setup_operator(self, registry, deploy_files):
-        self._registry = registry
-
+    def setup_operator(self, deploy_files):
         self.deploy_operator(deploy_files)
 
     def destroy(self):
-        if self._setup:
+        if self._setup and self._cleanup:
             self.stop_cluster()
-            if self._cleanup:
-                self.delete_cluster()
+            self.delete_cluster()
 
     def cache_images(self, image_dir, images):
         versions = {}
@@ -83,10 +77,10 @@ class BaseEnvironment:
         pass
 
     def mount_operator_path(self, path):
-        # overriders must set self.operator_host_path
-        raise Exception("mounting operator code not yet supported for this driver")
+        self.operator_host_path = os.path.join("/tmp", os.path.basename(path))
+        self.operator_mount_path = path
 
-    def start_cluster(self, nodes, version):
+    def start_cluster(self, nodes, version, registry_cfg_path):
         pass
 
     def stop_cluster(self):
@@ -124,16 +118,18 @@ spec:
       serviceAccountName: mysql-operator-sa
       containers:
         - name: mysql-operator
-          image: "{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_OPERATOR_IMAGE}:{defaults.DEFAULT_OPERATOR_VERSION_TAG}"
-          imagePullPolicy: {defaults.DEFAULT_OPERATOR_PULL_POLICY}
+          image: "{g_ts_cfg.get_operator_image()}"
+          imagePullPolicy: {g_ts_cfg.operator_pull_policy}
           args: ["mysqlsh", "--log-level=@INFO", "--pym", "mysqloperator", "operator"]
           env:
+            - name: MYSQL_OPERATOR_DEFAULT_REPOSITORY
+              value: "{g_ts_cfg.get_image_registry_repository()}"
             - name: MYSQL_OPERATOR_DEBUG
               value: "{self.opt_operator_debug_level}"
             - name: MYSQL_OPERATOR_IMAGE_PULL_POLICY
-              value: IfNotPresent
+              value: {g_ts_cfg.operator_pull_policy}
             - name: MYSQL_OPERATOR_DEFAULT_GR_IP_WHITELIST
-              value: "172.17.0.0/8"
+              value: "{g_ts_cfg.operator_gr_ip_whitelist}"
 """
 
         if self.operator_host_path:
@@ -141,7 +137,7 @@ spec:
             y += f"""
           volumeMounts:
             - name: operator-code
-              mountPath: "/usr/lib/mysqlsh/kubernetes/mysqloperator"
+              mountPath: "/usr/lib/mysqlsh/python-packages/mysqloperator"
       volumes:
         - name: operator-code
           hostPath:

@@ -15,6 +15,7 @@ from . import check_routing
 import os
 import unittest
 from utils.tutil import g_full_log
+from setup.config import g_ts_cfg
 from utils.auxutil import b64encode
 from utils.optesting import DEFAULT_MYSQL_ACCOUNTS, COMMON_OPERATOR_ERRORS
 
@@ -175,7 +176,8 @@ spec:
 # TODO bad version
         # TODO regression test for bug where a failed clone doesn't abort the pod
 
-@unittest.skipIf(not os.getenv("OPERATOR_TEST_BACKUP_OCI_APIKEY_PATH") or not os.getenv("OPERATOR_TEST_RESTORE_OCI_APIKEY_PATH") or not os.getenv("OPERATOR_TEST_BACKUP_OCI_BUCKET"), "OPERATOR_TEST_BACKUP_OCI_APIKEY_PATH, OPERATOR_TEST_RESTORE_OCI_APIKEY_PATH, OPERATOR_TEST_BACKUP_OCI_BUCKET not set")
+@unittest.skipIf(g_ts_cfg.oci_skip or not g_ts_cfg.oci_backup_apikey_path or not g_ts_cfg.oci_restore_apikey_path or not g_ts_cfg.oci_backup_bucket,
+  "OCI backup/restore apikey path and/or backup bucket not set")
 class ClusterFromDumpOCI(tutil.OperatorTest):
     """
     Create cluster and initialize from a shell dump stored in an OCI bucket.
@@ -204,11 +206,9 @@ class ClusterFromDumpOCI(tutil.OperatorTest):
         kutil.create_user_secrets(
             self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
 
-        bucket = os.getenv("OPERATOR_TEST_BACKUP_OCI_BUCKET", "")
-        backup_apikey_path = os.getenv(
-            "OPERATOR_TEST_BACKUP_OCI_APIKEY_PATH", "")
-        restore_apikey_path = os.getenv(
-            "OPERATOR_TEST_RESTORE_OCI_APIKEY_PATH", "")
+        bucket = g_ts_cfg.oci_backup_bucket
+        backup_apikey_path = not g_ts_cfg.oci_backup_apikey_path
+        restore_apikey_path = g_ts_cfg.oci_restore_apikey_path
 
         # create a secret with the api key to access the bucket, which should be
         # stored in the path given in the environment variable
@@ -291,7 +291,7 @@ spec:
         kutil.create_user_secrets(
             self.ns, "newpwds", root_user="root", root_host="%", root_pass="sakila")
 
-        bucket = os.getenv("OPERATOR_TEST_BACKUP_OCI_BUCKET", "")
+        bucket = g_ts_cfg.oci_backup_bucket
 
         # create cluster with mostly default configs
         yaml = f"""
@@ -368,7 +368,7 @@ spec:
         load command.
         """
 
-        bucket = os.getenv("OPERATOR_TEST_BACKUP_OCI_BUCKET", "")
+        bucket = g_ts_cfg.oci_backup_bucket
 
         # create cluster with mostly default configs
         yaml = f"""

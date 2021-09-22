@@ -110,7 +110,7 @@ def check_cluster_spec_compliant(test, icobj):
     # if "image" in spec:
     #     test.assertEqual(icobj["status"]["version"], spec["image"])
     # else:
-    #     test.assertEqual(icobj["status"]["version"], defaults.DEFAULT_SERVER_VERSION_TAG)
+    #     test.assertEqual(icobj["status"]["version"], g_ts_cfg.server_version_tag)
 
 
 def check_pod_spec_compliant(test, icobj, pod):

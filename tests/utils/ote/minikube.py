@@ -3,8 +3,10 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
+from utils import auxutil
 from .base import BaseEnvironment
 from datetime import datetime
+from setup.config import g_ts_cfg
 import subprocess
 import os
 import sys
@@ -12,7 +14,6 @@ import sys
 
 class MinikubeEnvironment(BaseEnvironment):
     name = "Minikube"
-    _mount_operator_path = None
 
     def load_images(self, images):
         self.list_images()
@@ -83,16 +84,15 @@ class MinikubeEnvironment(BaseEnvironment):
         if verbose:
             print('done')
 
-    def mount_operator_path(self, path):
-        self.operator_host_path = os.path.join("/tmp", os.path.basename(path))
-        self._mount_operator_path = path
-
-    def start_cluster(self, nodes, version):
+    def start_cluster(self, nodes, version, registry_cfg_path):
+        assert registry_cfg_path is None
         args = ["minikube", "start", f"--nodes={nodes}"]
         if version:
             args.append(f"--kubernetes-version={version}")
-        if self._mount_operator_path:
-            args += ["--mount", f"--mount-string={self._mount_operator_path}:{self.operator_host_path}"]
+        if self.operator_mount_path:
+            args += ["--mount", f"--mount-string={self.operator_mount_path}:{self.operator_host_path}"]
+        if g_ts_cfg.image_registry:
+            args.append(f"--insecure-registry={self.resolve_registry()}")
         subprocess.check_call(args)
 
     def stop_cluster(self):
@@ -102,3 +102,28 @@ class MinikubeEnvironment(BaseEnvironment):
     def delete_cluster(self):
         args = ["minikube", "delete"]
         subprocess.check_call(args)
+
+    def resolve_registry(self):
+        # check if registry host is localhost at the bottom
+        if not g_ts_cfg.image_registry_is_loopback:
+            return g_ts_cfg.image_registry
+
+        # localhost registry will not work inside minikube as it runs in its own vm
+        # so resolve the host IP and override it in registry Url, it will work when
+        # called from inside of minikube (but not from the host)
+
+        # example, assume the following configuration
+        # - in /etc/hosts there was added host registry.localhost
+        #     127.0.0.1 registry.localhost
+        # - create local registry registry.localhost:5000 (added registry.localhost in /etc/hosts)
+        # - get host ip, it may be e.g. 10.0.2.15
+        # - minikube start --insecure-registry=10.0.2.15:5000
+        # - minikube ssh && docker pull 10.0.2.15:5000/mysql/mysql-operator:8.0.25, should work
+        # - btw on the host the above pull cmd will not work if 10.0.2.15 is not added as insecure
+        #     registry, but it doesn't matter, because we will need it only inside minikube
+
+        # some more details also in the following article:
+        # https://hasura.io/blog/sharing-a-local-registry-for-minikube-37c7240d0615/
+        host_ip = auxutil.resolve_host_ip()
+        g_ts_cfg.image_registry = g_ts_cfg.image_registry.replace(g_ts_cfg.image_registry_host, host_ip)
+        return g_ts_cfg.image_registry

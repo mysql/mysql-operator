@@ -5,45 +5,61 @@
 
 import os
 
-# _pull_policy = os.getenv("MYSQL_OPERATOR_IMAGE_PULL_POLICY")
-# if _pull_policy:
-#     default_image_pull_policy = ImagePullPolicy[_pull_policy]
-# else:
-#     default_image_pull_policy = ImagePullPolicy.Always
-# class ImagePullPolicy(Enum):
-#     Never = "Never"
-#     IfNotPresent = "IfNotPresent"
-#     Always = "Always"
+# version
+VERSION_TAG = "8.0.25"
+
+MIN_SUPPORTED_VERSION = "8.0.24"
+MAX_SUPPORTED_VERSION = "8.0.26"
 
 
-DEFAULT_VERSION_TAG = "8.0.25"
+# image
+IMAGE_REGISTRY = os.getenv(
+    "OPERATOR_TEST_REGISTRY", default=None)
 
-DEFAULT_SERVER_VERSION_TAG = DEFAULT_VERSION_TAG
-MIN_SUPPORTED_MYSQL_VERSION = "8.0.24"
-MAX_SUPPORTED_MYSQL_VERSION = "8.0.26"
+IMAGE_REPOSITORY = os.getenv(
+    "OPERATOR_TEST_REPOSITORY", default="mysql")
 
-DEFAULT_ROUTER_VERSION_TAG = DEFAULT_VERSION_TAG
 
-DEFAULT_IMAGE_REPOSITORY = os.getenv(
-    "MYSQL_OPERATOR_DEFAULT_REPOSITORY", default="mysql")
+# operator
+OPERATOR_IMAGE_NAME = os.getenv(
+    "OPERATOR_TEST_IMAGE_NAME", default="mysql-operator")
 
-DEFAULT_OPERATOR_VERSION_TAG = os.getenv(
-    "MYSQL_TEST_OPERATOR_VERSION_TAG", default="8.0.25-2.0.1")
+OPERATOR_EE_IMAGE_NAME = os.getenv(
+    "OPERATOR_TEST_EE_IMAGE_NAME", default="mysql-operator-commercial")
+    # "OPERATOR_TEST_EE_IMAGE_NAME", default="mysql-operator")
 
-DEFAULT_OPERATOR_PULL_POLICY = os.getenv(
-    "MYSQL_TEST_OPERATOR_PULL_POLICY", default="IfNotPresent")
+OPERATOR_VERSION_TAG = os.getenv(
+    "OPERATOR_TEST_VERSION_TAG", default="8.0.25-2.0.2")
 
-MYSQL_SERVER_IMAGE = "mysql-server"
-MYSQL_ROUTER_IMAGE = "mysql-router"
-MYSQL_OPERATOR_IMAGE = os.getenv(
-    "MYSQL_TEST_OPERATOR_IMAGE", default="mysql-operator")
+OPERATOR_PULL_POLICY = os.getenv(
+    "OPERATOR_TEST_PULL_POLICY", default="IfNotPresent")
 
-# # TODO
-# MYSQL_SERVER_EE_IMAGE = "enterprise-server"
-# MYSQL_ROUTER_EE_IMAGE = "enterprise-router"
-# MYSQL_OPERATOR_EE_IMAGE = "mysql-operator-commercial"
+OPERATOR_GR_IP_WHITELIST = os.getenv(
+    "OPERATOR_TEST_GR_IP_WHITELIST", default="172.17.0.0/8")
 
-MYSQL_SERVER_EE_IMAGE = "mysql-server"
-MYSQL_ROUTER_EE_IMAGE = "mysql-router"
-MYSQL_OPERATOR_EE_IMAGE = os.getenv(
-    "MYSQL_TEST_OPERATOR_EE_IMAGE", default="mysql-operator")
+
+# server
+SERVER_VERSION_TAG = VERSION_TAG
+SERVER_IMAGE_NAME = "mysql-server"
+SERVER_EE_IMAGE_NAME = "enterprise-server"
+# SERVER_EE_IMAGE_NAME = "mysql-server"
+
+
+# router
+ROUTER_VERSION_TAG = VERSION_TAG
+ROUTER_IMAGE_NAME = "mysql-router"
+ROUTER_EE_IMAGE_NAME = "enterprise-router"
+# ROUTER_EE_IMAGE_NAME = "mysql-router"
+
+# oci
+OCI_SKIP = os.getenv(
+    "OPERATOR_TEST_SKIP_OCI", default=False)
+
+OCI_BACKUP_APIKEY_PATH = os.getenv(
+    "OPERATOR_TEST_BACKUP_OCI_APIKEY_PATH", default=None)
+
+OCI_RESTORE_APIKEY_PATH = os.getenv(
+    "OPERATOR_TEST_RESTORE_OCI_APIKEY_PATH", default=None)
+
+OCI_BACKUP_BUCKET = os.getenv(
+    "OPERATOR_TEST_BACKUP_OCI_BUCKET", default=None)

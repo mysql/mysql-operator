@@ -5,6 +5,8 @@
 #
 
 from typing import Tuple
+from setup import config
+from setup.config import g_ts_cfg
 from utils.ote import get_driver
 from utils.ote.base import BaseEnvironment
 from utils import kutil
@@ -107,17 +109,17 @@ if __name__ == '__main__':
     opt_include = []
     opt_exclude = []
     opt_verbose = False
-    debug = False
-    no_cleanup = False
-    verbosity = 2
+    opt_debug = False
+    opt_verbosity = 2
     opt_nodes = 1
     opt_kube_version = None
     opt_setup = True
     opt_load_images = False
     opt_deploy = True
     opt_mount_operator_path = None
-    env_name = "minikube"
-    registry = "local"  # local | <registry-name>
+    opt_cleanup = True
+    opt_env_name = "minikube"
+    opt_registry_cfg_path = None
 
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     allowed_commands = ["run", "list", "setup", "test", "clean"]
@@ -128,9 +130,7 @@ if __name__ == '__main__':
 
     for arg in sys.argv[2:]:
         if arg.startswith("--env="):
-            env_name = arg.partition("=")[-1]
-        elif arg.startswith("--registry="):
-            registry = arg.partition("=")[-1]
+            opt_env_name = arg.partition("=")[-1]
         elif arg == "--kube-version=":
             opt_kube_version = arg.split("=")[-1]
         elif arg.startswith("--nodes="):
@@ -144,13 +144,13 @@ if __name__ == '__main__':
             opt_verbose = True
             tutil.debug_adminapi_sql = 2
         elif arg == "--debug" or arg == "-d":
-            debug = True
+            opt_debug = True
         elif arg == "--trace" or arg == "-t":
             tutil.tracer.enabled = True
-        elif arg == "--noclean":
-            no_cleanup = True
         elif arg == "--nosetup":
             opt_setup = False
+        elif arg == "--noclean":
+            opt_cleanup = False
         elif arg == "--load":
             opt_load_images = True
         elif arg == "--nodeploy":
@@ -161,6 +161,24 @@ if __name__ == '__main__':
             BaseEnvironment.opt_operator_debug_level = 3
         elif arg == "--mount-operator" or arg == "-O":
             opt_mount_operator_path = os.path.join(os.path.dirname(basedir), "mysqloperator")
+        elif arg.startswith("--registry="):
+            g_ts_cfg.image_registry = arg.partition("=")[-1]
+        elif arg.startswith("--registry-cfg="):
+            opt_registry_cfg_path = arg.partition("=")[-1]
+        elif arg.startswith("--repository="):
+            g_ts_cfg.image_repository = arg.partition("=")[-1]
+        elif arg.startswith("--operator-tag="):
+            g_ts_cfg.operator_version_tag=arg.partition("=")[-1]
+        elif arg.startswith("--operator-pull-policy="):
+            g_ts_cfg.operator_pull_policy=arg.partition("=")[-1]
+        elif arg == "--skip-oci":
+            g_ts_cfg.oci_skip = True
+        elif arg.startswith("--oci-backup-apikey-path="):
+            g_ts_cfg.oci_backup_apikey_path=arg.partition("=")[-1]
+        elif arg.startswith("--oci-restore-apikey-path="):
+            g_ts_cfg.oci_restore_apikey_path=arg.partition("=")[-1]
+        elif arg.startswith("--oci-backup-bucket="):
+            g_ts_cfg.oci_backup_bucket=arg.partition("=")[-1]
         elif arg.startswith("-"):
             print(f"Invalid option {arg}")
             sys.exit(1)
@@ -168,6 +186,8 @@ if __name__ == '__main__':
             inc, exc = parse_filter(arg)
             opt_include += inc
             opt_exclude += exc
+
+    g_ts_cfg.commit()
 
     image_dir = os.getenv("DOCKER_IMAGE_DIR") or "/tmp/docker-images"
     images = ["mysql-server:8.0.25", "mysql-router:8.0.25",
@@ -187,7 +207,7 @@ if __name__ == '__main__':
     setup_logging(opt_verbose)
 
     print(
-        f"Using environment {env_name} with kubernetes version {opt_kube_version or 'latest'}...")
+        f"Using environment {opt_env_name} with kubernetes version {opt_kube_version or 'latest'}...")
 
     deploy_dir = os.path.join(basedir, "../deploy")
     deploy_files = [os.path.join(deploy_dir, f) for f in deploy_files]
@@ -198,19 +218,19 @@ if __name__ == '__main__':
     assert len(deploy_files) == len(
         [f for f in deploy_files if os.path.isfile(f)]), "deploy files check"
 
-    with get_driver(env_name) as driver:
+    with get_driver(opt_env_name) as driver:
         if cmd in ("run", "setup"):
             if opt_mount_operator_path:
                 driver.mount_operator_path(opt_mount_operator_path)
 
             driver.setup_cluster(
-                nodes=opt_nodes, version=opt_kube_version, perform_setup=opt_setup, skip_cleanup=no_cleanup)
+                nodes=opt_nodes, version=opt_kube_version, registry_cfg_path=opt_registry_cfg_path, perform_setup=opt_setup, cleanup=opt_cleanup)
 
-            if opt_load_images and registry == "local":
+            if opt_load_images:
                 driver.cache_images(image_dir, images)
 
             if opt_deploy:
-                driver.setup_operator(registry, deploy_files)
+                driver.setup_operator(deploy_files)
 
         if cmd in ("run", "test"):
             setup_k8s()
@@ -222,10 +242,10 @@ if __name__ == '__main__':
             tutil.tracer.install()
 
             try:
-                if debug:
+                if opt_debug:
                     suites.debug()
                 else:
-                    runner = unittest.TextTestRunner(verbosity=verbosity)
+                    runner = unittest.TextTestRunner(verbosity=opt_verbosity)
                     runner.run(suites)
             except:
                 tutil.g_full_log.shutdown()

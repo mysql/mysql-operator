@@ -15,6 +15,7 @@ from . import check_group
 from . import check_adminapi
 from . import check_routing
 from utils.tutil import g_full_log
+from setup.config import g_ts_cfg
 from utils.optesting import DEFAULT_MYSQL_ACCOUNTS, COMMON_OPERATOR_ERRORS
 import os
 import unittest
@@ -25,9 +26,6 @@ import unittest
 # create 2 clusters in the same namespace (should reject?)
 # multinode test where 1 of the nodes get drained, make sure data matches everywhere
 # ensure that crashed/stopped members don't get router traffic
-
-g_target_old_version = defaults.MIN_SUPPORTED_MYSQL_VERSION
-
 
 def check_sidecar_health(test, ns, pod):
     logs = kutil.logs(ns, [pod, "sidecar"])
@@ -230,7 +228,7 @@ spec:
         self.wait_pod_gone("mycluster-2")
         self.wait_pod_gone("mycluster-1")
 
-        self.wait_ic("mycluster", "ONLINE", 1)
+        self.wait_ic("mycluster", "ONLINE_PARTIAL", 1)
 
         self.logger.info(kutil.ls_ic(self.ns))
 
@@ -501,28 +499,28 @@ spec:
         pod = kutil.get_po(self.ns, "mycluster-0")
         image = container_spec(
             pod["spec"]["initContainers"], "initmysql")["image"]
-        self.assertIn(":"+defaults.DEFAULT_VERSION_TAG, image, "initmysql")
-        self.assertIn(defaults.MYSQL_SERVER_IMAGE+":", image, "initmysql")
+        self.assertIn(":"+g_ts_cfg.version_tag, image, "initmysql")
+        self.assertIn(g_ts_cfg.server_image_name+":", image, "initmysql")
 
         image = container_spec(
             pod["spec"]["initContainers"], "initconf")["image"]
-        self.assertIn(":"+defaults.DEFAULT_OPERATOR_VERSION_TAG, image, "initconf")
-        self.assertIn(defaults.MYSQL_OPERATOR_IMAGE+":", image, "initconf")
+        self.assertIn(":"+g_ts_cfg.operator_version_tag, image, "initconf")
+        self.assertIn(g_ts_cfg.operator_image_name+":", image, "initconf")
 
         image = container_spec(pod["spec"]["containers"], "mysql")["image"]
-        self.assertIn(":"+defaults.DEFAULT_VERSION_TAG, image, "mysql")
-        self.assertIn(defaults.MYSQL_SERVER_IMAGE+":", image, "mysql")
+        self.assertIn(":"+g_ts_cfg.version_tag, image, "mysql")
+        self.assertIn(g_ts_cfg.server_image_name+":", image, "mysql")
 
         image = container_spec(pod["spec"]["containers"], "sidecar")["image"]
-        self.assertIn(":"+defaults.DEFAULT_OPERATOR_VERSION_TAG, image, "sidecar")
-        self.assertIn(defaults.MYSQL_OPERATOR_IMAGE+":", image, "sidecar")
+        self.assertIn(":"+g_ts_cfg.operator_version_tag, image, "sidecar")
+        self.assertIn(g_ts_cfg.operator_image_name+":", image, "sidecar")
 
         # check router version and edition
         p = kutil.ls_po(self.ns, pattern="mycluster-router-.*")[0]
         pod = kutil.get_po(self.ns, p["NAME"])
         image = container_spec(pod["spec"]["containers"], "router")["image"]
-        self.assertIn(":"+defaults.DEFAULT_VERSION_TAG, image, "router")
-        self.assertIn(defaults.MYSQL_ROUTER_IMAGE + ":", image, "router")
+        self.assertIn(":"+g_ts_cfg.version_tag, image, "router")
+        self.assertIn(g_ts_cfg.router_image_name + ":", image, "router")
 
     def test_1_check_accounts(self):
         expected_accounts = set(["root@%",
@@ -545,7 +543,6 @@ spec:
                 "SELECT concat(user,'@',host) FROM mysql.user").fetch_all()])
             self.assertSetEqual(accts, expected_accounts)
 
-    @unittest.skipIf(not os.getenv("OPERATOR_TEST_JS_ENABLED"), "js disabled")
     def test_1_routing(self):
         """
         Check routing from a standalone pod in a different namespace
@@ -560,7 +557,7 @@ metadata:
 spec:
   containers:
     - name: shell
-      image: "{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_OPERATOR_IMAGE}:{defaults.DEFAULT_OPERATOR_VERSION_TAG}"
+      image: "{g_ts_cfg.get_operator_image()}"
       command: ["mysqlsh", "--js", "-e", "os.sleep(600)"]
 """
         kutil.create_ns("appns")
@@ -1146,7 +1143,7 @@ metadata:
 spec:
   instances: 2
   secretName: mypwds
-  version: "{g_target_old_version}"
+  version: "{g_ts_cfg.get_old_version_tag()}"
   baseServerId: 3210
   mycnf: |
     [mysqld]
@@ -1168,7 +1165,7 @@ spec:
                 "select @@admin_port, @@server_id, @@version").fetch_one()
             self.assertEqual(aport, 3333)
             self.assertEqual(sid, 3210)
-            self.assertEqual(ver, g_target_old_version)
+            self.assertEqual(ver, g_ts_cfg.get_old_version_tag())
 
             users = list(session.query_sql(
                 "select user,host from mysql.user where user='root'").fetch_all())
@@ -1179,7 +1176,7 @@ spec:
                 "select @@admin_port, @@server_id, @@version").fetch_one()
             self.assertEqual(aport, 3333)
             self.assertEqual(sid, 3211)
-            self.assertEqual(ver, g_target_old_version)
+            self.assertEqual(ver, g_ts_cfg.get_old_version_tag())
 
             users = list(session.query_sql(
                 "select user,host from mysql.user where user='root'").fetch_all())
@@ -1189,12 +1186,11 @@ spec:
         cont = check_apiobjects.check_pod_container(
             self, pod, "mysql", None, True)
         self.assertEqual(
-            cont["image"], f"{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_SERVER_IMAGE}:{g_target_old_version}")
+            cont["image"], g_ts_cfg.get_old_server_image())
         cont = check_apiobjects.check_pod_container(
             self, pod, "sidecar", None, True)
         self.assertEqual(
-            cont["image"],
-            f"{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_OPERATOR_IMAGE}:{defaults.DEFAULT_OPERATOR_VERSION_TAG}")
+            cont["image"], g_ts_cfg.get_operator_image())
 
         # check version of router images
         pods = kutil.ls_po(self.ns, pattern=self.cluster_name+"-.*-router")
@@ -1203,8 +1199,7 @@ spec:
             cont = check_apiobjects.check_pod_container(
                 self, pod, None, None, True)
             self.assertEqual(
-                cont["image"],
-                f"{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_ROUTER_IMAGE}:{defaults.DEFAULT_VERSION_TAG}", p["NAME"])
+                cont["image"], g_ts_cfg.get_router_image(), p["NAME"])
 
     # TODO config change in spec (and decide what to do)
 
@@ -1250,7 +1245,7 @@ spec:
   instances: 1
   router:
     instances: 1
-  version: "{g_target_old_version}"
+  version: "{g_ts_cfg.get_old_version_tag()}"
   secretName: mypwds
   imagePullSecrets:
     - name: pullsecrets
@@ -1274,12 +1269,12 @@ spec:
         cont = check_apiobjects.check_pod_container(
             self, pod, "mysql", None, True)
         self.assertEqual(
-            cont["image"], f"{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_SERVER_IMAGE}:{g_target_old_version}")
+            cont["image"], g_ts_cfg.get_old_server_image())
         cont = check_apiobjects.check_pod_container(
             self, pod, "sidecar", None, True)
         self.assertEqual(
             cont["image"],
-            f"{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_OPERATOR_IMAGE}:{defaults.DEFAULT_OPERATOR_VERSION_TAG}")
+            g_ts_cfg.get_operator_image())
 
         # check router pod
         pods = kutil.ls_po(self.ns, pattern="mycluster-.*-router")
@@ -1293,7 +1288,7 @@ spec:
                 self, pod, None, None, True)
             self.assertEqual(
                 cont["image"],
-                f"{defaults.DEFAULT_IMAGE_REPOSITORY}/{defaults.MYSQL_ROUTER_IMAGE}:{defaults.DEFAULT_VERSION_TAG}", p["NAME"])
+                g_ts_cfg.get_router_image(), p["NAME"])
 
     def test_9_destroy(self):
         kutil.delete_ic(self.ns, "mycluster")

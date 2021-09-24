@@ -28,7 +28,7 @@ spec:
           args: ["mysqlsh", "--log-level=@INFO", "--pym", "mysqloperator", "operator"]
           env:{{ if .Values.envs.imagesDefaultRegistry }}
           - name: MYSQL_OPERATOR_DEFAULT_REPOSITORY
-            value: {{ .Values.envs.imagesDefaultRegistry }}/{{ .Values.envs.imagesDefaultRepository }}
+            value: {{ .Values.envs.imagesDefaultRegistry }}{{ if .Values.envs.imagesDefaultRepository}}/{{ .Values.envs.imagesDefaultRepository }}{{ end }}
           {{ else if .Values.envs.imagesDefaultRepository }}
           - name: MYSQL_OPERATOR_DEFAULT_REPOSITORY
             value: {{ .Values.envs.imagesDefaultRepository }}

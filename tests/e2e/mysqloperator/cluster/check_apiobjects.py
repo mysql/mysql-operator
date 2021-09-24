@@ -99,11 +99,12 @@ def check_cluster_spec_compliant(test, icobj):
                      ["onlineInstances"], spec["instances"])
 
     pods = kutil.ls_po(meta["namespace"])
+    router_infix = "-router-"
     server_pods = [p for p in pods if p["NAME"].startswith(
-        name+"-") and "router" not in p["NAME"]]
+        name+"-") and router_infix not in p["NAME"]]
     test.assertEqual(len(server_pods), spec["instances"])
 
-    router_pods = [p for p in pods if p["NAME"].startswith(name+"-router-")]
+    router_pods = [p for p in pods if p["NAME"].startswith(name+router_infix)]
     test.assertEqual(len(router_pods), spec.get(
         "router", {}).get("instances", 0))
 

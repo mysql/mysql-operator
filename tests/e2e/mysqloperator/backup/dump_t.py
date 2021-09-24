@@ -246,6 +246,9 @@ spec:
         self.wait_pod_gone("mycluster-0")
         self.wait_ic_gone("mycluster")
 
+        kutil.delete_mbk(self.ns, "dump-test-oci1")
+        kutil.delete_mbk(self.ns, "dump-test1")
+
         kutil.delete_secret(self.ns, "backup-apikey")
         kutil.delete_secret(self.ns, "mypwds")
 

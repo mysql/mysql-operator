@@ -369,6 +369,10 @@ def delete_ic(ns, name, timeout=200):
     delete(ns, "ic", name, timeout=timeout)
 
 
+def delete_mbk(ns, name, timeout=200):
+    delete(ns, "mbk", name, timeout=timeout)
+
+
 def delete_po(ns, name, timeout=120):
     delete(ns, "po", name, timeout=timeout)
 

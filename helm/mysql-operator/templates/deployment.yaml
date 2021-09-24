@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: mysql-operator
-  namespace: mysql-operator
+  namespace: {{ if and (.Release.IsInstall) (eq .Release.Namespace "default") }}{{ fail "Please provide a namespace with -n/--namespace" }}{{ else }}{{  .Release.Namespace }}{{ end }}
   labels:
     version: "{{ default .Chart.AppVersion }}"
     app.kubernetes.io/name: mysql-operator

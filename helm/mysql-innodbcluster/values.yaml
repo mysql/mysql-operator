@@ -24,22 +24,22 @@ serverInstances: 3
 routerInstances: 3
 baseServerId: 1000
 
-datadirVolumeClaimTemplate:
-  accessModes:
-  resources:
-    requests:
-      storage:
+#datadirVolumeClaimTemplate:
+#  accessModes:
+#  resources:
+#    requests:
+#      storage:
 
-initDB:
-  dump:
-    name:
-    path:
-    options:
-      includeSchemas:
-    ociObjectStorage:
-      prefix:
-      bucketName:
-      credentials:
+#initDB:
+#  dump:
+#    name:
+#    path:
+#    options:
+#      includeSchemas:
+#    ociObjectStorage:
+#      prefix:
+#      bucketName:
+#      credentials:
 #    persistentVolumeClaim:     
 #  clone:
 #    donorUrl:
@@ -47,8 +47,31 @@ initDB:
 #    credentials:
 
 # Unused
-backupProfiles:
-
+#backupProfiles:
+#- name: dump-instance-profile-pvc
+#  dumpInstance:
+#    dumpOptions:
+#      excludeSchemas: ["excludeme"]
+#    storage:
+#      persistentVolumeClaim:
+#        claimName: backup-volume-claim-1
+#- name: dump-instance-profile-oci
+#  dumpInstance:
+#    dumpOptions:
+#      excludeSchemas: ["excludeme"]
+#    storage:
+#      ociObjectStorage:
+#        prefix : /
+#        bucketName: idbcluster_backup
+#        credentials: oci-credentials
+#
+#- name: snapshot-profile-oci
+#  snapshot:
+#    storage:
+#      ociObjectStorage:
+#        prefix : /
+#        bucketName: idbcluster_backup
+#        credentials: oci-credentials
 # Unused
 serviceAccount:
   annotations: {}

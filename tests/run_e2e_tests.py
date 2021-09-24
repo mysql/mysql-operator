@@ -147,13 +147,13 @@ if __name__ == '__main__':
             opt_debug = True
         elif arg == "--trace" or arg == "-t":
             tutil.tracer.enabled = True
-        elif arg == "--nosetup":
+        elif arg in ("--nosetup", "--no-setup"):
             opt_setup = False
-        elif arg == "--noclean":
+        elif arg in ("--noclean", "--no-clean"):
             opt_cleanup = False
         elif arg == "--load":
             opt_load_images = True
-        elif arg == "--nodeploy":
+        elif arg in ("--nodeploy", "--no-deploy"):
             opt_deploy = False
         elif arg == "--dkube":
             kutil.debug_kubectl = True

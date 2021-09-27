@@ -49,7 +49,10 @@ class Config:
 
     def get_image_registry_repository(self):
         if self.image_registry:
-            return self.image_registry + "/" + self.image_repository
+            if self.image_repository:
+                return self.image_registry + "/" + self.image_repository
+            else:
+                return self.image_registry
         else:
             return self.image_repository
 

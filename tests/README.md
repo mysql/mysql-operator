@@ -1,6 +1,12 @@
 The test suite of MySQL Operator for Kubernetes
 =============================
 
+Requirements:
+0) python3
+1) module: kubernetes
+2) module: mysql-connector-python
+
+
 The test-suite is configured in three stages:
 0) defaults
 1) environment variables
@@ -46,7 +52,7 @@ Ad 2) command-line options
 -vv
     more verbose
 
--vvv"
+-vvv
     even more verbose
 
 --debug|-d

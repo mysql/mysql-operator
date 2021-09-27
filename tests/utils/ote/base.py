@@ -5,6 +5,7 @@
 
 import os
 import subprocess
+from utils import kutil
 from setup.config import g_ts_cfg
 
 # Operator Test Environment
@@ -144,6 +145,7 @@ spec:
             path: "{self.operator_host_path}"
             type: Directory
 """
+        print(y)
         subprocess.run(["kubectl", "apply", "-f", "-"],
                        input=y.encode("utf8"), check=True)
 

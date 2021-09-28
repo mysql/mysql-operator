@@ -1,18 +1,18 @@
-MySQL Operator for Kubernetes
-=============================
+# MySQL Operator for Kubernetes
 
+## Introduction
 The MYSQL Operator for Kubernetes is an Operator for Kubernetes managing
 MySQL InnoDB Cluster setups inside a Kubernetes Cluster.
 
 The MySQL Operator manages the full lifecycle with setup and maintenance
 including automation of upgrades and backup.
 
-Release Status
+## Release Status
 --------------
 The MySQL Operator for Kubernetes currently is in a preview state.
 DO NOT USE IN PRODUCTION.
 
-License
+## License
 ------
 Copyright (c) 2020, 2021, Oracle and/or its affiliates.
 
@@ -28,10 +28,11 @@ and https://github.com/mysql
 
 MySQL Operator is brought to you by the MySQL team at Oracle.
 
-Installation of the MySQL Operator
-----------------------------------
+---
 
-The MYSQL Operator can be installed using `kubectl`:
+## Installation of the MySQL Operator
+
+### Installing the MYSQL Operator using `kubectl`:
 
 ```sh
 kubectl apply -f https://raw.githubusercontent.com/mysql/mysql-operator/trunk/deploy/deploy-crds.yaml
@@ -60,14 +61,184 @@ NAME             READY   UP-TO-DATE   AVAILABLE   AGE
 mysql-operator   1/1     1            1           1h
 ```
 
-Using the MySQL Operator to setup a MySQL InnoDB Cluster
--------------------------------------------------------
+### Installing the MYSQL Operator using `Helm
+Helm is a package manager for Kubernetes. It makes the installation of Kubernetes Operators
+and resources handled by them easy. Please refer to the [Helm Quickstart Guide](https://helm.sh/docs/intro/quickstart/)
+as well as the [Installing Helm Guide](https://helm.sh/docs/intro/install/) for more information on Helm and how to install it.
+
+You need to download the sources MySQL Operator for Kubernetes to install the operator with Helm. The sources contain a top level directory named helm. Under this directory there are two subdirectories. The `mysql-operator` directory contains the Helm Chart of the MySQL Operator for Kubernetes.
+Change directory to the source checkout and then execute
+```sh
+export NAMESPACE="mysql-operator"
+helm install mysql-operator helm/mysql-operator --namespace $NAMESPACE --create-namespace
+```
+
+The structure is `helm install [name-of-the-installation] [path/to/the/helm/chart] --namespace [namespace-where-to-put-the-operator] [whether-to-create-the-namespace]` . If the namespace whether the operator will be installed already
+exists please omit the `--create-namespace` option. Without adding more options to the command above, the latest MySQL Operator for Kubernetes will be downloaded from DockerHub and deployed. The deployment of the operator can be customized through a variety of options which will override built-in defaults. For example, if you have an air-gapped Kubernetes installation and use own private container registry, there is a way to use it with the operator. 
+
+---
+### ADVANCED: Copying the MySQL Operator for Kubernetes container image into a private registry by using Docker
+1. Look into `helm/mysql-operator/Chart.yaml` and copy the appVersion string. Alterntively you can run
+   `grep appVersion helm/mysql-operator/Chart.yaml | cut -d '"' -f2` to extract the version. This is the version of the operator. 
+2. Execute `docker pull mysql/mysql-operator:VERSION` where version is string from step 1.
+3. Execute `docker save  mysql/mysql-operator:VERSION -o mysql-operator.tar` to export the container image
+4. Copy `mysql-operator.tar` to a host which has access to the private registry.
+5. Load the image into the local Docker cache on that host by issuing `docker load -i mysql-operator.yaml`
+6. Retag the image as preparation for pushing to the private registry by issuing `docker tag mysql/mysql-server:8.0.26 registry:port/repo/mysql-server:8.0.26
+7. Push the newly created tag to the private registy by executing `docker push registry:port/repo/mysql-server:VERSION`
+8. If you won't need the image from the importing host cache, then you can delete it with `docker rmi mysql/mysql-operator:VERSION registry:port/repo/mysql-server:VERSION`. This will remove it from the host but the registry itself won't be affected.
+
+You can use the following commands to pull and push in one command. The command is to be run on a host that has access to DockerHub. This host also needs to have an access to bastion host that has access to the private registry. P(please adjust the variable values to fit your needs. The command will not consume local space for a tarball but will stream the container image over SSH. 
+```sh
+export BASTION_USER='k8s'
+export BASTION_HOST='k8'
+export REGISTRY="..." # for example 192.168.20.199:5000
+export REPOSITORY="..." # for example mysql
+export OPERATOR_VERSION=$(grep appVersion helm/mysql-operator/Chart.yaml | cut -d '"' -f2)
+docker pull mysql/mysql-operator:$OPERATOR_VERSION
+docker save mysql/mysql-operator:$OPERATOR_VERSION | \
+    ssh $BASTION_USER@$BASTION_HOST \
+        "docker load && \
+         docker tag mysql/mysql-operator:$OPERATOR_VERSION $REGISTRY/$REPOSITORY/mysql-operator:$OPERATOR_VERSION && \
+         docker push $REGISTRY/$REPOSITORY/mysql-operator:$OPERATOR_VERSION && \
+         docker rmi mysql/mysql-operator:$OPERATOR_VERSION $REGISTRY/$REPOSITORY/mysql-operator:$OPERATOR_VERSION"
+docker rmi mysql/mysql-operator:$OPERATOR_VERSION
+```
+---
+### ADVANCED: Copying the MySQL Operator for Kubernetes container image into a private registry by using Skopeo
+
+If [Skopeo](https://github.com/containers/skopeo) is available for your platform, you can use it for copying images. It is
+also possible run Skopeo in a container. Use the following to copy the operator image from DockerHub to your private registry.
+It needs to be run on a host (that has Docker or Podman ) that has both access to DockerHub and your private registry. In case of Podman just exchange `docker` with `podman` (please adjust the variable values to fit your needs)
+
+```sh
+export REGISTRY="..." # for example 192.168.20.199:5000
+export REPOSITORY="..." # for example mysql
+export OPERATOR_VERSION=$(grep appVersion helm/mysql-operator/Chart.yaml | cut -d '"' -f2)
+docker run --rm quay.io/skopeo/stable copy docker://mysql/mysql-operator:$OPERATOR_VERSION docker://$REGISTRY/$REPOSITORY/mysql-operator:$OPERATOR_VERSION
+```
+
+If your private registry is authenticated, then you need to append `--dest-creds user:pass` to the skopeo command. In case, your private registry doesn't use TLS, then you need to also append `--dest-tls-verify=false`.
+
+---
+### ADVANCED: Installing the Operator with Helm when using a private registry
+
+If your private registry is not authenticated then once you have pushed the operator image to your private registry execute the following on the host where helm installed (please adjust the variable values to fit your needs)
+```sh
+export REGISTRY="..."   # like 192.168.20.199:5000
+export REPOSITORY="..." # like "mysql"
+export NAMESPACE="mysql-operator"
+helm install mysql-operator helm/mysql-operator \
+    --namespace $NAMESPACE \
+    --create-namespace \
+    --set image.registry=$REGISTRY \
+    --set image.repository=$REPOSITORY \
+    --set envs.imagesDefaultRegistry="$REGISTRY" \
+    --set envs.imagesDefaultRepository="$REPOSITORY"
+```
+---
+If your private registry is authenticated you need to run a few additional commands
+1. You need to create the namespace in which the operator will be installed, e.g. by issuing `kubectl create namespace mysql-operator`
+2. The you need to create a Kubernetes `docker-registry` secret in the namespace, e.g. by issuing `kubectl -n mysql-operator create secret docker-registry priv-reg-secret --docker-server=https://192.168.20.199:5000/v2/ --docker-username=user --docker-password=pass --docker-email=user@example.com`
+3. Once the docker-registry secret is created you have to execute `helm install` with a few more arguments.
+
+As a script it should look like this (please adjust the variable values to fit your needs)
+```sh
+export REGISTRY="..."   # like 192.168.20.199:5000
+export REPOSITORY="..." # like "mysql"
+export NAMESPACE="mysql-operator"
+export DOCKER_SECRET_NAME="priv-reg-secret"
+export DOCKER_USER="user"
+export DOCKER_USER_PASS="pass"
+
+kubectl create namespace $NAMESPACE
+
+kubectl -n $NAMESPACE create secret docker-registry $DOCKER_SECRET_NAME \
+        --docker-server="https://$REGISTRY/v2/" \
+        --docker-username=user --docker-password=pass \
+        --docker-email=user@example.com
+
+helm install mysql-operator helm/mysql-operator \
+        --namespace $NAMESPACE \
+        --set image.registry=$REGISTRY \
+        --set image.repository=$REPOSITORY \
+        --set image.pullSecrets.enabled=true \
+        --set image.pullSecrets.secretName=$DOCKER_SECRET_NAME \
+        --set image.pullSecrets.username="$DOCKER_USER" \
+        --set image.pullSecrets.password="$DOCKER_USER_PASS" \
+        --set image.pullSecrets.email='user@example.com' \
+        --set envs.imagesPullPolicy='IfNotPresent' \
+        --set envs.imagesDefaultRegistry="$REGISTRY" \
+        --set envs.imagesDefaultRepository="$REPOSITORY"
+```
+
+Check the result status with `helm list -n $NAMESPACE` and `kubectl -n $NAMESPACE get pods`
+
+---
+### Using the MySQL Operator to setup a MySQL InnoDB Cluster
+Helm can create MySQL InnoDB Cluster installations with just one command. The installation can be tuned in multiple ways. Here is an example how to create an installation with MySQL InnoDB Cluster with three MySQL Server 8.0.26 instances and three MySQL Router 8.0.26 instances
+```sh
+export NAMESPACE="mynamespace"
+
+helm install mycluster helm/mysql-innodbcluster \
+        --namespace $NAMESPACE \
+        --create-namespace \
+        --set credentials.root.user='root' \
+        --set credentials.root.password='supersecret' \
+        --set credentials.root.host='%' \
+        --set serverInstances=3 \
+        --set routerInstances=3
+```
+
+### Using the MySQL Operator to setup a MySQL InnoDB Cluster from a private registry
+```sh
+export REGISTRY="..."   # like 192.168.20.199:5000
+export REPOSITORY="..." # like "mysql"
+export NAMESPACE="mynamespace"
+export DOCKER_SECRET_NAME="priv-reg-secret"
+export DOCKER_USER="user"
+export DOCKER_USER_PASS="pass"
+
+kubectl create namespace $NAMESPACE
+
+kubectl -n $NAMESPACE create secret docker-registry $DOCKER_SECRET_NAME \
+        --docker-server="https://$REGISTRY/v2/" \
+        --docker-username=user --docker-password=pass \
+        --docker-email=user@example.com
+
+helm install mycluster helm/mysql-innodbcluster \
+        --namespace $NAMESPACE \
+        --set image.registry=$REGISTRY \
+        --set image.repository=$REPOSITORY \
+        --set image.pullSecrets.enabled=true \
+        --set image.pullSecrets.secretName=$DOCKER_SECRET_NAME \
+        --set image.pullSecrets.username="$DOCKER_USER" \
+        --set image.pullSecrets.password="$DOCKER_USER_PASS" \
+        --set image.pullSecrets.email='user@example.com' \
+        --set credentials.root.user='root' \
+        --set credentials.root.password='supersecret' \
+        --set credentials.root.host='%' \
+        --set serverInstances=3 \
+        --set routerInstances=3
+```
+Check the result status with :
+```sh
+helm list -n $NAMESPACE
+```
+The output should look like this
+```
+NAME            NAMESPACE       REVISION        UPDATED                                 STATUS          CHART                           APP VERSION
+mycluster       mynamespace     1               2021-09-27 16:09:01.784987942 +0000 UTC deployed        mysql-innodbcluster-8.0.26      8.0.26
+```
+
+---
+### Using `kubectl` to create a MySQL InnoDB Cluster
 
 For creating an InnoDB Cluster you first have to create a secret containing
 credentials for a MySQL root user which is to be created:
 
-```
-kubectl create secret generic  mypwds \
+```sh
+kubectl create secret generic mypwds \
         --from-literal=rootUser=root \
         --from-literal=rootHost=% \
         --from-literal=rootPassword="your secret password, REPLACE ME"
@@ -91,8 +262,9 @@ NAME          STATUS    ONLINE   INSTANCES   ROUTERS   AGE
 mycluster     PENDING   0        3           1         10s
 ```
 
-Connecting to the MYSQL InnoDB Cluster
--------------------------------------
+---
+## Connecting to the MYSQL InnoDB Cluster
+
 
 For connecting to the InnoDB Cluster a `Service` is created inside the 
 Kubernetes cluster.

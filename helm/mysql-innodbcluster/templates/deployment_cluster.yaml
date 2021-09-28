@@ -32,38 +32,37 @@ spec:
     {{- fail "Dump and Clone are mutually exclusive" }}
   {{- end }}
 
-
   {{- if and .Values.initDB .Values.initDB.clone }}
     {{- with .Values.initDB.clone }}
-    initDB:
-      clone:
-        donorUrl: {{ required "initDB.clone.donorUrl is required" .donorUrl }}
-        rootUser: {{ .rootUser | default "root" }}
-        credentials: {{ required "initDB.clone.credentials is required" .credentials }}
+  initDB:
+    clone:
+      donorUrl: {{ required "initDB.clone.donorUrl is required" .donorUrl }}
+      rootUser: {{ .rootUser | default "root" }}
+      credentials: {{ required "initDB.clone.credentials is required" .credentials }}
     {{- end }}
   {{- end }}
 
   {{- if and .Values.initDB .Values.initDB.dump }}
     {{- with .Values.initDB.dump }}
       {{- if and .name (or .ociObjectStorage .persistentVolumeClaim) }}
-    initDB:
-      dump:
+  initDB:
+    dump:
         {{- if .name }}
-        name: {{ .name }}
+      name: {{ .name }}
         {{- end }}
         {{- if .path }}
-        path: {{ .path }}
+      path: {{ .path }}
         {{- end }}
-        storage:
+      storage:
         {{- if .ociObjectStorage }}
-          ociObjectStorage:
-            prefix: {{ required "initDB.dump.ociObjectStorage.prefix is required" .ociObjectStorage.prefix }}
-            bucketName: {{ required "initDB.dump.ociObjectStorage.bucketName is required" .ociObjectStorage.bucketName }}
-            credentials: {{ required "initDB.dump.ociObjectStorage.credentials is required" .ociObjectStorage.credentials }}
+        ociObjectStorage:
+          prefix: {{ required "initDB.dump.ociObjectStorage.prefix is required" .ociObjectStorage.prefix }}
+          bucketName: {{ required "initDB.dump.ociObjectStorage.bucketName is required" .ociObjectStorage.bucketName }}
+          credentials: {{ required "initDB.dump.ociObjectStorage.credentials is required" .ociObjectStorage.credentials }}
         {{- end }}
         {{- if .persistentVolumeClaim }}
-          persistentVolumeClaim:
-            {{- toYaml .persistentVolumeClaim | nindent 10}}
+        persistentVolumeClaim:
+          {{- toYaml .persistentVolumeClaim | nindent 10}}
         {{- end }}
       {{- end }}
     {{- end }}

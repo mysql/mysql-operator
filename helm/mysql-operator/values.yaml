@@ -30,7 +30,6 @@ podAnnotations: {}
 
 # Unused
 podSecurityContext: {}
-  # fsGroup: 2000
 
 # Unused
 securityContext: {}

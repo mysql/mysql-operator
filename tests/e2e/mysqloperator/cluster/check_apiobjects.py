@@ -39,7 +39,7 @@ def check_cluster_object(test, icobj, name):
     sts = kutil.get_sts(meta["namespace"], meta["name"])
     test.assertTrue(sts)
 
-    # router replicaset
+    # router deployment
     try:
         deployment = kutil.get_deploy(meta["namespace"], meta["name"]+"-router")
     except kutil.subprocess.CalledProcessError as e:

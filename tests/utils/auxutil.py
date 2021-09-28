@@ -25,7 +25,7 @@ def resolve_host_ip():
 
 def resolve_registry_url(registry_url):
     if "://" not in registry_url:
-        registry_url = "https://" + registry_url
+        registry_url = "http://" + registry_url
 
     parsed_registry_url = urlparse(registry_url)
 

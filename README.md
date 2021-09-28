@@ -78,6 +78,9 @@ exists please omit the `--create-namespace` option. Without adding more options 
 
 ---
 ### ADVANCED: Copying the MySQL Operator for Kubernetes container image into a private registry by using Docker
+
+*If you don't use a private registry, please skip these instructions.*
+
 1. Look into `helm/mysql-operator/Chart.yaml` and copy the appVersion string. Alterntively you can run
    `grep appVersion helm/mysql-operator/Chart.yaml | cut -d '"' -f2` to extract the version. This is the version of the operator. 
 2. Execute `docker pull mysql/mysql-operator:VERSION` where version is string from step 1.
@@ -107,6 +110,8 @@ docker rmi mysql/mysql-operator:$OPERATOR_VERSION
 ---
 ### ADVANCED: Copying the MySQL Operator for Kubernetes container image into a private registry by using Skopeo
 
+*If you don't use a private registry, please skip these instructions.*
+
 If [Skopeo](https://github.com/containers/skopeo) is available for your platform, you can use it for copying images. It is
 also possible run Skopeo in a container. Use the following to copy the operator image from DockerHub to your private registry.
 It needs to be run on a host (that has Docker or Podman ) that has both access to DockerHub and your private registry. In case of Podman just exchange `docker` with `podman` (please adjust the variable values to fit your needs)
@@ -122,6 +127,8 @@ If your private registry is authenticated, then you need to append `--dest-creds
 
 ---
 ### ADVANCED: Installing the Operator with Helm when using a private registry
+
+*If you don't use a private registry, please skip these instructions.*
 
 If your private registry is not authenticated then once you have pushed the operator image to your private registry execute the following on the host where helm installed (please adjust the variable values to fit your needs)
 ```sh
@@ -176,7 +183,9 @@ Check the result status with `helm list -n $NAMESPACE` and `kubectl -n $NAMESPAC
 
 ---
 ### Using the MySQL Operator to setup a MySQL InnoDB Cluster
+
 Helm can create MySQL InnoDB Cluster installations with just one command. The installation can be tuned in multiple ways. Here is an example how to create an installation with MySQL InnoDB Cluster with three MySQL Server 8.0.26 instances and three MySQL Router 8.0.26 instances
+
 ```sh
 export NAMESPACE="mynamespace"
 
@@ -189,8 +198,11 @@ helm install mycluster helm/mysql-innodbcluster \
         --set serverInstances=3 \
         --set routerInstances=3
 ```
-
+---
 ### Using the MySQL Operator to setup a MySQL InnoDB Cluster from a private registry
+
+*If you don't use a private registry, please skip these instructions.*
+
 ```sh
 export REGISTRY="..."   # like 192.168.20.199:5000
 export REPOSITORY="..." # like "mysql"
@@ -208,18 +220,18 @@ kubectl -n $NAMESPACE create secret docker-registry $DOCKER_SECRET_NAME \
 
 helm install mycluster helm/mysql-innodbcluster \
         --namespace $NAMESPACE \
+        --set credentials.root.user='root' \
+        --set credentials.root.password='supersecret' \
+        --set credentials.root.host='%' \
+        --set serverInstances=3 \
+        --set routerInstances=3 \
         --set image.registry=$REGISTRY \
         --set image.repository=$REPOSITORY \
         --set image.pullSecrets.enabled=true \
         --set image.pullSecrets.secretName=$DOCKER_SECRET_NAME \
         --set image.pullSecrets.username="$DOCKER_USER" \
         --set image.pullSecrets.password="$DOCKER_USER_PASS" \
-        --set image.pullSecrets.email='user@example.com' \
-        --set credentials.root.user='root' \
-        --set credentials.root.password='supersecret' \
-        --set credentials.root.host='%' \
-        --set serverInstances=3 \
-        --set routerInstances=3
+        --set image.pullSecrets.email='user@example.com'
 ```
 Check the result status with :
 ```sh
@@ -227,8 +239,72 @@ helm list -n $NAMESPACE
 ```
 The output should look like this
 ```
-NAME            NAMESPACE       REVISION        UPDATED                                 STATUS          CHART                           APP VERSION
-mycluster       mynamespace     1               2021-09-27 16:09:01.784987942 +0000 UTC deployed        mysql-innodbcluster-8.0.26      8.0.26
+NAME            NAMESPACE       REVISION        UPDATED                                 STATUS          CHART                                 APP VERSION
+mycluster       mynamespace     1               2021-09-27 16:09:01.784987942 +0000 UTC deployed        mysql-innodbcluster-8.0.26-2.0.2      8.0.26
+```
+
+### Using Helm for bootstrapping a MySQL InnoDB Cluster from a dump
+
+The MySQL InnoDB Cluster can be initialized with a database dump which was created my MySQL Shell or with a backup created by the MySQL Operator for Kubernetes. The backup could reside in OCI Object Storage bucket or on a Persistent Volume accessible to the cluster.
+When the cluster is to be bootstrapped from OCI OS the following data must be known:
+1. The credentials of the user who has access to OCI OS
+2. The OCI OS Bucket Name
+3. The OCI OS Object Prefix (plays the role of a directory)
+The following Helm variables must be set:
+1. `initDB.dump.name` - a name for the dump, which should follow the Kubernetes rules for naming an identifier, e.g. dump-20210916-140352
+2. `initDB.dump.ociObjectStorage.prefix` - the prefix from list above
+3. `initDB.dump.ociObjectStorage.bucketName` - the bucket name from the list above
+4. `initDB.dump.ociObjectStorage.credentials` - the name of the kubernetes secret that holds the credentials for accessing the OCI OS bucket.
+
+The credentials secret the following information is needed:
+1. OCI OS User Name
+2. Fingerprint
+3. Tenancy Name
+4. Region Name
+5. Passphrase
+6. The Private Key of the user
+
+If you have already used the OCI CLI tool you will find this information in $HOME/config under the [DEFAULT] section. Once you have obtained that information, please execute the following
+```sh
+export NAMESPACE="mynamespace"
+export OCI_CREDENTIALS_SECRET_NAME="oci-credentials"
+export OCI_USER="..."                # like ocid1.user.oc1....
+export OCI_FINGERPRINT="..."         # like 90:01:..:..:....
+export OCI_TENANCY="..."             # like ocid1.tenancy.oc1...
+export OCI_REGION="..."              # like us-ashburn-1
+export OCI_PASSPHRASE="..."          # set to empty string if no passphrase
+export OCI_PATH_TO_PRIVATE_KEY="..." # like $HOME/.oci/oci_api_key.pem
+
+kubectl -n $NAMESPACE create secret generic $OCI_CREDENTIALS_SECRET_NAME \
+        --from-literal=user="$OCI_USER" \
+        --from-literal=fingerprint="$OCI_FINGERPRINT" \
+        --from-literal=tenancy="$OCI_TENANCY" \
+        --from-literal=region="$OCI_REGION" \
+        --from-literal=passphrase="$OCI_PASSPHRASE" \
+        --from-file=privatekey="$OCI_PATH_TO_PRIVATE_KEY"
+```
+
+After you have created the OCI secret you can create the cluster which will be initialized from the dump in OCI OS.
+
+```sh
+export NAMESPACE="mynamespace"
+export OCI_DUMP_PREFIX="..."  # like dump-20210916-140352
+export OCI_BUCKET_NAME="..."  # like idbcluster_backup
+export OCI_CREDENTIALS_SECRET_NAME="oci-credentials"
+kubectl create namespace $NAMESPACE
+helm install mycluster helm/mysql-innodbcluster \
+        --namespace $NAMESPACE \
+        --set image.registry=$REGISTRY \
+        --set image.repository=$REPOSITORY \
+        --set credentials.root.user='root' \
+        --set credentials.root.password='supersecret' \
+        --set credentials.root.host='%' \
+        --set serverInstances=3 \
+        --set routerInstances=3 \
+        --set initDB.dump.name="initdb-dump" \
+        --set initDB.dump.ociObjectStorage.prefix="$OCI_DUMP_PREFIX" \
+        --set initDB.dump.ociObjectStorage.bucketName="$OCI_BUCKET_NAME" \
+        --set initDB.dump.ociObjectStorage.credentials="$OCI_CREDENTIALS_SECRET_NAME"
 ```
 
 ---
@@ -264,7 +340,6 @@ mycluster     PENDING   0        3           1         10s
 
 ---
 ## Connecting to the MYSQL InnoDB Cluster
-
 
 For connecting to the InnoDB Cluster a `Service` is created inside the 
 Kubernetes cluster.

@@ -30,7 +30,7 @@ MySQL Operator is brought to you by the MySQL team at Oracle.
 
 ## Installation of the MySQL Operator
 
-### Installing the MYSQL Operator using `kubectl`:
+### Installing the MYSQL Operator using kubectl
 
 ```sh
 kubectl apply -f https://raw.githubusercontent.com/mysql/mysql-operator/trunk/deploy/deploy-crds.yaml
@@ -307,7 +307,7 @@ helm install mycluster helm/mysql-innodbcluster \
         --set initDB.dump.ociObjectStorage.credentials="$OCI_CREDENTIALS_SECRET_NAME"
 ```
 
-### Using `kubectl` to create a MySQL InnoDB Cluster
+### Using kubectl to create a MySQL InnoDB Cluster
 
 For creating an InnoDB Cluster you first have to create a secret containing
 credentials for a MySQL root user which is to be created:
@@ -401,4 +401,7 @@ mysqlsh -h127.0.0.1 -P6446 -uroot -p
 
 When promted enter the password used, when creating the Secret above.
 
+## More Information
 
+For more information please refer to the documentation at
+https://dev.mysql.com/doc/mysql-operator/en/

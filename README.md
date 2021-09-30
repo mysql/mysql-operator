@@ -294,8 +294,6 @@ export OCI_CREDENTIALS_SECRET_NAME="oci-credentials"
 kubectl create namespace $NAMESPACE
 helm install mycluster helm/mysql-innodbcluster \
         --namespace $NAMESPACE \
-        --set image.registry=$REGISTRY \
-        --set image.repository=$REPOSITORY \
         --set credentials.root.user='root' \
         --set credentials.root.password='supersecret' \
         --set credentials.root.host='%' \

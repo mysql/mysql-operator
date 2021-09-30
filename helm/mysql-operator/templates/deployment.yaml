@@ -5,8 +5,8 @@ metadata:
   namespace: {{ if and (.Release.IsInstall) (eq .Release.Namespace "default") }}{{ fail "Please provide a namespace with -n/--namespace" }}{{ else }}{{  .Release.Namespace }}{{ end }}
   labels:
     version: "{{ default .Chart.AppVersion }}"
-    app.kubernetes.io/name: mysql-operator
-    app.kubernetes.io/instance: mysql-operator
+    app.kubernetes.io/name: {{ .Release.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/version: "{{ default .Chart.AppVersion }}"
     app.kubernetes.io/component: controller
     app.kubernetes.io/managed-by: helm

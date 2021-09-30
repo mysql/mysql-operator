@@ -57,7 +57,10 @@ class K3dEnvironment(BaseEnvironment):
 
     def prepare_registry_cfg(self):
         cfg_template = f"""mirrors:
-  $registry:
+  "docker.io":
+    endpoint:
+      - http://$registry
+  "$registry":
     endpoint:
       - http://$registry
 """

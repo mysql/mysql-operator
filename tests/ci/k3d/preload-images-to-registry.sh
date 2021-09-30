@@ -25,7 +25,7 @@
 # 5) then update below the IMAGES list accordingly and charge the local registry
 
 REGISTRY=registry.localhost:5000
-IMAGES="rancher/pause:3.1 rancher/coredns-coredns:1.8.3 rancher/metrics-server:v0.3.6 rancher/klipper-helm:v0.6.1-build20210616 rancher/local-path-provisioner:v0.0.19 rancher/library-traefik:2.4.8 rancher/klipper-lb:v0.2.0"
+IMAGES="rancher/pause:3.1 rancher/coredns-coredns:1.8.3 rancher/metrics-server:v0.3.6 rancher/klipper-helm:v0.6.1-build20210616 rancher/local-path-provisioner:v0.0.19 rancher/library-traefik:2.4.8 rancher/klipper-lb:v0.2.0 rancher/library-busybox:1.32.1"
 for IMAGE in $IMAGES; do
 	docker pull $IMAGE
 	docker tag $IMAGE $REGISTRY/$IMAGE

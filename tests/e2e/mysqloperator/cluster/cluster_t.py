@@ -198,11 +198,7 @@ spec:
         kutil.patch_ic(self.ns, "mycluster", {
                        "spec": {"router": {"instances": 3}}}, type="merge")
 
-        def routers_ready():
-            pods = kutil.ls_po(self.ns)
-            return 3 == len([pod for pod in pods if pod["NAME"].startswith("mycluster-router-")])
-
-        self.wait(routers_ready, timeout=30)
+        self.wait_routers("mycluster-router-*", 3)
 
         check_all(self, self.ns, "mycluster",
                   instances=2, routers=3, primary=0)
@@ -484,6 +480,8 @@ spec:
         self.wait_pod("mycluster-2", "Running")
 
         self.wait_ic("mycluster", "ONLINE", 3)
+
+        self.wait_routers("mycluster-router-*", 2)
 
         check_all(self, self.ns, "mycluster",
                   instances=3, routers=2, primary=0)
@@ -1052,6 +1050,8 @@ spec:
 
         self.wait_ic("mycluster", "ONLINE", 1)
 
+        self.wait_routers("mycluster-router-*", 1)
+
         check_all(self, self.ns, "mycluster",
                   instances=1, routers=1, primary=0)
 
@@ -1079,6 +1079,8 @@ spec:
         self.wait_pod("mycluster2-0", "Running")
 
         self.wait_ic("mycluster2", "ONLINE", 1)
+
+        self.wait_routers("mycluster2-router-*", 2)
 
         check_all(self, self.ns, "mycluster2", instances=1, routers=2,
                   primary=0, password="sakilax", shared_ns=True)
@@ -1256,6 +1258,8 @@ spec:
         self.wait_pod("mycluster-0", "Running")
 
         self.wait_ic("mycluster", "ONLINE", 1)
+
+        self.wait_routers("mycluster-router-*", 1)
 
         check_all(self, self.ns, "mycluster", instances=1, routers=1,
                   primary=0, user="admin", password="secret")

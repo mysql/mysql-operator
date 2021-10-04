@@ -65,6 +65,8 @@ spec:
 
         self.wait_ic("mycluster", "ONLINE", num_online=3)
 
+        self.wait_routers("mycluster-router-*", 2)
+
         check_all(self, self.ns, "mycluster",
                   instances=3, routers=2, primary=0)
 

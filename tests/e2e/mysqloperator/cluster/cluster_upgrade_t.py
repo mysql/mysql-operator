@@ -77,6 +77,8 @@ spec:
 
         self.wait_ic("mycluster", "ONLINE", 3)
 
+        self.wait_routers("mycluster-router-*", 2)
+
         check_all(self, self.ns, "mycluster", version=g_ts_cfg.get_old_version_tag(),
                   instances=3, routers=2, primary=0)
 
@@ -116,6 +118,8 @@ spec:
                   check=lambda s: s.startswith(g_ts_cfg.version_tag), timeout=150, delay=10)
 
         self.wait_ic("mycluster", "ONLINE", 3)
+
+        self.wait_routers("mycluster-router-*", 2)
 
         # TODO check that mysql is upgraded ok
         check_all(self, self.ns, "mycluster", version=g_ts_cfg.version_tag,

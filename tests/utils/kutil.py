@@ -724,6 +724,9 @@ def create_user_secrets(ns, name, root_user=None, root_host=None, root_pass=None
     data += extra_keys
     create_secrets(ns, name, "\n".join(data))
 
+def create_default_user_secrets(ns, name="mypwds", root_user="root", root_host="%", root_pass="sakila", extra_keys=[]):
+    create_user_secrets(ns, name, root_user, root_host, root_pass, extra_keys)
+
 
 def create_pod():
     pass

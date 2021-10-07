@@ -1,9 +1,0 @@
-apiVersion: mysql.oracle.com/v2alpha1
-kind: InnoDBCluster
-metadata:
-  name: mycluster
-spec:
-  secretName: mypwds
-  instances: 3
-  router:
-    instances: 1

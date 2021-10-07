@@ -1,4 +1,0 @@
-apiVersion: zalando.org/v1
-kind: ClusterKopfPeering
-metadata:
-  name: mysql-operator

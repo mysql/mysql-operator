@@ -11,6 +11,7 @@
 from utils import kutil
 from utils import mutil
 import json
+from setup.config import g_ts_cfg
 
 
 def check_group(test, icobj, all_pods, user="root", password="sakila"):
@@ -75,8 +76,10 @@ def check_instance(test, icobj, all_pods, pod, is_primary, num_sessions=None, ve
         grvars = dict(session.query_sql(
             "show global variables like 'group_replication%'").fetch_all())
 
-        test.assertEqual(
-            grvars["group_replication_start_on_boot"], "OFF", name)
+        # mysqlsh < 8.0.27 was not handling start_on_boot correctly
+        if g_ts_cfg.operator_shell_version_num >= 80027:
+            test.assertEqual(
+                grvars["group_replication_start_on_boot"], "OFF", name)
         test.assertEqual(
             grvars["group_replication_single_primary_mode"], "ON", name)
         test.assertEqual(

@@ -40,6 +40,11 @@ class Config:
     oci_restore_apikey_path = defaults.OCI_RESTORE_APIKEY_PATH
     oci_backup_bucket = defaults.OCI_BACKUP_BUCKET
 
+    @property
+    def operator_shell_version_num(self):
+        a,b,c = self.operator_version_tag.split("-")[0].split(".")
+        return int(a)*10000 + int(b)*100 + int(c)
+
     def commit(self):
         if self.image_registry:
             self.image_registry_host, self.image_registry_port, self.image_registry_is_loopback = auxutil.resolve_registry_url(self.image_registry)
@@ -67,6 +72,7 @@ class Config:
 
     def get_router_image(self):
         return f"{self.get_image_registry_repository()}/{self.router_image_name}:{self.version_tag}"
+
 
 # test-suite configuration
 g_ts_cfg = Config()

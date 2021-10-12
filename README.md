@@ -52,7 +52,7 @@ operator, inside the `mysql-operator` namespace.
 kubectl get deployment -n mysql-operator mysql-operator
 ```
 
-Once the Operator is ready the putput should be like
+Once the Operator is ready the output should be like
 
 ``` 
 NAME             READY   UP-TO-DATE   AVAILABLE   AGE

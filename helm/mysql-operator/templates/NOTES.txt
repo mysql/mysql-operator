@@ -1,2 +1,3 @@
 Create an InnoDB Cluster by executing:
-....
+1. When using a source distribution / git clone: `helm install [cluster-name] -n [ns-name] ~/helm/mysql-innodbcluster`
+2. When using Helm repos :  `helm install [cluster-name] -n [ns-name] mysql-innodbcluster`

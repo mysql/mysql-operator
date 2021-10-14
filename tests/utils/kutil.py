@@ -106,8 +106,9 @@ def kubectl(cmd, rsrc=None, args=None, timeout=None, check=True, ignore=[]):
                                  e.returncode, e.stderr.decode("utf8"))
                 return
         else:
-            logger.error("kubectl %s failed:\n    stderr=%s\n    stdout=%s",
-                         e.cmd, e.stderr.decode("utf8"), e.stdout.decode("utf8"))
+            logger.error("kubectl %s failed (rc=%s):\n    stderr=%s\n    stdout=%s",
+                         e.cmd, e.returncode,
+                         e.stderr.decode("utf8"), e.stdout.decode("utf8"))
             raise
     if debug_kubectl:
         logger.debug("rc = %s, stdout = %s", r.returncode,
@@ -261,9 +262,9 @@ def ls_ns():
 #
 
 
-def get(ns, rsrc, name):
-    r = kubectl("get", rsrc, args=[name, "-n", ns, "-o=yaml"])
-    if r.stdout:
+def get(ns, rsrc, name, **kwargs):
+    r = kubectl("get", rsrc, args=[name, "-n", ns, "-o=yaml"], **kwargs)
+    if r and r.stdout:
         return yaml.safe_load(r.stdout.decode("utf8"))
     return None
 
@@ -284,8 +285,8 @@ def get_rs(ns, name, jpath=None):
     return get(ns, "rs", name)
 
 
-def get_deploy(ns, name, jpath=None):
-    return get(ns, "deploy", name)
+def get_deploy(ns, name, jpath=None, **kwargs):
+    return get(ns, "deploy", name, **kwargs)
 
 
 def get_svc(ns, name, jpath=None):

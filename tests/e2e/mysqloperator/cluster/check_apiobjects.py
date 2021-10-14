@@ -7,7 +7,6 @@ import time
 from setup import defaults
 from utils import kutil
 
-
 def check_pod_labels(test, pod, cluster, role):
     test.assertEqual(pod["metadata"]["labels"]["component"],
                      "mysqld", pod["metadata"]["name"])
@@ -48,9 +47,9 @@ def check_cluster_object(test, icobj, name):
         else:
             raise
     if icobj["spec"].get("router") and icobj["spec"]["router"].get("instances"):
-        test.assertTrue(deployment)
+        test.assertTrue(deployment, msg=meta["name"]+"-router missing")
     else:
-        test.assertFalse(deployment)
+        test.assertFalse(deployment, msg=meta["name"]+"-router exists but isn't expected")
 
     # main router service
     svc = kutil.get_svc(meta["namespace"], meta["name"])
@@ -82,17 +81,17 @@ def check_cluster_spec_compliant(test, icobj):
 
     # router replicaset
     try:
-        rs = kutil.get_deploy(meta["namespace"], meta["name"]+"-router")
+        rs = kutil.get_deploy(meta["namespace"], meta["name"]+"-router", ignore=["NotFound"])
     except kutil.subprocess.CalledProcessError as e:
         if "(NotFound)" in e.stderr.decode("utf8"):
             rs = None
         else:
             raise
     if spec.get("router") and spec["router"].get("instances"):
-        test.assertTrue(rs)
+        test.assertTrue(rs, msg=meta["name"]+"-router missing")
         test.assertEqual(rs["spec"]["replicas"], spec["router"]["instances"])
     else:
-        test.assertFalse(rs)
+        test.assertFalse(rs, msg=meta["name"]+"-router exists but isn't expected")
 
     # check actual pod count
     test.assertEqual(icobj["status"]["cluster"]
@@ -231,9 +230,7 @@ def get_cluster_object(test, ns, name):
 def check_online_cluster(test, icobj, allow_others=False):
     check_kubectl_get_ic(
         test, icobj["metadata"]["namespace"], icobj["metadata"]["name"], allow_others)
-
     check_cluster_spec_compliant(test, icobj)
-
     check_cluster_object(test, icobj, icobj["metadata"]["name"])
 
     return icobj

@@ -349,6 +349,9 @@ class ClusterController:
             status = cluster.status()
             logger.info(f"Cluster reboot successful. status={status}")
 
+            self.probe_member_status(seed_pod, dba.session, True, logger)
+
+
     def force_quorum(self, seed_pod, logger) -> None:
         logger.info(
             f"Forcing quorum of cluster {self.cluster.name} using {seed_pod.name}...")

@@ -7,3 +7,9 @@ spec:
   instances: 3
   router:
     instances: 1
+# An example how to use storage class with InnoDBCluster
+  datadirVolumeClaimTemplate:
+    resources:
+      requests:
+        storage: 10Gi
+    storageClassName: local

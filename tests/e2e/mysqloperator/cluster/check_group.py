@@ -25,9 +25,11 @@ def check_group(test, icobj, all_pods, user="root", password="sakila"):
         test.assertEqual(icobj["status"]["cluster"]
                          ["onlineInstances"], len(members))
 
+        print(members)
+
         primaries = []
         for mid, mhost, mport, mstate, mrole in members:
-            test.assertEqual(mstate, "ONLINE")
+            test.assertEqual(mstate, "ONLINE", f"{mhost}:{mport}")
             if mrole == "PRIMARY":
                 primaries.append(mrole)
                 info["primary"] = int(mhost.split(".")[0].split("-")[-1])
@@ -113,12 +115,10 @@ def check_instance(test, icobj, all_pods, pod, is_primary, num_sessions=None, ve
 
 def schema_report(session, schema):
     table_info = {}
-    for table, in session.query_sql("SHOW TABLES IN %s", (schema,)).fetch_all():
-        count = session.query_sql("SELECT count(*) FROM %s.%s",
-                                (schema, table)).fetch_one()[0]
+    for table, in session.query_sql("SHOW TABLES IN %s" % (schema,)).fetch_all():
+        count = session.query_sql("SELECT count(*) FROM %s.%s" % (schema, table)).fetch_one()[0]
 
-        checksum = session.query_sql("CHECKSUM TABLE %s.%s",
-                                   (schema, table)).fetch_one()[0]
+        checksum = session.query_sql("CHECKSUM TABLE %s.%s" %(schema, table)).fetch_one()[0]
 
         table_info[table] = {"rows": count, "checksum": checksum}
     return table_info
@@ -150,12 +150,17 @@ def check_data(test, all_pods, user="root", password="sakila", primary=0):
                     pod["metadata"]["namespace"], pod["metadata"]["name"],
                     user, password) as s:
                 r = s.query_sql(
-                    "select WAIT_FOR_EXECUTED_GTID_SET(?, 1)", [gtid_set0])
+                    "select WAIT_FOR_EXECUTED_GTID_SET(%s, 0)", (gtid_set0, ))
                 test.assertEqual(r.fetch_one()[0], 0)
 
-                gtid_set = s.query_sql("SELECT @@gtid_executed").fetch_one()[0]
+                # check for missing GTIDs 
+                missing = s.query_sql("select gtid_subtract(%s, @@gtid_executed)", (gtid_set0, )).fetch_one()[0]
+                test.assertEqual("", missing, pod["metadata"]["name"])
 
-                test.assertEqual(gtid_set0, gtid_set, pod["metadata"]["name"])
+                # check for errant GTIDs comparing against a more recent GTID set from primary
+                gtid_set = s.query_sql("select @@gtid_executed").fetch_one()[0]
+                errants = session0.query_sql("select gtid_subtract(%s, @@gtid_executed)", (gtid_set, )).fetch_one()[0]
+                test.assertEqual("", errants, pod["metadata"]["name"])
 
                 test.assertSetEqual(schemas0, set([r[0]
                                                    for r in s.query_sql("SHOW SCHEMAS").fetch_all()]),

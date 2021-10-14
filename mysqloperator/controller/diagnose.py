@@ -412,17 +412,16 @@ def find_group_partitions(online_pod_info: Dict[str, InstanceStatus],
         return None
 
     # print()
-# A: Delivered !tested
-#    for ep, p in online_pod_info.items():
-#        #     print(ep, p.status, p.in_quorum, p.peers)
-#        if not p.in_quorum:
-#            part = active_partition_with(p)
-#            assert not part, f"Inconsistent group view, {p} not expected to be in {part}"
-#
-#            part = set([all_pods[peer] for peer, state in p.peers.items()
-#                        if state not in ("(MISSING)", "UNREACHABLE")])
-#            if part not in blocked_partitions:
-#                blocked_partitions.append(part)
+    for ep, p in online_pod_info.items():
+       #     print(ep, p.status, p.in_quorum, p.peers)
+        if not p.in_quorum:
+            part = active_partition_with(p)
+            assert not part, f"Inconsistent group view, {p} not expected to be in {part}"
+
+            part = set([all_pods[peer] for peer, state in p.peers.items()
+                        if state not in ("(MISSING)", "UNREACHABLE")])
+            if part not in blocked_partitions:
+                blocked_partitions.append(part)
     # print("ACTIVE PARTS", active_partitions)
     # print("BLOCKED PARTS", blocked_partitions)
     # print()

@@ -614,14 +614,16 @@ def wait_ic_gone(ns, name, timeout=120, checkabort=lambda: None):
     raise Exception(f"Timeout waiting for ic {ns}/{name}")
 
 
-def wait_ic(ns, name, status=["ONLINE"], num_online=None, timeout=200, checkabort=lambda: None):
+def wait_ic(ns, name, status=["ONLINE"], num_online=None, timeout=200, probe_time=None, checkabort=lambda: None):
     if type(status) not in (tuple, list):
         status = [status]
 
     def check_status(line):
         checkabort()
-        logger.debug("%s", line)
-        return line["STATUS"] in status and (num_online is None or line["ONLINE"] >= str(num_online))
+        logger.debug("checking status with %s", line)
+        if probe_time is None or line["PROBETIME"] > probe_time:
+            return line["STATUS"] in status and (num_online is None or int(line["ONLINE"]) >= num_online)
+        return False
 
     wait_ic_exists(ns, name, timeout, checkabort)
 
@@ -630,7 +632,7 @@ def wait_ic(ns, name, status=["ONLINE"], num_online=None, timeout=200, checkabor
 
     checkabort()
     r = watch(ns, "ic", name, check_status, timeout,
-              format="custom-columns=NAME:.metadata.name,STATUS:.status.cluster.status,ONLINE:.status.cluster.onlineInstances")
+              format="custom-columns=NAME:.metadata.name,STATUS:.status.cluster.status,ONLINE:.status.cluster.onlineInstances,PROBETIME:.status.cluster.lastProbeTime")
 
     logger.info(f"{r}")
 

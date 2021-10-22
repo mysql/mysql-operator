@@ -34,17 +34,6 @@ def check_sidecar_health(test, ns, pod):
     test.assertIn("Waiting for Operator requests...", logs)
 
 
-def get_member_state(ns, pod_name):
-    try:
-        with mutil.MySQLPodSession(ns, pod_name, "root", "sakila") as s:
-            return s.query_sql("select member_state from performance_schema.replication_group_members where member_id = @@server_uuid").fetch_one()[0]
-    except connector.errors.OperationalError as e:
-        if e.errno == 2013:
-            return None
-        raise
-
-
-
 def check_all(test, ns, name, instances, routers=None, primary=None, count_sessions=False, user="root", password="sakila", shared_ns=False, version=None):
     icobj, all_pods = check_apiobjects.get_cluster_object(test, ns, name)
 
@@ -729,15 +718,11 @@ spec:
         # wait for operator to notice them gone
         self.wait_ic("mycluster", "OFFLINE", 0)
 
-        self.wait_ic("mycluster", ["ONLINE_PARTIAL", "ONLINE_UNCERTAIN"], 1)
+        self.wait_ic("mycluster", ["ONLINE_PARTIAL", "ONLINE_UNCERTAIN"], 1, timeout=300)
 
-        self.wait_ic("mycluster", ["ONLINE_PARTIAL", "ONLINE_UNCERTAIN"], 2)
+        self.wait_ic("mycluster", ["ONLINE_PARTIAL", "ONLINE_UNCERTAIN"], 2, timeout=300)
         # wait for operator to restore it
-        self.wait_ic("mycluster", "ONLINE", 3)
-
-        self.wait(get_member_state, (self.ns, "mycluster-0"), lambda s: s == "ONLINE")
-        self.wait(get_member_state, (self.ns, "mycluster-1"), lambda s: s == "ONLINE")
-        self.wait(get_member_state, (self.ns, "mycluster-2"), lambda s: s == "ONLINE")
+        self.wait_ic("mycluster", "ONLINE", num_online=3, timeout=300)
 
         check_all(self, self.ns, "mycluster", instances=3, primary=0)
 
@@ -923,42 +908,43 @@ spec:
         check_all(self, self.ns, "mycluster", instances=3, primary=0)
 
     def test_4_recover_restart_1_of_3(self):
+        initial_probe_time = kutil.get_ic(self.ns, "mycluster")["status"]["cluster"]["lastProbeTime"]
+
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0:
             s0.exec_sql("restart")
 
         # wait for operator to notice it OFFLINE
-        self.wait_ic("mycluster", ["ONLINE_PARTIAL", "ONLINE"])
+        self.wait_ic("mycluster", ["ONLINE_PARTIAL", "ONLINE"], probe_time=initial_probe_time)
 
         # check status of the restarted pod
         # TODO
 
         # wait for operator to restore everything
-        self.wait_ic("mycluster", "ONLINE")
-
-        self.wait(get_member_state, (self.ns, "mycluster-0"), lambda s: s == "ONLINE")
+        self.wait_ic("mycluster", "ONLINE", num_online=3)
 
         check_all(self, self.ns, "mycluster", instances=3, primary=None)
 
     def test_4_recover_restart_2_of_3(self):
+        initial_probe_time = kutil.get_ic(self.ns, "mycluster")["status"]["cluster"]["lastProbeTime"]
+
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0,\
                 mutil.MySQLPodSession(self.ns, "mycluster-2", "root", "sakila") as s2:
             s0.exec_sql("restart")
             s2.exec_sql("restart")
 
         # wait for operator to notice it ONLINE_PARTIAL
-        self.wait_ic("mycluster", ["ONLINE_PARTIAL", "ONLINE"], 1)
+        self.wait_ic("mycluster", ["ONLINE_PARTIAL", "ONLINE"], 1, probe_time=initial_probe_time)
 
         # check status of each pod
 
         # wait for operator to restore everything
-        self.wait_ic("mycluster", "ONLINE")
-
-        self.wait(get_member_state, (self.ns, "mycluster-0"), lambda s: s == "ONLINE")
-        self.wait(get_member_state, (self.ns, "mycluster-2"), lambda s: s == "ONLINE")
+        self.wait_ic("mycluster", "ONLINE", num_online=3)
 
         check_all(self, self.ns, "mycluster", instances=3, primary=1)
 
     def test_4_recover_restart_3_of_3(self):
+        initial_probe_time = kutil.get_ic(self.ns, "mycluster")["status"]["cluster"]["lastProbeTime"]
+
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0,\
                 mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s1,\
                 mutil.MySQLPodSession(self.ns, "mycluster-2", "root", "sakila") as s2:
@@ -972,22 +958,16 @@ spec:
         # check status of each pod
 
         # wait for operator to restore everything
-        self.wait_ic("mycluster", "ONLINE")
-
-        self.wait(get_member_state, (self.ns, "mycluster-0"), lambda s: s == "ONLINE")
-        self.wait(get_member_state, (self.ns, "mycluster-1"), lambda s: s == "ONLINE")
-        self.wait(get_member_state, (self.ns, "mycluster-2"), lambda s: s == "ONLINE")
+        self.wait_ic("mycluster", "ONLINE", num_online=3, timeout=300, probe_time=initial_probe_time)
 
         all_pods = check_all(self, self.ns, "mycluster",
                              instances=3, primary=0)
         check_group.check_data(self, all_pods)
 
     def test_9_destroy(self):
-        # TODO this sleep is a workaround for an unknown issue (race condition?)
-        # where deleting the ic will trigger replicas in sts to be set to 0, but
-        # nothing actually happening
-        import time
-        time.sleep(240)
+        # XXX deleting the sts shouldn't be necessary, but it's not happening when the ic is deleted
+        kutil.delete_sts(self.ns, "mycluster")
+
         kutil.delete_ic(self.ns, "mycluster")
 
         self.wait_pod_gone("mycluster-2")

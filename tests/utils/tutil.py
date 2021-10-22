@@ -395,12 +395,12 @@ class OperatorTest(unittest.TestCase):
 
         raise Exception("Timeout waiting for condition")
 
-    def wait_ic(self, name, status_list, num_online=None, ns=None, timeout=200):
+    def wait_ic(self, name, status_list, num_online=None, ns=None, timeout=200, probe_time=None):
         """
         Wait for given ic object to reach one of the states in the list.
         Aborts on timeout or when an unexpected error is detected in the operator.
         """
-        self.assertNotEqual(kutil.wait_ic(ns or self.ns, name, status_list, num_online=num_online,
+        self.assertNotEqual(kutil.wait_ic(ns or self.ns, name, status_list, num_online=num_online, probe_time=probe_time,
                                           checkabort=self.check_operator_exceptions, timeout=timeout), None, "timeout waiting for cluster")
 
     def wait_pod(self, name, status_list, ns=None):

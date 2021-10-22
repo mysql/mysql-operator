@@ -411,16 +411,21 @@ class ClusterController:
             elif status.status == diagnose.CandidateDiagStatus.MEMBER:
                 logger.info(f"{pod.endpoint} already a member")
 
+                self.probe_member_status(pod, pod_dba_session.session, False, logger)
+
             elif status.status == diagnose.CandidateDiagStatus.UNREACHABLE:
                 # TODO check if we should throw a tmp error or do nothing
                 logger.error(f"{pod.endpoint} is unreachable")
 
+                self.probe_member_status(pod, pod_dba_session.session, False, logger)
             else:
                 # TODO check if we can repair broken instances
                 # It would be possible to auto-repair an instance with errant
                 # transactions by cloning over it, but that would mean these
                 # errants are lost.
                 logger.error(f"{pod.endpoint} is in state {status.status}")
+
+                self.probe_member_status(pod, pod_dba_session.session, False, logger)
 
     def join_instance(self, pod: MySQLPod, logger, pod_dba_session: 'Dba') -> None:
         logger.info(f"Adding {pod.endpoint} to cluster")

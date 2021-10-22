@@ -121,11 +121,11 @@ spec:
 
             # add some data with binlog disabled to make sure that all members of this
             # cluster are cloned
+            s.exec_sql("set autocommit=1")
             s.exec_sql("set session sql_log_bin=0")
             s.exec_sql("create schema unlogged_db")
             s.exec_sql("create table unlogged_db.tbl (a int primary key)")
             s.exec_sql("insert into unlogged_db.tbl values (42)")
-            s.exec_sql("set session sql_log_bin=1")
 
         self.assertEqual(set(orig_tables), set(clone_tables))
 
@@ -148,7 +148,7 @@ spec:
         # check that the new instance was cloned
         with mutil.MySQLPodSession("clone", "copycluster-1", "root", "sakila") as s:
             self.assertEqual(
-                str(s.query_sql("select * from unlogged_db.tbl").fetch_all()), str([[42]]))
+                str(s.query_sql("select * from unlogged_db.tbl").fetch_all()), str([(42,)]))
 
     def test_3_routing(self):
         pass  # TODO

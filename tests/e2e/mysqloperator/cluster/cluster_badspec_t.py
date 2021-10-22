@@ -310,6 +310,7 @@ spec:
 """
         kutil.apply(self.ns, yaml)
 
+        # the ic object will error out before sts is created
         self.wait(kutil.get_ic_ev, (self.ns, "mycluster"),
                   lambda evs: len(evs) > 0)
 
@@ -366,9 +367,11 @@ spec:
         self.wait_ic_gone("mycluster")
         kutil.delete_pvc(self.ns, None)
 
-    def test_2_bad_pod_recover(self):
+    def test_2_bad_pod_creation(self):
         """
-        Checks that using a bad spec that fails at the pod can be recovered.
+        Checks that using a bad spec that fails at the pod can be recovered (via deletion)
+        If the cluster fails at creation, the only recovery alternative is deletion.
+        Recovery must work if a working cluster breaks after an update.
         """
         # create cluster with mostly default configs, but a specific option
         # that will be accepted by the runtime checks but will fail at pod
@@ -393,25 +396,11 @@ spec:
 
         def pod_error():
             clusterStatus = kutil.ls_po(self.ns)[0]["STATUS"]
-            return clusterStatus in ("Init:ErrImageNeverPull", "Init:ErrImagePull")
+            return clusterStatus in ("Init:ErrImageNeverPull", "Init:ErrImagePull", "Init:ImagePullBackOff")
 
         self.wait(pod_error)
 
-        # fixing the imageRepository should let the cluster resume creation
-        kutil.patch_ic(self.ns, "mycluster", {"spec": {
-            "imageRepository": g_ts_cfg.get_image_registry_repository()
-        }}, type="merge")
-
-        # NOTE: seems we have to delete the pod to force it to be recreated
-        # correctly
-        kutil.delete_po(self.ns, "mycluster-0")
-
-        # check cluster ok now
-        self.wait_pod("mycluster-0", "Running")
-
-        self.wait_ic("mycluster", "ONLINE")
-
-        # cleanup
+        # the only way out when ic fails during creation is deleting and retrying
         kutil.delete_ic(self.ns, "mycluster")
 
         self.wait_pod_gone("mycluster-0")
@@ -503,6 +492,39 @@ spec:
         self.wait_pod("mycluster-2", "Running")
 
         self.wait_ic("mycluster", ["ONLINE"], 3)
+
+    def test_2_bad_change_recover(self):
+        """
+        Checks that using a bad spec that fails at the pod (once the ic is created) can be recovered.
+        """
+        kutil.patch_ic(self.ns, "mycluster", {"spec": {
+            "imageRepository": "invalid"
+        }}, type="merge")
+
+        # Wait for mycluster-2 to fail upgrading
+        def check(pods):
+            clusterStatus = pods[2]["STATUS"]
+            print(clusterStatus)
+            return clusterStatus in ("Init:ErrImageNeverPull", "Init:ErrImagePull", "Init:ImagePullBackOff")
+
+        self.wait(kutil.ls_po, (self.ns,), check, delay=10, timeout=100)
+
+        # check status of the cluster
+        self.wait_ic("mycluster", ["ONLINE_PARTIAL"], 2)
+
+        # revert the version
+        kutil.patch_ic(self.ns, "mycluster", {"spec": {
+            "imageRepository": g_ts_cfg.get_image_registry_repository()
+        }}, type="merge")
+
+        # delete the pod in error state so it can recover
+        kutil.delete_po(self.ns, "mycluster-2")
+
+        # Wait for mycluster-2 to recover
+        self.wait_pod("mycluster-2", "Running")
+
+        self.wait_ic("mycluster", ["ONLINE"], 3)
+
 
     def test_9_destroy(self):
         kutil.delete_ic(self.ns, "mycluster", 180)

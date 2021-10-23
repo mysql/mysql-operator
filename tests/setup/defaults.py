@@ -25,8 +25,8 @@ OPERATOR_IMAGE_NAME = os.getenv(
     "OPERATOR_TEST_IMAGE_NAME", default="mysql-operator")
 
 OPERATOR_EE_IMAGE_NAME = os.getenv(
-    "OPERATOR_TEST_EE_IMAGE_NAME", default="mysql-operator-commercial")
-    # "OPERATOR_TEST_EE_IMAGE_NAME", default="mysql-operator")
+    # "OPERATOR_TEST_EE_IMAGE_NAME", default="mysql-operator-commercial")
+    "OPERATOR_TEST_EE_IMAGE_NAME", default="mysql-operator")
 
 OPERATOR_VERSION_TAG = os.getenv(
     "OPERATOR_TEST_VERSION_TAG", default="8.0.26-2.0.2")

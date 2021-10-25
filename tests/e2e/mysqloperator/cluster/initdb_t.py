@@ -207,7 +207,7 @@ class ClusterFromDumpOCI(tutil.OperatorTest):
             self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
 
         bucket = g_ts_cfg.oci_backup_bucket
-        backup_apikey_path = not g_ts_cfg.oci_backup_apikey_path
+        backup_apikey_path = g_ts_cfg.oci_backup_apikey_path
         restore_apikey_path = g_ts_cfg.oci_restore_apikey_path
 
         # create a secret with the api key to access the bucket, which should be

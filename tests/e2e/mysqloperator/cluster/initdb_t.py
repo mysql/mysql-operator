@@ -231,7 +231,7 @@ spec:
     dumpInstance:
       storage:
         ociObjectStorage:
-          prefix : /
+          prefix: /
           bucketName: {bucket}
           credentials: backup-apikey
 """
@@ -310,7 +310,7 @@ spec:
       name: {self.dump_name}
       storage:
         ociObjectStorage:
-          prefix : /
+          prefix: /
           bucketName: {bucket}
           credentials: restore-apikey
 """
@@ -390,7 +390,7 @@ spec:
         - sakila
       storage:
         ociObjectStorage:
-          prefix : /
+          prefix: /
           bucketName: {bucket}
           credentials: restore-apikey
 """

@@ -182,6 +182,14 @@ def populate_with_dump(datadir: str, session: 'ClassicSession', cluster: InnoDBC
 
     initdb.load_dump(session, cluster, pod, init_spec, logger)
 
+    # create local accounts again since the donor may not have them
+    create_local_accounts(session, logger)
+
+    # reset password of the IC admin account
+    admin_user, admin_pass = cluster.get_admin_account()
+    logger.info(f"Resetting password for {admin_user}@%")
+    session.run_sql("SET PASSWORD FOR ?@'%'=?", [admin_user, admin_pass])
+
     wipe_old_innodb_cluster(session, logger)
 
     return session

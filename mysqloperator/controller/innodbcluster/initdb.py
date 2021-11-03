@@ -136,6 +136,7 @@ def load_dump(session: 'ClassicSession', cluster: InnoDBCluster, pod: MySQLPod, 
 
     logger.info("::load_dump")
     options = init_spec.loadOptions.copy()
+    options["progressFile"] = "";
 
     oci_credentials = None
     if init_spec.storage.ociObjectStorage:

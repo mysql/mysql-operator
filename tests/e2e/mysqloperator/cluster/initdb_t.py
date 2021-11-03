@@ -365,9 +365,10 @@ spec:
     def test_1_2_destroy(self):
         kutil.delete_ic(self.ns, "newcluster")
 
-        self.wait_pod_gone("mycluster-1")
-        self.wait_pod_gone("mycluster-0")
-        self.wait_ic_gone("mycluster")
+        self.wait_pod_gone("newcluster-0")
+        self.wait_ic_gone("newcluster")
+
+        kutil.delete_pvc(self.ns, None)
 
     def test_2_create_from_dump_options(self):
         """
@@ -424,8 +425,15 @@ spec:
         self.wait_pod_gone("mycluster-0")
         self.wait_ic_gone("mycluster")
 
+        kutil.delete_ic(self.ns, "newcluster")
+
+        self.wait_pod_gone("newcluster-0")
+        self.wait_ic_gone("newcluster")
+
         kutil.delete_secret(self.ns, "restore-apikey")
         kutil.delete_secret(self.ns, "backup-apikey")
+
+        kutil.delete_pvc(self.ns, None)
 
 # class ClusterFromDumpLocal(tutil.OperatorTest):
 #    pass

@@ -185,6 +185,8 @@ def feed_kubectl(input, cmd, rsrc=None, args=None, check=True):
         argv += args
     if debug_kubectl:
         logger.debug("run %s", argv)
+        if input:
+            logger.debug("input: %s", input)
     r = subprocess.run(argv, input=input.encode("utf8"),
                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                        check=check)

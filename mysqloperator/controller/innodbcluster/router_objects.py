@@ -142,7 +142,7 @@ spec:
           name: mysqlxrw
         - containerPort: {spec.router_roport}
           name: mysqlro
-        - containerPort: {spec.router_rwxport}
+        - containerPort: {spec.router_roxport}
           name: mysqlxro
         - containerPort: {spec.router_httpport}
           name: http

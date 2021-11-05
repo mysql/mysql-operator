@@ -1,1 +1,0 @@
-ERROR: test_1_backup_to_oci_bucket (e2e.mysqloperator.backup.dump_t.DumpInstance)

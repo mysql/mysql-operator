@@ -60,7 +60,7 @@ with open(log_path) as f:
             summary += ' ' + line
         elif success_summary_matcher.match(line):
             success = True
-            summary += line
+            summary += ' ' + line
 
 
 if expected_failures:

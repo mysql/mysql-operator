@@ -53,7 +53,7 @@ class K3dEnvironment(BaseEnvironment):
 
     def add_proxy_env(self, envar):
         if envar in os.environ:
-            return ["--env", f'{envar}="${envar}@"', "--env", f'{envar.lower()}="${envar}@"']
+            return ["--env", f'{envar}={os.getenv(envar)}@', "--env", f'{envar.lower()}={os.getenv(envar)}@']
         return []
 
     def stop_cluster(self):

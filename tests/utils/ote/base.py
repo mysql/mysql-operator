@@ -21,6 +21,7 @@ class BaseEnvironment:
         self._cleanup = True
         self.operator_host_path = None
         self.operator_mount_path = None
+        self._mounts = None
 
     def __enter__(self):
         return self
@@ -28,8 +29,9 @@ class BaseEnvironment:
     def __exit__(self, type, value, tb):
         self.destroy()
 
-    def setup_cluster(self, nodes=None, version=None, registry_cfg_path=None, perform_setup=True, cleanup=False):
+    def setup_cluster(self, nodes=None, version=None, registry_cfg_path=None, perform_setup=True, mounts=None, cleanup=False):
         self._setup = perform_setup
+        self._mounts = mounts
         self._cleanup = cleanup
 
         if self._setup:

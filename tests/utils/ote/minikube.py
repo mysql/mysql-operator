@@ -94,6 +94,9 @@ class MinikubeEnvironment(BaseEnvironment):
             args.append(f"--kubernetes-version={version}")
         if self.operator_mount_path:
             args += ["--mount", f"--mount-string={self.operator_mount_path}:{self.operator_host_path}"]
+        if self._mounts:
+            for mount in self._mounts:
+                args += ["--mount", f"--mount-string={mount}"]
         if g_ts_cfg.image_registry:
             args.append(f"--insecure-registry={self.resolve_registry()}")
         subprocess.check_call(args)

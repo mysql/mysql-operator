@@ -40,6 +40,9 @@ class K3dEnvironment(BaseEnvironment):
 
         if self.operator_mount_path:
             args += ["--volume", f"{self.operator_mount_path}:{self.operator_host_path}"]
+        if self._mounts:
+            for mount in self._mounts:
+                args += ["--volume", mount]
 
         args += self.add_proxy_env("HTTP_PROXY")
         args += self.add_proxy_env("HTTPS_PROXY")

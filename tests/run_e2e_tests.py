@@ -118,6 +118,7 @@ if __name__ == '__main__':
     opt_deploy = True
     opt_mount_operator_path = None
     opt_mounts = []
+    opt_custom_dns = None
     opt_cleanup = True
     opt_env_name = "minikube"
     opt_registry_cfg_path = None
@@ -164,6 +165,8 @@ if __name__ == '__main__':
             opt_mount_operator_path = os.path.join(os.path.dirname(basedir), "mysqloperator")
         elif arg.startswith("--mount="):
             opt_mounts += [arg.partition("=")[-1]]
+        elif arg.startswith("--custom-dns="):
+            opt_custom_dns = arg.partition("=")[-1]
         elif arg.startswith("--registry="):
             g_ts_cfg.image_registry = arg.partition("=")[-1]
         elif arg.startswith("--registry-cfg="):
@@ -228,7 +231,7 @@ if __name__ == '__main__':
 
             driver.setup_cluster(
                 nodes=opt_nodes, version=opt_kube_version, registry_cfg_path=opt_registry_cfg_path,
-                perform_setup=opt_setup, mounts=opt_mounts, cleanup=opt_cleanup)
+                perform_setup=opt_setup, mounts=opt_mounts, custom_dns=opt_custom_dns, cleanup=opt_cleanup)
 
             if opt_load_images:
                 driver.cache_images(image_dir, images)

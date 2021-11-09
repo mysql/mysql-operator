@@ -29,7 +29,8 @@ class BaseEnvironment:
     def __exit__(self, type, value, tb):
         self.destroy()
 
-    def setup_cluster(self, nodes=None, version=None, registry_cfg_path=None, perform_setup=True, mounts=None, cleanup=False):
+    def setup_cluster(self, nodes=None, version=None, registry_cfg_path=None, perform_setup=True,
+      mounts=None, custom_dns=None, cleanup=False):
         self._setup = perform_setup
         self._mounts = mounts
         self._cleanup = cleanup
@@ -39,7 +40,14 @@ class BaseEnvironment:
 
           self.start_cluster(nodes, version, registry_cfg_path)
 
+          if custom_dns:
+            self.add_custom_dns(custom_dns)
+
         subprocess.call(["kubectl", "cluster-info"])
+
+    def add_custom_dns(self, custom_dns):
+      ote_dir = os.path.dirname(os.path.realpath(__file__))
+      subprocess.check_call(f"{ote_dir}/add_custom_dns.sh {custom_dns}", shell=True)
 
     def setup_operator(self, deploy_files):
         self.deploy_operator(deploy_files)

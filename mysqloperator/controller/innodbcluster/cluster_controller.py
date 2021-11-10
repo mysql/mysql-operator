@@ -7,6 +7,7 @@
 from kopf.structs.bodies import Body
 from .. import consts, errors, kubeutils, shellutils, utils, config, mysqlutils
 from .. import diagnose
+from ..backup import backup_objects
 from ..shellutils import DbaWrap
 from . import router_objects
 from .cluster_api import MySQLPod, InnoDBCluster, client
@@ -296,6 +297,7 @@ class ClusterController:
             self.post_create_actions(dba, self.dba_cluster, seed_pod, logger)
 
     def post_create_actions(self, dba: 'Dba', dba_cluster: 'Cluster', seed_pod: MySQLPod, logger) -> None:
+        logger.info("cluster_controller::post_create_actions")
         # create router account
         user, password = self.cluster.get_router_account()
 

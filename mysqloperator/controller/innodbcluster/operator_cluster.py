@@ -13,7 +13,7 @@ from .. import consts, kubeutils, config, utils, errors, diagnose
 from .. import shellutils
 from ..group_monitor import g_group_monitor
 from ..utils import g_ephemeral_pod_state
-from ..kubeutils import api_core, api_apps, api_policy
+from ..kubeutils import api_core, api_apps, api_policy, api_cron_job
 from ..backup import backup_objects
 from ..config import DEFAULT_OPERATOR_VERSION_TAG
 from .cluster_controller import ClusterController, ClusterMutex
@@ -73,6 +73,14 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             if e.status == 404:
                 return None
             raise
+
+    print(f"InnoDB Cluster {namespace}/{name} {cluster.parsed_spec.edition} Edition")
+    print(f"\tServer Image:\t{cluster.parsed_spec.mysql_image} / {cluster.parsed_spec.mysql_image_pull_policy}")
+    print(f"\tRouter Image:\t{cluster.parsed_spec.router_image} / {cluster.parsed_spec.router_image_pull_policy}")
+    print(f"\tSidecar Image:\t{cluster.parsed_spec.operator_image} / {cluster.parsed_spec.operator_image_pull_policy}")
+    print(f"\tBase ServerId:\t{cluster.parsed_spec.baseServerId}")
+    print(f"\tBackup profiles:\t{len(cluster.parsed_spec.backupProfiles)}")
+    print(f"\tBackup schedules:\t{len(cluster.parsed_spec.backupSchedules)}")
 
     if not cluster.ready:
         try:
@@ -159,9 +167,9 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 print("\tCreating...")
                 api_core.create_namespaced_secret(
                     namespace=namespace, body=secret)
-        except Exception as e:
-            cluster.warn(action="CreateCluster", reason="CreateResourceFailed",
-                         message=f"{e}")
+
+        except Exception as exc:
+            cluster.warn(action="CreateCluster", reason="CreateResourceFailed", message=f"{exc}")
             raise
 
         print(f"10. Setting operator version for the IC to {DEFAULT_OPERATOR_VERSION_TAG}")
@@ -372,6 +380,38 @@ def on_innodbcluster_field_router_version(old: str, new: str, body: Body,
         router_deploy = cluster.get_router_deployment()
         if router_deploy:
             router_objects.update_router_image(router_deploy, cluster.parsed_spec, logger)
+
+
+
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.backupSchedules")  # type: ignore
+def on_innodbcluster_field_backup_schedules(old: str, new: str, body: Body,
+                                          logger: Logger, **kwargs):
+    if old == new:
+        return
+
+    logger.info("on_innodbcluster_field_backup_schedules")
+    cluster = InnoDBCluster(body)
+
+    # Ignore spec changes if the cluster is still being initialized
+    # This handler will be called even when the cluster is being initialized as the
+    # `old` value will be None and the `new` value will be the schedules that the cluster has.
+    # This makes it possible to create them here and not in on_innodbcluster_create().
+    # There in on_innodbcluster_create(), only the objects which are critical for the creation
+    # of the server should be created.
+    # After the cluster is ready we will add the schedules. This also allows to have the schedules
+    # created (especially when `enabled`) after the cluster has been created, solving issues with
+    # cron job not bein called or cron jobs being created as suspended and then when the cluster is
+    # running to be enabled again - which would end to be a 2-step process.
+    # The cluster is created after the first instance is up and running. Thus,
+    # don't need to take actions in post_create_actions() in the cluster controller
+    # but async await for Kopf to call again this handler.
+    if not cluster.get_create_time():
+        raise kopf.TemporaryError("The cluster is not ready. Will create the schedules once the first instance is up and running", delay=10)
+
+    cluster.parsed_spec.validate(logger)
+    with ClusterMutex(cluster):
+        backup_objects.update_schedules(cluster.parsed_spec, old, new, logger)
 
 
 @kopf.on.create("", "v1", "pods",

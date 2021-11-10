@@ -67,13 +67,12 @@ spec:
       {{- end }}
     {{- end }}
   {{- end }}
-
 {{- end }}
 
 {{- if .Values.backupProfiles }}
   backupProfiles:
-  {{ $isDumpInstance := false }}
-  {{ $isSnapshot := false }}
+  {{- $isDumpInstance := false }}
+  {{- $isSnapshot := false }}
   {{- range $_, $profile := .Values.backupProfiles }}
     {{- if $profile.name }}
   - name: {{ $profile.name -}}
@@ -89,7 +88,7 @@ spec:
           {{- fail "Impossible backup type" }}
         {{ end }}
         {{- if not (hasKey $backupProfile "storage") }}
-          {{- fail "dumpInstance backup profile $profile.name has no storage section" }}
+          {{- fail "backup profile $profile.name has no storage section" }}
         {{- else if hasKey $backupProfile.storage "ociObjectStorage" }}
       storage:
         ociObjectStorage:
@@ -107,4 +106,52 @@ spec:
       {{- end }}
     {{- end }}
   {{- end }}
+{{- end }}
+
+{{- if .Values.backupSchedules }}
+  backupSchedules:
+  {{- $isDumpInstance := false }}
+  {{- $isSnapshot := false }}
+  {{- range $_, $schedule := .Values.backupSchedules }}
+  - name: {{ $schedule.name }}
+    schedule: {{ quote $schedule.schedule }}
+    deleteBackupData: {{ $schedule.deleteBackupData }}
+    enabled: {{ $schedule.enabled }}
+    {{- if hasKey $schedule "backupProfileName"  }}
+    backupProfileName: {{  $schedule.backupProfileName }}
+    {{- else if hasKey $schedule "backupProfile" }}
+      {{- $isDumpInstance = hasKey $schedule.backupProfile "dumpInstance" }}
+      {{- $isSnapshot = hasKey $schedule.backupProfile "snapshot" }}
+      {{- if or $isDumpInstance $isSnapshot }}
+        {{- $backupProfile := ternary $schedule.backupProfile.dumpInstance $schedule.backupProfile.snapshot $isDumpInstance }}
+    backupProfile:
+        {{- if $isDumpInstance }}
+      dumpInstance:
+        {{- else if $isSnapshot }}
+      snapshot:
+        {{- end }}
+        {{- if not (hasKey $backupProfile "storage") }}
+          {{- fail "schedule backup profile $schedule.name has no storage section" }}
+        {{- else if hasKey $backupProfile.storage "ociObjectStorage" }}
+        storage:
+          ociObjectStorage:
+            prefix: {{ required "prefix is required" $backupProfile.storage.ociObjectStorage.prefix }}
+            bucketName: {{ required "bucketName is required"  $backupProfile.storage.ociObjectStorage.bucketName }}
+            credentials: {{ required "credentials is required"  $backupProfile.storage.ociObjectStorage.credentials }}
+        {{- else if hasKey $backupProfile.storage "persistentVolumeClaim" }}
+        storage:
+          persistentVolumeClaim: {{ toYaml $backupProfile.storage.persistentVolumeClaim | nindent 12}}
+        {{- else -}}
+          {{- fail "dumpInstance backup profile $profile.name has empty storage section - neither ociObjectStorage nor persistentVolumeClaim defined" }}
+        {{- end -}}
+      {{- else }}
+         {{- fail "Impossible backup type for a schedule" }}
+      {{- end }}
+
+    {{- else }}
+      {{- fail "Neither backupProfileName nor backupProfile provided for a schedule" }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- if false }}
 {{- end }}

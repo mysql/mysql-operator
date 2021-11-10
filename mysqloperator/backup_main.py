@@ -8,9 +8,11 @@ import mysqlsh
 import sys
 import os
 import multiprocessing
-from .controller import utils, config, shellutils
+from .controller import consts, utils, config, shellutils
 from .controller import storage_api
 from .controller.backup.backup_api import MySQLBackup
+from .controller.backup import backup_objects
+
 from .controller.innodbcluster.cluster_api import InnoDBCluster
 import logging
 from typing import Optional
@@ -177,6 +179,7 @@ def do_backup(backup : MySQLBackup, job_name: str, start, backupdir: Optional[st
     else:
         raise Exception(f"Invalid backup method in profile {profile.name}")
 
+
 def create_oci_config_file_from_envs(env_vars: dict,  logger : logging.Logger) -> dict:
     backup_oci_user_name = env_vars.get(BACKUP_OCI_USER_NAME)
     backup_oci_fingerprint = env_vars.get(BACKUP_OCI_FINGERPRINT)
@@ -244,9 +247,64 @@ def create_oci_config_file_from_envs(env_vars: dict,  logger : logging.Logger) -
     }
 
 
+def command_backup(namespace, name, job_name: str, backup_dir: str, logger: logging.Logger, debug) -> int:
+
+    start = utils.isotime()
+    if logger:
+        logger.info(f"Loading up MySQLBackup object {namespace}/{name}")
+    backup = MySQLBackup.read(name=name, namespace=namespace)
+    try:
+        backup.set_started(job_name, start)
+
+        info = do_backup(backup, job_name, start, backup_dir, logger)
+
+        backup.set_succeeded(job_name, start, utils.isotime(), info)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        logger.error(f"Backup failed with an exception: {e}")
+        backup.set_failed(job_name, start, utils.isotime(), e)
+
+        if debug:
+            import time
+            logger.info("Waiting for 1h...")
+            time.sleep(60*60)
+
+        return 1
+    return 0
+
+
+def command_create_backup_object(namespace, cluster_name, schedule_name: str, logger: logging.Logger) -> int:
+
+    cluster = InnoDBCluster.read(namespace, cluster_name)
+    if not cluster:
+        print(f"Could not load cluster object {namespace}/{cluster_name}")
+        return 1
+
+    for schedule in cluster.parsed_spec.backupSchedules:
+        if schedule.name == schedule_name:
+            backup_object = None
+            backup_job_name = backup_objects.backup_job_name(cluster_name, schedule_name)
+            if schedule.backupProfileName:
+                backup_profile_name = schedule.backupProfileName
+                backup_object = backup_objects.prepare_mysql_backup_object_by_profile_name(backup_job_name, cluster_name, backup_profile_name)
+            elif cluster.spec['backupSchedules']:
+                for raw_schedule in cluster.spec['backupSchedules']:
+                    if raw_schedule['name'] == schedule_name:
+                        backup_profile = raw_schedule['backupProfile']
+                        backup_object = backup_objects.prepare_mysql_backup_object_by_profile_object(backup_job_name, cluster_name, backup_profile)
+
+            if backup_object:
+                logger.info(f"Creating backup job {backup_job_name} : {utils.dict_to_json_string(backup_object)}")
+                return MySQLBackup.create(namespace, backup_object)
+
+    logger.error(f"Could not find schedule named {schedule_name} of cluster {cluster_name} in namespace {namespace}")
+    return 1
+
+
 def main(argv):
-    import time
-    import datetime
+
+    import datetime, time
 
     debug = False
 
@@ -264,38 +322,32 @@ def main(argv):
     logger = logging.getLogger("backup")
     ts = datetime.datetime.fromtimestamp(
         os.stat(__file__).st_mtime).isoformat()
-    logger.info(f"backup  version={config.OPERATOR_VERSION}  timestamp={ts}")
 
-    import subprocess
-    subprocess.run(["ls", "-la", "/"])
-    subprocess.run(["ls", "-l", "/.oci"])
+    command = argv[1]
 
-    ns = argv[1]
-    name = argv[2]
-    jobname = argv[3]
-    backupdir = os.environ.get('DUMP_MOUNT_PATH', None)
-    logger.info(f"backupdir={backupdir}")
-    if len(argv) > 4:
-        backupdir = argv[4]
+    logger.info(f"[BACKUP] command={command} version={config.OPERATOR_VERSION} timestamp={ts}")
 
-    start = utils.isotime()
-    backup = MySQLBackup.read(name=name, namespace=ns)
-    try:
-        backup.set_started(jobname, start)
+    print(f"Command is {command}")
 
-        info = do_backup(backup, jobname, start, backupdir, logger)
+    ret = 0
+    if command == "execute-backup":
+        import subprocess
+        subprocess.run(["ls", "-la", "/"])
+        subprocess.run(["ls", "-l", "/.oci"])
 
-        backup.set_succeeded(jobname, start, utils.isotime(), info)
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        logger.error(f"Backup failed with an exception: {e}")
-        backup.set_failed(jobname, start, utils.isotime(), e)
+        namespace = argv[2]
+        backup_object_name = argv[3]
+        job_name = argv[4]
+        backup_dir = os.environ.get('DUMP_MOUNT_PATH', None)
+        logger.info(f"backupdir={backup_dir}")
+        backup_dir = argv[5] if len(argv) > 5 else None
 
-        if debug:
-            logger.info(f"Waiting for 1h...")
-            time.sleep(60*60)
+        ret = command_backup(namespace, backup_object_name, job_name, backup_dir, logger, debug)
+    elif command == "create-backup-object":
+        namespace = argv[2]
+        cluster_name = argv[3]
+        schedule_name = argv[4]
+        ret = command_create_backup_object(namespace, cluster_name, schedule_name, logger)
 
-        return 1
-
+    logger.info(f"Command {command} finished with code {ret}")
     return 0

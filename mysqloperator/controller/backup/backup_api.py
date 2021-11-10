@@ -2,16 +2,18 @@
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
-
-from .. import consts
-from ..api_utils import dget_dict, dget_str, dget_int, dget_bool, dget_list, ApiSpecError
-from ..kubeutils import api_core, api_apps, api_customobj, ApiException
-from ..storage_api import StorageSpec
+from os import execl
 from typing import Optional, cast
+from .. import consts
+from .. api_utils import dget_dict, dget_str, dget_int, dget_bool, dget_list, ApiSpecError
+from .. kubeutils import api_core, api_apps, api_customobj, ApiException
+from .. storage_api import StorageSpec
+from .. innodbcluster import cluster_api
 
 
 class Snapshot:
-    storage: Optional[StorageSpec] = None
+    def __init__(self):
+        self.storage: Optional[StorageSpec] = None
 
     def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
         self.storage.add_to_pod_spec(pod_spec, container_name)
@@ -22,10 +24,15 @@ class Snapshot:
             ["ociObjectStorage", "persistentVolumeClaim"])
         self.storage.parse(storage, prefix+".storage")
 
+    def __eq__(self, other) -> bool:
+        return (isinstance(other, Snapshot) and \
+                self.storage == other.storage)
+
 
 class DumpInstance:
-    dumpOptions: dict = {}  # dict with options for dumpInstance()
-    storage: Optional[StorageSpec] = None  # StorageSpec
+    def __init__(self):
+        self.dumpOptions: dict = {}  # dict with options for dumpInstance()
+        self.storage: Optional[StorageSpec] = None  # StorageSpec
 
     def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
         self.storage.add_to_pod_spec(pod_spec, container_name)
@@ -37,11 +44,17 @@ class DumpInstance:
         self.storage = StorageSpec()
         self.storage.parse(storage, prefix+".storage")
 
+    def __eq__(self, other) -> bool:
+        return (isinstance(other, DumpInstance) and \
+                self.dumpOptions == other.dumpOptions and \
+                self.storage == other.storage)
+
 
 class BackupProfile:
-    name: str = ""
-    dumpInstance: Optional[DumpInstance] = None
-    snapshot: Optional[Snapshot] = None
+    def __init__(self):
+        self.name: str = ""
+        self.dumpInstance: Optional[DumpInstance] = None
+        self.snapshot: Optional[Snapshot] = None
 
     def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
         if self.snapshot:
@@ -49,9 +62,10 @@ class BackupProfile:
         if self.dumpInstance:
             return self.dumpInstance.add_to_pod_spec(pod_spec, container_name)
         assert 0
+        return None
 
-    def parse(self, spec: dict, prefix: str) -> None:
-        self.name = dget_str(spec, "name", prefix)
+    def parse(self, spec: dict, prefix: str, name_required: bool = True) -> None:
+        self.name = dget_str(spec, "name", prefix, default_value= None if name_required else "")
         prefix += "." + self.name
         method_spec = dget_dict(spec, "dumpInstance", prefix, {})
         if method_spec:
@@ -70,26 +84,89 @@ class BackupProfile:
             raise ApiSpecError(
                 f"One of dumpInstance or snapshot must be set in a {prefix}")
 
+    def __eq__(self, other) -> bool:
+        return (isinstance(other, BackupProfile) and \
+                self.name == other.name and \
+                self.dumpInstance == other.dumpInstance and \
+                self.snapshot == other.snapshot)
+
 
 class BackupSchedule:
-    name: str = ""
-    backupProfileName: str = ""
-    schedule = None
+    def __init__(self, cluster_spec):
+        self.cluster_spec: cluster_api.InnoDBClusterSpec = cluster_spec
+
+        self.name: str = ""
+        self.backupProfileName: Optional[str] = None
+        self.backupProfile: Optional[BackupProfile] = None
+        self.schedule: str = ""
+        self.enabled: bool = False
+        self.deleteBackupData: bool = False # unused
+
+    def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
+        if self.backupProfile:
+            return self.backupProfile.add_to_pod_spec(pod_spec, container_name)
+        assert 0
+        return None
+
+    def parse(self, spec: dict, prefix: str) -> None:
+        self.name = dget_str(spec, "name", prefix, default_value= "")
+
+        self.deleteBackupData = dget_bool(spec, "deleteBackupData", prefix, default_value=False)
+
+        self.enabled = dget_bool(spec, "enabled", prefix, default_value=False)
+
+        self.backupProfileName = dget_str(spec, "backupProfileName", prefix, default_value= "")
+
+        self.schedule = dget_str(spec, "schedule", prefix)
+        if not self.schedule:
+            raise ApiSpecError(f"schedule not set in in a {prefix}")
+
+        backup_profile = dget_dict(spec, "backupProfile", prefix, {})
+        if self.backupProfileName and backup_profile:
+            print(f"Only one of backupProfileName or backupProfile must be set in {prefix}")
+            raise ApiSpecError(f"Only one of backupProfileName or backupProfile must be set in {prefix}")
+
+        if not self.backupProfileName and not backup_profile:
+            print(f"One of backupProfileName or backupProfile must be set in {prefix}")
+            raise ApiSpecError(f"One of backupProfileName or backupProfile must be set in {prefix}")
+
+        if backup_profile:
+            self.backupProfile = BackupProfile()
+            self.backupProfile.parse(backup_profile, prefix + ".backupProfile", name_required= False)
+        else:
+            self.backupProfile = self.cluster_spec.get_backup_profile(self.backupProfileName)
+
+            if not self.backupProfile:
+                print(f"Invalid backupProfileName '{self.backupProfileName}' in cluster {self.cluster_spec.namespace}/{self.cluster_spec.clusterName}")
+                raise ApiSpecError(f"Invalid backupProfileName '{self.backupProfileName}' in cluster {self.cluster_spec.namespace}/{self.cluster_spec.clusterName}")
+
+    def __eq__(self, o) -> bool:
+        other: BackupSchedule = o
+        eq = (isinstance(other, BackupSchedule) and \
+                self.cluster_spec.namespace == other.cluster_spec.namespace and \
+                self.cluster_spec.name == other.cluster_spec.name and \
+                self.name == other.name and \
+                self.backupProfileName == other.backupProfileName and \
+                self.backupProfile == other.backupProfile and \
+                self.schedule == other.schedule and \
+                self.deleteBackupData == other.deleteBackupData and \
+                self.enabled == other.enabled)
+        return eq
 
 
 class MySQLBackupSpec:
-    clusterName: str = ""
-    backupProfileName: str = ""
-    backupProfile = None
-    deleteBackupData: bool = False
-    operator_image: str = ""
-    operator_image_pull_policy: str = ""
-    image_pull_secrets: Optional[str] = None
-    service_account_name: Optional[str] = None
-
     def __init__(self, namespace: str, name: str, spec: dict):
         self.namespace = namespace
         self.name = name
+
+        self.clusterName: str = ""
+        self.backupProfileName: str = ""
+        self.backupProfile = None
+        self.deleteBackupData: bool = False # unused
+        self.operator_image: str = ""
+        self.operator_image_pull_policy: str = ""
+        self.image_pull_secrets: Optional[str] = None
+        self.service_account_name: Optional[str] = None
         self.parse(spec)
 
     def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
@@ -97,25 +174,17 @@ class MySQLBackupSpec:
 
     def parse(self, spec: dict) -> Optional[ApiSpecError]:
         self.clusterName = dget_str(spec, "clusterName", "spec")
-        self.backupProfileName = dget_str(
-            spec, "backupProfileName", "spec", default_value="")
-        self.backupProfile = self.parse_backup_profile(
-            dget_dict(spec, "backupProfile", "spec", {}), "spec.backupProfile")
-        self.deleteBackupData = dget_bool(
-            spec, "deleteBackupData", "spec", default_value=False)
+        self.backupProfileName = dget_str(spec, "backupProfileName", "spec", default_value="")
+        self.backupProfile = self.parse_backup_profile(dget_dict(spec, "backupProfile", "spec", {}), "spec.backupProfile")
+        self.deleteBackupData = dget_bool(spec, "deleteBackupData", "spec", default_value=False)
 
-        print(f"self.clusterName={self.clusterName} self.backupProfileName={self.backupProfileName} self.backupProfile={self.backupProfile}  self.deleteBackupData={self.deleteBackupData}")
         if self.backupProfileName and self.backupProfile:
-            raise ApiSpecError(
-                f"Only one of spec.backupProfileName or spec.backupProfile must be set")
+            raise ApiSpecError("Only one of spec.backupProfileName or spec.backupProfile must be set")
         if not self.backupProfileName and not self.backupProfile:
-            raise ApiSpecError(
-                f"One of spec.backupProfileName or spec.backupProfile must be set")
+            raise ApiSpecError("One of spec.backupProfileName or spec.backupProfile must be set")
 
         try:
-            from ..innodbcluster.cluster_api import InnoDBCluster
-
-            cluster = InnoDBCluster.read(self.namespace, self.clusterName)
+            cluster = cluster_api.InnoDBCluster.read(self.namespace, self.clusterName)
         except ApiException as e:
             if e.status == 404:
                 return ApiSpecError(f"Invalid clusterName {self.namespace}/{self.clusterName}")
@@ -127,19 +196,17 @@ class MySQLBackupSpec:
         self.service_account_name = cluster.parsed_spec.service_account_name
 
         if self.backupProfileName:
-            self.backupProfile = cluster.parsed_spec.get_backup_profile(
-                self.backupProfileName)
+            self.backupProfile = cluster.parsed_spec.get_backup_profile(self.backupProfileName)
             if not self.backupProfile:
                 return ApiSpecError(f"Invalid backupProfileName '{self.backupProfileName}' in cluster {self.namespace}/{self.clusterName}")
 
-        print(f"backupProfile={self.backupProfile}")
+        return None
 
     def parse_backup_profile(self, profile: dict, prefix: str) -> Optional[BackupProfile]:
-        # TODO ?
         if profile:
-            p = BackupProfile()
-            p.parse(profile, prefix)
-            return p
+            profile_object = BackupProfile()
+            profile_object.parse(profile, prefix)
+            return profile_object
         return None
 
 
@@ -160,9 +227,7 @@ class MySQLBackup:
 
     def get_cluster(self):
         try:
-            from ..innodbcluster.cluster_api import InnoDBCluster
-
-            cluster = InnoDBCluster.read(self.namespace, self.cluster_name)
+            cluster = cluster_api.InnoDBCluster.read(self.namespace, self.cluster_name)
         except ApiException as e:
             if e.status == 404:
                 return ApiSpecError(f"Invalid clusterName {self.namespace}/{self.cluster_name}")
@@ -173,6 +238,16 @@ class MySQLBackup:
     def read(cls, name: str, namespace: str) -> 'MySQLBackup':
         return MySQLBackup(cast(dict, api_customobj.get_namespaced_custom_object(
             consts.GROUP, consts.VERSION, namespace, consts.MYSQLBACKUP_PLURAL, name)))
+
+    @classmethod
+    def create(cls, namespace: str, body: dict) -> int:
+        try:
+            api_customobj.create_namespaced_custom_object(
+                consts.GROUP, consts.VERSION, namespace, consts.MYSQLBACKUP_PLURAL, body)
+        except ApiException as exc:
+            print(f"Exception {exc} when calling create_namespaced_custom_object({consts.GROUP}, {consts.VERSION}, {namespace}, {consts.MYSQLBACKUP_PLURAL} body={body}")
+            return 1
+        return 0
 
     @property
     def metadata(self) -> dict:

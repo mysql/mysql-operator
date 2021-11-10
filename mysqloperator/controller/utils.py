@@ -10,6 +10,7 @@ import string
 import random
 import base64
 import threading
+import json
 
 
 def b64decode(s: str) -> str:
@@ -53,8 +54,10 @@ def isotime() -> str:
     return datetime.datetime.utcnow().replace(microsecond=0).isoformat()+"Z"
 
 
-def timestamp() -> str:
-    return datetime.datetime.utcnow().replace(microsecond=0).strftime("%Y%m%d-%H%M%S")
+def timestamp(dash: bool = True, four_digit_year: bool = True) -> str:
+    dash_str = "-" if dash else ""
+    year_str = "%Y" if four_digit_year else "%y"
+    return datetime.datetime.utcnow().replace(microsecond=0).strftime(f"{year_str}%m%d{dash_str}%H%M%S")
 
 
 def merge_patch_object(base: dict, patch: dict, prefix: str = "", key: str = "") -> None:
@@ -155,3 +158,7 @@ def log_banner(path: str, logger) -> None:
     path = os.path.basename(path)
     logger.info(
         f"MySQL Operator/{path}={config.OPERATOR_VERSION} timestamp={ts} kopf={kopf_version}")
+
+
+def dict_to_json_string(d : dict) -> str:
+    return json.dumps(d, indent = 4)

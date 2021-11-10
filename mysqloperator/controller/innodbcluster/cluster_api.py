@@ -10,10 +10,10 @@ from kopf.structs.bodies import Body
 
 from ..k8sobject import K8sInterfaceObject
 from .. import utils, config, consts
-from ..backup.backup_api import BackupProfile
+from ..backup.backup_api import BackupProfile, BackupSchedule
 from ..storage_api import StorageSpec
 from ..api_utils import Edition, dget_dict, dget_enum, dget_str, dget_int, dget_list, ApiSpecError, ImagePullPolicy
-from ..kubeutils import api_core, api_apps, api_customobj, api_policy
+from ..kubeutils import api_core, api_apps, api_customobj, api_policy, api_batch, api_cron_job
 from ..kubeutils import client as api_client, ApiException
 from logging import Logger
 import json
@@ -106,12 +106,6 @@ class InitDB:
             self.snapshot.parse(snapshot, "spec.initDB.snapshot")
 
 
-class BackupSchedule:
-    method: str = ""  # dump
-    storage: Optional[StorageSpec] = None
-    schedule = None
-
-
 class RouterSpec:
     # number of Router instances (optional)
     instances: int = 0
@@ -172,7 +166,6 @@ class InnoDBClusterSpec:
 
     # Backup info
     backupProfiles: List[BackupProfile] = []
-    backupSchedules: List[BackupSchedule] = []
 
     # (currently) non-configurable constants
     mysql_port: int = 3306
@@ -188,6 +181,7 @@ class InnoDBClusterSpec:
     def __init__(self, namespace: str, name: str, spec: dict):
         self.namespace = namespace
         self.name = name
+        self.backupSchedules: List[BackupSchedule] = []
         self.load(spec)
 
     def load(self, spec: dict) -> None:
@@ -238,7 +232,6 @@ class InnoDBClusterSpec:
             self.router.parse(dget_dict(spec, "router", "spec"), "spec.router")
 
         # Initialization Options
-
         if "initDB" in spec:
             self.load_initdb(dget_dict(spec, "initDB", "spec"))
 
@@ -246,17 +239,19 @@ class InnoDBClusterSpec:
         if "baseServerId" in spec:
             self.baseServerId = dget_int(spec, "baseServerId", "spec")
 
-        profiles = dget_list(spec, "backupProfiles",
-                             "spec", [], content_type=dict)
-        self.backupProfiles = []
-        for profile in profiles:
-            self.backupProfiles.append(self.parse_backup_profile(profile))
 
-        schedules = dget_list(spec, "backupSchedules",
-                              "spec", [], content_type=dict)
+        self.backupProfiles = []
+        if "backupProfiles" in spec:
+            profiles = dget_list(spec, "backupProfiles", "spec", [], content_type=dict)
+            for profile in profiles:
+                self.backupProfiles.append(self.parse_backup_profile(profile))
+
+
         self.backupSchedules = []
-        for sched in schedules:
-            self.backupSchedules.append(self.parse_backup_schedule(sched))
+        if "backupSchedules" in spec:
+            schedules = dget_list(spec, "backupSchedules", "spec", [], content_type=dict)
+            for schedule in schedules:
+                self.backupSchedules.append(self.parse_backup_schedule(schedule))
 
     def parse_backup_profile(self, spec: dict) -> BackupProfile:
         profile = BackupProfile()
@@ -264,7 +259,9 @@ class InnoDBClusterSpec:
         return profile
 
     def parse_backup_schedule(self, spec: dict) -> BackupSchedule:
-        return BackupSchedule()
+        schedule = BackupSchedule(self)
+        schedule.parse(spec, "spec.backupSchedules")
+        return schedule
 
     def load_initdb(self, spec: dict) -> None:
         self.initDB = InitDB()
@@ -501,8 +498,7 @@ class InnoDBCluster(K8sInterfaceObject):
         return self._parsed_spec
 
     def parse_spec(self) -> None:
-        self._parsed_spec = InnoDBClusterSpec(
-            self.namespace, self.name, self.spec)
+        self._parsed_spec = InnoDBClusterSpec(self.namespace, self.name, self.spec)
 
     def reload(self) -> None:
         self.obj = self._get(self.namespace, self.name)
@@ -577,6 +573,18 @@ class InnoDBCluster(K8sInterfaceObject):
             if e.status == 404:
                 return None
             raise
+
+    def get_cron_job(self, schedule_name: str) -> typing.Callable:
+        def get_cron_job_inner() -> typing.Optional[api_client.V1beta1CronJob]:
+            try:
+                return cast(api_client.V1beta1CronJob,
+                            api_cron_job.read_namespaced_cron_job(schedule_name, self.namespace))
+            except ApiException as e:
+                if e.status == 404:
+                    return None
+                raise
+
+        return get_cron_job_inner
 
     def get_router_account(self) -> Tuple[str, str]:
         secret = cast(api_client.V1Secret, api_core.read_namespaced_secret(

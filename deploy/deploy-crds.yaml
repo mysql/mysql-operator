@@ -95,6 +95,7 @@ spec:
                   description: "Backup profile specifications for the cluster, which can be referenced from backup schedules and one-off backup jobs."
                   items:
                     type: object
+                    required: ["name"]
                     properties:
                       name:
                         type: string
@@ -109,6 +110,7 @@ spec:
                   description: "Schedules for periodically executed backups"
                   items:
                     type: object
+                    required: ["name", "deleteBackupData"]
                     properties:
                       name:
                         type: string
@@ -119,6 +121,10 @@ spec:
                         x-kubernetes-preserve-unknown-fields: true
                       deleteBackupData:
                         type: boolean
+                        default: false
+                      enabled:
+                        type: boolean
+                        default: true
             status:
               type: object
               x-kubernetes-preserve-unknown-fields: true

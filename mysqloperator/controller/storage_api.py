@@ -43,6 +43,10 @@ spec:
     def parse(self, spec: dict, prefix: str) -> None:
         self.raw_data = spec
 
+    def __eq__(self, other) -> bool:
+        # TODO: raw_data could easily break things - single whitespace and it's not the same
+        return isinstance(other, PVCStorageSpec) and self.raw_data == other.raw_data
+
 
 class OCIOSStorageSpec:
     bucketName: str = ""
@@ -107,6 +111,12 @@ spec:
         self.bucketName = dget_str(spec, "bucketName", prefix)
         self.ociCredentials = dget_str(spec, "credentials", prefix)
 
+    def __eq__(self, other) -> bool:
+        return (isinstance(other, OCIOSStorageSpec) and \
+              self.bucketName == other.bucketName and \
+              self.prefix == other.prefix and \
+              self.ociCredentials == other.ociCredentials)
+
 
 ALL_STORAGE_SPEC_TYPES = {
     "ociObjectStorage": OCIOSStorageSpec,
@@ -150,3 +160,8 @@ class StorageSpec:
         storage = storage_class()
         storage.parse(storage_spec, prefix + "." + storage_keys[0])
         setattr(self, storage_keys[0], storage)
+
+    def __eq__(self, other) -> bool:
+        return (isinstance(other, StorageSpec) and \
+              self.ociObjectStorage == other.ociObjectStorage and \
+              self.persistentVolumeClaim == other.persistentVolumeClaim)

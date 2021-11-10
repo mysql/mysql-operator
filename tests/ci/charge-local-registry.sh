@@ -80,7 +80,7 @@ cat "$IMAGES_LIST" | awk 'BEGIN { RS = "---" } { print $1 " " $2 " " $3 }' > $im
 while read -r image_info
 do
 	read DEST_IMAGE_NAME SRC_IMAGE_NAME PULL_IMAGE <<< "$image_info"
-	case ${PULL_POLICY} in
+	case "${PULL_POLICY}" in
 		"default")
 			PERFORM_PULL=$PULL_IMAGE
 			;;
@@ -95,7 +95,7 @@ do
 			;;
 	esac
 
-	if [ -n $PULL_REGISTRY_URL ]; then
+	if [ -n "$PULL_REGISTRY_URL" ]; then
 		SRC_IMAGE=$PULL_REGISTRY_URL/$PULL_REPOSITORY_NAME/$SRC_IMAGE_NAME
 	else
 		SRC_IMAGE=$PULL_REPOSITORY_NAME/$SRC_IMAGE_NAME
@@ -104,7 +104,7 @@ do
 		docker pull $SRC_IMAGE
 	fi
 
-	if [ $PUSH_POLICY == "default" ]; then
+	if [ "$PUSH_POLICY" == "default" ]; then
 		DEST_IMAGE=$PUSH_REGISTRY_URL/$PUSH_REPOSITORY_NAME/$DEST_IMAGE_NAME
 
 		docker tag $SRC_IMAGE $DEST_IMAGE

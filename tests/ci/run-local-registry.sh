@@ -4,6 +4,8 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
+set -vx
+
 # ensures the local registry is running
 # usage: <container-name> <host-port> <container-port>
 # container-name: the name of the container, e.g. registry.localhost

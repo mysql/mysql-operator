@@ -40,12 +40,24 @@ class K3dEnvironment(BaseEnvironment):
 
         if self.operator_mount_path:
             args += ["--volume", f"{self.operator_mount_path}:{self.operator_host_path}"]
+        if self._mounts:
+            for mount in self._mounts:
+                args += ["--volume", mount]
+
+        args += self.add_proxy_env("HTTP_PROXY")
+        args += self.add_proxy_env("HTTPS_PROXY")
+        args += self.add_proxy_env("NO_PROXY")
 
         subprocess.check_call(args)
 
         # connect network of the cluster to the local image registry
         if g_ts_cfg.image_registry:
             subprocess.call(["docker", "network", "connect", f"k3d-{self.cluster_name}", g_ts_cfg.image_registry_host])
+
+    def add_proxy_env(self, envar):
+        if envar in os.environ:
+            return ["--env", f'{envar}={os.getenv(envar)}@', "--env", f'{envar.lower()}={os.getenv(envar)}@']
+        return []
 
     def stop_cluster(self):
         args = ["k3d", "cluster", "stop", self.cluster_name]

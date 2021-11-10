@@ -50,14 +50,23 @@ class MySQLPodSession:
         self.session = None
         self.proc = None
         self.proc, self.port = kutil.portfw(ns, podname, 3306)
-        try:
-            self.session = MySQLDbSession(user=user, password=password,
-                              host='127.0.0.1',
-                              port=self.port,
-                              database='mysql')
-        except:
-            print(ns, "/", podname, "port=", self.port, "pass=", password)
-            raise
+        i = 0
+        while True:
+            i += 1
+            try:
+                self.session = MySQLDbSession(user=user, password=password,
+                                host='127.0.0.1',
+                                port=self.port,
+                                database='mysql')
+                break
+            except mysql.connector.errors.OperationalError as e:
+                print(ns, "/", podname, "port=", self.port, "pass=", password, e)
+                if e.errno == 2013 and i < 5: # error reading initial packet (server restarting?)
+                    import time
+                    time.sleep(1)
+                    print("retrying...")
+                    continue
+                raise
 
     def __del__(self):
         self.close()
@@ -165,7 +174,7 @@ class MySQLInteractivePodSession:
     def read_response(self):
         out = self.read_until_prompt().split(
             "\r\n")[1:]  # 1st line is the cmd we sent
-        if out[-1].startswith("mysql-sql ") and out[-1].strip().endswith(">"):
+        if out and out[-1].startswith("mysql-sql ") and out[-1].strip().endswith(">"):
             del out[-1]  # delete prompt
         return out
 

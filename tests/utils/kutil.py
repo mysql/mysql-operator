@@ -106,8 +106,9 @@ def kubectl(cmd, rsrc=None, args=None, timeout=None, check=True, ignore=[]):
                                  e.returncode, e.stderr.decode("utf8"))
                 return
         else:
-            logger.error("kubectl %s failed:\n    stderr=%s\n    stdout=%s",
-                         e.cmd, e.stderr.decode("utf8"), e.stdout.decode("utf8"))
+            logger.error("kubectl %s failed (rc=%s):\n    stderr=%s\n    stdout=%s",
+                         e.cmd, e.returncode,
+                         e.stderr.decode("utf8"), e.stdout.decode("utf8"))
             raise
     if debug_kubectl:
         logger.debug("rc = %s, stdout = %s", r.returncode,
@@ -184,6 +185,9 @@ def feed_kubectl(input, cmd, rsrc=None, args=None, check=True):
         argv += args
     if debug_kubectl:
         logger.debug("run %s", argv)
+        MaxInputSize = 16384
+        if input and len(input) < MaxInputSize:
+            logger.debug("input: %s", input)
     r = subprocess.run(argv, input=input.encode("utf8"),
                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                        check=check)
@@ -261,9 +265,9 @@ def ls_ns():
 #
 
 
-def get(ns, rsrc, name):
-    r = kubectl("get", rsrc, args=[name, "-n", ns, "-o=yaml"])
-    if r.stdout:
+def get(ns, rsrc, name, **kwargs):
+    r = kubectl("get", rsrc, args=[name, "-n", ns, "-o=yaml"], **kwargs)
+    if r and r.stdout:
         return yaml.safe_load(r.stdout.decode("utf8"))
     return None
 
@@ -284,8 +288,8 @@ def get_rs(ns, name, jpath=None):
     return get(ns, "rs", name)
 
 
-def get_deploy(ns, name, jpath=None):
-    return get(ns, "deploy", name)
+def get_deploy(ns, name, jpath=None, **kwargs):
+    return get(ns, "deploy", name, **kwargs)
 
 
 def get_svc(ns, name, jpath=None):
@@ -613,14 +617,16 @@ def wait_ic_gone(ns, name, timeout=120, checkabort=lambda: None):
     raise Exception(f"Timeout waiting for ic {ns}/{name}")
 
 
-def wait_ic(ns, name, status=["ONLINE"], num_online=None, timeout=200, checkabort=lambda: None):
+def wait_ic(ns, name, status=["ONLINE"], num_online=None, timeout=200, probe_time=None, checkabort=lambda: None):
     if type(status) not in (tuple, list):
         status = [status]
 
     def check_status(line):
         checkabort()
-        logger.debug("%s", line)
-        return line["STATUS"] in status and (num_online is None or line["ONLINE"] >= str(num_online))
+        logger.debug("checking status with %s", line)
+        if probe_time is None or line["PROBETIME"] > probe_time:
+            return line["STATUS"] in status and (num_online is None or int(line["ONLINE"]) >= num_online)
+        return False
 
     wait_ic_exists(ns, name, timeout, checkabort)
 
@@ -629,7 +635,7 @@ def wait_ic(ns, name, status=["ONLINE"], num_online=None, timeout=200, checkabor
 
     checkabort()
     r = watch(ns, "ic", name, check_status, timeout,
-              format="custom-columns=NAME:.metadata.name,STATUS:.status.cluster.status,ONLINE:.status.cluster.onlineInstances")
+              format="custom-columns=NAME:.metadata.name,STATUS:.status.cluster.status,ONLINE:.status.cluster.onlineInstances,PROBETIME:.status.cluster.lastProbeTime")
 
     logger.info(f"{r}")
 
@@ -720,6 +726,9 @@ def create_user_secrets(ns, name, root_user=None, root_host=None, root_pass=None
         data.append(f"rootPassword: {b64encode(root_pass)}")
     data += extra_keys
     create_secrets(ns, name, "\n".join(data))
+
+def create_default_user_secrets(ns, name="mypwds", root_user="root", root_host="%", root_pass="sakila", extra_keys=[]):
+    create_user_secrets(ns, name, root_user, root_host, root_pass, extra_keys)
 
 
 def create_pod():

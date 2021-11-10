@@ -62,7 +62,7 @@ class SnapshotInitDBSpec:
 class DumpInitDBSpec:
     path: Optional[str] = None
     storage: Optional[StorageSpec] = None
-    loadOptions: dict = {}  # TODO
+    loadOptions: dict = {}
 
     def parse(self, spec: dict, prefix: str) -> None:
         # path can be "" if we're loading from a bucket
@@ -71,6 +71,8 @@ class DumpInitDBSpec:
         self.storage = StorageSpec()
         self.storage.parse(
             dget_dict(spec, "storage", prefix), prefix+".storage")
+
+        self.loadOptions = dget_dict(spec, "options", prefix, default_value={})
 
 
 class SQLInitDB:
@@ -204,7 +206,6 @@ class InnoDBClusterSpec:
             # The Repository depends on the edition, by default, but user can override
             if "imageRepository" not in spec:
                 self.imageRepository = config.DEFAULT_IMAGE_REPOSITORY if self.edition == Edition.community else config.DEFAULT_IMAGE_REPOSITORY_EE
-
 
         if "imagePullPolicy" in spec:
             self.imagePullPolicy = dget_enum(
@@ -353,7 +354,7 @@ class InnoDBClusterSpec:
     @property
     def operator_image(self) -> str:
         # TODO - We always use community image here, need to change with GA, when we publish enterprise edition!
-        return f"{config.DEFAULT_IMAGE_REPOSITORY}/{config.MYSQL_OPERATOR_IMAGE}:{self.sidecarVersion}"
+        return self.format_image(config.MYSQL_OPERATOR_IMAGE, self.sidecarVersion)
 
         # shell image version is the same as ours (operator)
         if self.edition == Edition.community:

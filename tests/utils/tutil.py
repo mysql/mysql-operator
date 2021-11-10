@@ -395,12 +395,12 @@ class OperatorTest(unittest.TestCase):
 
         raise Exception("Timeout waiting for condition")
 
-    def wait_ic(self, name, status_list, num_online=None, ns=None, timeout=200):
+    def wait_ic(self, name, status_list, num_online=None, ns=None, timeout=200, probe_time=None):
         """
         Wait for given ic object to reach one of the states in the list.
         Aborts on timeout or when an unexpected error is detected in the operator.
         """
-        self.assertNotEqual(kutil.wait_ic(ns or self.ns, name, status_list, num_online=num_online,
+        self.assertNotEqual(kutil.wait_ic(ns or self.ns, name, status_list, num_online=num_online, probe_time=probe_time,
                                           checkabort=self.check_operator_exceptions, timeout=timeout), None, "timeout waiting for cluster")
 
     def wait_pod(self, name, status_list, ns=None):
@@ -410,6 +410,23 @@ class OperatorTest(unittest.TestCase):
         """
         self.assertNotEqual(kutil.wait_pod(ns or self.ns, name, status_list,
                                            checkabort=self.check_operator_exceptions), None, "timeout waiting for pod")
+
+    def wait_routers(self, name_pattern, num_online, awaited_status=["Running"], ns=None, timeout=30):
+        """
+        Wait for routers matching the name-pattern to reach one of the states in the awaited status list.
+        Aborts on timeout or when an unexpected error is detected in the operator.
+        """
+        if type(awaited_status) not in (tuple, list):
+            awaited_status = [awaited_status]
+
+        logger.info(
+            f"Waiting for routers {ns}/{name_pattern} to become {awaited_status}, num_online={num_online}")
+
+        def routers_ready():
+            pods = kutil.ls_po(ns or self.ns, pattern=name_pattern)
+            return num_online == len([pod for pod in pods if pod["STATUS"] in awaited_status])
+
+        self.wait(routers_ready, timeout=timeout)
 
     def wait_ic_gone(self, name, ns=None):
         kutil.wait_ic_gone(ns or self.ns, name,

@@ -5,6 +5,7 @@
 
 import os
 import subprocess
+import yaml
 from utils import kutil
 from setup.config import g_ts_cfg
 
@@ -20,6 +21,7 @@ class BaseEnvironment:
         self._cleanup = True
         self.operator_host_path = None
         self.operator_mount_path = None
+        self._mounts = None
 
     def __enter__(self):
         return self
@@ -27,8 +29,10 @@ class BaseEnvironment:
     def __exit__(self, type, value, tb):
         self.destroy()
 
-    def setup_cluster(self, nodes=None, version=None, registry_cfg_path=None, perform_setup=True, cleanup=False):
+    def setup_cluster(self, nodes=None, version=None, registry_cfg_path=None, perform_setup=True,
+      mounts=None, custom_dns=None, cleanup=False):
         self._setup = perform_setup
+        self._mounts = mounts
         self._cleanup = cleanup
 
         if self._setup:
@@ -36,7 +40,14 @@ class BaseEnvironment:
 
           self.start_cluster(nodes, version, registry_cfg_path)
 
+          if custom_dns:
+            self.add_custom_dns(custom_dns)
+
         subprocess.call(["kubectl", "cluster-info"])
+
+    def add_custom_dns(self, custom_dns):
+      ote_dir = os.path.dirname(os.path.realpath(__file__))
+      subprocess.check_call(f"{ote_dir}/add_custom_dns.sh {custom_dns}", shell=True)
 
     def setup_operator(self, deploy_files):
         self.deploy_operator(deploy_files)
@@ -90,12 +101,23 @@ class BaseEnvironment:
     def delete_cluster(self):
         pass
 
-    def deploy_operator(self, deploy_files):
+    def deploy_operator(self, deploy_files, override_deployment=True):
         print("Deploying operator...")
         for f in deploy_files:
-            args = ["kubectl", "create", "-f", f]
-            print(" ".join(args))
-            subprocess.call(args)
+            args = ["kubectl", "create", "-f", "-"]
+            print(" ".join(args), "<", f)
+            y = open(f).read()
+
+            if override_deployment and f.endswith("deploy-operator.yaml"):
+                # strip last object (the operator Deployment), since we'll
+                # create it separately below
+                arr = list(yaml.safe_load_all(y))
+                arr = arr[:-1]
+                y = yaml.safe_dump_all(arr)
+
+            subprocess.run(args,
+                       input=y.encode("utf8"), check=True)
+
         # TODO change operator image to :latest
         # TODO re-add: "--log-file=",
         y = f"""
@@ -145,9 +167,10 @@ spec:
             path: "{self.operator_host_path}"
             type: Directory
 """
-        print(y)
-        subprocess.run(["kubectl", "apply", "-f", "-"],
-                       input=y.encode("utf8"), check=True)
+        if override_deployment:
+            print(y)
+            subprocess.run(["kubectl", "apply", "-f", "-"],
+                          input=y.encode("utf8"), check=True)
 
     def prepare_oci_bucket(self):
         bucket = {

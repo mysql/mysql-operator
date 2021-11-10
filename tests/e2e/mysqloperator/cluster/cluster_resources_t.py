@@ -67,7 +67,9 @@ spec:
 
         self.wait_ic("myrouterspec", "ONLINE", 1)
 
-        check_all(self, self.ns, "myrouterspec", instances=1)
+        self.wait_routers("myrouterspec-router-*", 1)
+
+        check_all(self, self.ns, "myrouterspec", instances=1, routers=1)
 
         p = kutil.ls_po(self.ns, pattern="myrouterspec-router-.*")[0]
         routerPod = kutil.get_po(self.ns, p["NAME"])

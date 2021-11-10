@@ -68,7 +68,7 @@ spec:
     dumpInstance:
       storage:
         ociObjectStorage:
-          prefix : /
+          prefix: /
           bucketName: {bucket or "not-set"}
           credentials: backup-apikey
   - name: snapshot

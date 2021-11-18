@@ -247,13 +247,14 @@ def create_oci_config_file_from_envs(env_vars: dict,  logger : logging.Logger) -
     }
 
 
-def command_backup(namespace, name, job_name: str, backup_dir: str, logger: logging.Logger, debug) -> int:
+def command_do_create_backup(namespace, name, job_name: str, backup_dir: str, logger: logging.Logger, debug) -> bool:
 
     start = utils.isotime()
     if logger:
         logger.info(f"Loading up MySQLBackup object {namespace}/{name}")
-    backup = MySQLBackup.read(name=name, namespace=namespace)
+
     try:
+        backup = MySQLBackup.read(name=name, namespace=namespace)
         backup.set_started(job_name, start)
 
         info = do_backup(backup, job_name, start, backup_dir, logger)
@@ -270,16 +271,16 @@ def command_backup(namespace, name, job_name: str, backup_dir: str, logger: logg
             logger.info("Waiting for 1h...")
             time.sleep(60*60)
 
-        return 1
-    return 0
+        return False
+    return True
 
 
-def command_create_backup_object(namespace, cluster_name, schedule_name: str, logger: logging.Logger) -> int:
+def command_create_backup_object(namespace, cluster_name, schedule_name: str, logger: logging.Logger) -> bool:
 
     cluster = InnoDBCluster.read(namespace, cluster_name)
     if not cluster:
         print(f"Could not load cluster object {namespace}/{cluster_name}")
-        return 1
+        return False
 
     for schedule in cluster.parsed_spec.backupSchedules:
         if schedule.name == schedule_name:
@@ -296,10 +297,11 @@ def command_create_backup_object(namespace, cluster_name, schedule_name: str, lo
 
             if backup_object:
                 logger.info(f"Creating backup job {backup_job_name} : {utils.dict_to_json_string(backup_object)}")
-                return MySQLBackup.create(namespace, backup_object)
+                return MySQLBackup.create(namespace, backup_object) is not None
+
 
     logger.error(f"Could not find schedule named {schedule_name} of cluster {cluster_name} in namespace {namespace}")
-    return 1
+    return False
 
 
 def main(argv):
@@ -329,7 +331,7 @@ def main(argv):
 
     print(f"Command is {command}")
 
-    ret = 0
+    ret = False
     if command == "execute-backup":
         import subprocess
         subprocess.run(["ls", "-la", "/"])
@@ -342,12 +344,14 @@ def main(argv):
         logger.info(f"backupdir={backup_dir}")
         backup_dir = argv[5] if len(argv) > 5 else None
 
-        ret = command_backup(namespace, backup_object_name, job_name, backup_dir, logger, debug)
+        ret = command_do_create_backup(namespace, backup_object_name, job_name, backup_dir, logger, debug)
     elif command == "create-backup-object":
         namespace = argv[2]
         cluster_name = argv[3]
         schedule_name = argv[4]
         ret = command_create_backup_object(namespace, cluster_name, schedule_name, logger)
+    else:
+        raise Exception(f"Unknown command {command}")
 
     logger.info(f"Command {command} finished with code {ret}")
-    return 0
+    return 0 if ret == True else 1

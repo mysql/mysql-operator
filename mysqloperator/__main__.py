@@ -20,8 +20,17 @@ if sys.argv[1] in entrypoints:
         import time
         time.sleep(3600)
         sys.exit(0)
-    mod = importlib.import_module(entrypoints[sys.argv[1]], "mysqloperator")
-    sys.exit(mod.main(sys.argv[1:]))  # type: ignore
+    ret = 0
+    try:
+        mod = importlib.import_module(entrypoints[sys.argv[1]], "mysqloperator")
+        ret = mod.main(sys.argv[1:])  # type: ignore
+    except Exception as exc:
+        print("Exception happened in entrypoint {sys.argv[1]}. The message is: {exc}")
+        ret = 1
+    sys.exit(ret)
+elif sys.argv[1] == "pytest":
+    import pytest
+    sys.exit(pytest.main(sys.argv[2:]))
 else:
     print("Invalid args:", sys.argv)
     sys.exit(1)

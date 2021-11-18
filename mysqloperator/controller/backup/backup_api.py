@@ -24,15 +24,16 @@ class Snapshot:
             ["ociObjectStorage", "persistentVolumeClaim"])
         self.storage.parse(storage, prefix+".storage")
 
-    def __eq__(self, other) -> bool:
-        return (isinstance(other, Snapshot) and \
-                self.storage == other.storage)
+    def __eq__(self, other : 'Snapshot') -> bool:
+        assert isinstance(other, Snapshot)
+        return (self.storage == other.storage)
 
 
 class DumpInstance:
     def __init__(self):
         self.dumpOptions: dict = {}  # dict with options for dumpInstance()
         self.storage: Optional[StorageSpec] = None  # StorageSpec
+        self.options = {}
 
     def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
         self.storage.add_to_pod_spec(pod_spec, container_name)
@@ -44,9 +45,9 @@ class DumpInstance:
         self.storage = StorageSpec()
         self.storage.parse(storage, prefix+".storage")
 
-    def __eq__(self, other) -> bool:
-        return (isinstance(other, DumpInstance) and \
-                self.dumpOptions == other.dumpOptions and \
+    def __eq__(self, other : 'DumpInstance') -> bool:
+        assert isinstance(other, DumpInstance)
+        return (self.dumpOptions == other.dumpOptions and \
                 self.storage == other.storage)
 
 
@@ -57,12 +58,11 @@ class BackupProfile:
         self.snapshot: Optional[Snapshot] = None
 
     def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
+        assert self.snapshot or self.dumpInstance
         if self.snapshot:
             return self.snapshot.add_to_pod_spec(pod_spec, container_name)
         if self.dumpInstance:
             return self.dumpInstance.add_to_pod_spec(pod_spec, container_name)
-        assert 0
-        return None
 
     def parse(self, spec: dict, prefix: str, name_required: bool = True) -> None:
         self.name = dget_str(spec, "name", prefix, default_value= None if name_required else "")
@@ -84,9 +84,9 @@ class BackupProfile:
             raise ApiSpecError(
                 f"One of dumpInstance or snapshot must be set in a {prefix}")
 
-    def __eq__(self, other) -> bool:
-        return (isinstance(other, BackupProfile) and \
-                self.name == other.name and \
+    def __eq__(self, other: 'BackupProfile') -> bool:
+        assert isinstance(other, BackupProfile)
+        return (self.name == other.name and \
                 self.dumpInstance == other.dumpInstance and \
                 self.snapshot == other.snapshot)
 
@@ -103,10 +103,9 @@ class BackupSchedule:
         self.deleteBackupData: bool = False # unused
 
     def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
+        assert self.backupProfile
         if self.backupProfile:
             return self.backupProfile.add_to_pod_spec(pod_spec, container_name)
-        assert 0
-        return None
 
     def parse(self, spec: dict, prefix: str) -> None:
         self.name = dget_str(spec, "name", prefix, default_value= "")
@@ -140,10 +139,9 @@ class BackupSchedule:
                 print(f"Invalid backupProfileName '{self.backupProfileName}' in cluster {self.cluster_spec.namespace}/{self.cluster_spec.clusterName}")
                 raise ApiSpecError(f"Invalid backupProfileName '{self.backupProfileName}' in cluster {self.cluster_spec.namespace}/{self.cluster_spec.clusterName}")
 
-    def __eq__(self, o) -> bool:
-        other: BackupSchedule = o
-        eq = (isinstance(other, BackupSchedule) and \
-                self.cluster_spec.namespace == other.cluster_spec.namespace and \
+    def __eq__(self, other : 'BackupSchedule') -> bool:
+        assert isinstance(other, BackupSchedule)
+        eq = (self.cluster_spec.namespace == other.cluster_spec.namespace and \
                 self.cluster_spec.name == other.cluster_spec.name and \
                 self.name == other.name and \
                 self.backupProfileName == other.backupProfileName and \
@@ -170,6 +168,7 @@ class MySQLBackupSpec:
         self.parse(spec)
 
     def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
+        assert self.backupProfile
         return self.backupProfile.add_to_pod_spec(pod_spec, container_name)
 
     def parse(self, spec: dict) -> Optional[ApiSpecError]:
@@ -240,14 +239,14 @@ class MySQLBackup:
             consts.GROUP, consts.VERSION, namespace, consts.MYSQLBACKUP_PLURAL, name)))
 
     @classmethod
-    def create(cls, namespace: str, body: dict) -> int:
+    def create(cls, namespace: str, body: dict) -> Optional[dict]:
         try:
-            api_customobj.create_namespaced_custom_object(
-                consts.GROUP, consts.VERSION, namespace, consts.MYSQLBACKUP_PLURAL, body)
+            return cast(dict, api_customobj.create_namespaced_custom_object(
+                consts.GROUP, consts.VERSION, namespace, consts.MYSQLBACKUP_PLURAL, body))
         except ApiException as exc:
             print(f"Exception {exc} when calling create_namespaced_custom_object({consts.GROUP}, {consts.VERSION}, {namespace}, {consts.MYSQLBACKUP_PLURAL} body={body}")
-            return 1
-        return 0
+            return None
+        assert 0 # "Uncaught exception/wrong code flow"
 
     @property
     def metadata(self) -> dict:
@@ -275,7 +274,7 @@ class MySQLBackup:
     def cluster_name(self) -> str:
         return self.parsed_spec.clusterName
 
-    def get_profile(self):
+    def get_profile(self) -> BackupProfile:
         if self.parsed_spec.backupProfile:
             return self.parsed_spec.backupProfile
 

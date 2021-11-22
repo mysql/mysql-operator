@@ -105,8 +105,8 @@ class MySQLInteractivePodSession:
         else:
             pod = pod[0]
             container = pod[1]
-        exec_command = ["env", "MYSQLSH_PROMPT_THEME=none",
-                        "mysqlsh", "--tabbed", "--sql"]
+        exec_command = ["env", "MYSQLSH_PROMPT_THEME=",
+                        "mysqlsh", "--sql", "--tabbed"]
         if user:
             exec_command += [f"{user}:{password}@{host}"]
 
@@ -132,8 +132,7 @@ class MySQLInteractivePodSession:
         assert self.resp.is_open()
         self.resp.update(timeout=1)
 
-        out = self.read_until_prompt()
-        print("".join(out))
+        self.read_until_prompt()
 
     def __del__(self):
         try:
@@ -149,7 +148,7 @@ class MySQLInteractivePodSession:
         out = []
         ok = False
         buf = ""
-        while self.resp.is_open() and not ok:
+        while not ok:
             self.resp.update(timeout=1)
             while self.resp.peek_stdout():
                 buf += self.resp.read_stdout(timeout=1)
@@ -168,7 +167,6 @@ class MySQLInteractivePodSession:
                 line = self.resp.read_stderr(timeout=1)
                 if not line:
                     break
-                print("STDERR", line)
         return "".join(out)
 
     def read_response(self):

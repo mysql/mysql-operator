@@ -110,9 +110,11 @@ spec:
                   description: "Schedules for periodically executed backups"
                   items:
                     type: object
-                    required: ["name", "deleteBackupData"]
+                    required: ["name", "schedule"]
                     properties:
                       name:
+                        type: string
+                      schedule:
                         type: string
                       backupProfileName:
                         type: string

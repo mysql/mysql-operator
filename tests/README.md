@@ -158,7 +158,7 @@ It will delete the existing default minikube cluster and set up a brand new one,
 
 
 ```sh
-./run --env=k3d -vvv -t -dkube -doperator e2e.mysqloperator.cluster.cluster_t.Cluster1Defaults
+./run --env=k3d -vvv -t --dkube --doperator e2e.mysqloperator.cluster.cluster_t.Cluster1Defaults
 ```
 
 It will delete the existing default k3d cluster. Then It will set up a brand new default k3d cluster and

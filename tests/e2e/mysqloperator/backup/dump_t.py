@@ -210,7 +210,7 @@ spec:
         self.assertEqual(mbk["status"]["status"], "Completed")
         self.assertTrue(mbk["status"]["elapsedTime"])
         self.assertEqual(mbk["status"]["method"], "dump-instance/oci-bucket")
-        self.assertEqual(mbk["status"]["bucket"], "dumps")
+        self.assertEqual(mbk["status"]["bucket"], g_ts_cfg.oci_backup_bucket)
         self.assertTrue(mbk["status"]["ociTenancy"].startswith(
             "ocid1.tenancy.oc1.."))
         # secondary

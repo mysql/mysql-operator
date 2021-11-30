@@ -26,7 +26,7 @@ rules:
     verbs: ["create", "get", "delete"]
   - apiGroups: ["batch", "extensions"]
     resources: ["jobs", "cronjobs"]
-    verbs: ["get", "patch", "update", "watch", "delete"]
+    verbs: [ "create", "get", "list", "patch", "update", "watch", "delete"]
   - apiGroups: ["apps"]
     resources: ["*"]
     verbs: ["*"]

@@ -4,7 +4,7 @@ The test suite of MySQL Operator for Kubernetes
 Requirements:
 0) python3
 1) module: kubernetes
-2) module: mysql-connector-python
+2) module: mysql-connector-python (CAUTION! not mysql-connector)
 
 
 The test-suite is configured in three stages:

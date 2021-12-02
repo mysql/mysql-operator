@@ -545,6 +545,38 @@ spec:
                 "SELECT concat(user,'@',host) FROM mysql.user").fetch_all()])
             self.assertSetEqual(accts, expected_accounts)
 
+    def run_verify_routing_session(self, address, expected_routing_settings):
+        shell = mutil.MySQLInteractivePodSession(
+            "appns", "testpod", user="root", password="sakila", host=address)
+
+        query_result = shell.query_dict("select concat(@@report_host, ':', @@port) as r;")
+        if not query_result:
+            return False
+        print(query_result)
+
+        result = query_result[0]
+        print(result)
+
+        if type(expected_routing_settings) is str:
+            self.assertEqual(result['r'], expected_routing_settings)
+        else:
+            self.assertIn(result['r'], expected_routing_settings)
+        return True
+
+    def verify_routing(self, address, expected_routing_settings):
+        communicated = False
+        trial = 0
+        MAX_TRIAL = 5
+        for trial in range(MAX_TRIAL):
+            try:
+                if self.run_verify_routing_session(address, expected_routing_settings):
+                    communicated = True
+                    break
+            except BaseException as err:
+                print(f"Unexpected {err=}, {type(err)=}")
+
+        self.assertTrue(communicated, f"couldn't communicate with the host {address}")
+
     def test_1_routing(self):
         """
         Check routing from a standalone pod in a different namespace
@@ -567,79 +599,45 @@ spec:
         kutil.apply("appns", yaml)
         self.wait_pod("testpod", "Running", ns="appns")
 
-        shell = mutil.MySQLInteractivePodSession(
-            "appns", "testpod", user="root", password="sakila", host="mycluster.testns.svc.cluster.local:6446")
         # check classic session to R/W port
-        # shell.execute(
-        #     f"\\connect mysql://root:sakila@mycluster.testns.svc.cluster.local:6446")
-        result = shell.query_dict(
-            "select concat(@@report_host, ':', @@port) as r;")[0]
-        self.assertEqual(
-            result['r'], "mycluster-0.mycluster-instances.testns.svc.cluster.local:3306")
+        self.verify_routing(
+            "mycluster.testns.svc.cluster.local:6446",
+            "mycluster-0.mycluster-instances.testns.svc.cluster.local:3306")
 
-        r = shell.execute(
-            f"\\connect mysql://root:sakila@mycluster.testns.svc.cluster.local:6446")
-        print(r)
-        result = shell.query_dict(
-            "select concat(@@report_host, ':', @@port) as r;")[0]
-        self.assertEqual(
-            result['r'], "mycluster-0.mycluster-instances.testns.svc.cluster.local:3306")
+        self.verify_routing(
+            "mycluster.testns.svc.cluster.local:6446",
+            "mycluster-0.mycluster-instances.testns.svc.cluster.local:3306")
 
         # check classic session to R/O port
-        r = shell.execute(
-            f"\\connect mysql://root:sakila@mycluster.testns.svc.cluster.local:6447")
-        print(r)
-        result = shell.query_dict(
-            "select concat(@@report_host, ':', @@port) as r;")[0]
-        self.assertIn(
-            result['r'], ["mycluster-1.mycluster-instances.testns.svc.cluster.local:3306",
-                          "mycluster-2.mycluster-instances.testns.svc.cluster.local:3306"])
+        self.verify_routing(
+            "mycluster.testns.svc.cluster.local:6447",
+            ["mycluster-1.mycluster-instances.testns.svc.cluster.local:3306",
+                "mycluster-2.mycluster-instances.testns.svc.cluster.local:3306"])
 
-        r = shell.execute(
-            f"\\connect mysql://root:sakila@mycluster.testns.svc.cluster.local:6447")
-        print(r)
-        result = shell.query_dict(
-            "select concat(@@report_host, ':', @@port) as r;")[0]
-        self.assertIn(
-            result['r'], ["mycluster-1.mycluster-instances.testns.svc.cluster.local:3306",
-                          "mycluster-2.mycluster-instances.testns.svc.cluster.local:3306"])
+        self.verify_routing(
+            "mycluster.testns.svc.cluster.local:6447",
+            ["mycluster-1.mycluster-instances.testns.svc.cluster.local:3306",
+                "mycluster-2.mycluster-instances.testns.svc.cluster.local:3306"])
 
         # check X session to R/W port
-        r = shell.execute(
-            f"\\connect mysqlx://root:sakila@mycluster.testns.svc.cluster.local:6448")
-        print(r)
-        result = shell.query_dict(
-            "select concat(@@report_host, ':', @@port) as r;")[0]
-        self.assertEqual(
-            result['r'], "mycluster-0.mycluster-instances.testns.svc.cluster.local:3306")
-        print(shell.execute("\\status"))
+        self.verify_routing(
+            "mycluster.testns.svc.cluster.local:6448",
+            "mycluster-0.mycluster-instances.testns.svc.cluster.local:3306")
 
-        r = shell.execute(
-            f"\\connect mysqlx://root:sakila@mycluster.testns.svc.cluster.local:6448")
-        print(r)
-        result = shell.query_dict(
-            "select concat(@@report_host, ':', @@port) as r;")[0]
-        self.assertEqual(
-            result['r'], "mycluster-0.mycluster-instances.testns.svc.cluster.local:3306")
+        self.verify_routing(
+            "mycluster.testns.svc.cluster.local:6448",
+            "mycluster-0.mycluster-instances.testns.svc.cluster.local:3306")
 
         # check X session to R/O port
-        r = shell.execute(
-            f"\\connect mysqlx://root:sakila@mycluster.testns.svc.cluster.local:6449")
-        print(r)
-        result = shell.query_dict(
-            "select concat(@@report_host, ':', @@port) as r;")[0]
-        self.assertIn(
-            result['r'], ["mycluster-1.mycluster-instances.testns.svc.cluster.local:3306",
-                          "mycluster-2.mycluster-instances.testns.svc.cluster.local:3306"])
+        self.verify_routing(
+            "mycluster.testns.svc.cluster.local:6449",
+            ["mycluster-1.mycluster-instances.testns.svc.cluster.local:3306",
+                "mycluster-2.mycluster-instances.testns.svc.cluster.local:3306"])
 
-        r = shell.execute(
-            f"\\connect mysqlx://root:sakila@mycluster.testns.svc.cluster.local:6449")
-        print(r)
-        result = shell.query_dict(
-            "select concat(@@report_host, ':', @@port) as r;")[0]
-        self.assertIn(
-            result['r'], ["mycluster-1.mycluster-instances.testns.svc.cluster.local:3306",
-                          "mycluster-2.mycluster-instances.testns.svc.cluster.local:3306"])
+        self.verify_routing(
+            "mycluster.testns.svc.cluster.local:6449",
+            ["mycluster-1.mycluster-instances.testns.svc.cluster.local:3306",
+                "mycluster-2.mycluster-instances.testns.svc.cluster.local:3306"])
 
         kutil.delete_po("appns", "testpod")
         kutil.delete_ns("appns")

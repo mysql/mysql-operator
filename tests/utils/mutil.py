@@ -3,6 +3,7 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
+import time
 from . import kutil
 import mysql.connector
 from kubernetes import client
@@ -62,7 +63,6 @@ class MySQLPodSession:
             except mysql.connector.errors.OperationalError as e:
                 print(ns, "/", podname, "port=", self.port, "pass=", password, e)
                 if e.errno == 2013 and i < 5: # error reading initial packet (server restarting?)
-                    import time
                     time.sleep(1)
                     print("retrying...")
                     continue
@@ -148,7 +148,9 @@ class MySQLInteractivePodSession:
         out = []
         ok = False
         buf = ""
-        while not ok:
+        iteration = 0
+        MAX_ITERATION = 200
+        while not ok and self.resp.is_open() and iteration < MAX_ITERATION:
             self.resp.update(timeout=1)
             while self.resp.peek_stdout():
                 buf += self.resp.read_stdout(timeout=1)
@@ -167,6 +169,13 @@ class MySQLInteractivePodSession:
                 line = self.resp.read_stderr(timeout=1)
                 if not line:
                     break
+            iteration += 1
+            if iteration * 2 == MAX_ITERATION:
+                # sometimes we don't receive prompt, provoke a reaction by sending a newline char
+                time.sleep(3)
+                self.resp.write_stdin("\n")
+        if not ok:
+            raise RuntimeError("Prompt not met while processing mysql session output")
         return "".join(out)
 
     def read_response(self):

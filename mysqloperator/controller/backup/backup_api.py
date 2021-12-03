@@ -130,7 +130,8 @@ class MySQLBackupSpec:
             self.backupProfile = cluster.parsed_spec.get_backup_profile(
                 self.backupProfileName)
             if not self.backupProfile:
-                return ApiSpecError(f"Invalid backupProfileName '{self.backupProfileName}' in cluster {self.namespace}/{self.clusterName}")
+                err_msg = f"Invalid backupProfileName '{self.backupProfileName}' in cluster {self.namespace}/{self.clusterName}"
+                raise ApiSpecError(err_msg)
 
         print(f"backupProfile={self.backupProfile}")
 

@@ -30,7 +30,7 @@ import unittest
 def check_sidecar_health(test, ns, pod):
     logs = kutil.logs(ns, [pod, "sidecar"])
     # check that the sidecar is running and waiting for events
-    test.assertIn("Waiting for Operator requests...", logs)
+    test.assertIn("Starting Operator request handler...", logs)
 
 
 def check_all(test, ns, name, instances, routers=None, primary=None, count_sessions=False, user="root", password="sakila", shared_ns=False, version=None):
@@ -136,6 +136,7 @@ metadata:
 spec:
   instances: 1
   secretName: mypwds
+  tlsUseSelfSigned: true
 """
 
         apply_time = isotime()
@@ -492,6 +493,7 @@ spec:
   router:
     instances: 2
   secretName: mypwds
+  tlsUseSelfSigned: true
 """
 
         kutil.apply(self.ns, yaml)
@@ -770,6 +772,10 @@ spec:
         # wait for operator to restore it
         self.wait_ic("mycluster", "ONLINE", num_online=3, timeout=300)
 
+        self.wait_member_state("mycluster-0", ["ONLINE"])
+        self.wait_member_state("mycluster-1", ["ONLINE"])
+        self.wait_member_state("mycluster-2", ["ONLINE"])
+
         check_all(self, self.ns, "mycluster", instances=3)
 
         # switch primary back to -0
@@ -803,6 +809,10 @@ spec:
 
         # wait for operator to restore it
         self.wait_ic("mycluster", "ONLINE", num_online=3, timeout=300)
+
+        self.wait_member_state("mycluster-0", ["ONLINE"])
+        self.wait_member_state("mycluster-1", ["ONLINE"])
+        self.wait_member_state("mycluster-2", ["ONLINE"])
 
         check_all(self, self.ns, "mycluster", instances=3, primary=1)
 
@@ -1092,6 +1102,7 @@ metadata:
 spec:
   instances: 1
   secretName: mypwds
+  tlsUseSelfSigned: true
 """
 
         kutil.apply(self.ns, yaml)
@@ -1140,6 +1151,7 @@ spec:
   router:
     instances: 1
   secretName: mypwds
+  tlsUseSelfSigned: true
 """
 
         kutil.apply(self.ns, yaml)
@@ -1170,6 +1182,7 @@ spec:
   router:
     instances: 2
   secretName: mypwds2
+  tlsUseSelfSigned: true
 """
 
         kutil.apply(self.ns, yaml)
@@ -1248,6 +1261,7 @@ spec:
   secretName: mypwds
   version: "{g_ts_cfg.get_old_version_tag()}"
   baseServerId: 3210
+  tlsUseSelfSigned: true
   mycnf: |
     [mysqld]
     admin_port=3333
@@ -1350,6 +1364,7 @@ spec:
     instances: 1
   version: "{g_ts_cfg.get_old_version_tag()}"
   secretName: mypwds
+  tlsUseSelfSigned: true
   imagePullSecrets:
     - name: pullsecrets
 """

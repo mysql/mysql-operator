@@ -432,6 +432,12 @@ def delete_cm(ns, name, timeout=5):
 def delete_secret(ns, name, timeout=5):
     delete(ns, "secret", name, timeout=timeout)
 
+
+#
+
+def restart_sts(ns, name):
+    kubectl("rollout", None, ["-n", ns, "restart", "statefulset", name])
+
 #
 
 
@@ -459,12 +465,23 @@ def cat(ns, name, path):
     return s
 
 
+def cat_in(ns, name, path, data):
+    if type(name) is str:
+        args = [name]
+    else:
+        args = [name[0], "-c", name[1]]
+
+    args += ["-n", ns, "-i", "--", "/bin/bash", "-c", f"cat > {path}"]
+
+    p = feed_kubectl(data, "exec", args=args, check=False)
+
+
 def exec(ns, name, cmd):
     if type(name) is str:
         args = [name]
     else:
         args = [name[0], "-c", name[1]]
-    kubectl("exec", None, args + ["-n", ns, "--"] + cmd)
+    return kubectl("exec", None, args + ["-n", ns, "--"] + cmd)
 
 
 def execp(ns, name, cmd):
@@ -647,7 +664,8 @@ def wait_ic_gone(ns, name, timeout=120, checkabort=lambda: None):
     raise Exception(f"Timeout waiting for ic {ns}/{name}")
 
 
-def wait_ic(ns, name, status=["ONLINE"], num_online=None, timeout=200, probe_time=None, checkabort=lambda: None):
+def wait_ic(ns, name, status=["ONLINE"], num_online=None, timeout=200, probe_time=None,
+            checkabort=lambda: None):
     if type(status) not in (tuple, list):
         status = [status]
 
@@ -721,6 +739,14 @@ data:
     apply(ns, yaml)
 
 
+def create_secret_from_files(ns, name, data):
+    options = [ "generic", name, "-n", ns]
+    for key, path in data:
+        options.append(f"--from-file={key}={path}")
+
+    kubectl("create", "secret", options)
+
+
 def create_apikey_secret(ns, name, path, config_name = "config", profile_name = "DEFAULT", privatekey = "key.pem"):
     import configparser
     ini_parser = configparser.ConfigParser()
@@ -742,6 +768,21 @@ def create_apikey_secret(ns, name, path, config_name = "config", profile_name = 
     for ini_key, ini_value in ini_parser[profile_name].items():
         if ini_key != KEY_FILE_INI_OPTION_NAME:
             options.append(f"--from-literal={ini_key}={ini_value}")
+
+    kubectl("create", "secret", options)
+
+
+def create_ssl_ca_secret(ns, name, path, crlpath=None):
+    data = [("ca.pem", path)]
+    if crlpath:
+        data.append(("crl.pem", crlpath))
+    create_secret_from_files(ns, name, data)
+
+
+def create_ssl_cert_secret(ns, name, cert_path, key_path):
+    options = [ "tls", name, "-n", ns]
+    options.append(f"--cert={cert_path}")
+    options.append(f"--key={key_path}")
 
     kubectl("create", "secret", options)
 

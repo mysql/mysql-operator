@@ -7,3 +7,4 @@ spec:
   instances: 3
   router:
     instances: 1
+  tlsUseSelfSigned: true

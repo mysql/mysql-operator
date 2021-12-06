@@ -9,6 +9,9 @@ import mysql.connector
 from kubernetes import client
 from kubernetes.stream import stream
 from kubernetes.client.rest import ApiException
+import logging
+
+logger = logging.getLogger("mutil")
 
 class MySQLDbResult:
     def __init__(self, cursor):
@@ -26,9 +29,10 @@ class MySQLDbResult:
 
 
 class MySQLDbSession:
-    def __init__(self, user, password, host, port, database):
+    def __init__(self, user, password, host, port, database, **kwargs):
         self._session = mysql.connector.connect(user=user, password=password,
-                            host=host, port=port, database=database)
+                            host=host, port=port, database=database,
+                            **kwargs)
 
     def close(self):
         if self._session:
@@ -47,10 +51,10 @@ class MySQLDbSession:
 
 
 class MySQLPodSession:
-    def __init__(self, ns, podname, user, password):
+    def __init__(self, ns, podname, user, password, port=3306, **kwargs):
         self.session = None
         self.proc = None
-        self.proc, self.port = kutil.portfw(ns, podname, 3306)
+        self.proc, self.port = kutil.portfw(ns, podname, port)
         i = 0
         while True:
             i += 1
@@ -58,7 +62,8 @@ class MySQLPodSession:
                 self.session = MySQLDbSession(user=user, password=password,
                                 host='127.0.0.1',
                                 port=self.port,
-                                database='mysql')
+                                database='mysql',
+                                **kwargs)
                 break
             except mysql.connector.errors.OperationalError as e:
                 print(ns, "/", podname, "port=", self.port, "pass=", password, e)
@@ -85,18 +90,18 @@ class MySQLPodSession:
             self.proc.terminate()
             self.proc = None
 
-def load_script(ns, podname, script):
+def load_script(ns, podname, script, password="sakila"):
     if type(podname) is str or len(podname) == 1:
         args = [podname, "-c", "mysql"]
     else:
         args = [podname[0], "-c", podname[1]]
     kutil.feed_kubectl(script, "exec", args=args +
-                       [f"-n{ns}", "-i", "--", "mysql", "-ulocalroot"], check=True)
+                       [f"-n{ns}", "-i", "--", "mysql", "-uroot", f"-p{password}"], check=True)
 
 
 # Emulate an interactive MySQL session directly in a pod (localroot@localhost)
 class MySQLInteractivePodSession:
-    def __init__(self, ns, pod, *, host="localhost", user=None, password=None):
+    def __init__(self, ns, pod, *, host="localhost", user=None, password=None, args=[]):
         container = None
         if type(pod) is str:
             pod = pod
@@ -109,6 +114,10 @@ class MySQLInteractivePodSession:
                         "mysqlsh", "--sql", "--tabbed"]
         if user:
             exec_command += [f"{user}:{password}@{host}"]
+        if args:
+            exec_command += args
+
+        logger.debug("%s", exec_command)
 
         api_core = client.CoreV1Api()
 
@@ -134,7 +143,12 @@ class MySQLInteractivePodSession:
 
         self.read_until_prompt()
 
+
     def __del__(self):
+        self.close()
+
+
+    def close(self):
         try:
             self.resp.write_stdin("\\quit\n")
         except:
@@ -143,6 +157,15 @@ class MySQLInteractivePodSession:
             self.resp.close()
         except:
             pass
+
+
+    def __enter__(self, *args):
+        return self
+
+
+    def __exit__(self, *args):
+        self.close()
+
 
     def read_until_prompt(self):
         out = []

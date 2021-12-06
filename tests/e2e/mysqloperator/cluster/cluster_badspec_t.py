@@ -66,6 +66,7 @@ metadata:
 spec:
   secretName: mypwds
   bogus: 1234
+  tlsUseSelfSigned: true
 """
         self.assertApplyFails(
             yaml, r'ValidationError\(InnoDBCluster.spec\): unknown field "bogus" in com.oracle.mysql.v2alpha1.InnoDBCluster.spec')
@@ -82,6 +83,7 @@ metadata:
   name: veryveryveryveryveryveryveryverylongnamex
 spec:
   secretName: mypwds
+  tlsUseSelfSigned: true
 """
         self.assertApplyFails(
             yaml, r'metadata.name in body should be at most 40 chars long')
@@ -97,6 +99,7 @@ apiVersion: mysql.oracle.com/v2alpha1
 kind: InnoDBCluster
 spec:
   secretName: mypwds
+  tlsUseSelfSigned: true
 """
         self.assertApplyFails(yaml, r'resource name may not be empty')
 
@@ -121,6 +124,7 @@ metadata:
   name: mycluster
 spec:
   instances: 1
+  tlsUseSelfSigned: true
 """
         self.assertApplyFails(
             yaml, r'error validating data: ValidationError\(InnoDBCluster.spec\): missing required field "secretName"')
@@ -138,6 +142,7 @@ metadata:
 spec:
   secretName: mypwds
   instances: 0
+  tlsUseSelfSigned: true
 """
         self.assertApplyFails(
             yaml, 'spec.instances: Invalid value: 0: spec.instances in body should be greater than or equal to 1')
@@ -150,6 +155,7 @@ metadata:
 spec:
   secretName: mypwds
   instances: 14
+  tlsUseSelfSigned: true
 """
         self.assertApplyFails(
             yaml, 'spec.instances: Invalid value: 14: spec.instances in body should be less than or equal to 9')
@@ -162,6 +168,7 @@ metadata:
 spec:
   secretName: mypwds
   instances: "bla"
+  tlsUseSelfSigned: true
 """
         self.assertApplyFails(
             yaml, r'ValidationError\(InnoDBCluster.spec.instances\): invalid type for com.oracle.mysql.v2alpha1.InnoDBCluster.spec.instances: got "string", expected "integer"')
@@ -174,6 +181,7 @@ metadata:
 spec:
   secretName: mypwds
   mycnf: 42
+  tlsUseSelfSigned: true
 """
         self.assertApplyFails(
             yaml, r'spec.mycnf: Invalid value: "integer": spec.mycnf in body must be of type string: "integer"')
@@ -229,6 +237,7 @@ metadata:
 spec:
   instances: 1
   secretName: badsecret
+  tlsUseSelfSigned: true
 """
         start_time = isotime()
 
@@ -268,6 +277,7 @@ metadata:
 spec:
   instances: 1
   secretName: mypwds
+  tlsUseSelfSigned: true
   version: "5.7.30"
 """
         kutil.apply(self.ns, yaml)
@@ -307,6 +317,7 @@ metadata:
 spec:
   instances: 1
   secretName: mypwds
+  tlsUseSelfSigned: true
   version: "5.7.30"
 """
         kutil.apply(self.ns, yaml)
@@ -347,6 +358,7 @@ metadata:
 spec:
   instances: 1
   secretName: mypwds
+  tlsUseSelfSigned: true
   imageRepository: invalid
 """
         kutil.apply(self.ns, yaml)
@@ -385,6 +397,7 @@ metadata:
 spec:
   instances: 1
   secretName: mypwds
+  tlsUseSelfSigned: true
   imageRepository: invalid
 """
         kutil.apply(self.ns, yaml)
@@ -454,6 +467,7 @@ metadata:
 spec:
   instances: 3
   secretName: mypwds
+  tlsUseSelfSigned: true
 """
 
         kutil.apply(self.ns, yaml)

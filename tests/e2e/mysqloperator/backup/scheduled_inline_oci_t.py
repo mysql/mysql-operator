@@ -59,6 +59,7 @@ metadata:
 spec:
   instances: 2
   secretName: mypwds
+  tlsUseSelfSigned: true
   backupSchedules:
     - name: {self.schedule_name}
       schedule: "*/1 0-23 * * *"

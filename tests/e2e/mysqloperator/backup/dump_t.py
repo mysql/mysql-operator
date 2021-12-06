@@ -58,6 +58,7 @@ metadata:
 spec:
   instances: 2
   secretName: mypwds
+  tlsUseSelfSigned: true
   backupProfiles:
   - name: dump
     dumpInstance:

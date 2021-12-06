@@ -13,12 +13,12 @@ from .. import consts, kubeutils, config, utils, errors, diagnose
 from .. import shellutils
 from ..group_monitor import g_group_monitor
 from ..utils import g_ephemeral_pod_state
-from ..kubeutils import api_core, api_apps, api_policy, api_cron_job
+from ..kubeutils import api_core, api_apps, api_policy, api_rbac, api_cron_job
 from ..backup import backup_objects
 from ..config import DEFAULT_OPERATOR_VERSION_TAG
 from .cluster_controller import ClusterController, ClusterMutex
 from . import cluster_objects, router_objects, cluster_api
-from .cluster_api import InnoDBCluster, InnoDBClusterSpec, MySQLPod
+from .cluster_api import InnoDBCluster, InnoDBClusterSpec, MySQLPod, get_all_clusters
 import kopf
 from logging import Logger
 import time
@@ -87,7 +87,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             print("1. Initial Configuration ConfigMap and Container Probes")
             if not ignore_404(cluster.get_initconf):
                 print("\tPreparing...")
-                configs = cluster_objects.prepare_initconf(icspec)
+                configs = cluster_objects.prepare_initconf(cluster, icspec)
                 kopf.adopt(configs)
                 print("\tCreating...")
                 api_core.create_namespaced_config_map(namespace, configs)
@@ -112,12 +112,30 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
 
             print("4. Cluster Service")
             if not ignore_404(cluster.get_service):
-                print("\tCreating...")
+                print("\tPreparing...")
                 service = cluster_objects.prepare_cluster_service(icspec)
                 kopf.adopt(service)
                 print("\tCreating...")
                 api_core.create_namespaced_service(
                     namespace=namespace, body=service)
+
+            print("Cluster ServiceAccount")
+            if not ignore_404(cluster.get_service_account):
+                print("\Preparing...")
+                sa = cluster_objects.prepare_service_account(icspec)
+                kopf.adopt(sa)
+                print("\tCreating...")
+                api_core.create_namespaced_service_account(
+                    namespace=namespace, body=sa)
+
+            print("Cluster RoleBinding")
+            if not ignore_404(cluster.get_role_binding):
+                print("\Preparing...")
+                rb = cluster_objects.prepare_role_binding(icspec)
+                kopf.adopt(rb)
+                print("\tCreating...")
+                api_rbac.create_namespaced_role_binding(
+                    namespace=namespace, body=rb)
 
             print("5. Cluster StatefulSet")
             if not ignore_404(cluster.get_stateful_set):
@@ -153,7 +171,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 print("\tPreparing...")
                 if icspec.router.instances > 0:
                     router_deployment = router_objects.prepare_router_deployment(
-                        icspec, init_only=True)
+                        cluster, init_only=True)
                     kopf.adopt(router_deployment)
                     print("\tCreating...")
                     api_apps.create_namespaced_deployment(
@@ -414,6 +432,48 @@ def on_innodbcluster_field_backup_schedules(old: str, new: str, body: Body,
         backup_objects.update_schedules(cluster.parsed_spec, old, new, logger)
 
 
+def update_tls_field(body: Body, field: str, logger: Logger) -> None:
+    cluster = InnoDBCluster(body)
+
+    if not cluster.get_create_time():
+        logger.debug(
+            f"Ignoring {field} change for unready cluster")
+        return
+
+    cluster.parsed_spec.validate(logger)
+
+    cluster_objects.reconcile_stateful_set(cluster)
+
+
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.tlsUseSelfSigned")  # type: ignore
+def on_innodbcluster_field_tls_use_self_signed(body: Body,
+                                               logger: Logger, **kwargs):
+    update_tls_field(body, "spec.tlsUseSelfSigned", logger)
+
+
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.tlsSecretName")  # type: ignore
+def on_innodbcluster_field_tls_secret_name(body: Body,
+                                          logger: Logger, **kwargs):
+    update_tls_field(body, "spec.tlsSecretName", logger)
+
+
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.router.tlsSecretName")  # type: ignore
+def on_innodbcluster_field_router_tls_secret_name(body: Body,
+                                                  logger: Logger, **kwargs):
+
+    update_tls_field(body, "spec.router.tlsSecretName", logger)
+
+
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.tlsCASecretName")  # type: ignore
+def on_innodbcluster_field_tls_ca_secret_name(body: Body,
+                                              logger: Logger, **kwargs):
+    update_tls_field(body, "spec.tlsCASecretName", logger)
+
+
 @kopf.on.create("", "v1", "pods",
                 labels={"component": "mysqld"})  # type: ignore
 def on_pod_create(body: Body, logger: Logger, **kwargs):
@@ -555,3 +615,32 @@ def on_pod_delete(body: Body, logger: Logger, **kwargs):
         pod.remove_member_finalizer(body)
 
         logger.error(f"Owner cluster for {pod.name} does not exist anymore")
+
+
+@kopf.on.create("", "v1", "secrets") # type: ignore
+def on_secret_create(name: str, namespace: str, logger: Logger, **kwargs):
+    """
+    Wait for Secret objects used by clusters for TLS CA and certificate.
+    Two scenarios are handled:
+    - cluster does not use custom certificates and they get enabled
+    - cluster already uses custom certificates and they're being updated
+
+    Pods mount the secret objects directly so they're always directly
+    accessible to MySQL/Router.
+
+    For MySQL, in both cases, an ALTER INSTANCE RELOAD TLS is invoked to reload
+    the certificates.
+
+    For the Router, the Router needs to be restarted for the new certificate to
+    become active.
+    """
+    clusters = get_all_clusters(namespace)
+
+    # check for any clusters that reference this secret
+    for cluster in clusters:
+        if cluster.parsed_spec.tlsCASecretName == name:
+            ic = ClusterController(cluster)
+            ic.on_router_tls_changed()
+        elif cluster.parsed_spec.router.tlsSecretName == name:
+            ic = ClusterController(cluster)
+            ic.on_router_tls_changed()

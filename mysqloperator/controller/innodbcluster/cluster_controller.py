@@ -246,7 +246,7 @@ class ClusterController:
         create_options = {
             "gtidSetIsComplete": assume_gtid_set_complete,
             "manualStartOnBoot": True,
-            "memberSslMode": "REQUIRED",
+            "memberSslMode": "REQUIRED" if self.cluster.parsed_spec.tlsUseSelfSigned else "VERIFY_IDENTITY",
             "ipAllowlist": create_allow_list(seed_pod, logger)
         }
         create_options.update(common_gr_options)
@@ -650,6 +650,13 @@ class ClusterController:
         else:
             raise kopf.PermanentError(
                 f"Invalid cluster state {diagnostic.status}")
+
+    def on_router_tls_changed(self) -> None:
+        """
+        Router pods need to be recreated in order for new certificates to get
+        reloaded.
+        """
+        pass
 
     def on_pod_created(self, pod: MySQLPod, logger) -> None:
         diag = self.probe_status(logger)

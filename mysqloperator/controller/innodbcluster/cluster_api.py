@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -12,8 +12,8 @@ from ..k8sobject import K8sInterfaceObject
 from .. import utils, config, consts
 from ..backup.backup_api import BackupProfile, BackupSchedule
 from ..storage_api import StorageSpec
-from ..api_utils import Edition, dget_dict, dget_enum, dget_str, dget_int, dget_list, ApiSpecError, ImagePullPolicy
-from ..kubeutils import api_core, api_apps, api_customobj, api_policy, api_batch, api_cron_job
+from ..api_utils import Edition, dget_bool, dget_dict, dget_enum, dget_str, dget_int, dget_list, ApiSpecError, ImagePullPolicy
+from ..kubeutils import api_core, api_apps, api_customobj, api_policy, api_rbac, api_batch, api_cron_job
 from ..kubeutils import client as api_client, ApiException
 from logging import Logger
 import json
@@ -115,6 +115,8 @@ class RouterSpec:
 
     podSpec: dict = {}
 
+    tlsSecretName: str = ""
+
     def parse(self, spec: dict, prefix: str) -> None:
         if "instances" in spec:
             self.instances = dget_int(spec, "instances", prefix)
@@ -122,15 +124,23 @@ class RouterSpec:
         if "version" in spec:
             self.version = dget_str(spec, "version", prefix)
 
+        if "tlsSecretName" in spec:
+            self.tlsSecretName = dget_str(spec, "tlsSecretName", prefix)
+
         if "podSpec" in spec:  # TODO - replace with something more specific
             self.podSpec = dget_dict(spec, "podSpec", prefix)
 
 
 class InnoDBClusterSpec:
-    # name of user-provided secret containing root password and SSL certificates (optional)
+    # name of user-provided secret containing root password (optional)
     secretName: Optional[str] = None
-    # secret with SSL certificates
-    sslSecretName: Optional[str] = None
+
+    # name of secret with CA for SSL
+    tlsCASecretName: str = ""
+    # name of secret with certificate and private key (server and router)
+    tlsSecretName: str = ""
+    # whether to allow use of self-signed TLS certificates
+    tlsUseSelfSigned: bool = False
 
     # MySQL server version
     version: str = config.DEFAULT_VERSION_TAG
@@ -187,6 +197,19 @@ class InnoDBClusterSpec:
     def load(self, spec: dict) -> None:
         self.secretName = dget_str(spec, "secretName", "spec")
 
+        if "tlsCASecretName" in spec:
+            self.tlsCASecretName = dget_str(spec, "tlsCASecretName", "spec")
+        else:
+            self.tlsCASecretName = f"{self.name}-ca"
+
+        if "tlsSecretName" in spec:
+            self.tlsSecretName = dget_str(spec, "tlsSecretName", "spec")
+        else:
+            self.tlsSecretName = f"{self.name}-tls"
+
+        if "tlsUseSelfSigned" in spec:
+            self.tlsUseSelfSigned = dget_bool(spec, "tlsUseSelfSigned", "spec")
+
         self.instances = dget_int(spec, "instances", "spec")
 
         if "version" in spec:
@@ -230,6 +253,11 @@ class InnoDBClusterSpec:
         if "router" in spec:
             self.router = RouterSpec()
             self.router.parse(dget_dict(spec, "router", "spec"), "spec.router")
+        else:
+            self.router = RouterSpec()
+
+        if not self.router.tlsSecretName:
+            self.router.tlsSecretName = f"{self.name}-router-tls"
 
         # Initialization Options
         if "initDB" in spec:
@@ -302,6 +330,9 @@ class InnoDBClusterSpec:
         if self.podSpec:
             pass
 
+        if self.tlsSecretName and not self.tlsCASecretName:
+            logger.info("spec.tlsSecretName is set but will be ignored because self.tlsCASecretName is not set")
+
         if self.mycnf:
             if "[mysqld]" not in self.mycnf:
                 logger.warning(
@@ -337,7 +368,7 @@ class InnoDBClusterSpec:
 
     @property
     def router_image(self) -> str:
-        if self.router and self.router.version:
+        if self.router.version:
             version = self.router.version
         elif self.version:
             version = self.version
@@ -389,6 +420,85 @@ class InnoDBClusterSpec:
             return ""
 
     @property
+    def extra_volumes(self) -> str:
+        volumes = []
+
+        if not self.tlsUseSelfSigned:
+            volumes.append(f"""
+- name: ssldata
+  projected:
+    sources:
+    - secret:
+        name: {self.tlsCASecretName}
+    - secret:
+        name: {self.tlsSecretName}
+""")
+
+        return "\n".join(volumes)
+
+    @property
+    def extra_volume_mounts(self) -> str:
+        mounts = []
+        if not self.tlsUseSelfSigned:
+            mounts.append(f"""
+- mountPath: /etc/mysql-ssl
+  name: ssldata
+""")
+        return "\n".join(mounts)
+
+    @property
+    def extra_sidecar_volume_mounts(self) -> str:
+        mounts = []
+        if not self.tlsUseSelfSigned:
+            mounts.append(f"""
+- mountPath: /etc/mysql-ssl
+  name: ssldata
+""")
+        return "\n".join(mounts)
+
+
+
+    @property
+    def extra_router_volumes_no_cert(self) -> str:
+        volumes = []
+
+        if not self.tlsUseSelfSigned:
+            volumes.append(f"""
+- name: ssldata
+  projected:
+    sources:
+    - secret:
+        name: {self.tlsCASecretName}""")
+
+        return "\n".join(volumes)
+
+    @property
+    def extra_router_volumes(self) -> str:
+        volumes = []
+
+        if not self.tlsUseSelfSigned:
+            volumes.append(f"""
+- name: ssldata
+  projected:
+    sources:
+    - secret:
+        name: {self.tlsCASecretName}
+    - secret:
+        name: {self.router.tlsSecretName}""")
+
+        return "\n".join(volumes)
+
+    @property
+    def extra_router_volume_mounts(self) -> str:
+        mounts = []
+        if not self.tlsUseSelfSigned:
+            mounts.append(f"""
+- mountPath: /router-ssl
+  name: ssldata
+""")
+        return "\n".join(mounts)
+
+    @property
     def image_pull_secrets(self) -> str:
         if self.imagePullSecrets:
             return f"imagePullSecrets:\n{yaml.safe_dump(self.imagePullSecrets)}"
@@ -423,7 +533,7 @@ class InnoDBCluster(K8sInterfaceObject):
                             consts.INNODBCLUSTER_PLURAL, name))
         except ApiException as e:
             raise e
-    
+
         return ret
 
     @classmethod
@@ -619,6 +729,14 @@ class InnoDBCluster(K8sInterfaceObject):
         return (utils.b64decode(secrets.data["clusterAdminUsername"]),
                 utils.b64decode(secrets.data["clusterAdminPassword"]))
 
+    def get_service_account(self) -> api_client.V1ServiceAccount:
+        return cast(api_client.V1ServiceAccount,
+                    api_core.read_namespaced_service_account(f"{self.name}-sidecar-sa", self.namespace))
+
+    def get_role_binding(self) -> api_client.V1RoleBinding:
+        return cast(api_client.V1RoleBinding,
+                    api_rbac.read_namespaced_role_binding(f"{self.name}-sidecar-rb", self.namespace))
+
     def get_initconf(self) -> typing.Optional[api_client.V1ConfigMap]:
         try:
             return cast(api_client.V1ConfigMap,
@@ -776,10 +894,31 @@ class InnoDBCluster(K8sInterfaceObject):
     # TODO store last known majority and use it for diagnostics when there are
     # unconnectable pods
 
+    def tls_has_crl(self) -> bool:
+        if self.parsed_spec.tlsUseSelfSigned:
+            return False
+        # XXX TODO fixme
+        return False
 
-def get_all_clusters() -> typing.List[InnoDBCluster]:
-    objects = cast(dict, api_customobj.list_cluster_custom_object(
-        consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL))
+    def router_tls_exists(self) -> bool:
+        if self.parsed_spec.tlsUseSelfSigned:
+            return False
+        try:
+            api_core.read_namespaced_secret(self.parsed_spec.router.tlsSecretName, self.namespace)
+        except ApiException as e:
+            if e.status == 404:
+                return False
+            raise
+        return True
+
+
+def get_all_clusters(ns: str = None) -> typing.List[InnoDBCluster]:
+    if ns is None:
+        objects = cast(dict, api_customobj.list_cluster_custom_object(
+            consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL))
+    else:
+        objects = cast(dict, api_customobj.list_namespaced_custom_object(
+            consts.GROUP, consts.VERSION, ns, consts.INNODBCLUSTER_PLURAL))
     return [InnoDBCluster(o) for o in objects["items"]]
 
 

@@ -17,8 +17,7 @@ from . import check_routing
 from utils.tutil import g_full_log
 from setup.config import g_ts_cfg
 from utils.optesting import DEFAULT_MYSQL_ACCOUNTS, COMMON_OPERATOR_ERRORS
-from mysql import connector
-import os
+from mysqloperator.controller import config as operator_cfg
 import unittest
 
 # TODO
@@ -207,7 +206,33 @@ spec:
 
         # TODO add traffic, check routing
 
-    def test_3_grow_3(self):
+
+    def test_3_check_security(self):
+        """
+        Ensure PodSecurityContext has required restrictions.
+        """
+
+        def check_pod(pod, uid, user, process):
+            # kubectl exec runs as the mysql user
+            out = kutil.execp(self.ns, pod, ["id"])
+            self.assertEqual(f"uid={uid}({user}) gid={uid}({user}) groups={uid}({user})", out.strip().decode("utf-8"))
+
+            # cmdline of process 1 is mysqld
+            out = kutil.execp(self.ns, pod, ["cat", "/proc/1/cmdline"])
+            self.assertEqual(process, out.split(b"\0")[0].decode("utf-8"))
+
+            # /proc/1 is owned by (runs as) uid=mysql/27, gid=mysql/27
+            out = kutil.execp(self.ns, pod, ["stat", "/proc/1"])
+            access = [line for line in out.split(b"\n") if line.startswith(b"Access")][0].strip().decode("utf-8")
+            self.assertEqual(f"Access: (0555/dr-xr-xr-x)  Uid: ({uid:5}/{user:>8})   Gid: ({uid:5}/{user:>8})", access)
+
+        check_pod(["mycluster-0", "mysql"], 27, "mysql", "mysqld")
+
+        p = kutil.ls_po(self.ns, pattern="mycluster-router-.*")[0]["NAME"]
+        check_pod(p, 999, "mysqlrouter", "mysqlrouter")
+
+
+    def test_4_grow_3(self):
         kutil.patch_ic(self.ns, "mycluster", {
                        "spec": {"instances": 3}}, type="merge")
 
@@ -506,7 +531,8 @@ spec:
 
         image = container_spec(
             pod["spec"]["initContainers"], "initconf")["image"]
-        self.assertIn(":"+g_ts_cfg.operator_version_tag, image, "initconf")
+        #self.assertIn(":"+g_ts_cfg.operator_version_tag, image, "initconf")
+        self.assertIn(":"+operator_cfg.DEFAULT_OPERATOR_VERSION_TAG, image, "initconf")
         self.assertIn(g_ts_cfg.operator_image_name+":", image, "initconf")
 
         image = container_spec(pod["spec"]["containers"], "mysql")["image"]
@@ -514,7 +540,8 @@ spec:
         self.assertIn(g_ts_cfg.server_image_name+":", image, "mysql")
 
         image = container_spec(pod["spec"]["containers"], "sidecar")["image"]
-        self.assertIn(":"+g_ts_cfg.operator_version_tag, image, "sidecar")
+        #self.assertIn(":"+g_ts_cfg.operator_version_tag, image, "sidecar")
+        self.assertIn(":"+operator_cfg.DEFAULT_OPERATOR_VERSION_TAG, image, "sidecar")
         self.assertIn(g_ts_cfg.operator_image_name+":", image, "sidecar")
 
         # check router version and edition
@@ -593,6 +620,9 @@ spec:
     - name: shell
       image: "{g_ts_cfg.get_operator_image()}"
       command: ["mysqlsh", "--js", "-e", "os.sleep(600)"]
+      env:
+        - name: MYSQLSH_USER_CONFIG_HOME
+          value: /tmp
 """
         kutil.create_ns("appns")
 

@@ -6,11 +6,31 @@
 import os
 import subprocess
 import yaml
+import time
+from mysqloperator.controller import utils
 from utils import kutil
 from setup.config import g_ts_cfg
 
 # Operator Test Environment
 
+
+
+def wait_operator(ns):
+    def check_ready():
+        for po in kutil.ls_po(ns, pattern="mysql-operator-.*"):
+            if po["STATUS"] == "Running":
+                return True
+        return False
+
+    i = 0
+    while 1:
+        if check_ready():
+            break
+        i += 1
+        if i == 1:
+            print("Waiting for operator to come up...")
+        time.sleep(1)
+        
 
 class BaseEnvironment:
     opt_operator_debug_level: int = 1
@@ -104,46 +124,51 @@ class BaseEnvironment:
     def deploy_operator(self, deploy_files, override_deployment=True):
         print("Deploying operator...")
         for f in deploy_files:
-            args = ["kubectl", "create", "-f", "-"]
+            args = ["kubectl", "apply", "-f", "-"]
             print(" ".join(args), "<", f)
             y = open(f).read()
 
-            if override_deployment and f.endswith("deploy-operator.yaml"):
-                # strip last object (the operator Deployment), since we'll
-                # create it separately below
+            if f.endswith("deploy-operator.yaml"):
                 arr = list(yaml.safe_load_all(y))
-                arr = arr[:-1]
-                y = yaml.safe_dump_all(arr)
+                operator = arr[-1]
+                if override_deployment:
+                    # strip last object (the operator Deployment), since we'll
+                    # create it separately below
+                    arr = arr[:-1]
+                    y = yaml.safe_dump_all(arr)
 
             subprocess.run(args,
                        input=y.encode("utf8"), check=True)
 
+
+        if self.operator_host_path:
+            tmp = f"""
+spec:
+  template:
+    spec:
+      containers:
+        - name: mysql-operator
+          volumeMounts:
+            - name: operator-code
+              mountPath: "/usr/lib/mysqlsh/python-packages/mysqloperator"
+      volumes:
+        - name: operator-code
+          hostPath:
+            path: "{self.operator_host_path}"
+            type: Directory
+"""
+            utils.merge_patch_object(operator, next(yaml.safe_load_all(tmp)))
+
         # TODO change operator image to :latest
         # TODO re-add: "--log-file=",
-        y = f"""
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mysql-operator
-  namespace: mysql-operator
-  labels:
-    version: "1.0"
+        patch = f"""
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      name: mysql-operator
   template:
-    metadata:
-      labels:
-        name: mysql-operator
     spec:
-      serviceAccountName: mysql-operator-sa
       containers:
         - name: mysql-operator
           image: "{g_ts_cfg.get_operator_image()}"
           imagePullPolicy: {g_ts_cfg.operator_pull_policy}
-          args: ["mysqlsh", "--log-level=@INFO", "--pym", "mysqloperator", "operator"]
           env:
             - name: MYSQL_OPERATOR_DEFAULT_REPOSITORY
               value: "{g_ts_cfg.get_image_registry_repository()}"
@@ -154,23 +179,15 @@ spec:
             - name: MYSQL_OPERATOR_DEFAULT_GR_IP_WHITELIST
               value: "{g_ts_cfg.operator_gr_ip_whitelist}"
 """
-
-        if self.operator_host_path:
-            y = y.rstrip()
-            y += f"""
-          volumeMounts:
-            - name: operator-code
-              mountPath: "/usr/lib/mysqlsh/python-packages/mysqloperator"
-      volumes:
-        - name: operator-code
-          hostPath:
-            path: "{self.operator_host_path}"
-            type: Directory
-"""
         if override_deployment:
+            utils.merge_patch_object(operator, next(yaml.safe_load_all(patch)))
+            y = yaml.safe_dump(operator)
             print(y)
             subprocess.run(["kubectl", "apply", "-f", "-"],
                           input=y.encode("utf8"), check=True)
+        
+        wait_operator("mysql-operator")
+
 
     def prepare_oci_bucket(self):
         bucket = {

@@ -64,9 +64,9 @@ def merge_patch_object(base: dict, patch: dict, prefix: str = "", key: str = "")
     assert not key, "not implemented"  # TODO support key
 
     if type(base) != type(patch):
-        raise ValueError(f"Invalid type in {prefix}")
+        raise ValueError(f"Invalid type in patch at {prefix}")
     if type(base) != dict:
-        raise ValueError(f"Invalid type in {prefix}")
+        raise ValueError(f"Invalid type in base at {prefix}")
 
     def get_named_object(l, name):
         for o in l:

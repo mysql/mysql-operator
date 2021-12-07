@@ -118,5 +118,25 @@ spec:
         - name: mysql-operator
           image: mysql/mysql-operator:8.0.28-2.0.3
           imagePullPolicy: IfNotPresent
-          args: ["mysqlsh", "--log-level=@INFO", "--pym", "mysqloperator", "operator"]
+          args:
+            [
+              "mysqlsh",
+              "--log-level=@INFO",
+              "--pym",
+              "mysqloperator",
+              "operator",
+            ]
+          env:
+            - name: MYSQLSH_USER_CONFIG_HOME
+              value: /mysqlsh
+          volumeMounts:
+            - name: mysqlsh-home
+              mountPath: /mysqlsh
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+      volumes:
+        - name: mysqlsh-home
+          emptyDir: {}
       serviceAccountName: mysql-operator-sa

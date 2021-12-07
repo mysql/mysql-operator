@@ -59,6 +59,11 @@ metadata:
 spec:
   template:
     spec:
+      securityContext:
+        allowPrivilegeEscalation: false
+        privileged: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
       containers:
       - name: operator-backup-job
         image: {spec.operator_image}
@@ -68,6 +73,9 @@ spec:
       terminationGracePeriodSeconds: 60
 {utils.indent(spec.image_pull_secrets, 6)}
 {utils.indent(spec.service_account_name, 6)}
+        env:
+        - name: MYSQLSH_USER_CONFIG_HOME
+          value: /tmp/mysqlsh
 """
 
     job = yaml.safe_load(tmpl)

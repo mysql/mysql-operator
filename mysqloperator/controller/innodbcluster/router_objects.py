@@ -122,6 +122,13 @@ spec:
     spec:
 {utils.indent(spec.service_account_name, 6)}
 {utils.indent(spec.image_pull_secrets, 6)}
+      securityContext:
+        allowPrivilegeEscalation: false
+        privileged: false
+        readOnlyRootFilesystem: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
       containers:
       - name: router
         image: {spec.router_image}

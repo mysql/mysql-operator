@@ -177,6 +177,11 @@ spec:
       - conditionType: "mysql.oracle.com/configured"
       - conditionType: "mysql.oracle.com/ready"
 {utils.indent(spec.service_account_name, 6)}
+      securityContext:
+        allowPrivilegeEscalation: false
+        privileged: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
       initContainers:
       - name: initconf
         image: {spec.operator_image}
@@ -191,6 +196,8 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        - name: MYSQLSH_USER_CONFIG_HOME
+          value: /tmp
         volumeMounts:
         - name: initconfdir
           mountPath: /mnt/initconf
@@ -211,6 +218,8 @@ spec:
             secretKeyRef:
               name: {spec.secretName}
               key: rootPassword
+        - name: MYSQLSH_USER_CONFIG_HOME
+          value: /tmp
         volumeMounts:
         - name: datadir
           mountPath: /var/lib/mysql
@@ -241,6 +250,8 @@ spec:
               fieldPath: metadata.namespace
         - name: MYSQL_UNIX_PORT
           value: /var/run/mysql/mysql.sock
+        - name: MYSQLSH_USER_CONFIG_HOME
+          value: /mysqlsh
         volumeMounts:
         - name: rundir
           mountPath: /var/run/mysql
@@ -250,6 +261,8 @@ spec:
         - name: mycnfdata
           mountPath: /etc/my.cnf
           subPath: my.cnf
+        - name: shellhome
+          mountPath: /mysqlsh
       - name: mysql
         image: {spec.mysql_image}
         imagePullPolicy: {spec.mysql_image_pull_policy}
@@ -317,7 +330,9 @@ spec:
       - name: initconfdir
         configMap:
           name: {spec.name}-initconf
-          defaultMode: 0555
+          defaultMode: 0755
+      - name: shellhome
+        emptyDir: {{}}
   volumeClaimTemplates:
   - metadata:
       name: datadir
@@ -412,13 +427,13 @@ data:
   initdb-localroot.sql: |
     set sql_log_bin=0;
     # Create socket authenticated localroot@localhost account
-    CREATE USER localroot@localhost IDENTIFIED WITH auth_socket AS 'root';
+    CREATE USER localroot@localhost IDENTIFIED WITH auth_socket AS 'mysql';
     GRANT ALL ON *.* TO localroot@localhost WITH GRANT OPTION;
     GRANT PROXY ON ''@'' TO localroot@localhost WITH GRANT OPTION;
     # Drop the default account created by the docker image
     DROP USER IF EXISTS healthchecker@localhost;
     # Create account for liveness probe
-    CREATE USER mysqlhealthchecker@localhost IDENTIFIED WITH auth_socket AS 'root';
+    CREATE USER mysqlhealthchecker@localhost IDENTIFIED WITH auth_socket AS 'mysql';
     set sql_log_bin=1;
 
 

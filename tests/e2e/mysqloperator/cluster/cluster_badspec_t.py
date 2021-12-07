@@ -241,7 +241,8 @@ spec:
         # it to set MYSQL_ROOT_PASSWORD, so the operator or sidecars will never
         # run
         self.wait(kutil.ls_po, (self.ns,),
-                  lambda pods: pods[0]["STATUS"] == "Init:CreateContainerConfigError")
+                  lambda pods: pods[0]["STATUS"] == "Init:CreateContainerConfigError",
+                  timeout=90, delay=5)
 
         kutil.delete_ic(self.ns, "mycluster")
 

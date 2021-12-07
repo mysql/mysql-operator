@@ -26,10 +26,6 @@ def init_conf(datadir, pod, cluster, logger):
     in /mnt/mycnfdata.
     The source config files must be mounted in /mnt/initconf.
 
-    The config files are them symlinked to /etc to be used by mysqld in the rest
-    of the script. The main container should directly mount them in their final
-    locations.
-
     Init scripts are executed by the mysql container entrypoint when it's
     initializing for the 1st time.
     """
@@ -61,16 +57,6 @@ def init_conf(datadir, pod, cluster, logger):
                     destdir + "docker-entrypoint-initdb.d", f), 0o555)
         elif f.endswith(".cnf"):
             shutil.copy(os.path.join(srcdir, f), destdir + "my.cnf.d")
-
-    if os.path.exists("/etc/my.cnf"):
-        logger.info("Replacing /etc/my.cnf, old contents were:")
-        logger.info(open("/etc/my.cnf").read())
-        os.remove("/etc/my.cnf")
-    os.symlink(destdir + "my.cnf", "/etc/my.cnf")
-
-    if os.path.exists("/etc/my.cnf.d"):
-        os.rmdir("/etc/my.cnf.d")
-    os.symlink(destdir + "my.cnf.d", "/etc/my.cnf.d")
 
     logger.info(f"Configuration done")
 

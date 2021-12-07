@@ -242,13 +242,23 @@ def ls_pv(ns):
 
 
 def ls_all_raw(ns):
+    def ignore(t, name):
+        if t == "secret":
+            if name.startswith("default-token-"):
+                return True
+        elif t == "cm":
+            if name == "kube-root-ca.crt":
+                return True
+        elif t == "sa":
+            if name == "default":
+                return True
+        return False
     output = []
     for t in ALL_RSRC_TYPES:
         r = kubectl("get", t, args=["-n", ns]).stdout.decode("utf8")
-        if r and t == "secret":
+        if r:
             # strip automatically added default token
-            lines = [l for l in r.strip().split(
-                "\n") if not l.startswith("default-token-")]
+            lines = [l for l in r.strip().split("\n") if not ignore(t, l.split()[0])]
             if len(lines) <= 1:
                 r = ""
             else:
@@ -456,6 +466,16 @@ def exec(ns, name, cmd):
         args = [name[0], "-c", name[1]]
     kubectl("exec", None, args + ["-n", ns, "--"] + cmd)
 
+
+def execp(ns, name, cmd):
+    if type(name) is str:
+        args = [name]
+    else:
+        args = [name[0], "-c", name[1]]
+    p = kubectl_popen("exec", args + ["-n", ns, "--"] + cmd)
+    s = p.stdout.read()
+    p.terminate()
+    return s
 
 def kill(ns, name, sig, pid):
     try:

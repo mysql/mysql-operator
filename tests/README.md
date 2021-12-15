@@ -114,7 +114,7 @@ mirrors:
     the image repository, the default value is "mysql"
 
 --operator-tag
-    set the operator tag, e.g. 8.0.26-2.0.2 or latest, by default it is the currently developed version
+    set the operator tag, e.g. 8.0.28-2.0.3 or latest, by default it is the currently developed version
 
 --operator-pull-policy=[Never|IfNotPresent|Always]
     set the pull policy, the default can be found in defaults.py

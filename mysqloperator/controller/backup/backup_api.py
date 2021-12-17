@@ -161,6 +161,7 @@ class MySQLBackupSpec:
         self.backupProfileName: str = ""
         self.backupProfile = None
         self.deleteBackupData: bool = False # unused
+        self.addTimestampToBackupDirectory: bool = True
         self.operator_image: str = ""
         self.operator_image_pull_policy: str = ""
         self.image_pull_secrets: Optional[str] = None
@@ -176,6 +177,7 @@ class MySQLBackupSpec:
         self.backupProfileName = dget_str(spec, "backupProfileName", "spec", default_value="")
         self.backupProfile = self.parse_backup_profile(dget_dict(spec, "backupProfile", "spec", {}), "spec.backupProfile")
         self.deleteBackupData = dget_bool(spec, "deleteBackupData", "spec", default_value=False)
+        self.addTimestampToBackupDirectory = dget_bool(spec, "addTimestampToBackupDirectory", "spec", default_value=True)
 
         if self.backupProfileName and self.backupProfile:
             raise ApiSpecError("Only one of spec.backupProfileName or spec.backupProfile must be set")

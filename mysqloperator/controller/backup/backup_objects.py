@@ -94,6 +94,7 @@ metadata:
 spec:
   clusterName: {cluster_name}
   backupProfileName: {backup_profile_name}
+  addTimestampToBackupDirectory: false
 """
     return yaml.safe_load(tmpl.replace("\n\n", "\n"))
 
@@ -116,6 +117,7 @@ spec:
   clusterName: {cluster_name}
   backupProfile:
     name: {name}
+  addTimestampToBackupDirectory: false
 """
 
     backup_object = yaml.safe_load(tmpl.replace("\n\n", "\n"))

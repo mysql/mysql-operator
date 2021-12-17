@@ -22,6 +22,9 @@ def on_mysqlbackup_create(name: str, namespace: str, spec: dict, body: dict, log
 
     jobname = name
 
+    if backup.parsed_spec.addTimestampToBackupDirectory:
+        jobname = jobname + "-" + utils.timestamp()
+
     job = backup_objects.prepare_backup_job(jobname, backup.parsed_spec)
 
     kopf.adopt(job)

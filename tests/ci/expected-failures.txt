@@ -1,1 +1,0 @@
-ERROR: test_1_routing (e2e.mysqloperator.cluster.cluster_t.Cluster3Defaults)

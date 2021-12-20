@@ -50,6 +50,10 @@ mysql-operator:8.0.26-2.0.2
 mysql-operator:8.0.26-2.0.2
 1
 ---
+mysql-operator:8.0.28-2.0.3
+mysql-operator:8.0.28-2.0.3
+1
+---
 mysql-operator:latest
 mysql-operator:latest
 1
@@ -64,6 +68,10 @@ mysql-operator:8.0.25-2.0.2
 ---
 mysql-operator-commercial:8.0.26-2.0.2
 mysql-operator:8.0.26-2.0.2
+1
+---
+mysql-operator-commercial:8.0.28-2.0.3
+mysql-operator:8.0.28-2.0.3
 1
 ---
 mysql-operator-commercial:latest

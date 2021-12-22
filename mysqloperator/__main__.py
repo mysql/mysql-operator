@@ -25,7 +25,7 @@ if sys.argv[1] in entrypoints:
         mod = importlib.import_module(entrypoints[sys.argv[1]], "mysqloperator")
         ret = mod.main(sys.argv[1:])  # type: ignore
     except Exception as exc:
-        print("Exception happened in entrypoint {sys.argv[1]}. The message is: {exc}")
+        print(f"Exception happened in entrypoint {sys.argv[1]}. The message is: {exc}")
         ret = 1
     sys.exit(ret)
 elif sys.argv[1] == "pytest":

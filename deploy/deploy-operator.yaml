@@ -101,7 +101,7 @@ metadata:
     app.kubernetes.io/name: mysql-operator
     app.kubernetes.io/instance: mysql-operator
     app.kubernetes.io/version: 8.0.28-2.0.3
-    app.kubernetes.io/component: database
+    app.kubernetes.io/component: controller
     app.kubernetes.io/managed-by: mysql-operator
     app.kubernetes.io/created-by: mysql-operator
 spec:

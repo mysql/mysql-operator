@@ -79,7 +79,7 @@ spec:
             reason="StatusChange", msg=r"Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
-            reason="StatusChange", msg=r"Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
+            reason="StatusChange", msg=r"Cluster status changed to ONLINE. \d member\(s\) ONLINE")
 
     def test_1_check_accounts(self):
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:

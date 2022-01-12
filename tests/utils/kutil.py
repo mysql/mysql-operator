@@ -479,7 +479,11 @@ def apply(ns, yaml, *, check=True):
         return feed_kubectl(strip_blanks(yaml), "apply", args=[
             "-n", ns, "-f", "-"], check=check)
     except subprocess.CalledProcessError as e:
-        print(e.stdout.decode("utf8"))
+        if debug_kubectl:
+            if e.stdout:
+                logger.debug(e.stdout.decode("utf8"))
+            if e.stderr:
+                logger.error(e.stderr.decode("utf8"))
         raise
 
 

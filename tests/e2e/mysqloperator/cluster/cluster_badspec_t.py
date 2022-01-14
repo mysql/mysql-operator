@@ -358,7 +358,7 @@ spec:
 
         def pod_error():
             clusterStatus = kutil.ls_po(self.ns)[0]["STATUS"]
-            return clusterStatus in ("Init:ErrImageNeverPull", "Init:ErrImagePull")
+            return clusterStatus in ("Init:ErrImageNeverPull", "Init:ErrImagePull", "Init:ImagePullBackOff")
 
         self.wait(pod_error)
 
@@ -473,7 +473,7 @@ spec:
         def check(pods):
             clusterStatus = pods[2]["STATUS"]
             print(clusterStatus)
-            return clusterStatus in ("Init:ErrImageNeverPull", "Init:ErrImagePull")
+            return clusterStatus in ("Init:ErrImageNeverPull", "Init:ErrImagePull", "Init:ImagePullBackOff")
 
         self.wait(kutil.ls_po, (self.ns,), check, delay=10, timeout=100)
 

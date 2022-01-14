@@ -99,9 +99,6 @@ spec:
                     properties:
                       name:
                         type: string
-                      addTimestampToBackupDirectory:
-                        type: boolean
-                        default: true
                       dumpInstance:
                         type: object
                         x-kubernetes-preserve-unknown-fields: true
@@ -198,6 +195,9 @@ spec:
                 backupProfile:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
+                addTimestampToBackupDirectory:
+                  type: boolean
+                  default: true
                 deleteBackupData:
                   type: boolean
                   default: false

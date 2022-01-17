@@ -47,7 +47,6 @@ spec:
   secretName: mypwds
   backupProfiles:
   - name: {self.profile_name}
-    addTimestampToBackupDirectory: false
     dumpInstance:
       storage:
         persistentVolumeClaim:
@@ -109,6 +108,7 @@ metadata:
 spec:
   clusterName: {self.cluster_name}
   backupProfileName: {self.profile_name}
+  addTimestampToBackupDirectory: false
 """
         kutil.apply(self.ns, yaml)
 

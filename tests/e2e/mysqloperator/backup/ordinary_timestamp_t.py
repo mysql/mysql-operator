@@ -34,7 +34,6 @@ class OrdinaryBackupTimestamp(tutil.OperatorTest):
     def test_0_create(self):
         kutil.create_default_user_secrets(self.ns)
 
-        backup_volume_name = "test-backup-storage"
         backupdir = "/tmp/backups"
 
         yaml = f"""
@@ -50,7 +49,7 @@ spec:
     dumpInstance:
       storage:
         persistentVolumeClaim:
-          claimName: {backup_volume_name}
+          claimName: {self.volume_name}
 """
 
         kutil.apply(self.ns, yaml)
@@ -68,7 +67,7 @@ spec:
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: {backup_volume_name}
+  name: {self.volume_name}
   labels:
     type: local
 spec:
@@ -83,7 +82,7 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {backup_volume_name}
+  name: {self.volume_name}
 spec:
   storageClassName: manual
   accessModes:
@@ -136,4 +135,7 @@ spec:
         self.wait_ic_gone(self.cluster_name)
 
         kutil.delete_mbk(self.ns, self.dump_name)
+        kutil.delete_pvc(self.ns, self.volume_name)
+        kutil.delete_pv(self.volume_name)
+
         kutil.delete_secret(self.ns, "mypwds")

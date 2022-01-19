@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -22,6 +22,9 @@ from utils.optesting import DEFAULT_MYSQL_ACCOUNTS, COMMON_OPERATOR_ERRORS
 
 class DumpInstance(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    dump_name = "dump-test1"
+    oci_dump_name = "dump-test-oci1"
+    backup_volume_name = "test-backup-storage"
 
     @classmethod
     def setUpClass(cls):
@@ -42,7 +45,6 @@ class DumpInstance(tutil.OperatorTest):
         kutil.create_user_secrets(
             self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
 
-        backup_volume_name = "test-backup-storage"
         backupdir = "/tmp/backups"
 
         bucket = g_ts_cfg.oci_backup_bucket
@@ -63,7 +65,7 @@ spec:
         excludeSchemas: ["excludeme"]
       storage:
         persistentVolumeClaim:
-          claimName: {backup_volume_name}
+          claimName: {self.backup_volume_name}
   - name: fulldump-oci
     dumpInstance:
       storage:
@@ -75,7 +77,7 @@ spec:
     snapshot:
       storage:
         persistentVolumeClaim:
-          claimName: {backup_volume_name}
+          claimName: {self.backup_volume_name}
 """
 
         kutil.apply(self.ns, yaml)
@@ -101,7 +103,7 @@ spec:
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: {backup_volume_name}
+  name: {self.backup_volume_name}
   labels:
     type: local
 spec:
@@ -116,7 +118,7 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {backup_volume_name}
+  name: {self.backup_volume_name}
 spec:
   storageClassName: manual
   accessModes:
@@ -128,11 +130,11 @@ spec:
         kutil.apply(self.ns, yaml)
 
     def test_1_backup_to_volume(self):
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2alpha1
 kind: MySQLBackup
 metadata:
-  name: dump-test1
+  name: {self.dump_name}
 spec:
   clusterName: mycluster
   backupProfileName: dump
@@ -142,19 +144,19 @@ spec:
         # wait for backup to be done
         def check_mbk(l):
             for item in l:
-                if item["NAME"] == "dump-test1" and item["STATUS"] == "Completed":
+                if item["NAME"] == self.dump_name and item["STATUS"] == "Completed":
                     return item
             return None
 
         r = self.wait(kutil.ls_mbk, args=(self.ns,),
                       check=check_mbk, timeout=300)
-        if r["NAME"] == "dump-test1":
+        if r["NAME"] == self.dump_name:
             self.assertEqual(r["CLUSTER"], "mycluster")
             self.assertEqual(r["STATUS"], "Completed")
-            self.assertTrue(r["OUTPUT"].startswith("dump-test1-"))
+            self.assertTrue(r["OUTPUT"].startswith(f"{self.dump_name}-"))
 
         # check status in backup object
-        mbk = kutil.get_mbk(self.ns, "dump-test1")
+        mbk = kutil.get_mbk(self.ns, self.dump_name)
         self.assertTrue(mbk["status"]["startTime"])
         self.assertTrue(mbk["status"]["completionTime"])
         self.assertGreaterEqual(
@@ -176,11 +178,11 @@ spec:
         if apikey_path:
             kutil.create_apikey_secret(self.ns, "backup-apikey", apikey_path)
 
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2alpha1
 kind: MySQLBackup
 metadata:
-  name: dump-test-oci1
+  name: {self.oci_dump_name}
 spec:
   clusterName: mycluster
   backupProfileName: fulldump-oci
@@ -190,19 +192,19 @@ spec:
         # wait for backup to be done
         def check_mbk(l):
             for item in l:
-                if item["NAME"] == "dump-test-oci1" and item["STATUS"] == "Completed":
+                if item["NAME"] == self.oci_dump_name and item["STATUS"] == "Completed":
                     return item
             return None
 
         r = self.wait(kutil.ls_mbk, args=(self.ns,),
                       check=check_mbk, timeout=300)
-        if r["NAME"] == "dump-test-oci1":
+        if r["NAME"] == self.oci_dump_name:
             self.assertEqual(r["CLUSTER"], "mycluster")
             self.assertEqual(r["STATUS"], "Completed")
-            self.assertTrue(r["OUTPUT"].startswith("dump-test-oci1-"))
+            self.assertTrue(r["OUTPUT"].startswith(f"{self.oci_dump_name}-"))
 
         # check status in backup object
-        mbk = kutil.get_mbk(self.ns, "dump-test-oci1")
+        mbk = kutil.get_mbk(self.ns, self.oci_dump_name)
         self.assertTrue(mbk["status"]["startTime"])
         self.assertTrue(mbk["status"]["completionTime"])
         self.assertGreater(mbk["status"]["completionTime"],
@@ -246,8 +248,10 @@ spec:
         self.wait_pod_gone("mycluster-0")
         self.wait_ic_gone("mycluster")
 
-        kutil.delete_mbk(self.ns, "dump-test-oci1")
-        kutil.delete_mbk(self.ns, "dump-test1")
+        kutil.delete_mbk(self.ns, self.oci_dump_name)
+        kutil.delete_mbk(self.ns, self.dump_name)
+        kutil.delete_pvc(self.ns, self.backup_volume_name)
+        kutil.delete_pv(self.backup_volume_name)
 
         kutil.delete_secret(self.ns, "backup-apikey")
         kutil.delete_secret(self.ns, "mypwds")

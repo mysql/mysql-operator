@@ -150,5 +150,7 @@ spec:
         self.wait_ic_gone(self.cluster_name)
 
         kutil.delete_mbks(self.ns, self.disabled_dump_name_prefix)
+        kutil.delete_pvc(self.ns, self.disabled_volume_name)
+        kutil.delete_pv(self.disabled_volume_name)
 
         kutil.delete_secret(self.ns, "mypwds")

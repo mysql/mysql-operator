@@ -763,7 +763,8 @@ spec:
 
         apply_time = isotime()
 
-        kutil.delete_po(self.ns, "mycluster-0")
+        # it may take longer than the default timeout (failures on jenkins)
+        kutil.delete_po(self.ns, "mycluster-0", timeout=200)
 
         # extra timeout because the deletion of the 2nd pod will be blocked by
         # the busy handlers from the 1st deletion

@@ -716,7 +716,7 @@ spec:
         # wait for operator to notice them gone
         self.wait_ic("mycluster", "OFFLINE", 0)
 
-        self.wait_ic("mycluster", ["ONLINE_PARTIAL", "ONLINE_UNCERTAIN"], 1, timeout=300)
+        self.wait_ic("mycluster", ["ONLINE_PARTIAL", "ONLINE_UNCERTAIN"], 1, timeout=500)
 
         self.wait_ic("mycluster", ["ONLINE_PARTIAL", "ONLINE_UNCERTAIN"], 2, timeout=300)
         # wait for operator to restore it

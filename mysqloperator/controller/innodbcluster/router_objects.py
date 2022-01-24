@@ -25,10 +25,18 @@ metadata:
 spec:
   ports:
   - name: mysql
-    port: {spec.router_rwport}
+    port: {spec.mysql_port}
     protocol: TCP
     targetPort: {spec.router_rwport}
   - name: mysqlx
+    port: {spec.mysql_xport}
+    protocol: TCP
+    targetPort: {spec.router_rwxport}
+  - name: mysql-alternate
+    port: {spec.router_rwport}
+    protocol: TCP
+    targetPort: {spec.router_rwport}
+  - name: mysqlx-alternate
     port: {spec.router_rwxport}
     protocol: TCP
     targetPort: {spec.router_rwxport}

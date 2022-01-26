@@ -26,7 +26,10 @@ spec:
           image: {{ if .Values.image.registry }}{{ .Values.image.registry }}/{{- end }}{{- if .Values.image.repository }}{{ .Values.image.repository }}/{{ end }}{{ .Values.image.name }}:{{ .Values.image.tag | default .Chart.AppVersion }}
           imagePullPolicy: {{ required "image.pullPolicy is required" .Values.image.pullPolicy }}
           args: ["mysqlsh", "--log-level=@INFO", "--pym", "mysqloperator", "operator"]
-          env:{{ if .Values.envs.imagesDefaultRegistry }}
+          env:
+          - name: MYSQLSH_USER_CONFIG_HOME
+            value: /mysqlsh
+          {{ if .Values.envs.imagesDefaultRegistry }}
           - name: MYSQL_OPERATOR_DEFAULT_REPOSITORY
             value: {{ .Values.envs.imagesDefaultRegistry }}{{ if .Values.envs.imagesDefaultRepository}}/{{ .Values.envs.imagesDefaultRepository }}{{ end }}
           {{ else if .Values.envs.imagesDefaultRepository }}
@@ -37,4 +40,14 @@ spec:
           - name: MYSQL_OPERATOR_IMAGE_PULL_POLICY
             value: {{ .Values.envs.imagesPullPolicy }}
           {{ end }}
+          volumeMounts:
+            - name: mysqlsh-home
+              mountPath: /mysqlsh
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+      volumes:
+        - name: mysqlsh-home
+          emptyDir: {}
       serviceAccountName: mysql-operator-sa

@@ -14,7 +14,7 @@ DO NOT USE IN PRODUCTION.
 
 ## License
 
-Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+Copyright (c) 2020, 20222, Oracle and/or its affiliates.
 
 This is a release of MySQL Operator, a Kubernetes Operator for MySQL InnoDB Cluster
 
@@ -403,3 +403,4 @@ When promted enter the password used, when creating the Secret above.
 
 For more information please refer to the documentation at
 https://dev.mysql.com/doc/mysql-operator/en/
+

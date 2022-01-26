@@ -209,6 +209,8 @@ spec:
       - name: initmysql
         image: {spec.mysql_image}
         imagePullPolicy: {spec.mysql_image_pull_policy}
+        securityContext:
+          runAsUser: 27
         args: {mysql_argv}
         securityContext:
           runAsUser: 27
@@ -271,6 +273,8 @@ spec:
       - name: mysql
         image: {spec.mysql_image}
         imagePullPolicy: {spec.mysql_image_pull_policy}
+        securityContext:
+          runAsUser: 27
         args: {mysql_argv}
         securityContext:
           runAsUser: 27

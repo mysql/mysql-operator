@@ -9,7 +9,7 @@ from setup import config
 from setup.config import g_ts_cfg
 from utils.ote import get_driver
 from utils.ote.base import BaseEnvironment
-from utils import kutil
+from utils import kutil, ociutil
 from utils import tutil
 import unittest
 import os
@@ -161,6 +161,8 @@ if __name__ == '__main__':
             kutil.debug_kubectl = True
         elif arg == "--doperator":
             BaseEnvironment.opt_operator_debug_level = 3
+        elif arg == "--doci":
+            ociutil.debug_ocicli = True
         elif arg == "--mount-operator" or arg == "-O":
             opt_mount_operator_path = os.path.join(os.path.dirname(basedir), "mysqloperator")
         elif arg.startswith("--mount="):
@@ -179,12 +181,10 @@ if __name__ == '__main__':
             g_ts_cfg.operator_pull_policy=arg.partition("=")[-1]
         elif arg == "--skip-oci":
             g_ts_cfg.oci_skip = True
-        elif arg.startswith("--oci-backup-apikey-path="):
-            g_ts_cfg.oci_backup_apikey_path=arg.partition("=")[-1]
-        elif arg.startswith("--oci-restore-apikey-path="):
-            g_ts_cfg.oci_restore_apikey_path=arg.partition("=")[-1]
-        elif arg.startswith("--oci-backup-bucket="):
-            g_ts_cfg.oci_backup_bucket=arg.partition("=")[-1]
+        elif arg.startswith("--oci-config="):
+            g_ts_cfg.oci_config_path=arg.partition("=")[-1]
+        elif arg.startswith("--oci-bucket="):
+            g_ts_cfg.oci_bucket_name=arg.partition("=")[-1]
         elif arg.startswith("-"):
             print(f"Invalid option {arg}")
             sys.exit(1)

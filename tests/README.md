@@ -30,9 +30,8 @@ OPERATOR_TEST_PULL_POLICY
 OPERATOR_TEST_GR_IP_WHITELIST
 
 OPERATOR_TEST_SKIP_OCI
-OPERATOR_TEST_BACKUP_OCI_APIKEY_PATH
-OPERATOR_TEST_RESTORE_OCI_APIKEY_PATH
-OPERATOR_TEST_BACKUP_OCI_BUCKET
+OPERATOR_TEST_OCI_CONFIG_PATH
+OPERATOR_TEST_OCI_BUCKET
 
 Ad 2) command-line options
 --env=[k3d|minikube]
@@ -84,6 +83,9 @@ Ad 2) command-line options
 --doperator
     set the operator debug level to 3
 
+--doci
+    enable diagnostics for oci-cli operations
+
 --mount-operator|-O
     mount operator sources in the mysql-operator pod, very useful to test patches without building an image
     the sources are drawn from
@@ -122,10 +124,19 @@ mirrors:
 --skip-oci
     force to skip all OCI tests even if OCI is properly configured, by default it is false
 
---oci-backup-apikey-path
---oci-restore-apikey-path
---oci-backup-bucket
-    used to configure OCI, by default all are empty, which results in skipping tests related to OCI
+--oci-config
+    path to an OCI config file
+    to run OCI tests, it should contain three profiles:
+    a) BACKUP - it has permissions to store a backup into the bucket
+    b) RESTORE - it has permissions to restore a backup from the bucket
+    c) DELETE - it has permissions to delete items from the bucket, after a given OCI-related test
+        is completed (at tear down)
+    under the hood, it may be the same profile or three different profiles with more fine-grained permissions
+    by default the path is empty, then all OCI-related tests are skipped
+
+--oci-bucket
+    name of an OCI bucket used to perform backup/restore tests
+    by default it is empty, then all OCI-related tests are skipped
 
 arguments:
     gtest style test filter like

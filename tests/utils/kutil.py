@@ -721,27 +721,35 @@ data:
     apply(ns, yaml)
 
 
-def create_apikey_secret(ns, name, path, config_name = "config", profile_name = "DEFAULT", privatekey = "key.pem"):
+def adjust_key_file_path(cfg_path, cfg_key_file_path):
+    cfg_key_file_path = os.path.expanduser(cfg_key_file_path)
+    if os.path.isabs(cfg_key_file_path):
+        return cfg_key_file_path
+
+    # kubectl doesn't like relative paths
+    cfg_dir = os.path.dirname(cfg_path)
+    key_file_path = os.path.join(cfg_dir, cfg_key_file_path)
+
+    return pathlib.Path(key_file_path).absolute()
+
+def create_apikey_secret(ns, name, cfg_path, profile_name):
     import configparser
     ini_parser = configparser.ConfigParser()
-    ini_parser.read(f"{path}/{config_name}")
+    ini_parser.read(cfg_path)
     if not profile_name in ini_parser:
         raise Exception(f"{profile_name} profile not found")
 
-    # kubectl doesn't like relative paths
-    path = pathlib.Path(path).expanduser().absolute()
-
-    if not os.path.isfile(f"{path}/{privatekey}"):
-        raise Exception(f"{path}/{privatekey} doesn't exist")
-
-
     KEY_FILE_INI_OPTION_NAME = "key_file"
     options = [ "generic", name, "-n", ns]
-    options.append(f"--from-file=privatekey={path}/{privatekey}")
 
     for ini_key, ini_value in ini_parser[profile_name].items():
         if ini_key != KEY_FILE_INI_OPTION_NAME:
             options.append(f"--from-literal={ini_key}={ini_value}")
+        else:
+            key_file_path = adjust_key_file_path(cfg_path, ini_value)
+            if not os.path.isfile(key_file_path):
+                raise Exception(f"{key_file_path} doesn't exist")
+            options.append(f"--from-file=privatekey={key_file_path}")
 
     kubectl("create", "secret", options)
 

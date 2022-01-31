@@ -492,7 +492,7 @@ def on_pod_event(event, body: Body, logger: Logger, **kwargs):
                 f"{c.name}={'ready' if c.ready else 'not-ready'}" for c in pod.status.container_statuses]
             conditions = [
                 f"{c.type}={c.status}" for c in pod.status.conditions]
-            logger.info(f"POD EVENT {event}: pod={pod.name} containers_ready={ready} deleting={pod.deleting} phase={pod.phase} member_info={member_info} restarts={mysql_restarts} containers={containers} conditions={conditions}")
+            logger.debug(f"POD EVENT {event}: pod={pod.name} containers_ready={ready} deleting={pod.deleting} phase={pod.phase} member_info={member_info} restarts={mysql_restarts} containers={containers} conditions={conditions}")
 
             cluster = pod.get_cluster()
             if not cluster:

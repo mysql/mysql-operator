@@ -26,7 +26,7 @@ def main(argv):
 
     myconfig.config_from_env()
 
-    kopf.configure(verbose=True if myconfig.debug > 1 else False)
+    kopf.configure(verbose=True if myconfig.debug >= 1 else False)
 
     loop = asyncio.get_event_loop()
 

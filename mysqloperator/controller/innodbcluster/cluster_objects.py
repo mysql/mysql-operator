@@ -149,6 +149,7 @@ metadata:
 spec:
   serviceName: {spec.name}-instances
   replicas: {spec.instances}
+  podManagementPolicy: Parallel
   selector:
     matchLabels:
       component: mysqld

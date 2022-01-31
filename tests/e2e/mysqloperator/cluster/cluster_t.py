@@ -281,7 +281,7 @@ spec:
 
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
-            reason="Rebooting", msg="Restoring OFFLINE cluster")
+            reason="Rebooting", msg="Restoring OFFLINE cluster through pod 0")
 
         # ensure persisted config didn't change after recovery
         config = json.loads(kutil.cat(self.ns, ("mycluster-0", "mysql"),
@@ -373,7 +373,7 @@ spec:
 
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
-            reason="Rebooting", msg="Restoring OFFLINE cluster")
+            reason="Rebooting", msg="Restoring OFFLINE cluster through pod 0")
 
         check_all(self, self.ns, "mycluster", instances=1, primary=0)
 
@@ -404,7 +404,7 @@ spec:
 
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
-            reason="Rebooting", msg="Restoring OFFLINE cluster")
+            reason="Rebooting", msg="Restoring OFFLINE cluster through pod 0")
 
         check_all(self, self.ns, "mycluster", instances=1, primary=0)
 
@@ -431,7 +431,7 @@ spec:
 
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
-            reason="Rebooting", msg="Restoring OFFLINE cluster")
+            reason="Rebooting", msg="Restoring OFFLINE cluster through pod 0")
 
         check_all(self, self.ns, "mycluster", instances=1, primary=0)
 
@@ -730,7 +730,7 @@ spec:
         # TODO
 
         # wait for operator to restore it
-        self.wait_ic("mycluster", "ONLINE", 3)
+        self.wait_ic("mycluster", "ONLINE", 3, timeout=300)
 
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
@@ -756,6 +756,9 @@ spec:
         check_all(self, self.ns, "mycluster", instances=3, primary=2)
 
     def test_4_recover_crash_3_of_3(self):
+        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0:
+            pod0_uuid = s0.query_sql("select @@server_uuid").fetch_one()[0]
+
         # kill mysqld (pid 1)
         kutil.kill(self.ns, ("mycluster-0", "mysql"), 11, 1)
         kutil.kill(self.ns, ("mycluster-1", "mysql"), 11, 1)
@@ -764,13 +767,49 @@ spec:
         # wait for operator to notice them gone
         self.wait_ic("mycluster", "OFFLINE", 0)
 
-        self.wait_ic("mycluster", ["ONLINE_PARTIAL", "ONLINE_UNCERTAIN"], 1, timeout=500)
-
-        self.wait_ic("mycluster", ["ONLINE_PARTIAL", "ONLINE_UNCERTAIN"], 2, timeout=300)
         # wait for operator to restore it
         self.wait_ic("mycluster", "ONLINE", num_online=3, timeout=300)
 
-        check_all(self, self.ns, "mycluster", instances=3, primary=0)
+        check_all(self, self.ns, "mycluster", instances=3)
+
+        # switch primary back to -0
+        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0:
+            s0.exec_sql(f"do group_replication_set_as_primary('{pod0_uuid}')")
+
+    def test_4_recover_crash_3_of_3_changed_primary(self):
+        """
+        Tests the case where a reboot is necessary but the PRIMARY used to be
+        a member other than -0. We need to ensure the reboot started with that
+        member that was the PRIMARY.
+        """
+
+        # generate transactions at mycluster-1 while the other members are stopped
+        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0,\
+            mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s1,\
+            mutil.MySQLPodSession(self.ns, "mycluster-2", "root", "sakila") as s2:
+            pod0_uuid = s0.query_sql("select @@server_uuid").fetch_one()[0]
+
+            s0.exec_sql("stop group_replication")
+            s2.exec_sql("stop group_replication")
+            s1.exec_sql("create schema something_something")
+
+        # kill mysqld (pid 1)
+        # (vary the scenario a little killing -2 since GR is stopped anyway)
+        kutil.kill(self.ns, ("mycluster-0", "mysql"), 11, 1)
+        kutil.kill(self.ns, ("mycluster-1", "mysql"), 11, 1)
+
+        # wait for operator to notice them gone
+        self.wait_ic("mycluster", "OFFLINE", num_online=0)
+
+        # wait for operator to restore it
+        self.wait_ic("mycluster", "ONLINE", num_online=3, timeout=300)
+
+        check_all(self, self.ns, "mycluster", instances=3, primary=1)
+
+        # switch primary back to -0
+        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0:
+            s0.exec_sql(f"do group_replication_set_as_primary('{pod0_uuid}')")
+
 
     def test_4_recover_delete_1_of_3(self):
         # delete the PRIMARY
@@ -819,7 +858,7 @@ spec:
         kutil.delete_po(self.ns, "mycluster-1", timeout=200)
 
         # wait for operator to restore everything
-        self.wait_ic("mycluster", "ONLINE", 3)
+        self.wait_ic("mycluster", "ONLINE", 3, timeout=300)
 
         # the pods were deleted, which means they would cleanly shutdown and
         # removed from the cluster
@@ -967,7 +1006,7 @@ spec:
         # TODO
 
         # wait for operator to restore everything
-        self.wait_ic("mycluster", "ONLINE", num_online=3)
+        self.wait_ic("mycluster", "ONLINE", num_online=3, timeout=300)
 
         check_all(self, self.ns, "mycluster", instances=3, primary=None)
 
@@ -1008,7 +1047,7 @@ spec:
         self.wait_ic("mycluster", "ONLINE", num_online=3, timeout=300, probe_time=initial_probe_time)
 
         all_pods = check_all(self, self.ns, "mycluster",
-                             instances=3, primary=0)
+                             instances=3)
         check_group.check_data(self, all_pods)
 
     def test_9_destroy(self):

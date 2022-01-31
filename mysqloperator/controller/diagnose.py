@@ -58,6 +58,7 @@ class InstanceStatus:
     is_primary: Optional[bool] = None
     in_quorum: Optional[bool] = None
     peers: Optional[dict] = None
+    gtid_executed: Optional[str] = None
 
     def __repr__(self) -> str:
         return f"InstanceStatus: pod={self.pod} status={self.status} connect_error={self.connect_error} view_id={self.view_id} is_primary={self.is_primary} in_quorum={self.in_quorum} peers={self.peers}"
@@ -100,6 +101,8 @@ def diagnose_instance(pod: MySQLPod, logger, dba: 'Dba' = None) -> InstanceStatu
 
     cluster = None
     if dba:
+        status.gtid_executed = dba.session.run_sql("select @@gtid_executed").fetch_one()[0]
+
         try:
             cluster = dba.get_cluster(None, {"connectToPrimary": False})
         except mysqlsh.Error as e:
@@ -436,6 +439,7 @@ class ClusterStatus:
     primary: Optional[MySQLPod] = None
     online_members: List[MySQLPod] = []
     quorum_candidates: Optional[list] = None
+    gtid_executed: Dict[int,str] = {}
 
 
 def do_diagnose_cluster(cluster: InnoDBCluster, logger) -> ClusterStatus:
@@ -464,6 +468,7 @@ def do_diagnose_cluster(cluster: InnoDBCluster, logger) -> ClusterStatus:
     online_pods = set()
     offline_pods = set()
     unsure_pods = set()
+    gtid_executed = {}
 
     online_pod_statuses = {}
     for pod in all_pods:
@@ -473,7 +478,10 @@ def do_diagnose_cluster(cluster: InnoDBCluster, logger) -> ClusterStatus:
 #            continue
         status = diagnose_instance(pod, logger)
         logger.info(
-            f"diag instance {pod} --> {status.status} quorum={status.in_quorum}")
+            f"diag instance {pod} --> {status.status} quorum={status.in_quorum} gtid_executed={status.gtid_executed}")
+
+        gtid_executed[pod.index] = status.gtid_executed
+
         if status.status == InstanceDiagStatus.UNKNOWN:
             unsure_pods.add(pod)
             all_member_pods.add(pod)
@@ -484,10 +492,12 @@ def do_diagnose_cluster(cluster: InnoDBCluster, logger) -> ClusterStatus:
             online_pod_statuses[pod.endpoint] = status
             online_pods.add(pod)
             all_member_pods.add(pod)
-        elif status.status != InstanceDiagStatus.NOT_MANAGED:
-            all_member_pods.add(pod)
+        elif status.status == InstanceDiagStatus.NOT_MANAGED:
+            pass
         else:
-            logger.debug(f"{pod} = {status.status}")
+            all_member_pods.add(pod)
+            logger.error(f"Internal error processing pod {pod}")
+            assert False
 
     logger.info(
         f"{cluster.name}: all={all_pods}  members={all_member_pods}  online={online_pods}  offline={offline_pods}  unsure={unsure_pods}")
@@ -495,6 +505,8 @@ def do_diagnose_cluster(cluster: InnoDBCluster, logger) -> ClusterStatus:
     assert online_pods.union(offline_pods, unsure_pods) == all_member_pods
 
     cluster_status = ClusterStatus()
+
+    cluster_status.gtid_executed = gtid_executed
 
     if online_pods:
         active_partitions, blocked_partitions = find_group_partitions(
@@ -560,7 +572,7 @@ def diagnose_cluster(cluster: InnoDBCluster, logger) -> ClusterStatus:
     Returns (primary_pod, state)
 
     Notes:
-    - we can only give a certain diagnostic if we can actually connect to and 
+    - we can only give a certain diagnostic if we can actually connect to and
     query from all pods
     - network related connectivity errors are not the same as server side errors,
     because server side errors (auth error, too many connections etc) mean we were

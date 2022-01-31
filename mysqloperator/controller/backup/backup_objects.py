@@ -6,6 +6,7 @@
 from typing import List
 from logging import Logger
 import yaml
+import kopf
 from copy import deepcopy
 from .backup_api import BackupProfile, BackupSchedule, MySQLBackupSpec
 from .. import utils, config, consts
@@ -271,6 +272,7 @@ def update_schedules(spec: InnoDBClusterSpec, old: dict, new: dict, logger: Logg
             cj_name = schedule_cron_job_name(cluster_name, add_schedule_name)
             logger.info(f"backup_objects.update_schedules: adding schedule {cj_name} in {namespace}")
             cronjob = patch_cron_template_for_backup_schedule(cj_template, spec.name, add_schedule_obj)
+            kopf.adopt(cronjob)
             api_cron_job.create_namespaced_cron_job(namespace=namespace, body=cronjob)
 
     if len(diff['modified']):

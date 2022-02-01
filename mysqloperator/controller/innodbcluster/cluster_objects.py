@@ -210,6 +210,8 @@ spec:
         image: {spec.mysql_image}
         imagePullPolicy: {spec.mysql_image_pull_policy}
         args: {mysql_argv}
+        securityContext:
+          runAsUser: 27
         env:
         - name: MYSQL_INITIALIZE_ONLY
           value: "1"
@@ -239,6 +241,9 @@ spec:
         image: {spec.operator_image}
         imagePullPolicy: {spec.sidecar_image_pull_policy}
         command: ["mysqlsh", "--pym", "mysqloperator", "sidecar"]
+        securityContext:
+          runAsUser: 27
+          fsgroup: 27
         env:
         - name: MY_POD_NAME
           valueFrom:
@@ -267,6 +272,8 @@ spec:
         image: {spec.mysql_image}
         imagePullPolicy: {spec.mysql_image_pull_policy}
         args: {mysql_argv}
+        securityContext:
+          runAsUser: 27
         lifecycle:
           preStop:
             exec:

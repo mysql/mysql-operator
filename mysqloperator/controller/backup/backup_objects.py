@@ -60,25 +60,25 @@ metadata:
 spec:
   template:
     spec:
-      securityContext:
-        allowPrivilegeEscalation: false
-        privileged: false
-        readOnlyRootFilesystem: true
-        runAsNonRoot: true
       containers:
       - name: operator-backup-job
         image: {spec.operator_image}
         imagePullPolicy: {spec.operator_image_pull_policy}
         command: ["mysqlsh", "--pym", "mysqloperator", "backup", "execute-backup", "{spec.namespace}", "{spec.name}", "{jobname}", "/mnt/storage"]
+        env:
+        - name: MYSQLSH_USER_CONFIG_HOME
+          value: /mysqlsh
+        volumeMounts:
+        - name: shellhome
+          mountPath: /mysqlsh
+      volumes:
+      - name: shellhome
+        emptyDir: {{}}
       restartPolicy: Never
       terminationGracePeriodSeconds: 60
 {utils.indent(spec.image_pull_secrets, 6)}
 {utils.indent(spec.service_account_name, 6)}
-      env:
-      - name: MYSQLSH_USER_CONFIG_HOME
-        value: /tmp/mysqlsh
 """
-
     job = yaml.safe_load(tmpl)
 
     spec.add_to_pod_spec(job["spec"]["template"], "operator-backup-job")
@@ -180,6 +180,17 @@ spec:
             image: {spec.operator_image}
             imagePullPolicy: {spec.operator_image_pull_policy}
             command: ["mysqlsh", "--pym", "mysqloperator", "backup", "create-backup-object", "{spec.namespace}", "{spec.name}"]
+            securityContext:
+              runAsUser: 27
+            env:
+            - name: MYSQLSH_USER_CONFIG_HOME
+              value: /mysqlsh
+            volumeMounts:
+            - name: shellhome
+              mountPath: /mysqlsh
+          volumes:
+          - name: shellhome
+            emptyDir: {{}}
           restartPolicy: Never
           terminationGracePeriodSeconds: 60
 {utils.indent(spec.image_pull_secrets, 10)}

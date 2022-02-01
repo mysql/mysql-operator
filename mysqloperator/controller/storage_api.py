@@ -25,6 +25,12 @@ class PVCStorageSpec:
         # /mnt/storage is passed as parameter to the backup_main.py
         patch = f"""
 spec:
+    securityContext:
+      runAsUser: 0
+#      allowPrivilegeEscalation: false
+#      privileged: false
+#      readOnlyRootFilesystem: true
+#      runAsNonRoot: false
     containers:
     - name: {container_name}
       env:
@@ -59,6 +65,13 @@ class OCIOSStorageSpec:
         # The secrets volume is not readOnly because we need to write the config file into it
         patch = f"""
 spec:
+    securityContext:
+      allowPrivilegeEscalation: false
+      privileged: false
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      runAsUser: 27
+      fsGroup: 27
     containers:
     - name: {container_name}
       env:
@@ -88,7 +101,7 @@ spec:
             name: {self.ociCredentials}
             key: passphrase
       - name: OCI_CONFIG_NAME
-        value: "/oci_config"
+        value: "/mysqlsh/oci_config"
       - name: OCI_API_KEY_NAME
         value: "/.oci/privatekey.pem"
       volumeMounts:

@@ -110,8 +110,9 @@ def load_dump(session: 'ClassicSession', cluster: InnoDBCluster, pod: MySQLPod, 
 
     def create_oci_config(oci_credentials: dict) -> dict:
         import configparser
-        oci_config_file = "/.oci_config"
-        oci_privatekey_file = "/.oci_privatekey.pem"
+        # MYSQLSH_USER_CONFIG_HOME is the only writable place
+        oci_config_file     = f"{os.getenv('MYSQLSH_USER_CONFIG_HOME')}/oci_config"
+        oci_privatekey_file = f"{os.getenv('MYSQLSH_USER_CONFIG_HOME')}/privatekey.pem"
         privatekey = None
         config_profile = "DEFAULT"
         config = configparser.ConfigParser()

@@ -133,6 +133,7 @@ spec:
             - name: tmpdir
               mountPath: /tmp
           securityContext:
+            runAsUser: 2
             allowPrivilegeEscalation: false
             privileged: false
             readOnlyRootFilesystem: true

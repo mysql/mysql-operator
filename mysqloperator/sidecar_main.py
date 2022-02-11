@@ -475,7 +475,7 @@ def reload_tls(logger: Logger) -> None:
 
 
 @kopf.on.create("", "v1", "secrets") # type: ignore
-def on_secret_create(name: str, namespace: str, logger: Logger, **kwargs):
+def on_secret_create(name: str, namespace: str, spec, logger: Logger, **kwargs):
     global g_cluster_name
 
     my_namespace = cast(str, os.getenv("MY_POD_NAMESPACE"))

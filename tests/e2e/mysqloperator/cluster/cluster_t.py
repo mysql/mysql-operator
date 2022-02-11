@@ -3,6 +3,7 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
+from asyncio import subprocess
 from utils.auxutil import isotime
 from utils import tutil
 from utils import kutil
@@ -227,7 +228,15 @@ spec:
             access = [line for line in out.split(b"\n") if line.startswith(b"Access")][0].strip().decode("utf-8")
             self.assertEqual(f"Access: (0555/dr-xr-xr-x)  Uid: ({uid:5}/{user:>8})   Gid: ({uid:5}/{user:>8})", access)
 
-        check_pod(["mycluster-0", "mysql"], 27, "mysql", "mysqld")
+        def check_mysql_pod(pod, uid, user, process):
+            check_pod(pod, uid, user, process)
+
+            out = kutil.execp(self.ns, pod, ["stat", "-c%n %U %a", "/var/lib/mysql"])
+            line = out.strip().decode("utf-8")
+            self.assertEqual(f"/var/lib/mysql {user} 700", line)
+
+
+        check_mysql_pod(["mycluster-0", "mysql"], 27, "mysql", "mysqld")
 
         p = kutil.ls_po(self.ns, pattern="mycluster-router-.*")[0]["NAME"]
         check_pod(p, 999, "mysqlrouter", "mysqlrouter")

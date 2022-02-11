@@ -186,10 +186,21 @@ spec:
         runAsGroup: 27
         fsGroup: 27
       initContainers:
+      - name: fixdatadir
+        image: {spec.operator_image}
+        imagePullPolicy: {spec.sidecar_image_pull_policy}
+        command: ["bash", "-c", "chown 27:27 /var/lib/mysql && chmod 0700 /var/lib/mysql"]
+        securityContext:
+          runAsUser: 0
+        volumeMounts:
+        - name: datadir
+          mountPath: /var/lib/mysql
       - name: initconf
         image: {spec.operator_image}
         imagePullPolicy: {spec.sidecar_image_pull_policy}
         command: ["mysqlsh", "--log-level=@INFO", "--pym", "mysqloperator", "init"]
+        securityContext:
+          runAsUser: 27
         env:
         - name: MY_POD_NAME
           valueFrom:
@@ -213,8 +224,6 @@ spec:
         image: {spec.mysql_image}
         imagePullPolicy: {spec.mysql_image_pull_policy}
         args: {mysql_argv}
-        securityContext:
-          runAsUser: 27
         env:
         - name: MYSQL_INITIALIZE_ONLY
           value: "1"
@@ -229,7 +238,7 @@ spec:
         - name: datadir
           mountPath: /var/lib/mysql
         - name: rundir
-          mountPath: /var/run/mysql
+          mountPath: /var/run/mysqld
         - name: mycnfdata
           mountPath: /etc/my.cnf.d
           subPath: my.cnf.d
@@ -258,12 +267,12 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         - name: MYSQL_UNIX_PORT
-          value: /var/run/mysql/mysql.sock
+          value: /var/run/mysqld/mysql.sock
         - name: MYSQLSH_USER_CONFIG_HOME
           value: /mysqlsh
         volumeMounts:
         - name: rundir
-          mountPath: /var/run/mysql
+          mountPath: /var/run/mysqld
         - name: mycnfdata
           mountPath: /etc/my.cnf.d
           subPath: my.cnf.d
@@ -308,7 +317,7 @@ spec:
           timeout: 5
         env:
         - name: MYSQL_UNIX_PORT
-          value: /var/run/mysql/mysql.sock
+          value: /var/run/mysqld/mysql.sock
 {utils.indent(spec.extra_env, 8)}
         ports:
         - containerPort: {spec.mysql_port}
@@ -321,7 +330,7 @@ spec:
         - name: datadir
           mountPath: /var/lib/mysql
         - name: rundir
-          mountPath: /var/run/mysql
+          mountPath: /var/run/mysqld
         - name: mycnfdata
           mountPath: /etc/my.cnf.d
           subPath: my.cnf.d
@@ -475,7 +484,7 @@ data:
   initdb-localroot.sql: |
     set sql_log_bin=0;
     # Create socket authenticated localroot@localhost account
-    CREATE USER localroot@localhost IDENTIFIED WITH auth_socket AS 'daemon';
+    CREATE USER localroot@localhost IDENTIFIED WITH auth_socket AS 'mysql';
     GRANT ALL ON *.* TO localroot@localhost WITH GRANT OPTION;
     GRANT PROXY ON ''@'' TO localroot@localhost WITH GRANT OPTION;
     # Drop the default account created by the docker image
@@ -500,15 +509,15 @@ data:
     server_id=@@SERVER_ID@@
     report_host=@@HOSTNAME@@
     datadir=/var/lib/mysql
-    loose_mysqlx_socket=/var/run/mysql/mysqlx.sock
-    socket=/var/run/mysql/mysql.sock
+    loose_mysqlx_socket=/var/run/mysqld/mysqlx.sock
+    socket=/var/run/mysqld/mysql.sock
     local-infile=1
 
     [mysql]
-    socket=/var/run/mysql/mysql.sock
+    socket=/var/run/mysqld/mysql.sock
 
     [mysqladmin]
-    socket=/var/run/mysql/mysql.sock
+    socket=/var/run/mysqld/mysql.sock
 
     !includedir /etc/my.cnf.d
 

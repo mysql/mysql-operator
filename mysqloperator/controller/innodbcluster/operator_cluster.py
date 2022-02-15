@@ -121,7 +121,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
 
             print("5. Cluster ServiceAccount")
             if not ignore_404(cluster.get_service_account):
-                print("\Preparing...")
+                print("\tPreparing...")
                 sa = cluster_objects.prepare_service_account(icspec)
                 kopf.adopt(sa)
                 print("\tCreating...")
@@ -130,7 +130,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
 
             print("6. Cluster RoleBinding")
             if not ignore_404(cluster.get_role_binding):
-                print("\Preparing...")
+                print("\tPreparing...")
                 rb = cluster_objects.prepare_role_binding(icspec)
                 kopf.adopt(rb)
                 print("\tCreating...")

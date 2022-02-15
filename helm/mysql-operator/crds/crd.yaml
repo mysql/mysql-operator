@@ -25,9 +25,17 @@ spec:
               properties:
                 secretName:
                   type: string
-                  description: "Name of a Secret containing root/default account password"
+                  description: "Name of a generic type Secret containing root/default account password"
+                tlsCASecretName:
+                  type: string
+                  description: "Name of a generic type Secret containing CA (ca.pem) and optional CRL (crl.pem) to be used for SSL"
                 tlsSecretName:
                   type: string
+                  description: "Name of a tls type Secret containing Server certificate and private key to be used for SSL"
+                tlsUseSelfSigned:
+                  type: boolean
+                  default: false
+                  description: "Enables use of self-signed TLS certificates, reducing or disabling TLS based security verifications"
                 version:
                   type: string
                   pattern: '^\d+\.\d+\.\d+(-.+)?'
@@ -82,7 +90,10 @@ spec:
                       type: integer
                       minimum: 0
                       default: 0
-                      description: "Number of MySQL Router instances to deploy"
+                      description: "Number of MySQL router instances to deploy"
+                    tlsSecretName:
+                      type: string
+                      description: "Name of a tls type Secret containing Router certificate and private key to be used for SSL"
                     version:
                       type: string
                       pattern: '^\d+\.\d+\.\d+(-.+)?'

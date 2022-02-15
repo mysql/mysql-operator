@@ -119,7 +119,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 api_core.create_namespaced_service(
                     namespace=namespace, body=service)
 
-            print("Cluster ServiceAccount")
+            print("5. Cluster ServiceAccount")
             if not ignore_404(cluster.get_service_account):
                 print("\Preparing...")
                 sa = cluster_objects.prepare_service_account(icspec)
@@ -128,7 +128,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 api_core.create_namespaced_service_account(
                     namespace=namespace, body=sa)
 
-            print("Cluster RoleBinding")
+            print("6. Cluster RoleBinding")
             if not ignore_404(cluster.get_role_binding):
                 print("\Preparing...")
                 rb = cluster_objects.prepare_role_binding(icspec)
@@ -137,7 +137,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 api_rbac.create_namespaced_role_binding(
                     namespace=namespace, body=rb)
 
-            print("5. Cluster StatefulSet")
+            print("7. Cluster StatefulSet")
             if not ignore_404(cluster.get_stateful_set):
                 print("\tPreparing...")
                 statefulset = cluster_objects.prepare_cluster_stateful_set(
@@ -147,7 +147,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 api_apps.create_namespaced_stateful_set(
                     namespace=namespace, body=statefulset)
 
-            print("6. Cluster PodDisruptionBudget")
+            print("8. Cluster PodDisruptionBudget")
             if not ignore_404(cluster.get_disruption_budget):
                 print("\tPreparing...")
                 disruption_budget = cluster_objects.prepare_cluster_pod_disruption_budget(
@@ -157,7 +157,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 api_policy.create_namespaced_pod_disruption_budget(
                     namespace=namespace, body=disruption_budget)
 
-            print("7. Router Service")
+            print("9. Router Service")
             if not ignore_404(cluster.get_router_service):
                 print("\tPreparing...")
                 router_service = router_objects.prepare_router_service(icspec)
@@ -166,7 +166,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 api_core.create_namespaced_service(
                     namespace=namespace, body=router_service)
 
-            print("8. Router Deployment")
+            print("10. Router Deployment")
             if not ignore_404(cluster.get_router_deployment):
                 print("\tPreparing...")
                 if icspec.router.instances > 0:
@@ -177,7 +177,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                     api_apps.create_namespaced_deployment(
                         namespace=namespace, body=router_deployment)
 
-            print("9. Backup Secrets")
+            print("11. Backup Secrets")
             if not ignore_404(cluster.get_backup_account):
                 print("\tPreparing...")
                 secret = backup_objects.prepare_backup_secrets(icspec)

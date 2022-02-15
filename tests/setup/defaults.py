@@ -63,3 +63,7 @@ OCI_RESTORE_APIKEY_PATH = os.getenv(
 
 OCI_BACKUP_BUCKET = os.getenv(
     "OPERATOR_TEST_BACKUP_OCI_BUCKET", default=None)
+
+# k8s
+K8S_CLUSTER_NAME = os.getenv(
+    "OPERATOR_TEST_K8S_CLUSTER_NAME", default="ote-mysql")

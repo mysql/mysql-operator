@@ -40,6 +40,10 @@ class Config:
     oci_restore_apikey_path = defaults.OCI_RESTORE_APIKEY_PATH
     oci_backup_bucket = defaults.OCI_BACKUP_BUCKET
 
+    # k8s
+    k8s_cluster = defaults.K8S_CLUSTER_NAME
+    k8s_context = None
+
     @property
     def operator_shell_version_num(self):
         a,b,c = self.operator_version_tag.split("-")[0].split(".")

@@ -16,6 +16,7 @@ import re
 import yaml
 import base64
 import pathlib
+from setup.config import g_ts_cfg
 
 logger = logging.getLogger("kutil")
 
@@ -86,9 +87,8 @@ def split_table(s):
     splitter = TableSplitter(lines[0])
     return [dict(zip(splitter.columns, splitter.split(l))) for l in lines[1:]]
 
-
 def kubectl(cmd, rsrc=None, args=None, timeout=None, check=True, ignore=[]):
-    argv = ["kubectl", cmd]
+    argv = ["kubectl", f"--context={g_ts_cfg.k8s_context}", cmd]
     if rsrc:
         argv.append(rsrc)
     if args:
@@ -117,7 +117,7 @@ def kubectl(cmd, rsrc=None, args=None, timeout=None, check=True, ignore=[]):
 
 
 def kubectl_popen(cmd, args=[]):
-    argv = ["kubectl", cmd] + args
+    argv = ["kubectl", f"--context={g_ts_cfg.k8s_context}", cmd] + args
 
     if debug_kubectl:
         logger.debug("popen %s", " ".join(argv))
@@ -126,7 +126,7 @@ def kubectl_popen(cmd, args=[]):
 
 
 def watch(ns, rsrc, name, fn, timeout, format=None):
-    argv = ["kubectl", "get", rsrc, "-n", ns, "--watch", "-o%s" % format]
+    argv = ["kubectl", f"--context={g_ts_cfg.k8s_context}", "get", rsrc, "-n", ns, "--watch", "-o%s" % format]
     if name:
         argv.append(name)
 
@@ -178,7 +178,7 @@ def watch(ns, rsrc, name, fn, timeout, format=None):
 
 
 def feed_kubectl(input, cmd, rsrc=None, args=None, check=True):
-    argv = ["kubectl", cmd]
+    argv = ["kubectl", f"--context={g_ts_cfg.k8s_context}", cmd]
     if rsrc:
         argv.append(rsrc)
     if args:

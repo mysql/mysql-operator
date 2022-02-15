@@ -1,5 +1,5 @@
-#!/usr/bin/env mysqlsh --py -f
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+#!/usr/bin/python3
+# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -22,7 +22,7 @@ def setup_k8s():
 
     try:
         # outside k8s
-        config.load_kube_config()
+        config.load_kube_config(context=g_ts_cfg.k8s_context)
     except config.config_exception.ConfigException:
         try:
             # inside a k8s pod
@@ -137,6 +137,8 @@ if __name__ == '__main__':
             opt_kube_version = arg.split("=")[-1]
         elif arg.startswith("--nodes="):
             opt_nodes = int(arg.split("=")[-1])
+        elif arg.startswith("--cluster="):
+            g_ts_cfg.k8s_cluster = arg.partition("=")[-1]
         elif arg == "--verbose" or arg == "-v":
             opt_verbose = True
         elif arg == "-vv":
@@ -185,6 +187,8 @@ if __name__ == '__main__':
             g_ts_cfg.oci_restore_apikey_path=arg.partition("=")[-1]
         elif arg.startswith("--oci-backup-bucket="):
             g_ts_cfg.oci_backup_bucket=arg.partition("=")[-1]
+        elif arg.startswith("--suite="):
+            suite_path=arg.partition("=")[-1]
         elif arg.startswith("-"):
             print(f"Invalid option {arg}")
             sys.exit(1)
@@ -194,6 +198,11 @@ if __name__ == '__main__':
             opt_exclude += exc
 
     g_ts_cfg.commit()
+
+    if suite_path:
+        with open(suite_path, 'r') as f:
+            opt_include += f.read().splitlines()
+    print(f"opt_include: {opt_include}")
 
     image_dir = os.getenv("DOCKER_IMAGE_DIR") or "/tmp/docker-images"
     images = ["mysql-server:8.0.25", "mysql-router:8.0.25",

@@ -73,6 +73,9 @@ class Config:
     def get_router_image(self):
         return f"{self.get_image_registry_repository()}/{self.router_image_name}:{self.version_tag}"
 
+    def get_old_router_image(self):
+        return f"{self.get_image_registry_repository()}/{self.router_image_name}:{self.get_old_version_tag()}"
+
 
 # test-suite configuration
 g_ts_cfg = Config()

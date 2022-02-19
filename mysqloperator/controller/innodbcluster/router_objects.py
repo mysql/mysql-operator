@@ -88,7 +88,8 @@ def prepare_router_deployment(cluster: InnoDBCluster, *,
     if not spec.tlsUseSelfSigned:
         router_bootstrap_options += ["--server-ssl-ca=/router-ssl/ca.pem",
             "--server-ssl-verify=VERIFY_IDENTITY",
-            "--ssl-ca=/router-ssl/ca.pem"]
+            "--ssl-ca=/router-ssl/ca.pem"
+            ]
         if cluster.router_tls_exists():
             router_tls_exists = True
             router_bootstrap_options += ["--client-ssl-cert=/router-ssl/tls.crt",
@@ -188,7 +189,11 @@ spec:
 
     return deployment
 
-
+def get_size(cluster: InnoDBCluster) -> int:
+    deploy = cluster.get_router_deployment()
+    if deploy:
+        return deploy.spec.replicas
+    return None
 
 def update_size(cluster: InnoDBCluster, size: int, logger: Logger) -> None:
     deploy = cluster.get_router_deployment()

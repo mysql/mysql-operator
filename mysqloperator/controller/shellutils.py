@@ -257,8 +257,10 @@ def get_valid_cluster_handle(cluster, logger):
 
 
 def query_membership_info(session):
-    row = session.run_sql("""SELECT m.member_id, m.member_role, m.member_state, s.view_id, m.member_version
-    FROM performance_schema.replication_group_members m 
+    row = session.run_sql("""SELECT m.member_id, m.member_role, m.member_state, s.view_id, m.member_version,
+            (SELECT count(*) FROM performance_schema.replication_group_members) as member_count,
+            (SELECT count(*) FROM performance_schema.replication_group_members WHERE member_state <> 'UNREACHABLE') as reachable_member_count
+    FROM performance_schema.replication_group_members m
         JOIN performance_schema.replication_group_member_stats s
         ON m.member_id = s.member_id
     WHERE m.member_id = @@server_uuid""").fetch_one()
@@ -269,20 +271,24 @@ def query_membership_info(session):
         status = row[2]
         view_id = row[3] or ""
         version = row[4]
+        member_count = row[5]
+        reachable_member_count = row[6]
     else:
         member_id = ""
         role = ""
         status = "OFFLINE"
         view_id = ""
         version = ""
+        member_count = None
+        reachable_member_count = None
 
-    return member_id, role, status, view_id, version
+    return member_id, role, status, view_id, version, member_count, reachable_member_count
 
 
 def query_members(session):
     res = session.run_sql("""SELECT m.member_id, m.member_role, m.member_state,
         s.view_id, concat(m.member_host, ':', m.member_port), m.member_version
-    FROM performance_schema.replication_group_members m 
+    FROM performance_schema.replication_group_members m
         JOIN performance_schema.replication_group_member_stats s
         ON m.member_id = s.member_id""")
 

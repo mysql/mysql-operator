@@ -372,11 +372,15 @@ def describe_ic(ns, name):
 #
 
 
-def delete(ns, rsrc, name, timeout):
+def delete(ns, rsrc, name, timeout, wait=True):
     if not name:
         name = "--all"
-    kubectl("delete", rsrc, [name] + (["-n", ns]
-                                      if ns else []), timeout=timeout, ignore=["NotFound"])
+    args = []
+    if ns:
+        args += ["-n", ns]
+    if not wait:
+        args += ["--wait=false"]
+    kubectl("delete", rsrc, [name] + args, timeout=timeout, ignore=["NotFound"])
 
 
 def delete_ic(ns, name, timeout=200):
@@ -413,8 +417,8 @@ def delete_svc(ns, name, timeout=5):
     delete(ns, "svc", name, timeout=timeout)
 
 
-def delete_pvc(ns, name, timeout=60):
-    delete(ns, "pvc", name, timeout=timeout)
+def delete_pvc(ns, name, timeout=60, wait=True):
+    delete(ns, "pvc", name, timeout=timeout, wait=wait)
 
 
 def delete_pv(name, timeout=60):

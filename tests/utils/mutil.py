@@ -229,6 +229,9 @@ class MySQLInteractivePodSession:
         return [dict(zip(names, row)) for row in rows]
 
 
+
+
+
 if __name__ == "__main__":
     session = MySQLInteractivePodSession("testns", "mycluster-0")
 

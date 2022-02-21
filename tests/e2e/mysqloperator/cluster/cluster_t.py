@@ -1073,7 +1073,7 @@ spec:
         # XXX deleting the sts shouldn't be necessary, but it's not happening when the ic is deleted
         kutil.delete_sts(self.ns, "mycluster")
 
-        kutil.delete_ic(self.ns, "mycluster")
+        kutil.delete_ic(self.ns, "mycluster", 300)
 
         self.wait_pod_gone("mycluster-2")
         self.wait_pod_gone("mycluster-1")

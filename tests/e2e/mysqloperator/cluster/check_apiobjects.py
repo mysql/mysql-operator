@@ -6,6 +6,7 @@
 import time
 from setup import defaults
 from utils import kutil
+from utils.tutil import get_pod_container
 
 def check_pod_labels(test, pod, cluster, role):
     test.assertEqual(pod["metadata"]["labels"]["component"],
@@ -263,13 +264,6 @@ def check_online_pod(test, icobj, pod, role):
     # check versions
 
     return pod
-
-
-def get_pod_container(pod, container_name):
-    for cont in pod["status"]["containerStatuses"]:
-        if cont["name"] == container_name:
-            return cont
-    return None
 
 
 def check_pod_container(test, pod, container_name, restarts=1, running=True):

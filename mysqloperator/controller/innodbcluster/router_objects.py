@@ -75,11 +75,24 @@ data:
     return yaml.safe_load(tmpl)
 
 
-def prepare_router_deployment(spec: InnoDBClusterSpec, *,
-                               init_only: bool = False) -> dict:
+def prepare_router_deployment(cluster: InnoDBCluster, *,
+                              init_only: bool = False) -> dict:
     # Start the router deployment with 0 replicas and only set it to the desired
     # value once the cluster is ONLINE, otherwise the router bootstraps could
     # timeout and fail unnecessarily.
+
+    spec = cluster.parsed_spec
+
+    router_tls_exists = False
+    router_bootstrap_options = []
+    if not spec.tlsUseSelfSigned:
+        router_bootstrap_options += ["--server-ssl-ca=/router-ssl/ca.pem",
+            "--server-ssl-verify=VERIFY_IDENTITY",
+            "--ssl-ca=/router-ssl/ca.pem"]
+        if cluster.router_tls_exists():
+            router_tls_exists = True
+            router_bootstrap_options += ["--client-ssl-cert=/router-ssl/tls.crt",
+                "--client-ssl-key=/router-ssl/tls.key"]
 
     # TODO livenessProbe
     # TODO setup http
@@ -150,6 +163,10 @@ spec:
               key: routerPassword
         - name: MYSQL_CREATE_ROUTER_USER
           value: "0"
+        - name: MYSQL_ROUTER_BOOTSTRAP_EXTRA_OPTIONS
+          value: "{' '.join(router_bootstrap_options)}"
+        volumeMounts: {'[]' if not spec.extra_router_volume_mounts else ''}
+{utils.indent(spec.extra_router_volume_mounts, 8)}
         ports:
         - containerPort: {spec.router_rwport}
           name: mysqlrw
@@ -161,6 +178,8 @@ spec:
           name: mysqlxro
         - containerPort: {spec.router_httpport}
           name: http
+      volumes: {'[]' if not spec.extra_router_volumes else ''}
+{utils.indent(spec.extra_router_volumes if router_tls_exists else spec.extra_router_volumes_no_cert, 6)}
 """
     deployment = yaml.safe_load(tmpl)
     if spec.router.podSpec:
@@ -186,7 +205,7 @@ def update_size(cluster: InnoDBCluster, size: int, logger: Logger) -> None:
         if size:
             logger.info(f"Creating Router Deployment with replicas={size}")
 
-            router_deployment = prepare_router_deployment(cluster.parsed_spec)
+            router_deployment = prepare_router_deployment(cluster)
             kopf.adopt(router_deployment)
             api_apps.create_namespaced_deployment(
                 namespace=cluster.namespace, body=router_deployment)
@@ -211,6 +230,9 @@ def update_router_container_template_property(dpl: api_client.V1Deployment,
             }
     update_deployment_spec(dpl, patch)
 
+
+def propagate_router_field_change_to_sts(cluster: InnoDBCluster, field: str, logger: Logger) -> None:
+    pass
 
 def update_router_image(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, logger: Logger) -> None:
     update_router_container_template_property(dpl, "image", spec.router_image, logger)

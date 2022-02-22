@@ -42,18 +42,20 @@
 # same Pod of the same StatefulSet (?).
 #
 
+import base64
 from logging import Logger
-import subprocess
 from typing import Optional, TYPE_CHECKING, Tuple, cast
 import mysqlsh
 import os
 import logging
 import time
-import shutil
+import asyncio
+import kopf
 
 from .controller import utils, mysqlutils, k8sobject
 from .controller.innodbcluster import initdb
 from .controller.innodbcluster.cluster_api import CloneInitDBSpec, DumpInitDBSpec, InnoDBCluster, MySQLPod
+from .controller.kubeutils import api_core, client as api_client
 
 if TYPE_CHECKING:
     from mysqlsh.mysql import ClassicSession
@@ -64,6 +66,7 @@ mysql = mysqlsh.mysql
 k8sobject.g_component = "sidecar"
 k8sobject.g_host = os.getenv("HOSTNAME")
 
+g_cluster_name = None
 
 # The time it takes for mysqld to restart after a clone can be very long,
 # because it has to apply redo logs. OTOH we monitor the error log to see
@@ -82,7 +85,7 @@ def create_local_accounts(session, logger):
     """
     sql = [
         "SET sql_log_bin=0;",
-        "CREATE USER IF NOT EXISTS 'localroot'@localhost;",
+        "CREATE USER IF NOT EXISTS localroot@localhost IDENTIFIED WITH auth_socket AS 'daemon';",
         "GRANT ALL ON *.* TO 'localroot'@localhost WITH GRANT OPTION;",
         "GRANT PROXY ON ''@'' TO 'localroot'@localhost WITH GRANT OPTION;",
         "SET sql_log_bin=1;"
@@ -333,12 +336,6 @@ def initialize(session, datadir: str, pod: MySQLPod, cluster, logger: Logger) ->
     # session.run_sql("shutdown")
 
 
-def standby(pod: MySQLPod, cluster, logger: Logger) -> None:
-    while True:
-        import time
-        time.sleep(1)
-
-
 def metadata_schema_version(session: 'ClassicSession', logger: Logger) -> Optional[str]:
     try:
         r = session.run_sql(
@@ -359,6 +356,8 @@ def bootstrap(pod: MySQLPod, datadir: str, logger: Logger) -> int:
     In that case, the Pod will look brand new (so we can't rely on any data
     stored in the Pod object), but the instance will be already prepared and
     not be in the expected initial state with initial defaults.
+
+    Returns 1 if bootstrapped, 0 if already configured and -1 on error
     """
     name = pod.name
     namespace = pod.namespace
@@ -398,15 +397,132 @@ def bootstrap(pod: MySQLPod, datadir: str, logger: Logger) -> int:
         traceback.print_exc()
         logger.critical(f"Unhandled exception while bootstrapping MySQL: {e}")
         # TODO post event to the Pod and the Cluster object if this is the seed
-        return 1
+        return -1
 
     session.close()
 
-    return 0
+    return 1
+
+
+def check_secret_mounted(secret_name: str, namespace: str, paths: list) -> bool:
+    secret = cast(api_client.V1Secret, api_core.read_namespaced_secret(secret_name, namespace))
+
+    for p in paths:
+        datas = secret.data.get(p.split("/")[-1], None)
+        if datas:
+            datas = base64.b64decode(datas.strip()).decode("utf8")
+            if os.path.exists(p):
+                dataf = open(p).read()
+                if dataf != datas:
+                    return False
+            else:
+                return False
+    return True
+
+
+def reconfigure_tls(enabled: bool, logger: Logger) -> None:
+    has_crl = os.path.exists("/etc/mysql-ssl/crl.pem")
+
+    logger.info(f"Ensuring custom TLS certificates are {'enabled' if enabled else 'disabled'} {'(with crl)' if has_crl else ''}")
+
+    session = connect("localroot", "", logger, timeout=None)
+
+    def ensure_sysvar(var, value):
+        curval = session.run_sql("show variables like ?", [var]).fetch_one()[1]
+        if curval != value:
+            logger.debug(f"Changing {var} to {value}")
+            session.run_sql(f"set persist {var} = ?", [value])
+
+    # first ensure configured paths are correct
+    if enabled:
+        ensure_sysvar("ssl_ca", "/etc/mysql-ssl/ca.pem")
+        ensure_sysvar("ssl_crl", "/etc/mysql-ssl/crl.pem" if has_crl else "")
+        ensure_sysvar("ssl_cert", "/etc/mysql-ssl/tls.crt")
+        ensure_sysvar("ssl_key", "/etc/mysql-ssl/tls.key")
+        ensure_sysvar("group_replication_recovery_ssl_verify_server_cert", "ON")
+        ensure_sysvar("group_replication_ssl_mode", "VERIFY_IDENTITY")
+        ensure_sysvar("group_replication_recovery_ssl_ca", "/etc/mysql-ssl/ca.pem")
+        ensure_sysvar("group_replication_recovery_ssl_cert", "/etc/mysql-ssl/tls.crt")
+        ensure_sysvar("group_replication_recovery_ssl_key", "/etc/mysql-ssl/tls.key")
+    else:
+        ensure_sysvar("ssl_ca", "ca.pem")
+        ensure_sysvar("ssl_crl", "")
+        ensure_sysvar("ssl_cert", "server-cert.pem")
+        ensure_sysvar("ssl_key", "server-key.pem")
+        ensure_sysvar("group_replication_recovery_ssl_verify_server_cert", "OFF")
+        ensure_sysvar("group_replication_ssl_mode", "REQUIRED")
+        ensure_sysvar("group_replication_recovery_ssl_ca", "")
+        ensure_sysvar("group_replication_recovery_ssl_cert", "")
+        ensure_sysvar("group_replication_recovery_ssl_key", "")
+
+    try:
+        session.run_sql("ALTER INSTANCE RELOAD TLS")
+    except Exception as e:
+        logger.error(f"MySQL error reloading TLS certificates: {e}")
+
+        session.close()
+        return
+
+    session.close()
+
+
+def reload_tls(logger: Logger) -> None:
+    logger.info("Reloading TLS")
+
+    session = connect("localroot", "", logger, timeout=None)
+    session.run_sql("ALTER INSTANCE RELOAD TLS")
+    session.close()
+
+
+@kopf.on.create("", "v1", "secrets") # type: ignore
+def on_secret_create(name: str, namespace: str, spec, logger: Logger, **kwargs):
+    global g_cluster_name
+
+    my_namespace = cast(str, os.getenv("MY_POD_NAMESPACE"))
+
+    max_time = 5 * 60
+    delay = 2
+    if namespace == my_namespace:
+        ic = InnoDBCluster.read(my_namespace, g_cluster_name)
+        for _ in range(max_time//delay):
+            if ic.parsed_spec.tlsCASecretName == name:
+                if check_secret_mounted(ic.parsed_spec.tlsCASecretName, namespace,
+                                        ["/etc/mysql-ssl/ca.pem",
+                                        "/etc/mysql-ssl/crl.pem"]):
+                    logger.info(f"TLS CA file change detected, reloading TLS configurations")
+                    reconfigure_tls(False if ic.parsed_spec.tlsUseSelfSigned else True, logger)
+                    break
+                else:
+                    logger.debug("Waiting for mounted TLS files to refresh...")
+                    time.sleep(delay)
+                    # TemporaryError was supposed to get this handler called again, but isn't
+                    # raise kopf.TemporaryError("TLS CA secret changed, but file didn't refresh yet")
+            elif ic.parsed_spec.tlsSecretName == name:
+                if check_secret_mounted(ic.parsed_spec.tlsSecretName, namespace,
+                                        ["/etc/mysql-ssl/tls.crt",
+                                        "/etc/mysql-ssl/tls.key"]):
+                    logger.info(f"TLS certificate file change detected, reloading TLS configurations")
+                    reconfigure_tls(False if ic.parsed_spec.tlsUseSelfSigned else True, logger)
+                    break
+                else:
+                    logger.debug("Waiting for mounted TLS files to refresh...")
+                    time.sleep(delay)
+                    #raise kopf.TemporaryError("TLS certificate secret changed, but file didn't refresh yet")
+        else:
+            raise kopf.PermanentError("Timeout waiting for TLS files to get refreshed")
+
+
+@kopf.on.startup()
+def configure(settings: kopf.OperatorSettings, **_):
+    settings.peering.standalone = True
 
 
 def main(argv):
+    global g_cluster_name
+
     datadir = argv[1] if len(argv) > 1 else "/var/lib/mysql"
+
+    kopf.configure(verbose=True if os.getenv("MYSQL_OPERATOR_DEBUG")=="1" else False)
 
     mysqlsh.globals.shell.options.useWizards = False
     logging.basicConfig(level=logging.DEBUG,
@@ -416,19 +532,28 @@ def main(argv):
     name = cast(str, os.getenv("MY_POD_NAME"))
     namespace = cast(str, os.getenv("MY_POD_NAMESPACE"))
     pod = MySQLPod.read(name, namespace)
-    cluster = pod.get_cluster()
 
     utils.log_banner(__file__, logger)
 
     logger.info("Bootstrapping")
     r = bootstrap(pod, datadir, logger)
-    if r != 0:
+    if r < 0:
         logger.info(f"Bootstrap error {r}")
-        return r
+        return abs(r)
 
-    logger.info("Waiting for Operator requests...")
+    cluster = pod.get_cluster()
+
+    g_cluster_name = cluster.name
+
+    if r == 0:
+        # refresh TLS settings if we're restarting in case something changed
+        reconfigure_tls(False if cluster.parsed_spec.tlsUseSelfSigned else True, logger)
+
+    logger.info("Starting Operator request handler...")
     try:
-        standby(pod, cluster, logger)
+        loop = asyncio.get_event_loop()
+
+        loop.run_until_complete(kopf.operator(namespace=namespace))
     except Exception as e:
         import traceback
         traceback.print_exc()

@@ -43,6 +43,7 @@ metadata:
 spec:
   instances: 1
   secretName: mypwds
+  tlsUseSelfSigned: true
   router:
     instances: 1
     version: "{g_ts_cfg.version_tag}"

@@ -6,6 +6,7 @@
 from typing import List
 from logging import Logger
 import yaml
+import kopf
 from copy import deepcopy
 from .backup_api import BackupProfile, BackupSchedule, MySQLBackupSpec
 from .. import utils, config, consts
@@ -59,25 +60,25 @@ metadata:
 spec:
   template:
     spec:
-      securityContext:
-        allowPrivilegeEscalation: false
-        privileged: false
-        readOnlyRootFilesystem: true
-        runAsNonRoot: true
       containers:
       - name: operator-backup-job
         image: {spec.operator_image}
         imagePullPolicy: {spec.operator_image_pull_policy}
         command: ["mysqlsh", "--pym", "mysqloperator", "backup", "execute-backup", "{spec.namespace}", "{spec.name}", "{jobname}", "/mnt/storage"]
+        env:
+        - name: MYSQLSH_USER_CONFIG_HOME
+          value: /mysqlsh
+        volumeMounts:
+        - name: shellhome
+          mountPath: /mysqlsh
+      volumes:
+      - name: shellhome
+        emptyDir: {{}}
       restartPolicy: Never
       terminationGracePeriodSeconds: 60
 {utils.indent(spec.image_pull_secrets, 6)}
 {utils.indent(spec.service_account_name, 6)}
-      env:
-      - name: MYSQLSH_USER_CONFIG_HOME
-        value: /tmp/mysqlsh
 """
-
     job = yaml.safe_load(tmpl)
 
     spec.add_to_pod_spec(job["spec"]["template"], "operator-backup-job")
@@ -179,6 +180,17 @@ spec:
             image: {spec.operator_image}
             imagePullPolicy: {spec.operator_image_pull_policy}
             command: ["mysqlsh", "--pym", "mysqloperator", "backup", "create-backup-object", "{spec.namespace}", "{spec.name}"]
+            securityContext:
+              runAsUser: 27
+            env:
+            - name: MYSQLSH_USER_CONFIG_HOME
+              value: /mysqlsh
+            volumeMounts:
+            - name: shellhome
+              mountPath: /mysqlsh
+          volumes:
+          - name: shellhome
+            emptyDir: {{}}
           restartPolicy: Never
           terminationGracePeriodSeconds: 60
 {utils.indent(spec.image_pull_secrets, 10)}
@@ -271,6 +283,7 @@ def update_schedules(spec: InnoDBClusterSpec, old: dict, new: dict, logger: Logg
             cj_name = schedule_cron_job_name(cluster_name, add_schedule_name)
             logger.info(f"backup_objects.update_schedules: adding schedule {cj_name} in {namespace}")
             cronjob = patch_cron_template_for_backup_schedule(cj_template, spec.name, add_schedule_obj)
+            kopf.adopt(cronjob)
             api_cron_job.create_namespaced_cron_job(namespace=namespace, body=cronjob)
 
     if len(diff['modified']):

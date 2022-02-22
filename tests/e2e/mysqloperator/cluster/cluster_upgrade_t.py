@@ -66,6 +66,7 @@ spec:
   router:
     instances: 2
   secretName: mypwds
+  tlsUseSelfSigned: true
   version: "{g_ts_cfg.get_old_version_tag()}"
 """
 

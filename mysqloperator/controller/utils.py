@@ -157,7 +157,7 @@ def log_banner(path: str, logger) -> None:
 
     path = os.path.basename(path)
     logger.info(
-        f"MySQL Operator/{path}={config.OPERATOR_VERSION} timestamp={ts} kopf={kopf_version}")
+        f"MySQL Operator/{path}={config.OPERATOR_VERSION} timestamp={ts} kopf={kopf_version} uid={os.getuid()}")
 
 
 def dict_to_json_string(d : dict) -> str:

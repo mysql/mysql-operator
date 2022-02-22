@@ -96,3 +96,20 @@ def setup_backup_account(session, user, password):
         f"GRANT select, show databases, show view, lock tables, reload ON *.* TO {user}")
     session.run_sql(
         f"GRANT backup_admin /*!80020 , show_routine */ ON *.* TO {user}")
+
+
+def count_gtids(gtid_set: str) -> int:
+    """Return number of transactions in the GTID set"""
+    def count_range(r):
+        begin, _, end = r.partition("-")
+        if not end:
+            return 1
+        else:
+            return int(end)-int(begin)+1
+    n = 0
+    for g in gtid_set.replace("\n", "").split(","):
+        for r in g.split(":")[1:]:
+            n += count_range(r)
+    return n
+
+

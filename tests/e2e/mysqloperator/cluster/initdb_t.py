@@ -55,6 +55,7 @@ metadata:
 spec:
   instances: 3
   secretName: mypwds
+  tlsUseSelfSigned: true
 """
 
         kutil.apply(self.ns, yaml)
@@ -93,6 +94,7 @@ spec:
   router:
     instances: 1
   secretName: pwds
+  tlsUseSelfSigned: true
   baseServerId: 2000
   initDB:
     clone:
@@ -222,6 +224,7 @@ metadata:
 spec:
   instances: 1
   secretName: mypwds
+  tlsUseSelfSigned: true
   backupProfiles:
   - name: fulldump-oci
     dumpInstance:
@@ -304,6 +307,7 @@ spec:
   router:
     instances: 1
   secretName: newpwds
+  tlsUseSelfSigned: true
   baseServerId: 2000
   initDB:
     dump:
@@ -386,6 +390,7 @@ spec:
     instances: 1
   secretName: newpwds
   baseServerId: 3000
+  tlsUseSelfSigned: true
   initDB:
     dump:
       name: {self.dump_name}

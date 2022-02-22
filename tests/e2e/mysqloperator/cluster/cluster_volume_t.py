@@ -179,6 +179,7 @@ spec:
   router:
     instances: 1
   secretName: mypwds
+  tlsUseSelfSigned: true
   datadirVolumeClaimTemplate:
     accessModes: [ "ReadWriteOnce" ]
     resources:

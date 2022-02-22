@@ -16,6 +16,7 @@ import os
 from utils.auxutil import isotime
 from . import fmt
 from . import kutil
+from . import mutil
 import yaml
 import time
 import datetime
@@ -39,6 +40,13 @@ logger = logging.getLogger("tutil")
 
 def split_logs(logs):
     return logs.split("\n")
+
+
+def get_pod_container(pod, container_name):
+    for cont in pod["status"]["containerStatuses"]:
+        if cont["name"] == container_name:
+            return cont
+    return None
 
 
 class Rule:
@@ -248,6 +256,42 @@ class TestTracer:
 tracer = TestTracer()
 
 
+class PodHelper:
+    def __init__(self, owner, ns, name):
+        self.owner = owner
+        self.ns = ns
+        self.name = name
+        self.refresh()
+
+    def get_po(self):
+        return kutil.get_po(self.ns, self.name)
+
+    def refresh(self):
+        self._state = self.get_po()
+
+    def get_container_status(self, cont):
+        return get_pod_container(self._state, cont)
+
+    def wait_ready(self):
+        self.owner.assertNotEqual(kutil.wait_pod(self.ns, self.name, "Running",
+                                           checkabort=self.owner.check_operator_exceptions), None,
+                                           f"timeout waiting for pod {self.name}")
+
+    def wait_restart(self):
+        restarts0 = self.get_container_status("mysql")["restartCount"]
+
+        def ready():
+            pod = self.get_po()
+            restarts = get_pod_container(pod, "mysql")["restartCount"]
+            return restarts >= restarts0+1 and pod["status"]["phase"] == "Running"
+
+        self.owner.wait(ready)
+
+    def wait_gone(self):
+        kutil.wait_pod_gone(self.ns, self.name,
+                        checkabort=self.owner.check_operator_exceptions)
+
+
 class OperatorTest(unittest.TestCase):
     logger = logging
     ns = "testns"
@@ -367,7 +411,7 @@ class OperatorTest(unittest.TestCase):
         # Raise an exception if pods enter an error state they're not expected to
         pass  # TODO
 
-    def wait(self, fn, args=tuple(), check=None,  timeout=60, delay=2):
+    def wait(self, fn, args=tuple(), check=None, timeout=60, delay=2):
         # TODO abort watchers when nothing new gets printed by operator for a while too
         self.check_operator_exceptions()
 
@@ -376,6 +420,7 @@ class OperatorTest(unittest.TestCase):
         r = None
         for i in range(timeout):
             r = fn(*args)
+            self.logger.debug(f"fn() returned {r}")
             if check:
                 ret = check(r)
                 if ret:
@@ -395,6 +440,9 @@ class OperatorTest(unittest.TestCase):
 
         raise Exception("Timeout waiting for condition")
 
+    def get_pod(self, name, ns=None):
+        return PodHelper(self, ns if ns else self.ns, name)
+
     def wait_ic(self, name, status_list, num_online=None, ns=None, timeout=200, probe_time=None):
         """
         Wait for given ic object to reach one of the states in the list.
@@ -402,6 +450,13 @@ class OperatorTest(unittest.TestCase):
         """
         self.assertNotEqual(kutil.wait_ic(ns or self.ns, name, status_list, num_online=num_online, probe_time=probe_time,
                                           checkabort=self.check_operator_exceptions, timeout=timeout), None, "timeout waiting for cluster")
+
+    def wait_member_state(self, pod, states, timeout=120):
+        with mutil.MySQLPodSession(self.ns, pod, "root", "sakila") as s0:
+            def check():
+                s = s0.query_sql("select member_state from performance_schema.replication_group_members where member_id=@@server_uuid").fetch_one()[0]
+                return s in states
+            self.wait(check, timeout=timeout)
 
     def wait_pod(self, name, status_list, ns=None):
         """
@@ -422,11 +477,18 @@ class OperatorTest(unittest.TestCase):
         logger.info(
             f"Waiting for routers {ns}/{name_pattern} to become {awaited_status}, num_online={num_online}")
 
+        router_names = []
+
         def routers_ready():
             pods = kutil.ls_po(ns or self.ns, pattern=name_pattern)
-            return num_online == len([pod for pod in pods if pod["STATUS"] in awaited_status])
+
+            router_names[:] = [pod["NAME"] for pod in pods if pod["STATUS"] in awaited_status]
+
+            return num_online == len(router_names)
 
         self.wait(routers_ready, timeout=timeout)
+
+        return router_names
 
     def wait_ic_gone(self, name, ns=None):
         kutil.wait_ic_gone(ns or self.ns, name,

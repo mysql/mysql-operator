@@ -62,7 +62,7 @@ def init_conf(datadir, pod, cluster, logger):
 
 
 def main(argv):
-    datadir = argv[1] if len(argv) > 1 else "/var/lib/mysql"
+    datadir = "/var/lib/mysql"
 
     mysqlsh.globals.shell.options.useWizards = False
     logging.basicConfig(level=logging.DEBUG,

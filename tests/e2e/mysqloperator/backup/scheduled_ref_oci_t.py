@@ -5,8 +5,8 @@
 
 from utils import tutil
 from utils import kutil
-from utils import dutil
 from utils import mutil
+from utils import ociutil
 import os
 import logging
 from e2e.mysqloperator.cluster import check_apiobjects
@@ -19,8 +19,8 @@ from setup.config import g_ts_cfg
 from utils.optesting import DEFAULT_MYSQL_ACCOUNTS, COMMON_OPERATOR_ERRORS
 
 
-@unittest.skipIf(g_ts_cfg.oci_skip or not g_ts_cfg.oci_backup_apikey_path or not g_ts_cfg.oci_backup_bucket,
-  "OCI scheduled backup apikey path and/or backup bucket not set")
+@unittest.skipIf(g_ts_cfg.oci_skip or not g_ts_cfg.oci_config_path or not g_ts_cfg.oci_bucket_name,
+  "OCI scheduled backup config path and/or bucket name not set")
 class ScheduledBackupRefOci(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
     cluster_name = "mycluster"
@@ -28,6 +28,7 @@ class ScheduledBackupRefOci(tutil.OperatorTest):
     schedule_name = "schedule-ref-oci"
     dump_name_prefix = f"{cluster_name}-{schedule_name}"
     backup_apikey = "backup-apikey"
+    oci_storage_prefix = '/e2etest'
 
     @classmethod
     def setUpClass(cls):
@@ -50,9 +51,7 @@ class ScheduledBackupRefOci(tutil.OperatorTest):
     def test_0_create(self):
         kutil.create_default_user_secrets(self.ns)
 
-        apikey_path = g_ts_cfg.oci_backup_apikey_path
-        if apikey_path:
-            kutil.create_apikey_secret(self.ns, self.backup_apikey, apikey_path)
+        kutil.create_apikey_secret(self.ns, self.backup_apikey, g_ts_cfg.oci_config_path, "BACKUP")
 
         yaml = f"""
 apiVersion: mysql.oracle.com/v2alpha1
@@ -68,8 +67,8 @@ spec:
     dumpInstance:
       storage:
         ociObjectStorage:
-          prefix: /
-          bucketName: {g_ts_cfg.oci_backup_bucket}
+          prefix: {self.oci_storage_prefix}
+          bucketName: {g_ts_cfg.oci_bucket_name}
           credentials: {self.backup_apikey}
   backupSchedules:
     - name: {self.schedule_name}
@@ -101,8 +100,8 @@ spec:
         backupProfile = spec["backupProfiles"][0]
         self.assertEqual(backupProfile["name"], self.profile_name)
         ociObjectStorage = backupProfile["dumpInstance"]["storage"]["ociObjectStorage"]
-        self.assertEqual(ociObjectStorage["prefix"], "/")
-        self.assertEqual(ociObjectStorage["bucketName"], g_ts_cfg.oci_backup_bucket)
+        self.assertEqual(ociObjectStorage["prefix"], self.oci_storage_prefix)
+        self.assertEqual(ociObjectStorage["bucketName"], g_ts_cfg.oci_bucket_name)
         self.assertEqual(ociObjectStorage["credentials"], self.backup_apikey)
 
         # backupSchedule
@@ -131,7 +130,7 @@ spec:
         self.assertEqual(status["status"], "Completed")
         self.assertEqual(status["method"], "dump-instance/oci-bucket")
         self.assertIsNotNone(status["ociTenancy"])
-        self.assertEqual(status["bucket"], g_ts_cfg.oci_backup_bucket)
+        self.assertEqual(status["bucket"], g_ts_cfg.oci_bucket_name)
         self.assertTrue(status["output"].startswith(self.dump_name_prefix))
         self.assertGreater(len(status["output"]), len(self.dump_name_prefix))
 
@@ -145,14 +144,18 @@ spec:
 
         r = self.wait(kutil.ls_mbk, args=(self.ns,),
                       check=check_mbk, timeout=300)
+        output = r["OUTPUT"]
         self.assertTrue(r["NAME"].startswith(self.dump_name_prefix))
         self.assertEqual(r["CLUSTER"], self.cluster_name)
         self.assertEqual(r["STATUS"], "Completed")
-        self.assertTrue(r["OUTPUT"].startswith(self.dump_name_prefix))
-        self.assertGreater(len(r["OUTPUT"]), len(self.dump_name_prefix))
+        self.assertTrue(output.startswith(self.dump_name_prefix))
+        self.assertGreater(len(output), len(self.dump_name_prefix))
 
         self.check_ic()
         self.check_mbk(r["NAME"])
+
+        if output:
+            self.__class__.oci_storage_output = os.path.join(self.oci_storage_prefix, output)
 
 
     def test_9_destroy(self):
@@ -166,3 +169,6 @@ spec:
         kutil.delete_mbks(self.ns, self.dump_name_prefix)
 
         kutil.delete_secret(self.ns, "mypwds")
+
+        if self.__class__.oci_storage_output:
+            ociutil.bulk_delete("DELETE", g_ts_cfg.oci_bucket_name, self.__class__.oci_storage_output)

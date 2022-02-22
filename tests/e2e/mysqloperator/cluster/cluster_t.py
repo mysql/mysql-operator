@@ -18,7 +18,6 @@ from . import check_routing
 from utils.tutil import g_full_log
 from setup.config import g_ts_cfg
 from utils.optesting import DEFAULT_MYSQL_ACCOUNTS, COMMON_OPERATOR_ERRORS
-from mysqloperator.controller import config as operator_cfg
 import unittest
 
 # TODO
@@ -542,8 +541,7 @@ spec:
 
         image = container_spec(
             pod["spec"]["initContainers"], "initconf")["image"]
-        #self.assertIn(":"+g_ts_cfg.operator_version_tag, image, "initconf")
-        self.assertIn(":"+operator_cfg.DEFAULT_OPERATOR_VERSION_TAG, image, "initconf")
+        self.assertIn(":"+g_ts_cfg.operator_version_tag, image, "initconf")
         self.assertIn(g_ts_cfg.operator_image_name+":", image, "initconf")
 
         image = container_spec(pod["spec"]["containers"], "mysql")["image"]
@@ -551,8 +549,7 @@ spec:
         self.assertIn(g_ts_cfg.server_image_name+":", image, "mysql")
 
         image = container_spec(pod["spec"]["containers"], "sidecar")["image"]
-        #self.assertIn(":"+g_ts_cfg.operator_version_tag, image, "sidecar")
-        self.assertIn(":"+operator_cfg.DEFAULT_OPERATOR_VERSION_TAG, image, "sidecar")
+        self.assertIn(":"+g_ts_cfg.operator_version_tag, image, "sidecar")
         self.assertIn(g_ts_cfg.operator_image_name+":", image, "sidecar")
 
         # check router version and edition

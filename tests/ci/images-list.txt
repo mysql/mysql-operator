@@ -78,16 +78,8 @@ mysql-operator-commercial:latest
 mysql-operator:latest
 1
 ---
-enterprise-router:8.0.27
-mysql-enterprise-router:8.0.27
-1
----
 enterprise-router:8.0.28
 mysql-enterprise-router:8.0.28
-1
----
-enterprise-server:8.0.27
-mysql-enterprise-server:8.0.27
 1
 ---
 enterprise-server:8.0.28

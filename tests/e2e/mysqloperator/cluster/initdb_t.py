@@ -5,18 +5,14 @@
 
 from utils import tutil
 from utils import kutil
-from utils import dutil
 from utils import mutil
+from utils import ociutil
 import logging
-from . import check_apiobjects
-from . import check_group
-from . import check_adminapi
 from . import check_routing
 import os
 import unittest
 from utils.tutil import g_full_log
 from setup.config import g_ts_cfg
-from utils.auxutil import b64encode
 from utils.optesting import DEFAULT_MYSQL_ACCOUNTS, COMMON_OPERATOR_ERRORS
 
 
@@ -178,14 +174,15 @@ spec:
 # TODO bad version
         # TODO regression test for bug where a failed clone doesn't abort the pod
 
-@unittest.skipIf(g_ts_cfg.oci_skip or not g_ts_cfg.oci_backup_apikey_path or not g_ts_cfg.oci_restore_apikey_path or not g_ts_cfg.oci_backup_bucket,
-  "OCI backup/restore apikey path and/or backup bucket not set")
+@unittest.skipIf(g_ts_cfg.oci_skip or not g_ts_cfg.oci_config_path or not g_ts_cfg.oci_bucket_name,
+  "OCI config path and/or bucket name not set")
 class ClusterFromDumpOCI(tutil.OperatorTest):
     """
     Create cluster and initialize from a shell dump stored in an OCI bucket.
     """
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
     dump_name = "cluster-from-dump-test-oci1"
+    oci_storage_prefix = '/e2etest'
 
     @classmethod
     def setUpClass(cls):
@@ -208,16 +205,15 @@ class ClusterFromDumpOCI(tutil.OperatorTest):
         kutil.create_user_secrets(
             self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
 
-        bucket = g_ts_cfg.oci_backup_bucket
-        backup_apikey_path = g_ts_cfg.oci_backup_apikey_path
-        restore_apikey_path = g_ts_cfg.oci_restore_apikey_path
+        bucket = g_ts_cfg.oci_bucket_name
+        config_path = g_ts_cfg.oci_config_path
 
         # create a secret with the api key to access the bucket, which should be
         # stored in the path given in the environment variable
         kutil.create_apikey_secret(
-            self.ns, "restore-apikey", restore_apikey_path)
+            self.ns, "restore-apikey", config_path, "RESTORE")
         kutil.create_apikey_secret(
-            self.ns, "backup-apikey", backup_apikey_path)
+            self.ns, "backup-apikey", config_path, "BACKUP")
 
         # create cluster with mostly default configs
         yaml = f"""
@@ -234,7 +230,7 @@ spec:
     dumpInstance:
       storage:
         ociObjectStorage:
-          prefix: /
+          prefix: {self.oci_storage_prefix}
           bucketName: {bucket}
           credentials: backup-apikey
 """
@@ -270,10 +266,10 @@ spec:
         def check_mbk(l):
             for item in l:
                 if item["NAME"] == self.dump_name and item["STATUS"] == "Completed":
-                    # can't keep it in self.dump_output because unittest run each function
+                    # can't keep it in self.oci_storage_output because unittest run each function
                     # with a fresh instance
                     # after dump it shall be sth like 'cluster-from-dump-test-oci1-20211027-113626'
-                    self.__class__.dump_output = item["OUTPUT"]
+                    self.__class__.oci_storage_output = os.path.join(self.oci_storage_prefix, item["OUTPUT"])
                     return item
             return None
 
@@ -298,7 +294,7 @@ spec:
         kutil.create_user_secrets(
             self.ns, "newpwds", root_user="root", root_host="%", root_pass="sakila")
 
-        bucket = g_ts_cfg.oci_backup_bucket
+        bucket = g_ts_cfg.oci_bucket_name
 
         # create cluster with mostly default configs
         yaml = f"""
@@ -318,7 +314,7 @@ spec:
       name: {self.dump_name}
       storage:
         ociObjectStorage:
-          prefix: /{self.__class__.dump_output}
+          prefix: {self.__class__.oci_storage_output}
           bucketName: {bucket}
           credentials: restore-apikey
 """
@@ -380,7 +376,7 @@ spec:
         load command.
         """
 
-        bucket = g_ts_cfg.oci_backup_bucket
+        bucket = g_ts_cfg.oci_bucket_name
 
         # create cluster with mostly default configs
         yaml = f"""
@@ -403,7 +399,7 @@ spec:
         - sakila
       storage:
         ociObjectStorage:
-          prefix: /{self.__class__.dump_output}
+          prefix: {self.__class__.oci_storage_output}
           bucketName: {bucket}
           credentials: restore-apikey
 """
@@ -439,6 +435,10 @@ spec:
         kutil.delete_secret(self.ns, "backup-apikey")
 
         kutil.delete_pvc(self.ns, None)
+
+        if self.__class__.oci_storage_output:
+            ociutil.bulk_delete("DELETE", g_ts_cfg.oci_bucket_name, self.__class__.oci_storage_output)
+
 
 # class ClusterFromDumpLocal(tutil.OperatorTest):
 #    pass

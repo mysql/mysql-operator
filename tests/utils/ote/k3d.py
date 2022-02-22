@@ -13,7 +13,6 @@ from setup.config import g_ts_cfg
 
 class K3dEnvironment(BaseEnvironment):
     name = "k3d"
-    cluster_name = "ote-mycluster"
 
     def load_images(self, images):
         loaded = []
@@ -25,14 +24,17 @@ class K3dEnvironment(BaseEnvironment):
 
     def load_image(self, repo_tag, id):
         print(f"Loading image {repo_tag} ({id})")
-        cmd = f"k3d image import {repo_tag} -c {self.cluster_name}"
+        cmd = f"k3d image import {repo_tag} -c {g_ts_cfg.k8s_cluster}"
         print(cmd)
         subprocess.check_call(cmd, shell=True)
+
+    def get_context(self, cluster_name):
+        return f"k3d-{cluster_name}"
 
     def start_cluster(self, nodes, version, registry_cfg_path):
         assert version is None
 
-        args = ["k3d", "cluster", "create", self.cluster_name, "--timeout", "5m"]
+        args = ["k3d", "cluster", "create", g_ts_cfg.k8s_cluster, "--timeout", "5m"]
         if g_ts_cfg.image_registry:
             if not registry_cfg_path:
                 registry_cfg_path = self.prepare_registry_cfg()
@@ -52,7 +54,7 @@ class K3dEnvironment(BaseEnvironment):
 
         # connect network of the cluster to the local image registry
         if g_ts_cfg.image_registry:
-            subprocess.call(["docker", "network", "connect", f"k3d-{self.cluster_name}", g_ts_cfg.image_registry_host])
+            subprocess.call(["docker", "network", "connect", g_ts_cfg.k8s_context, g_ts_cfg.image_registry_host])
 
     def add_proxy_env(self, envar):
         if envar in os.environ:
@@ -60,11 +62,11 @@ class K3dEnvironment(BaseEnvironment):
         return []
 
     def stop_cluster(self):
-        args = ["k3d", "cluster", "stop", self.cluster_name]
+        args = ["k3d", "cluster", "stop", g_ts_cfg.k8s_cluster]
         subprocess.check_call(args)
 
     def delete_cluster(self):
-        args = ["k3d", "cluster", "delete", self.cluster_name]
+        args = ["k3d", "cluster", "delete", g_ts_cfg.k8s_cluster]
         subprocess.check_call(args)
 
     def prepare_registry_cfg(self):

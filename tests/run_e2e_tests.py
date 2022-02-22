@@ -1,5 +1,5 @@
-#!/usr/bin/env mysqlsh --py -f
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+#!/usr/bin/python3
+# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -9,7 +9,7 @@ from setup import config
 from setup.config import g_ts_cfg
 from utils.ote import get_driver
 from utils.ote.base import BaseEnvironment
-from utils import kutil
+from utils import kutil, ociutil
 from utils import tutil
 import unittest
 import os
@@ -22,7 +22,7 @@ def setup_k8s():
 
     try:
         # outside k8s
-        config.load_kube_config()
+        config.load_kube_config(context=g_ts_cfg.k8s_context)
     except config.config_exception.ConfigException:
         try:
             # inside a k8s pod
@@ -108,6 +108,7 @@ if __name__ == '__main__':
 
     opt_include = []
     opt_exclude = []
+    opt_suite_path = None
     opt_verbose = False
     opt_debug = False
     opt_verbosity = 2
@@ -137,6 +138,8 @@ if __name__ == '__main__':
             opt_kube_version = arg.split("=")[-1]
         elif arg.startswith("--nodes="):
             opt_nodes = int(arg.split("=")[-1])
+        elif arg.startswith("--cluster="):
+            g_ts_cfg.k8s_cluster = arg.partition("=")[-1]
         elif arg == "--verbose" or arg == "-v":
             opt_verbose = True
         elif arg == "-vv":
@@ -161,6 +164,8 @@ if __name__ == '__main__':
             kutil.debug_kubectl = True
         elif arg == "--doperator":
             BaseEnvironment.opt_operator_debug_level = 3
+        elif arg == "--doci":
+            ociutil.debug_ocicli = True
         elif arg == "--mount-operator" or arg == "-O":
             opt_mount_operator_path = os.path.join(os.path.dirname(basedir), "mysqloperator")
         elif arg.startswith("--mount="):
@@ -179,12 +184,12 @@ if __name__ == '__main__':
             g_ts_cfg.operator_pull_policy=arg.partition("=")[-1]
         elif arg == "--skip-oci":
             g_ts_cfg.oci_skip = True
-        elif arg.startswith("--oci-backup-apikey-path="):
-            g_ts_cfg.oci_backup_apikey_path=arg.partition("=")[-1]
-        elif arg.startswith("--oci-restore-apikey-path="):
-            g_ts_cfg.oci_restore_apikey_path=arg.partition("=")[-1]
-        elif arg.startswith("--oci-backup-bucket="):
-            g_ts_cfg.oci_backup_bucket=arg.partition("=")[-1]
+        elif arg.startswith("--oci-config="):
+            g_ts_cfg.oci_config_path=arg.partition("=")[-1]
+        elif arg.startswith("--oci-bucket="):
+            g_ts_cfg.oci_bucket_name=arg.partition("=")[-1]
+        elif arg.startswith("--suite="):
+            opt_suite_path=arg.partition("=")[-1]
         elif arg.startswith("-"):
             print(f"Invalid option {arg}")
             sys.exit(1)
@@ -194,6 +199,11 @@ if __name__ == '__main__':
             opt_exclude += exc
 
     g_ts_cfg.commit()
+
+    if opt_suite_path:
+        with open(opt_suite_path, 'r') as f:
+            opt_include += f.read().splitlines()
+    print(f"opt_include: {opt_include}")
 
     image_dir = os.getenv("DOCKER_IMAGE_DIR") or "/tmp/docker-images"
     images = ["mysql-server:8.0.25", "mysql-router:8.0.25",

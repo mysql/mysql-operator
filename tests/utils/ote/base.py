@@ -7,7 +7,7 @@ import os
 import subprocess
 import yaml
 import time
-from mysqloperator.controller import utils
+from utils import auxutil
 from utils import kutil
 from setup.config import g_ts_cfg
 
@@ -30,7 +30,7 @@ def wait_operator(ns):
         if i == 1:
             print("Waiting for operator to come up...")
         time.sleep(1)
-        
+
 
 class BaseEnvironment:
     opt_operator_debug_level: int = 1
@@ -55,6 +55,8 @@ class BaseEnvironment:
         self._mounts = mounts
         self._cleanup = cleanup
 
+        g_ts_cfg.k8s_context = self.get_context(g_ts_cfg.k8s_cluster)
+
         if self._setup:
           self.delete_cluster()
 
@@ -63,7 +65,7 @@ class BaseEnvironment:
           if custom_dns:
             self.add_custom_dns(custom_dns)
 
-        subprocess.call(["kubectl", "cluster-info"])
+        subprocess.call(["kubectl", f"--context={g_ts_cfg.k8s_context}", "cluster-info"])
 
     def add_custom_dns(self, custom_dns):
       ote_dir = os.path.dirname(os.path.realpath(__file__))
@@ -112,6 +114,9 @@ class BaseEnvironment:
         self.operator_host_path = os.path.join("/tmp", os.path.basename(path))
         self.operator_mount_path = path
 
+    def get_context(self, cluster_name):
+        return cluster_name
+
     def start_cluster(self, nodes, version, registry_cfg_path):
         pass
 
@@ -124,7 +129,7 @@ class BaseEnvironment:
     def deploy_operator(self, deploy_files, override_deployment=True):
         print("Deploying operator...")
         for f in deploy_files:
-            args = ["kubectl", "apply", "-f", "-"]
+            args = ["kubectl", f"--context={g_ts_cfg.k8s_context}", "apply", "-f", "-"]
             print(" ".join(args), "<", f)
             y = open(f).read()
 
@@ -157,7 +162,7 @@ spec:
             path: "{self.operator_host_path}"
             type: Directory
 """
-            utils.merge_patch_object(operator, next(yaml.safe_load_all(tmp)))
+            auxutil.merge_patch_object(operator, next(yaml.safe_load_all(tmp)))
 
         # TODO change operator image to :latest
         # TODO re-add: "--log-file=",
@@ -180,12 +185,12 @@ spec:
               value: "{g_ts_cfg.operator_gr_ip_whitelist}"
 """
         if override_deployment:
-            utils.merge_patch_object(operator, next(yaml.safe_load_all(patch)))
+            auxutil.merge_patch_object(operator, next(yaml.safe_load_all(patch)))
             y = yaml.safe_dump(operator)
             print(y)
-            subprocess.run(["kubectl", "apply", "-f", "-"],
+            subprocess.run(["kubectl", f"--context={g_ts_cfg.k8s_context}", "apply", "-f", "-"],
                           input=y.encode("utf8"), check=True)
-        
+
         wait_operator("mysql-operator")
 
 

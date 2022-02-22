@@ -19,12 +19,17 @@
 # 4) observe until containers are running (or not):
 # a) kubectl get pods -Aw
 # b) kubectl get events -A | grep pulled (will list needed images)
-# to recognize which images are missing
+#    to recognize which images are missing
 # 5) then update below the IMAGES list accordingly and charge the local registry
+# 5a) the first images like rancher/k3d-proxy rancher/k3d-tools should be updated
+#     according to the proper version (e.g. 5.3.0)
 
 REGISTRY=registry.localhost:5000
 
-IMAGES="rancher/pause:3.1 rancher/mirrored-coredns-coredns:1.8.6 rancher/mirrored-metrics-server:v0.5.2 rancher/klipper-helm:v0.6.6-build20211022 rancher/local-path-provisioner:v0.0.21 rancher/mirrored-library-traefik:2.5.6 rancher/klipper-lb:v0.3.4 rancher/library-busybox:1.32.1"
+IMAGES_v5_3_0="rancher/k3d-proxy:5.3.0 rancher/k3d-tools:5.3.0 rancher/pause:3.1 rancher/mirrored-coredns-coredns:1.8.6 rancher/mirrored-metrics-server:v0.5.2 rancher/klipper-helm:v0.6.6-build20211022 rancher/local-path-provisioner:v0.0.21 rancher/mirrored-library-traefik:2.5.6 rancher/klipper-lb:v0.3.4 rancher/library-busybox:1.32.1"
+
+IMAGES="rancher/k3d-proxy:5.1.0 rancher/k3d-tools:5.1.0 rancher/pause:3.1 rancher/coredns-coredns:1.8.3 rancher/metrics-server:v0.3.6 rancher/klipper-helm:v0.6.4-build20210813 rancher/local-path-provisioner:v0.0.19 rancher/library-traefik:2.4.8 rancher/klipper-lb:v0.2.0 rancher/library-busybox:1.32.1"
+
 for IMAGE in $IMAGES; do
 	docker pull $IMAGE
 	docker tag $IMAGE $REGISTRY/$IMAGE

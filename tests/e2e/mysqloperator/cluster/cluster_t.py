@@ -3,6 +3,7 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
+from asyncio import subprocess
 from utils.auxutil import isotime
 from utils import tutil
 from utils import kutil
@@ -29,7 +30,7 @@ import unittest
 def check_sidecar_health(test, ns, pod):
     logs = kutil.logs(ns, [pod, "sidecar"])
     # check that the sidecar is running and waiting for events
-    test.assertIn("Waiting for Operator requests...", logs)
+    test.assertIn("Starting Operator request handler...", logs)
 
 
 def check_all(test, ns, name, instances, routers=None, primary=None, count_sessions=False, user="root", password="sakila", shared_ns=False, version=None):
@@ -135,6 +136,7 @@ metadata:
 spec:
   instances: 1
   secretName: mypwds
+  tlsUseSelfSigned: true
 """
 
         apply_time = isotime()
@@ -225,7 +227,15 @@ spec:
             access = [line for line in out.split(b"\n") if line.startswith(b"Access")][0].strip().decode("utf-8")
             self.assertEqual(f"Access: (0555/dr-xr-xr-x)  Uid: ({uid:5}/{user:>8})   Gid: ({uid:5}/{user:>8})", access)
 
-        check_pod(["mycluster-0", "mysql"], 27, "mysql", "mysqld")
+        def check_mysql_pod(pod, uid, user, process):
+            check_pod(pod, uid, user, process)
+
+            out = kutil.execp(self.ns, pod, ["stat", "-c%n %U %a", "/var/lib/mysql"])
+            line = out.strip().decode("utf-8")
+            self.assertEqual(f"/var/lib/mysql {user} 700", line)
+
+
+        check_mysql_pod(["mycluster-0", "mysql"], 27, "mysql", "mysqld")
 
         p = kutil.ls_po(self.ns, pattern="mycluster-router-.*")[0]["NAME"]
         check_pod(p, 999, "mysqlrouter", "mysqlrouter")
@@ -280,7 +290,7 @@ spec:
 
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
-            reason="Rebooting", msg="Restoring OFFLINE cluster")
+            reason="Rebooting", msg="Restoring OFFLINE cluster through pod 0")
 
         # ensure persisted config didn't change after recovery
         config = json.loads(kutil.cat(self.ns, ("mycluster-0", "mysql"),
@@ -372,7 +382,7 @@ spec:
 
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
-            reason="Rebooting", msg="Restoring OFFLINE cluster")
+            reason="Rebooting", msg="Restoring OFFLINE cluster through pod 0")
 
         check_all(self, self.ns, "mycluster", instances=1, primary=0)
 
@@ -403,7 +413,7 @@ spec:
 
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
-            reason="Rebooting", msg="Restoring OFFLINE cluster")
+            reason="Rebooting", msg="Restoring OFFLINE cluster through pod 0")
 
         check_all(self, self.ns, "mycluster", instances=1, primary=0)
 
@@ -430,7 +440,7 @@ spec:
 
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
-            reason="Rebooting", msg="Restoring OFFLINE cluster")
+            reason="Rebooting", msg="Restoring OFFLINE cluster through pod 0")
 
         check_all(self, self.ns, "mycluster", instances=1, primary=0)
 
@@ -491,6 +501,7 @@ spec:
   router:
     instances: 2
   secretName: mypwds
+  tlsUseSelfSigned: true
 """
 
         kutil.apply(self.ns, yaml)
@@ -727,7 +738,7 @@ spec:
         # TODO
 
         # wait for operator to restore it
-        self.wait_ic("mycluster", "ONLINE", 3)
+        self.wait_ic("mycluster", "ONLINE", 3, timeout=300)
 
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
@@ -753,6 +764,9 @@ spec:
         check_all(self, self.ns, "mycluster", instances=3, primary=2)
 
     def test_4_recover_crash_3_of_3(self):
+        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0:
+            pod0_uuid = s0.query_sql("select @@server_uuid").fetch_one()[0]
+
         # kill mysqld (pid 1)
         kutil.kill(self.ns, ("mycluster-0", "mysql"), 11, 1)
         kutil.kill(self.ns, ("mycluster-1", "mysql"), 11, 1)
@@ -761,13 +775,57 @@ spec:
         # wait for operator to notice them gone
         self.wait_ic("mycluster", "OFFLINE", 0)
 
-        self.wait_ic("mycluster", ["ONLINE_PARTIAL", "ONLINE_UNCERTAIN"], 1, timeout=500)
-
-        self.wait_ic("mycluster", ["ONLINE_PARTIAL", "ONLINE_UNCERTAIN"], 2, timeout=300)
         # wait for operator to restore it
         self.wait_ic("mycluster", "ONLINE", num_online=3, timeout=300)
 
-        check_all(self, self.ns, "mycluster", instances=3, primary=0)
+        self.wait_member_state("mycluster-0", ["ONLINE"])
+        self.wait_member_state("mycluster-1", ["ONLINE"])
+        self.wait_member_state("mycluster-2", ["ONLINE"])
+
+        check_all(self, self.ns, "mycluster", instances=3)
+
+        # switch primary back to -0
+        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0:
+            s0.exec_sql(f"do group_replication_set_as_primary('{pod0_uuid}')")
+
+    def test_4_recover_crash_3_of_3_changed_primary(self):
+        """
+        Tests the case where a reboot is necessary but the PRIMARY used to be
+        a member other than -0. We need to ensure the reboot started with that
+        member that was the PRIMARY.
+        """
+
+        # generate transactions at mycluster-1 while the other members are stopped
+        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0,\
+            mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s1,\
+            mutil.MySQLPodSession(self.ns, "mycluster-2", "root", "sakila") as s2:
+            pod0_uuid = s0.query_sql("select @@server_uuid").fetch_one()[0]
+
+            s0.exec_sql("stop group_replication")
+            s2.exec_sql("stop group_replication")
+            s1.exec_sql("create schema something_something")
+
+        # kill mysqld (pid 1)
+        # (vary the scenario a little killing -2 since GR is stopped anyway)
+        kutil.kill(self.ns, ("mycluster-0", "mysql"), 11, 1)
+        kutil.kill(self.ns, ("mycluster-1", "mysql"), 11, 1)
+
+        # wait for operator to notice them gone
+        self.wait_ic("mycluster", "OFFLINE", num_online=0)
+
+        # wait for operator to restore it
+        self.wait_ic("mycluster", "ONLINE", num_online=3, timeout=300)
+
+        self.wait_member_state("mycluster-0", ["ONLINE"])
+        self.wait_member_state("mycluster-1", ["ONLINE"])
+        self.wait_member_state("mycluster-2", ["ONLINE"])
+
+        check_all(self, self.ns, "mycluster", instances=3, primary=1)
+
+        # switch primary back to -0
+        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0:
+            s0.exec_sql(f"do group_replication_set_as_primary('{pod0_uuid}')")
+
 
     def test_4_recover_delete_1_of_3(self):
         # delete the PRIMARY
@@ -816,7 +874,7 @@ spec:
         kutil.delete_po(self.ns, "mycluster-1", timeout=200)
 
         # wait for operator to restore everything
-        self.wait_ic("mycluster", "ONLINE", 3)
+        self.wait_ic("mycluster", "ONLINE", 3, timeout=300)
 
         # the pods were deleted, which means they would cleanly shutdown and
         # removed from the cluster
@@ -964,7 +1022,7 @@ spec:
         # TODO
 
         # wait for operator to restore everything
-        self.wait_ic("mycluster", "ONLINE", num_online=3)
+        self.wait_ic("mycluster", "ONLINE", num_online=3, timeout=300)
 
         check_all(self, self.ns, "mycluster", instances=3, primary=None)
 
@@ -1005,14 +1063,14 @@ spec:
         self.wait_ic("mycluster", "ONLINE", num_online=3, timeout=300, probe_time=initial_probe_time)
 
         all_pods = check_all(self, self.ns, "mycluster",
-                             instances=3, primary=0)
+                             instances=3)
         check_group.check_data(self, all_pods)
 
     def test_9_destroy(self):
         # XXX deleting the sts shouldn't be necessary, but it's not happening when the ic is deleted
         kutil.delete_sts(self.ns, "mycluster")
 
-        kutil.delete_ic(self.ns, "mycluster")
+        kutil.delete_ic(self.ns, "mycluster", 300)
 
         self.wait_pod_gone("mycluster-2")
         self.wait_pod_gone("mycluster-1")
@@ -1050,6 +1108,7 @@ metadata:
 spec:
   instances: 1
   secretName: mypwds
+  tlsUseSelfSigned: true
 """
 
         kutil.apply(self.ns, yaml)
@@ -1098,6 +1157,7 @@ spec:
   router:
     instances: 1
   secretName: mypwds
+  tlsUseSelfSigned: true
 """
 
         kutil.apply(self.ns, yaml)
@@ -1128,6 +1188,7 @@ spec:
   router:
     instances: 2
   secretName: mypwds2
+  tlsUseSelfSigned: true
 """
 
         kutil.apply(self.ns, yaml)
@@ -1206,6 +1267,7 @@ spec:
   secretName: mypwds
   version: "{g_ts_cfg.get_old_version_tag()}"
   baseServerId: 3210
+  tlsUseSelfSigned: true
   mycnf: |
     [mysqld]
     admin_port=3333
@@ -1308,6 +1370,7 @@ spec:
     instances: 1
   version: "{g_ts_cfg.get_old_version_tag()}"
   secretName: mypwds
+  tlsUseSelfSigned: true
   imagePullSecrets:
     - name: pullsecrets
 """

@@ -26,7 +26,7 @@ def main(argv):
 
     myconfig.config_from_env()
 
-    kopf.configure(verbose=True if myconfig.debug > 1 else False)
+    kopf.configure(verbose=True if myconfig.debug >= 1 else False)
 
     loop = asyncio.get_event_loop()
 
@@ -34,6 +34,7 @@ def main(argv):
     # kopf peering. If there are multiple operator instances in the cluster,
     # only the one with the highest priority will actually be active.
     loop.run_until_complete(kopf.operator(
+        clusterwide=True,
         priority=int(time.time()*1000000),
         peering_name="mysql-operator" # must be the same as the identified in ClusterKopfPeering
     ))

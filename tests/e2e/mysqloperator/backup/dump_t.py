@@ -3,21 +3,16 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
+import os
 from utils import tutil
 from utils import kutil
-from utils import dutil
 from utils import mutil
-import os
+from utils import ociutil
 import logging
-from e2e.mysqloperator.cluster import check_apiobjects
-from e2e.mysqloperator.cluster import check_group
-from e2e.mysqloperator.cluster import check_adminapi
-from e2e.mysqloperator.cluster import check_routing
 import unittest
 from utils.tutil import g_full_log
 from setup.config import g_ts_cfg
-from utils.auxutil import b64encode
-from utils.optesting import DEFAULT_MYSQL_ACCOUNTS, COMMON_OPERATOR_ERRORS
+from utils.optesting import COMMON_OPERATOR_ERRORS
 
 
 class DumpInstance(tutil.OperatorTest):
@@ -25,6 +20,7 @@ class DumpInstance(tutil.OperatorTest):
     dump_name = "dump-test1"
     oci_dump_name = "dump-test-oci1"
     backup_volume_name = "test-backup-storage"
+    oci_storage_prefix = '/e2etest'
 
     @classmethod
     def setUpClass(cls):
@@ -47,7 +43,7 @@ class DumpInstance(tutil.OperatorTest):
 
         backupdir = "/tmp/backups"
 
-        bucket = g_ts_cfg.oci_backup_bucket
+        bucket = g_ts_cfg.oci_bucket_name
 
         # create cluster with mostly default configs
         yaml = f"""
@@ -58,6 +54,7 @@ metadata:
 spec:
   instances: 2
   secretName: mypwds
+  tlsUseSelfSigned: true
   backupProfiles:
   - name: dump
     dumpInstance:
@@ -70,7 +67,7 @@ spec:
     dumpInstance:
       storage:
         ociObjectStorage:
-          prefix: /
+          prefix: {self.oci_storage_prefix}
           bucketName: {bucket or "not-set"}
           credentials: backup-apikey
   - name: snapshot
@@ -169,14 +166,12 @@ spec:
         # TODO add and check details about the profile used
         # check backup data, ensure that excluded DB is not included etc
 
-    @unittest.skipIf(g_ts_cfg.oci_skip or not g_ts_cfg.oci_backup_apikey_path or not g_ts_cfg.oci_backup_bucket,
-      "OCI backup apikey path and/or backup bucket not set")
+    @unittest.skipIf(g_ts_cfg.oci_skip or not g_ts_cfg.oci_config_path or not g_ts_cfg.oci_bucket_name,
+      "OCI backup config path and/or bucket name not set")
     def test_1_backup_to_oci_bucket(self):
         # Set this environment variable to the location of the OCI API Key
         # to use for backups to OCI Object Storage
-        apikey_path = g_ts_cfg.oci_backup_apikey_path
-        if apikey_path:
-            kutil.create_apikey_secret(self.ns, "backup-apikey", apikey_path)
+        kutil.create_apikey_secret(self.ns, "backup-apikey", g_ts_cfg.oci_config_path, "BACKUP")
 
         yaml = f"""
 apiVersion: mysql.oracle.com/v2alpha1
@@ -198,10 +193,13 @@ spec:
 
         r = self.wait(kutil.ls_mbk, args=(self.ns,),
                       check=check_mbk, timeout=300)
-        if r["NAME"] == self.oci_dump_name:
-            self.assertEqual(r["CLUSTER"], "mycluster")
-            self.assertEqual(r["STATUS"], "Completed")
-            self.assertTrue(r["OUTPUT"].startswith(f"{self.oci_dump_name}-"))
+        output = r["OUTPUT"]
+        self.assertEqual(r["CLUSTER"], "mycluster")
+        self.assertEqual(r["STATUS"], "Completed")
+        self.assertTrue(output.startswith(f"{self.oci_dump_name}-"))
+
+        if output:
+            self.__class__.oci_storage_output = os.path.join(self.oci_storage_prefix, output)
 
         # check status in backup object
         mbk = kutil.get_mbk(self.ns, self.oci_dump_name)
@@ -212,7 +210,7 @@ spec:
         self.assertEqual(mbk["status"]["status"], "Completed")
         self.assertTrue(mbk["status"]["elapsedTime"])
         self.assertEqual(mbk["status"]["method"], "dump-instance/oci-bucket")
-        self.assertEqual(mbk["status"]["bucket"], g_ts_cfg.oci_backup_bucket)
+        self.assertEqual(mbk["status"]["bucket"], g_ts_cfg.oci_bucket_name)
         self.assertTrue(mbk["status"]["ociTenancy"].startswith(
             "ocid1.tenancy.oc1.."))
         # secondary
@@ -255,6 +253,11 @@ spec:
 
         kutil.delete_secret(self.ns, "backup-apikey")
         kutil.delete_secret(self.ns, "mypwds")
+
+        if self.__class__.oci_storage_output:
+            ociutil.bulk_delete("DELETE", g_ts_cfg.oci_bucket_name, self.__class__.oci_storage_output)
+
+
 
 # TODO test that the backup is done using the backup account and fails if it's gone/missing privs but can recover when restored
 

@@ -36,9 +36,8 @@ class Config:
 
     # oci
     oci_skip = defaults.OCI_SKIP
-    oci_backup_apikey_path = defaults.OCI_BACKUP_APIKEY_PATH
-    oci_restore_apikey_path = defaults.OCI_RESTORE_APIKEY_PATH
-    oci_backup_bucket = defaults.OCI_BACKUP_BUCKET
+    oci_config_path = defaults.OCI_CONFIG_PATH
+    oci_bucket_name = defaults.OCI_BUCKET_NAME
 
     # k8s
     k8s_cluster = defaults.K8S_CLUSTER_NAME

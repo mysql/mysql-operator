@@ -86,14 +86,14 @@ def check_instance(test, icobj, all_pods, pod, is_primary, num_sessions=None, ve
             grvars["group_replication_single_primary_mode"], "ON", name)
         test.assertEqual(
             grvars["group_replication_bootstrap_group"], "OFF", name)
-        test.assertEqual(
-            grvars["group_replication_ssl_mode"], "REQUIRED", name)
 
         if len(all_pods) == 1:
             test.assertEqual(grvars["group_replication_group_seeds"], "", name)
         else:
-            test.assertSetEqual(set(grvars["group_replication_group_seeds"].strip(
-                ", ").split(",")), group_seeds, name)
+            # remove self from the group_seeds, which is unexpected, but not necessarily bad
+            my_group_seeds = [m for m in grvars["group_replication_group_seeds"].strip(
+                ", ").split(",") if not m.startswith(name)]
+            test.assertSetEqual(set(my_group_seeds), group_seeds, name)
         #test.assertSetEqual(set(grvars["group_replication_ip_whitelist"].split(",")), group_seeds)
 
         # check that SSL is enabled for recovery
@@ -153,7 +153,7 @@ def check_data(test, all_pods, user="root", password="sakila", primary=0):
                     "select WAIT_FOR_EXECUTED_GTID_SET(%s, 0)", (gtid_set0, ))
                 test.assertEqual(r.fetch_one()[0], 0)
 
-                # check for missing GTIDs 
+                # check for missing GTIDs
                 missing = s.query_sql("select gtid_subtract(%s, @@gtid_executed)", (gtid_set0, )).fetch_one()[0]
                 test.assertEqual("", missing, pod["metadata"]["name"])
 

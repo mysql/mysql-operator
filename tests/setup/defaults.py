@@ -55,14 +55,11 @@ ROUTER_EE_IMAGE_NAME = "enterprise-router"
 OCI_SKIP = os.getenv(
     "OPERATOR_TEST_SKIP_OCI", default=False)
 
-OCI_BACKUP_APIKEY_PATH = os.getenv(
-    "OPERATOR_TEST_BACKUP_OCI_APIKEY_PATH", default=None)
+OCI_CONFIG_PATH = os.getenv(
+    "OPERATOR_TEST_OCI_CONFIG_PATH", default=None)
 
-OCI_RESTORE_APIKEY_PATH = os.getenv(
-    "OPERATOR_TEST_RESTORE_OCI_APIKEY_PATH", default=None)
-
-OCI_BACKUP_BUCKET = os.getenv(
-    "OPERATOR_TEST_BACKUP_OCI_BUCKET", default=None)
+OCI_BUCKET_NAME = os.getenv(
+    "OPERATOR_TEST_OCI_BUCKET", default=None)
 
 # k8s
 K8S_CLUSTER_NAME = os.getenv(

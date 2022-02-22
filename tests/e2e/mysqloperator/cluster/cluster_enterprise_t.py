@@ -52,6 +52,7 @@ spec:
     instances: 2
   secretName: mypwds
   edition: enterprise
+  tlsUseSelfSigned: true
 """
 
         apply_time = isotime()

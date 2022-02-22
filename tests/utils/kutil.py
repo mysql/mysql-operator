@@ -432,6 +432,12 @@ def delete_cm(ns, name, timeout=5):
 def delete_secret(ns, name, timeout=5):
     delete(ns, "secret", name, timeout=timeout)
 
+
+#
+
+def restart_sts(ns, name):
+    kubectl("rollout", None, ["-n", ns, "restart", "statefulset", name])
+
 #
 
 
@@ -459,12 +465,23 @@ def cat(ns, name, path):
     return s
 
 
+def cat_in(ns, name, path, data):
+    if type(name) is str:
+        args = [name]
+    else:
+        args = [name[0], "-c", name[1]]
+
+    args += ["-n", ns, "-i", "--", "/bin/bash", "-c", f"cat > {path}"]
+
+    p = feed_kubectl(data, "exec", args=args, check=False)
+
+
 def exec(ns, name, cmd):
     if type(name) is str:
         args = [name]
     else:
         args = [name[0], "-c", name[1]]
-    kubectl("exec", None, args + ["-n", ns, "--"] + cmd)
+    return kubectl("exec", None, args + ["-n", ns, "--"] + cmd)
 
 
 def execp(ns, name, cmd):
@@ -647,7 +664,8 @@ def wait_ic_gone(ns, name, timeout=120, checkabort=lambda: None):
     raise Exception(f"Timeout waiting for ic {ns}/{name}")
 
 
-def wait_ic(ns, name, status=["ONLINE"], num_online=None, timeout=200, probe_time=None, checkabort=lambda: None):
+def wait_ic(ns, name, status=["ONLINE"], num_online=None, timeout=200, probe_time=None,
+            checkabort=lambda: None):
     if type(status) not in (tuple, list):
         status = [status]
 
@@ -721,27 +739,58 @@ data:
     apply(ns, yaml)
 
 
-def create_apikey_secret(ns, name, path, config_name = "config", profile_name = "DEFAULT", privatekey = "key.pem"):
+def adjust_key_file_path(cfg_path, cfg_key_file_path):
+    cfg_key_file_path = os.path.expanduser(cfg_key_file_path)
+    if os.path.isabs(cfg_key_file_path):
+        return cfg_key_file_path
+
+    # kubectl doesn't like relative paths
+    cfg_dir = os.path.dirname(cfg_path)
+    key_file_path = os.path.join(cfg_dir, cfg_key_file_path)
+
+    return pathlib.Path(key_file_path).absolute()
+
+def create_apikey_secret(ns, name, cfg_path, profile_name):
     import configparser
     ini_parser = configparser.ConfigParser()
-    ini_parser.read(f"{path}/{config_name}")
+    ini_parser.read(cfg_path)
     if not profile_name in ini_parser:
         raise Exception(f"{profile_name} profile not found")
 
-    # kubectl doesn't like relative paths
-    path = pathlib.Path(path).expanduser().absolute()
-
-    if not os.path.isfile(f"{path}/{privatekey}"):
-        raise Exception(f"{path}/{privatekey} doesn't exist")
-
-
     KEY_FILE_INI_OPTION_NAME = "key_file"
     options = [ "generic", name, "-n", ns]
-    options.append(f"--from-file=privatekey={path}/{privatekey}")
 
     for ini_key, ini_value in ini_parser[profile_name].items():
         if ini_key != KEY_FILE_INI_OPTION_NAME:
             options.append(f"--from-literal={ini_key}={ini_value}")
+        else:
+            key_file_path = adjust_key_file_path(cfg_path, ini_value)
+            if not os.path.isfile(key_file_path):
+                raise Exception(f"{key_file_path} doesn't exist")
+            options.append(f"--from-file=privatekey={key_file_path}")
+
+    kubectl("create", "secret", options)
+
+
+def create_secret_from_files(ns, name, data):
+    options = [ "generic", name, "-n", ns]
+    for key, path in data:
+        options.append(f"--from-file={key}={path}")
+
+    kubectl("create", "secret", options)
+
+
+def create_ssl_ca_secret(ns, name, path, crlpath=None):
+    data = [("ca.pem", path)]
+    if crlpath:
+        data.append(("crl.pem", crlpath))
+    create_secret_from_files(ns, name, data)
+
+
+def create_ssl_cert_secret(ns, name, cert_path, key_path):
+    options = [ "tls", name, "-n", ns]
+    options.append(f"--cert={cert_path}")
+    options.append(f"--key={key_path}")
 
     kubectl("create", "secret", options)
 

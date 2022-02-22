@@ -149,6 +149,7 @@ metadata:
 spec:
   serviceName: {spec.name}-instances
   replicas: {spec.instances}
+  podManagementPolicy: Parallel
   selector:
     matchLabels:
       component: mysqld
@@ -181,12 +182,25 @@ spec:
         allowPrivilegeEscalation: false
         privileged: false
         readOnlyRootFilesystem: true
-        runAsNonRoot: true
+        runAsUser: 27
+        runAsGroup: 27
+        fsGroup: 27
       initContainers:
+      - name: fixdatadir
+        image: {spec.operator_image}
+        imagePullPolicy: {spec.sidecar_image_pull_policy}
+        command: ["bash", "-c", "chown 27:27 /var/lib/mysql && chmod 0700 /var/lib/mysql"]
+        securityContext:
+          runAsUser: 0
+        volumeMounts:
+        - name: datadir
+          mountPath: /var/lib/mysql
       - name: initconf
         image: {spec.operator_image}
         imagePullPolicy: {spec.sidecar_image_pull_policy}
         command: ["mysqlsh", "--log-level=@INFO", "--pym", "mysqloperator", "init"]
+        securityContext:
+          runAsUser: 27
         env:
         - name: MY_POD_NAME
           valueFrom:
@@ -209,11 +223,7 @@ spec:
       - name: initmysql
         image: {spec.mysql_image}
         imagePullPolicy: {spec.mysql_image_pull_policy}
-        securityContext:
-          runAsUser: 27
         args: {mysql_argv}
-        securityContext:
-          runAsUser: 27
         env:
         - name: MYSQL_INITIALIZE_ONLY
           value: "1"
@@ -228,7 +238,7 @@ spec:
         - name: datadir
           mountPath: /var/lib/mysql
         - name: rundir
-          mountPath: /var/run/mysql
+          mountPath: /var/run/mysqld
         - name: mycnfdata
           mountPath: /etc/my.cnf.d
           subPath: my.cnf.d
@@ -246,6 +256,7 @@ spec:
         securityContext:
           runAsUser: 27
           fsgroup: 27
+        serviceAccountName: {spec.name}-sidecar-sa
         env:
         - name: MY_POD_NAME
           valueFrom:
@@ -256,12 +267,12 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         - name: MYSQL_UNIX_PORT
-          value: /var/run/mysql/mysql.sock
+          value: /var/run/mysqld/mysql.sock
         - name: MYSQLSH_USER_CONFIG_HOME
           value: /mysqlsh
         volumeMounts:
         - name: rundir
-          mountPath: /var/run/mysql
+          mountPath: /var/run/mysqld
         - name: mycnfdata
           mountPath: /etc/my.cnf.d
           subPath: my.cnf.d
@@ -270,11 +281,10 @@ spec:
           subPath: my.cnf
         - name: shellhome
           mountPath: /mysqlsh
+{utils.indent(spec.extra_sidecar_volume_mounts, 8)}
       - name: mysql
         image: {spec.mysql_image}
         imagePullPolicy: {spec.mysql_image_pull_policy}
-        securityContext:
-          runAsUser: 27
         args: {mysql_argv}
         securityContext:
           runAsUser: 27
@@ -307,7 +317,7 @@ spec:
           timeout: 5
         env:
         - name: MYSQL_UNIX_PORT
-          value: /var/run/mysql/mysql.sock
+          value: /var/run/mysqld/mysql.sock
 {utils.indent(spec.extra_env, 8)}
         ports:
         - containerPort: {spec.mysql_port}
@@ -320,7 +330,7 @@ spec:
         - name: datadir
           mountPath: /var/lib/mysql
         - name: rundir
-          mountPath: /var/run/mysql
+          mountPath: /var/run/mysqld
         - name: mycnfdata
           mountPath: /etc/my.cnf.d
           subPath: my.cnf.d
@@ -333,6 +343,7 @@ spec:
         - name: initconfdir
           mountPath: /readinessprobe.sh
           subPath: readinessprobe.sh
+{utils.indent(spec.extra_volume_mounts, 8)}
       volumes:
       - name: mycnfdata
         emptyDir: {{}}
@@ -344,6 +355,7 @@ spec:
           defaultMode: 0755
       - name: shellhome
         emptyDir: {{}}
+{utils.indent(spec.extra_volumes, 6)}
   volumeClaimTemplates:
   - metadata:
       name: datadir
@@ -366,8 +378,40 @@ spec:
 
     return statefulset
 
+def prepare_service_account(spec: InnoDBClusterSpec) -> dict:
+    account = f"""
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {spec.name}-sidecar-sa
+  namespace: {spec.namespace}
+"""
+    account = yaml.safe_load(account)
 
-def prepare_initconf(spec: InnoDBClusterSpec) -> dict:
+    return account
+
+
+def prepare_role_binding(spec: InnoDBClusterSpec) -> dict:
+    rolebinding = f"""
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {spec.name}-sidecar-rb
+  namespace: {spec.namespace}
+subjects:
+  - kind: ServiceAccount
+    name: {spec.name}-sidecar-sa
+roleRef:
+  kind: ClusterRole
+  name: mysql-sidecar
+  apiGroup: rbac.authorization.k8s.io
+"""
+    rolebinding = yaml.safe_load(rolebinding)
+
+    return rolebinding
+
+
+def prepare_initconf(cluster: InnoDBCluster, spec: InnoDBClusterSpec) -> dict:
     liveness_probe = """#!/bin/bash
 # Copyright (c) 2020, 2021, Oracle and/or its affiliates.
 
@@ -429,6 +473,8 @@ else
 fi
 """
 
+    has_crl = cluster.tls_has_crl()
+
     tmpl = f"""
 apiVersion: v1
 kind: ConfigMap
@@ -463,15 +509,15 @@ data:
     server_id=@@SERVER_ID@@
     report_host=@@HOSTNAME@@
     datadir=/var/lib/mysql
-    loose_mysqlx_socket=/var/run/mysql/mysqlx.sock
-    socket=/var/run/mysql/mysql.sock
+    loose_mysqlx_socket=/var/run/mysqld/mysqlx.sock
+    socket=/var/run/mysqld/mysql.sock
     local-infile=1
 
     [mysql]
-    socket=/var/run/mysql/mysql.sock
+    socket=/var/run/mysqld/mysql.sock
 
     [mysqladmin]
-    socket=/var/run/mysql/mysql.sock
+    socket=/var/run/mysqld/mysql.sock
 
     !includedir /etc/my.cnf.d
 
@@ -495,6 +541,22 @@ data:
     relay_log_info_repository=TABLE
     skip_slave_start=1
 
+  02-ssl.cnf: |
+    # SSL configurations
+    # Do not edit.
+    [mysqld]
+    {"# " if spec.tlsUseSelfSigned else ""}ssl-ca=/etc/mysql-ssl/ca.pem
+    {"# " if not has_crl else ""}ssl-crl=/etc/mysql-ssl/crl.pem
+    {"# " if spec.tlsUseSelfSigned else ""}ssl-cert=/etc/mysql-ssl/tls.crt
+    {"# " if spec.tlsUseSelfSigned else ""}ssl-key=/etc/mysql-ssl/tls.key
+
+    loose_group_replication_recovery_use_ssl=1
+    {"# " if spec.tlsUseSelfSigned else ""}loose_group_replication_recovery_ssl_verify_server_cert=1
+
+    {"# " if spec.tlsUseSelfSigned else ""}loose_group_replication_recovery_ssl_ca=/etc/mysql-ssl/ca.pem
+    #{"# " if not has_crl else ""}loose_group_replication_recovery_ssl_crl=/etc/mysql-ssl/crl.pem
+    {"# " if spec.tlsUseSelfSigned else ""}loose_group_replication_recovery_ssl_cert=/etc/mysql-ssl/tls.crt
+    {"# " if spec.tlsUseSelfSigned else ""}loose_group_replication_recovery_ssl_key=/etc/mysql-ssl/tls.key
 
   99-extra.cnf: |
     # Additional user configurations taken from spec.mycnf in InnoDBCluster.
@@ -506,7 +568,14 @@ data:
     return yaml.safe_load(tmpl)
 
 
-def update_stateful_set_spec(sts, patch: dict) -> None:
+def reconcile_stateful_set(cluster: InnoDBCluster) -> None:
+    patch = prepare_cluster_stateful_set(cluster.parsed_spec)
+
+    api_apps.patch_namespaced_stateful_set(
+        cluster.name, cluster.namespace, body=patch)
+
+
+def update_stateful_set_spec(sts : api_client.V1StatefulSet, patch: dict) -> None:
     api_apps.patch_namespaced_stateful_set(
         sts.metadata.name, sts.metadata.namespace, body=patch)
 

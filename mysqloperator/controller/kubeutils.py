@@ -24,6 +24,7 @@ api_apps: client.AppsV1Api = client.AppsV1Api()
 api_batch: client.BatchV1Api = client.BatchV1Api()
 api_cron_job: client.BatchV1beta1Api = client.BatchV1beta1Api()
 api_policy: client.PolicyV1beta1Api = client.PolicyV1beta1Api()
+api_rbac: client.RbacAuthorizationV1Api = client.RbacAuthorizationV1Api()
 
 T = TypeVar("T")
 

@@ -12,7 +12,7 @@ from ..shellutils import DbaWrap
 from . import router_objects
 from .cluster_api import MySQLPod, InnoDBCluster, client
 import typing
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, Dict
 if TYPE_CHECKING:
     from mysqlsh.mysql import ClassicSession
     from mysqlsh import Dba, Cluster
@@ -39,6 +39,11 @@ def create_allow_list(pod: MySQLPod, logger) -> str:
     logger.info(f"allow_list for {pod.name}: ipAllowlist={allowlist}")
     return allowlist
 
+
+def select_pod_with_most_gtids(gtids: Dict[int, str]) -> int:
+    pod_indexes = list(gtids.keys())
+    pod_indexes.sort(key = lambda a: mysqlutils.count_gtids(gtids[a]))
+    return pod_indexes[-1]
 
 class ClusterMutex:
     def __init__(self, cluster: InnoDBCluster, pod: Optional[MySQLPod] = None):
@@ -241,7 +246,7 @@ class ClusterController:
         create_options = {
             "gtidSetIsComplete": assume_gtid_set_complete,
             "manualStartOnBoot": True,
-            "memberSslMode": "REQUIRED",
+            "memberSslMode": "REQUIRED" if self.cluster.parsed_spec.tlsUseSelfSigned else "VERIFY_IDENTITY",
             "ipAllowlist": create_allow_list(seed_pod, logger)
         }
         create_options.update(common_gr_options)
@@ -325,33 +330,33 @@ class ClusterController:
             logger.debug(f"Setting router replicas to {n}")
             router_objects.update_size(self.cluster, n, logger)
 
-    def reboot_cluster(self, logger) -> None:
-        logger.info(f"Rebooting cluster {self.cluster.name}...")
 
-        # Reboot from cluster-0
-        # TODO check if we need to find the member with the most GTIDs first
+    def reboot_cluster(self, seed_pod_index: MySQLPod, logger) -> None:
         pods = self.cluster.get_pods()
-        seed_pod = pods[0]
+        seed_pod = pods[seed_pod_index]
 
-        with DbaWrap(shellutils.connect_dba(seed_pod.endpoint_co, logger)) as dba:
-            logger.info(
-                f"reboot_cluster_from_complete_outage: seed={seed_pod}")
-            self.log_mysql_info(seed_pod, dba.session, logger)
+        logger.info(f"Rebooting cluster {self.cluster.name} from pod {seed_pod}...")
 
-            seed_pod.add_member_finalizer()
+        self.dba = shellutils.connect_dba(seed_pod.endpoint_co, logger)
 
-            cluster = dba.reboot_cluster_from_complete_outage()
+        self.log_mysql_info(seed_pod, self.dba.session, logger)
 
-            logger.info(f"reboot_cluster_from_complete_outage OK.")
+        seed_pod.add_member_finalizer()
 
-            # Rejoin everyone
-            # for pod in pods[1:]:
-            #    self.reconcile_pod(seed_pod, pod, logger)
+        self.dba_cluster = self.dba.reboot_cluster_from_complete_outage()
 
-            status = cluster.status()
-            logger.info(f"Cluster reboot successful. status={status}")
+        logger.info(f"reboot_cluster_from_complete_outage OK.")
 
-            self.probe_member_status(seed_pod, dba.session, True, logger)
+        # rejoin other pods
+        for pod in pods:
+            if pod.index != seed_pod_index:
+                with shellutils.connect_to_pod(pod, logger, timeout=5) as session:
+                    self.rejoin_instance(pod, session, logger)
+
+        status = self.dba_cluster.status()
+        logger.info(f"Cluster reboot successful. status={status}")
+
+        self.probe_member_status(seed_pod, self.dba.session, True, logger)
 
 
     def force_quorum(self, seed_pod, logger) -> None:
@@ -403,12 +408,12 @@ class ClusterController:
             if status.status == diagnose.CandidateDiagStatus.JOINABLE:
                 self.cluster.info(action="ReconcilePod", reason="Join",
                                   message=f"Joining {pod.name} to cluster")
-                self.join_instance(pod, logger, pod_dba_session)
+                self.join_instance(pod, pod_dba_session, logger)
 
             elif status.status == diagnose.CandidateDiagStatus.REJOINABLE:
                 self.cluster.info(action="ReconcilePod", reason="Rejoin",
                                   message=f"Rejoining {pod.name} to cluster")
-                self.rejoin_instance(pod, logger, pod_dba_session)
+                self.rejoin_instance(pod, pod_dba_session.session, logger)
 
             elif status.status == diagnose.CandidateDiagStatus.MEMBER:
                 logger.info(f"{pod.endpoint} already a member")
@@ -429,7 +434,7 @@ class ClusterController:
 
                 self.probe_member_status(pod, pod_dba_session.session, False, logger)
 
-    def join_instance(self, pod: MySQLPod, logger, pod_dba_session: 'Dba') -> None:
+    def join_instance(self, pod: MySQLPod, pod_dba_session: 'Dba', logger) -> None:
         logger.info(f"Adding {pod.endpoint} to cluster")
 
         peer_pod = self.connect_to_cluster(logger)
@@ -463,17 +468,18 @@ class ClusterController:
 
         self.probe_member_status(pod, pod_dba_session.session, True, logger)
 
-    def rejoin_instance(self, pod: MySQLPod, logger, pod_dba_session: 'Dba') -> None:
+    def rejoin_instance(self, pod: MySQLPod, pod_session, logger) -> None:
         logger.info(f"Rejoining {pod.endpoint} to cluster")
 
-        peer_pod = self.connect_to_cluster(logger)
+        if not self.dba_cluster:
+            self.connect_to_cluster(logger)
 
-        self.log_mysql_info(pod, pod_dba_session.session, logger)
+        self.log_mysql_info(pod, pod_session, logger)
 
         rejoin_options = {}
 
         logger.info(
-            f"rejoin_instance: target={pod.endpoint}  cluster_peer={peer_pod.endpoint}  options={rejoin_options}...")
+            f"rejoin_instance: target={pod.endpoint} options={rejoin_options}...")
 
         try:
             self.dba_cluster.rejoin_instance(pod.endpoint, rejoin_options)
@@ -483,7 +489,7 @@ class ClusterController:
             logger.warning(f"rejoin_instance failed: error={e}")
             raise
 
-        self.probe_member_status(pod, pod_dba_session.session, False, logger)
+        self.probe_member_status(pod, pod_session, False, logger)
 
     def remove_instance(self, pod: MySQLPod, pod_body: Body, logger, force: bool = False) -> None:
         logger.info(f"Removing {pod.endpoint} from cluster")
@@ -573,14 +579,18 @@ class ClusterController:
             return
 
         elif diagnostic.status == diagnose.ClusterDiagStatus.OFFLINE:
-            # Reboot cluster if this is pod-0
-            if pod.index == 0:
-                self.cluster.info(action="RestoreCluster", reason="Rebooting",
-                                  message="Restoring OFFLINE cluster")
+            # Reboot cluster if all pods are reachable
+            if len([g for g in diagnostic.gtid_executed.values() if g is not None]) == len(self.cluster.get_pods()):
+                seed_pod = select_pod_with_most_gtids(diagnostic.gtid_executed)
 
-                shellutils.RetryLoop(logger).call(self.reboot_cluster, logger)
+                self.cluster.info(action="RestoreCluster", reason="Rebooting",
+                                    message=f"Restoring OFFLINE cluster through pod {seed_pod}")
+
+                shellutils.RetryLoop(logger).call(self.reboot_cluster, seed_pod, logger)
             else:
-                logger.info(f"Cluster in state {diagnostic.status}")
+                logger.debug(f"Cannot reboot cluster because not all pods are reachable")
+                raise kopf.TemporaryError(
+                        f"Cluster cannot be restored because there are unreachable pods", delay=5)
 
         elif diagnostic.status == diagnose.ClusterDiagStatus.OFFLINE_UNCERTAIN:
             # TODO delete unconnectable pods after timeout, if enabled
@@ -641,6 +651,13 @@ class ClusterController:
             raise kopf.PermanentError(
                 f"Invalid cluster state {diagnostic.status}")
 
+    def on_router_tls_changed(self) -> None:
+        """
+        Router pods need to be recreated in order for new certificates to get
+        reloaded.
+        """
+        pass
+
     def on_pod_created(self, pod: MySQLPod, logger) -> None:
         diag = self.probe_status(logger)
 
@@ -675,7 +692,6 @@ class ClusterController:
 
     def on_pod_restarted(self, pod: MySQLPod, logger) -> None:
         diag = self.probe_status(logger)
-
         logger.debug(
             f"on_pod_restarted: pod={pod.name}  primary={diag.primary}  cluster_state={diag.status}")
 

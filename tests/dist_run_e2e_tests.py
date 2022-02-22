@@ -7,6 +7,7 @@
 import shutil
 import multiprocessing
 import tempfile
+import time
 from unittest.util import strclass
 from run_e2e_tests import load_test_suite, parse_filter
 import os
@@ -16,13 +17,14 @@ class DistTestSuiteRunner:
     base_dir = os.path.dirname(os.path.abspath(__file__))
     work_dir = None
 
+    env_name = "minikube"
     tag = "ote-mysql"
     default_worker_count = 2
-    env_name = "minikube"
+    defer_worker_start = 0
+    sort_cases = False
+    perform_purge = False
     pattern_include = []
     pattern_exclude = []
-    perform_cleanup = True
-    sort_cases = False
 
     worker_argv = []
 
@@ -33,15 +35,16 @@ class DistTestSuiteRunner:
             if arg.startswith("--env="):
                 self.env_name = arg.partition("=")[-1]
                 self.worker_argv.append(arg)
-            elif arg.startswith("--workers="):
-                self.default_worker_count = int(arg.split("=")[-1])
             elif arg.startswith("--tag="):
                 self.tag = arg.partition("=")[-1]
+            elif arg.startswith("--workers="):
+                self.default_worker_count = int(arg.split("=")[-1])
+            elif arg.startswith("--defer"):
+                self.defer_worker_start = int(arg.split("=")[-1])
             elif arg.startswith("--sort"):
                 self.sort_cases = True
-            elif arg in ("--noclean", "--no-clean"):
-                self.perform_cleanup = False
-                self.worker_argv.append(arg)
+            elif arg.startswith("--purge"):
+                self.perform_purge = True
             elif arg.startswith("-"):
                 self.worker_argv.append(arg)
             else:
@@ -91,7 +94,7 @@ class DistTestSuiteRunner:
         return f"{prefix}{self.tag}-{worker_index}"
 
     def get_worker_portion_path(self, worker_index):
-        return os.path.join(self.work_dir, f"worker-{worker_index}-suite.txt")
+        return os.path.join(self.work_dir, f"suite-{worker_index}.txt")
 
     def get_worker_log_path(self, worker_index):
         return os.path.join(self.work_dir, f"worker-{worker_index}.log")
@@ -130,6 +133,8 @@ class DistTestSuiteRunner:
 
         worker_index = 0
         for portion in portions:
+            if self.defer_worker_start > 0 and worker_index != 0:
+                time.sleep(self.defer_worker_start)
             print(f"------ starting worker {worker_index}...")
             cmd_line = self.prepare_worker_data(worker_index, portion)
             print(cmd_line)
@@ -155,7 +160,7 @@ class DistTestSuiteRunner:
             log_path = self.get_worker_log_path(i)
             self.print_file(log_path)
 
-    def cleanup(self):
+    def purge(self):
         shutil.rmtree(self.work_dir)
 
     def run(self):
@@ -172,8 +177,8 @@ class DistTestSuiteRunner:
 
         self.print_logs(len(portions))
 
-        if self.perform_cleanup:
-            self.cleanup()
+        if self.perform_purge:
+            self.purge()
 
 
 test_suite_runner = DistTestSuiteRunner(sys.argv[1:])

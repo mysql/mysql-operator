@@ -108,6 +108,7 @@ if __name__ == '__main__':
 
     opt_include = []
     opt_exclude = []
+    opt_suite_path = None
     opt_verbose = False
     opt_debug = False
     opt_verbosity = 2
@@ -188,7 +189,7 @@ if __name__ == '__main__':
         elif arg.startswith("--oci-backup-bucket="):
             g_ts_cfg.oci_backup_bucket=arg.partition("=")[-1]
         elif arg.startswith("--suite="):
-            suite_path=arg.partition("=")[-1]
+            opt_suite_path=arg.partition("=")[-1]
         elif arg.startswith("-"):
             print(f"Invalid option {arg}")
             sys.exit(1)
@@ -199,8 +200,8 @@ if __name__ == '__main__':
 
     g_ts_cfg.commit()
 
-    if suite_path:
-        with open(suite_path, 'r') as f:
+    if opt_suite_path:
+        with open(opt_suite_path, 'r') as f:
             opt_include += f.read().splitlines()
     print(f"opt_include: {opt_include}")
 

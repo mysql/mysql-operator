@@ -24,7 +24,7 @@ class K3dEnvironment(BaseEnvironment):
 
     def load_image(self, repo_tag, id):
         print(f"Loading image {repo_tag} ({id})")
-        cmd = f"k3d image import {repo_tag} -c {g_ts_cfg.k8s_context}"
+        cmd = f"k3d image import {repo_tag} -c {g_ts_cfg.k8s_cluster}"
         print(cmd)
         subprocess.check_call(cmd, shell=True)
 
@@ -62,11 +62,11 @@ class K3dEnvironment(BaseEnvironment):
         return []
 
     def stop_cluster(self):
-        args = ["k3d", "cluster", "stop", g_ts_cfg.k8s_context]
+        args = ["k3d", "cluster", "stop", g_ts_cfg.k8s_cluster]
         subprocess.check_call(args)
 
     def delete_cluster(self):
-        args = ["k3d", "cluster", "delete", g_ts_cfg.k8s_context]
+        args = ["k3d", "cluster", "delete", g_ts_cfg.k8s_cluster]
         subprocess.check_call(args)
 
     def prepare_registry_cfg(self):

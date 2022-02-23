@@ -9,7 +9,6 @@ from utils import mutil
 import logging
 from utils.tutil import g_full_log
 from utils.optesting import COMMON_OPERATOR_ERRORS
-from mysqloperator.controller import config as operator_cfg
 
 
 def check_sidecar_health(test, ns, pod):

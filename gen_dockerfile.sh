@@ -1,14 +1,14 @@
-# Copyright (c) 2021, Oracle and/or its affiliates.
+#!/bin/bash
+# Copyright (c) 2021, 2022 Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
-#!/bin/bash
 
 MYSQL_REPO_URL="http://repo.mysql.com"
 MYSQL_OPERATOR_PYTHON_DEPS="mysql-operator-python-deps"
 MYSQL_OPERATOR_PYTHON_DEPS_VERSION="3.9.5"
-MYSQL_SHELL_VERSION=8.0.28
+MYSQL_SHELL_VERSION=8.0.29
 if [ -n "${1}" ]; then
   MYSQL_REPO_URL="${1}"
 fi

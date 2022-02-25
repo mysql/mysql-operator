@@ -63,7 +63,9 @@ export KUBECONFIG=$TMP_KUBE_CONFIG
 trap 'kill $(jobs -p)' EXIT
 cd "$TESTS_DIR"
 
-TEST_OPTIONS='-t -vvv --doperator --dkube -doci'
+if test -z ${TEST_OPTIONS+x}; then
+	TEST_OPTIONS='-t -vvv --doperator --dkube --doci'
+fi
 
 if test -z ${WORKERS+x}; then
 	WORKERS=1

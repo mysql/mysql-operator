@@ -1426,6 +1426,123 @@ spec:
 
         kutil.delete_secret(self.ns, "mypwds")
 
+class Cluster1CloneWorksWhenTransactionMissingFromBinlog(tutil.OperatorTest):
+    default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+
+    def test_0_scaling_after_removing_some_binlogs_works(self):
+        """
+        Checks:
+        - that new instance will be populated properly even if some binlogs are missing
+        """
+        kutil.create_user_secrets(
+            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+
+        # create cluster with mostly default configs, but a specific server version
+        yaml = """
+apiVersion: mysql.oracle.com/v2alpha1
+kind: InnoDBCluster
+metadata:
+  name: mycluster
+spec:
+  instances: 1
+  router:
+    instances: 0
+  secretName: mypwds
+  tlsUseSelfSigned: true
+  imagePullSecrets:
+    - name: pullsecrets
+"""
+
+        kutil.apply(self.ns, yaml)
+
+        self.wait_pod("mycluster-0", "Running")
+
+        self.wait_ic("mycluster", "ONLINE", 1)
+
+        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
+            s.exec_sql("set autocommit=1")
+
+            # Make sure we have some transactions in the binlog
+            s.exec_sql("CREATE SCHEMA foo")
+            s.exec_sql("CREATE TABLE foo.t (id INT NOT NULL, PRIMARY KEY(id))")
+            s.exec_sql("INSERT INTO foo.t VALUES (1)")
+
+            # Flush binlog so we can purge
+            s.exec_sql("FLUSH BINARY LOGS")
+            s.exec_sql("INSERT INTO foo.t VALUES (2)")
+
+            # Purge "old" logs
+            binlogname = s.query_sql("SHOW BINARY LOGS").fetch_all().pop()[0]
+            s.exec_sql(f"PURGE BINARY LOGS TO '{binlogname}'")
+
+        # Try to scale up
+        kutil.patch_ic(self.ns, "mycluster", {
+                       "spec": {"instances": 2}}, type="merge")
+        self.wait_pod("mycluster-1", "Running")
+        self.wait_ic("mycluster", "ONLINE", 2)
+
+        # Ensure clone copied all data
+        with mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s:
+            rowcount = s.query_sql("SELECT COUNT(*) FROM foo.t").fetch_one()[0]
+            self.assertEqual(rowcount, 2)
+
+        # Scale down, and  scale back up and verify replica catches up from old data
+        kutil.patch_ic(self.ns, "mycluster", {
+                       "spec": {"instances": 1}}, type="merge")
+        self.wait_pod_gone("mycluster-1")
+
+        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
+            s.exec_sql("set autocommit=1")
+            s.query_sql("INSERT INTO foo.t VALUES (3)")
+
+            # This transcation will only be seen on the replica if clone was used
+            # erroneously instead of incremental
+            s.exec_sql("set session sql_log_bin=0")
+            s.exec_sql("INSERT INTO foo.t VALUES (4)")
+            s.exec_sql("set session sql_log_bin=1")
+
+        kutil.patch_ic(self.ns, "mycluster", {
+                       "spec": {"instances": 2}}, type="merge")
+        self.wait_pod("mycluster-1", "Running")
+        self.wait_ic("mycluster", "ONLINE", 2)
+
+        with mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s:
+            count = s.query_sql("SELECT COUNT(*) FROM foo.t").fetch_one()[0]
+            self.assertEqual(count, 3)
+
+        # If transactions are missing from the binlog the old datadir can not be recovered
+        # and we have to clone
+        kutil.patch_ic(self.ns, "mycluster", {
+                       "spec": {"instances": 1}}, type="merge")
+        self.wait_pod_gone("mycluster-1")
+
+        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
+            s.exec_sql("set autocommit=1")
+
+            # Flush binlog so we can purge
+            s.exec_sql("FLUSH BINARY LOGS")
+            s.exec_sql("INSERT INTO foo.t VALUES (5)")
+
+            # Purge "old" logs
+            binlogname = s.query_sql("SHOW BINARY LOGS").fetch_all().pop()[0]
+            s.exec_sql(f"PURGE BINARY LOGS TO '{binlogname}'")
+
+        kutil.patch_ic(self.ns, "mycluster", {
+                       "spec": {"instances": 2}}, type="merge")
+        self.wait_pod("mycluster-1", "Running")
+        self.wait_ic("mycluster", "ONLINE", 2)
+
+        with mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s:
+            count = s.query_sql("SELECT COUNT(*) FROM foo.t").fetch_one()[0]
+            self.assertEqual(count, 4)
+
+        kutil.delete_ic(self.ns, "mycluster")
+
+        self.wait_pod_gone("mycluster-1")
+        self.wait_pod_gone("mycluster-0")
+        self.wait_ic_gone("mycluster")
+
+        kutil.delete_secret(self.ns, "mypwds")
 
 # ClusterErrors():
 # TODO test error creating cluster, adding instance, removing, rejoining

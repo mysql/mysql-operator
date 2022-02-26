@@ -216,18 +216,15 @@ class ClusterController:
             if self.cluster.parsed_spec.initDB.clone:
                 self.cluster.update_cluster_info({
                     "initialDataSource": f"clone={self.cluster.parsed_spec.initDB.clone.uri}",
-                    "incrementalRecoveryAllowed": False
                 })
             elif self.cluster.parsed_spec.initDB.dump and seed_pod.index == 0: # A : Should we check for index?
                 if self.cluster.parsed_spec.initDB.dump.storage.ociObjectStorage:
                     self.cluster.update_cluster_info({
                         "initialDataSource": f"dump={self.cluster.parsed_spec.initDB.dump.storage.ociObjectStorage.bucketName}",
-                        "incrementalRecoveryAllowed": True  # A: what should be the value of this
                     })
                 elif self.cluster.parse_spec.initDB.dump.storage.persistentVolumeClaim:
                     self.cluster.update_cluster_info({
                         "initialDataSource": f"dump={self.cluster.parsed_spec.initDB.dump.storage.ociObjectStorage.bucketName}",
-                        "incrementalRecoveryAllowed": False  # A: what should be the value of this
                     })
                     # A : How to import from a dump?
                 else:
@@ -240,7 +237,6 @@ class ClusterController:
 
             self.cluster.update_cluster_info({
                 "initialDataSource": "blank",
-                "incrementalRecoveryAllowed": True
             })
 
 
@@ -446,10 +442,10 @@ class ClusterController:
 
         self.log_mysql_info(pod, pod_dba_session.session, logger)
 
-        recovery_method = "clone"
         # TODO - always use clone when dataset is big
-        if self.cluster.incremental_recovery_allowed():
-            recovery_method = "incremental"
+        # With Shell Bug #33900165 fixed we should use "auto" by default
+        # and remove the retry logic below
+        recovery_method = "incremental"
 
         add_options = {
             "recoveryMethod": recovery_method,
@@ -460,16 +456,24 @@ class ClusterController:
         logger.info(
             f"add_instance: target={pod.endpoint}  cluster_peer={peer_pod.endpoint}  options={add_options}...")
 
-        try:
-            pod.add_member_finalizer()
+        pod.add_member_finalizer()
 
+        try:
             self.dba_cluster.add_instance(pod.endpoint_co, add_options)
 
             logger.debug("add_instance OK")
-        except mysqlsh.Error as e:
+        except  (mysqlsh.Error, RuntimeError) as e:
             logger.warning(f"add_instance failed: error={e}")
 
-            raise
+            # Incremetnal may fail if transactions are missing from binlog
+            # retry using clone
+            add_options["recoveryMethod"] = "clone"
+            logger.warning(f"trying add_instance with clone")
+            try:
+                self.dba_cluster.add_instance(pod.endpoint_co, add_options)
+            except (mysqlsh.Error, RuntimeError) as e:
+                logger.warning(f"add_instance failed second time: error={e}")
+                raise
 
         minfo = self.probe_member_status(pod, pod_dba_session.session, True, logger)
 

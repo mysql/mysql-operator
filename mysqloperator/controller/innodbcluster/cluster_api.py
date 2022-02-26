@@ -834,10 +834,6 @@ class InnoDBCluster(K8sInterfaceObject):
         # TODO
         return None
 
-    def incremental_recovery_allowed(self) -> typing.Optional[bool]:
-        return cast(bool,
-                    self.get_cluster_info().get("incrementalRecoveryAllowed"))
-
     def _add_finalizer(self, fin: str) -> None:
         """
         Add the named token to the list of finalizers for the cluster object.

@@ -173,6 +173,7 @@ class DistTestSuiteRunner:
 
         work_dir_prefix = f"{self.tag}-{self.env_name}-"
         self.work_dir = tempfile.mkdtemp(prefix=work_dir_prefix)
+        print("---------------------------------")
         print(f"workers dir: {self.work_dir}")
         self.run_workers(portions)
 

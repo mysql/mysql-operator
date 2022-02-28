@@ -512,13 +512,15 @@ spec:
         self.wait_pod("mycluster-0", "Running")
 
         self.wait_ic("mycluster", "ONLINE", 1)
-        # now that at least the seed is ONLINE, the router should be deployed
-        check_routing.check_pods(self, self.ns, "mycluster", 2)
+        # no router pods expected yet
+        check_routing.check_pods(self, self.ns, "mycluster", 0)
 
         self.wait_pod("mycluster-1", "Running")
         self.wait_pod("mycluster-2", "Running")
 
         self.wait_ic("mycluster", "ONLINE", 3)
+
+        check_routing.check_pods(self, self.ns, "mycluster", 2)
 
         self.wait_routers("mycluster-router-*", 2)
 
@@ -1403,7 +1405,7 @@ spec:
             g_ts_cfg.get_operator_image())
 
         # check router pod
-        pods = kutil.ls_po(self.ns, pattern="mycluster-.*-router")
+        pods = kutil.ls_po(self.ns, pattern="mycluster-router-.*")
         for p in pods:
             pod = kutil.get_po(self.ns, p["NAME"])
 
@@ -1411,10 +1413,10 @@ spec:
                              {"name": "pullsecrets"}])
 
             cont = check_apiobjects.check_pod_container(
-                self, pod, None, None, True)
+                self, pod, "router", None, True)
             self.assertEqual(
                 cont["image"],
-                g_ts_cfg.get_router_image(), p["NAME"])
+                g_ts_cfg.get_old_router_image(), p["NAME"])
 
     def test_9_destroy(self):
         kutil.delete_ic(self.ns, "mycluster")

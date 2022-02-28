@@ -25,6 +25,7 @@ import traceback
 import re
 from .aggrlog import LogAggregator
 from kubernetes.stream import stream
+from kubernetes import client
 from kubernetes.client.api import core_v1_api
 from kubernetes.stream.ws_client import ERROR_CHANNEL
 
@@ -137,6 +138,27 @@ def wipe_ns(ns, extra_rsrc=[]):
 
 def wipe_pv():
     kutil.delete_pv(None)
+
+
+def run_from_operator_pod(uri, script):
+    podname = kutil.ls_po("mysql-operator")[0]["NAME"]
+
+    kutil.cat_in("mysql-operator", podname, "/tmp/script.py", "print('##########')\n" + script + "\n")
+
+    api_core = client.CoreV1Api()
+
+    if not uri.startswith("mysql:") and not uri.startswith("mysqlx:"):
+        uri = "mysql://" + uri
+
+    r = stream(api_core.connect_get_namespaced_pod_exec,
+                        podname,
+                        "mysql-operator",
+                        command=["mysqlsh", uri, "-f", "/tmp/script.py"],
+                        stderr=True, stdin=False,
+                        stdout=True, tty=False,
+                        _preload_content=True)
+
+    return r.split("##########", 1)[-1].strip()
 
 #
 
@@ -443,7 +465,7 @@ class OperatorTest(unittest.TestCase):
     def get_pod(self, name, ns=None):
         return PodHelper(self, ns if ns else self.ns, name)
 
-    def wait_ic(self, name, status_list, num_online=None, ns=None, timeout=200, probe_time=None):
+    def wait_ic(self, name, status_list, num_online=None, ns=None, timeout=300, probe_time=None):
         """
         Wait for given ic object to reach one of the states in the list.
         Aborts on timeout or when an unexpected error is detected in the operator.

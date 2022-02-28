@@ -117,10 +117,10 @@ class ClusterController:
 
     def probe_member_status(self, pod: MySQLPod, session: 'ClassicSession', joined: bool, logger) -> None:
         # TODO use diagnose?
-        member_id, role, status, view_id, version = shellutils.query_membership_info(
-            session)
+        minfo = shellutils.query_membership_info(session)
+        member_id, role, status, view_id, version, mcount, rmcount = minfo
         logger.debug(
-            f"instance probe: role={role} status={status} view_id={view_id} version={version}")
+            f"instance probe: role={role} status={status} view_id={view_id} version={version} members={mcount} reachable_members={rmcount}")
         pod.update_membership_status(
             member_id, role, status, view_id, version, joined=joined)
         # TODO
@@ -128,6 +128,8 @@ class ClusterController:
             pod.update_member_readiness_gate("ready", True)
         else:
             pod.update_member_readiness_gate("ready", False)
+
+        return minfo
 
     def connect_to_primary(self, primary_pod: MySQLPod, logger) -> 'Cluster':
         if primary_pod:
@@ -299,16 +301,19 @@ class ClusterController:
 
             logger.debug("Cluster created %s" % self.dba_cluster.status())
 
-            self.post_create_actions(dba, self.dba_cluster, seed_pod, logger)
+            # if there's just 1 pod, then the cluster is ready... otherwise, we
+            # need to wait until all pods have joined
+            if self.cluster.parsed_spec.instances == 1:
+                self.post_create_actions(dba.session, self.dba_cluster, logger)
 
-    def post_create_actions(self, dba: 'Dba', dba_cluster: 'Cluster', seed_pod: MySQLPod, logger) -> None:
+    def post_create_actions(self, session: 'ClassicSession', dba_cluster: 'Cluster', logger) -> None:
         logger.info("cluster_controller::post_create_actions")
         # create router account
         user, password = self.cluster.get_router_account()
 
         update = True
         try:
-            dba.session.run_sql("show grants for ?@'%'", [user])
+            session.run_sql("show grants for ?@'%'", [user])
         except mysqlsh.Error as e:
             if e.code == mysqlsh.mysql.ErrorCode.ER_NONEXISTING_GRANT:
                 update = False
@@ -322,7 +327,7 @@ class ClusterController:
         # create backup account
         user, password = self.cluster.get_backup_account()
         logger.debug(f"Creating backup account {user}")
-        mysqlutils.setup_backup_account(dba.session, user, password)
+        mysqlutils.setup_backup_account(session, user, password)
 
         # update the router deployment
         n = self.cluster.parsed_spec.router.instances
@@ -466,7 +471,14 @@ class ClusterController:
 
             raise
 
-        self.probe_member_status(pod, pod_dba_session.session, True, logger)
+        minfo = self.probe_member_status(pod, pod_dba_session.session, True, logger)
+
+        member_id, role, status, view_id, version, member_count, reachable_member_count = minfo
+        logger.info(f"JOINED {pod.name}: {minfo}")
+
+        # if the cluster size is complete, ensure routers are deployed
+        if not router_objects.get_size(self.cluster) and member_count == self.cluster.parsed_spec.instances:
+            self.post_create_actions(self.dba.session, self.dba_cluster, logger)
 
     def rejoin_instance(self, pod: MySQLPod, pod_session, logger) -> None:
         logger.info(f"Rejoining {pod.endpoint} to cluster")

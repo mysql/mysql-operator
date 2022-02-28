@@ -65,7 +65,7 @@ def main(argv):
     datadir = "/var/lib/mysql"
 
     mysqlsh.globals.shell.options.useWizards = False
-    logging.basicConfig(level=logging.DEBUG,
+    logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s - [%(levelname)s] [%(name)s] %(message)s',
                         datefmt="%Y-%m-%dT%H:%M:%S")
     logger = logging.getLogger("initmysql")

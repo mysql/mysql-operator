@@ -10,6 +10,7 @@ import asyncio
 import kopf
 import os
 import time
+import logging
 
 # this will register operator event handlers
 from .controller import operator
@@ -27,6 +28,10 @@ def main(argv):
     myconfig.config_from_env()
 
     kopf.configure(verbose=True if myconfig.debug >= 1 else False)
+
+    logging.basicConfig(level=logging.INFO,
+                        format='%(asctime)s - [%(levelname)s] [%(name)s] %(message)s',
+                        datefmt="%Y-%m-%dT%H:%M:%S")
 
     loop = asyncio.get_event_loop()
 

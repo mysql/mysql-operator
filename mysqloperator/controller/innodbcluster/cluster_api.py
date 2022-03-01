@@ -506,9 +506,9 @@ class InnoDBClusterSpec:
 
     @property
     def service_account_name(self) -> str:
-        if self.serviceAccountName:
-            return f"serviceAccountName: {self.serviceAccountName}"
-        return ""
+        saName = f"{self.serviceAccountName}" if self.serviceAccountName else f"{self.name}-sidecar-sa"
+        return f"serviceAccountName: {saName}"
+
 
 
 class InnoDBCluster(K8sInterfaceObject):

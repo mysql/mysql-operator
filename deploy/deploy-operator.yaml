@@ -5,36 +5,47 @@ metadata:
   name: mysql-operator
 rules:
   - apiGroups: [""]
-    resources: ["pods", "configmaps"]
-    verbs: ["get", "watch", "list", "patch", "update", "delete"]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "patch"]
   - apiGroups: [""]
     resources: ["pods/status"]
     verbs: ["get", "patch", "update", "watch"]
   - apiGroups: [""]
-    resources: ["secrets", "configmaps", "services", "serviceaccounts"]
-    verbs: ["get", "watch", "list", "patch", "update", "create", "delete"]
-  - apiGroups: ["rbac.authorization.k8s.io"]
-    resources: ["rolebindings"]
-    verbs: ["get", "watch", "list", "patch", "update", "create", "delete"]
+    resources: ["secrets"]
+    verbs: ["get", "create", "list", "watch", "patch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "create"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "create"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "create"]
   - apiGroups: [""]
     resources: ["events"]
-    verbs: ["patch", "update", "create"]
+    verbs: ["create", "patch", "update"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["rolebindings"]
+    verbs: ["get", "create"]
   - apiGroups: ["policy"]
     resources: ["poddisruptionbudgets"]
-    verbs: ["get", "create", "delete"]
-  - apiGroups: ["batch", "extensions"]
-    resources: ["jobs", "cronjobs"]
-    verbs: ["create", "get", "list", "patch", "update", "watch", "delete"]
+    verbs: ["get", "create"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create"]
+  - apiGroups: ["batch"]
+    resources: ["cronjobs"]
+    verbs: ["create", "update", "delete"]
   - apiGroups: ["apps"]
-    resources: ["*"]
-    verbs: ["*"]
+    resources: ["deployments", "statefulsets"]
+    verbs: ["get", "create", "patch", "watch", "delete"]
   - apiGroups: ["mysql.oracle.com"]
     resources: ["*"]
     verbs: ["*"]
   - apiGroups: ["zalando.org"]
-    #resources: ["clusterkopfpeerings", "kopfpeerings"]
     resources: ["*"]
-    verbs: ["get", "watch", "list", "patch"]
+    verbs: ["get", "patch", "list", "watch"]
 ---
 # role for the server sidecar
 apiVersion: rbac.authorization.k8s.io/v1
@@ -43,17 +54,29 @@ metadata:
   name: mysql-sidecar
 rules:
   - apiGroups: [""]
-    resources: ["pods", "configmaps"]
+    resources: ["pods"]
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["pods/status"]
     verbs: ["get", "patch", "update", "watch"]
   - apiGroups: [""]
-    resources: ["secrets", "configmaps", "services"]
-    verbs: ["get", "watch", "list"]
+    resources: ["configmaps"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch", "update"]
   - apiGroups: ["mysql.oracle.com"]
     resources: ["innodbclusters"]
     verbs: ["get", "watch", "list"]
+  - apiGroups: ["mysql.oracle.com"]
+    resources: ["mysqlbackups"]
+    verbs: ["create", "get", "list", "patch", "update", "watch", "delete"]
+  - apiGroups: ["mysql.oracle.com"]
+    resources: ["mysqlbackups/status"]
+    verbs: ["get", "patch", "update", "watch"]
 ---
 # Give access to the operator
 apiVersion: rbac.authorization.k8s.io/v1
@@ -61,13 +84,13 @@ kind: ClusterRoleBinding
 metadata:
   name: mysql-operator-rolebinding
 subjects:
-  #  - kind: ServiceAccount
-  #  name: mysql-operator-sa
-  #  namespace: mysql-operator
-  # TODO The following entry is for dev purposes only and must be deleted
-  - kind: Group
-    name: system:serviceaccounts
-    apiGroup: rbac.authorization.k8s.io
+  - kind: ServiceAccount
+    name: mysql-operator-sa
+    namespace: mysql-operator
+  # TODO The following entry is for dev purposes only
+  #- kind: Group
+  #  name: system:serviceaccounts
+  #  apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
   name: mysql-operator

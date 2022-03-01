@@ -256,7 +256,6 @@ spec:
         securityContext:
           runAsUser: 27
           fsgroup: 27
-        serviceAccountName: {spec.name}-sidecar-sa
         env:
         - name: MY_POD_NAME
           valueFrom:
@@ -379,6 +378,8 @@ spec:
     return statefulset
 
 def prepare_service_account(spec: InnoDBClusterSpec) -> dict:
+    if not spec.serviceAccountName is None:
+      return None
     account = f"""
 apiVersion: v1
 kind: ServiceAccount
@@ -392,6 +393,7 @@ metadata:
 
 
 def prepare_role_binding(spec: InnoDBClusterSpec) -> dict:
+    sa_name = f"{spec.name}-sidecar-sa" if spec.serviceAccountName is None else spec.serviceAccountName
     rolebinding = f"""
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -400,7 +402,7 @@ metadata:
   namespace: {spec.namespace}
 subjects:
   - kind: ServiceAccount
-    name: {spec.name}-sidecar-sa
+    name: {sa_name}
 roleRef:
   kind: ClusterRole
   name: mysql-sidecar

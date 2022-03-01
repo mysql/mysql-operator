@@ -123,10 +123,13 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             if not ignore_404(cluster.get_service_account):
                 print("\tPreparing...")
                 sa = cluster_objects.prepare_service_account(icspec)
-                kopf.adopt(sa)
-                print("\tCreating...")
-                api_core.create_namespaced_service_account(
-                    namespace=namespace, body=sa)
+                if sa is None:
+                    print(f"\tService account is predefined: {icspec.serviceAccountName}. Not creating")
+                else:
+                    kopf.adopt(sa)
+                    print("\tCreating...")
+                    api_core.create_namespaced_service_account(
+                        namespace=namespace, body=sa)
 
             print("6. Cluster RoleBinding")
             if not ignore_404(cluster.get_role_binding):
@@ -142,8 +145,9 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 print("\tPreparing...")
                 statefulset = cluster_objects.prepare_cluster_stateful_set(
                     icspec)
+                print(f"\tCreating...")
                 kopf.adopt(statefulset)
-                print("\tCreating...")
+
                 api_apps.create_namespaced_stateful_set(
                     namespace=namespace, body=statefulset)
 

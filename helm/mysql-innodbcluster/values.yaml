@@ -19,6 +19,11 @@ credentials:
     password: sakila
     host: "%"
 
+tls:
+  useSelfSigned: true
+  caSecretName:
+  certAndPKsecretName:
+
 #serverVersion: 8.0.26
 serverInstances: 3
 routerInstances: 3

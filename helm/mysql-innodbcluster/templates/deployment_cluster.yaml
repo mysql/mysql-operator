@@ -13,6 +13,30 @@ spec:
   version: {{ .Values.serverVersion | default .Chart.AppVersion }}
   serviceAccountName: {{ .Release.Name }}-sa
 
+{{- if .Values.tls }}
+  {{- if .Values.tls.useSelfSigned }}
+  tlsUseSelfSigned: true
+  {{- else if and .Values.tls.caSecretName .Values.tls.certAndPKsecretName }}
+    {{- $errors := "" }}
+    {{- $secret_name := .Values.tls.caSecretName }}
+    {{- if not (lookup "v1" "Secret" .Release.Namespace $secret_name) }}
+      {{- $err    := printf "tls.caSecretName: secret '%s' not found in namespace %s" $secret_name .Release.Namespace }}
+      {{- fail $err }}
+      {{- $errors := printf "%s\n%s" $errors $err }}
+    {{- end }}
+    {{- $secret_name := .Values.tls.certAndPKsecretName }}
+    {{- if not (lookup "v1" "Secret" .Release.Namespace $secret_name) }}
+      {{- $err    := printf "tls.certAndPKsecretName: secret '%s' not found in namespace %s" $secret_name .Release.Namespace }}
+    {{- end }}
+  tlsCASecretName: {{ .Values.tls.caSecretName }}
+  tlsSecretName: {{ .Values.tls.certAndPKsecretName }}
+  {{- else }}
+    {{- fail "TLS values not provided" }}
+  {{- end }}
+{{- else }}
+  {{- fail "TLS values not provided. Either set tls.useSelfSigned to true or provide tls.caSecretName and tls.certAndPKsecretName" }}
+{{- end }}
+
 {{- if .Values.datadirVolumeClaimTemplate }}
   {{- with .Values.datadirVolumeClaimTemplate }}
   datadirVolumeClaimTemplate:

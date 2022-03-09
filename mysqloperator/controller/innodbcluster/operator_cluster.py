@@ -78,9 +78,17 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
     print(f"\tServer Image:\t{cluster.parsed_spec.mysql_image} / {cluster.parsed_spec.mysql_image_pull_policy}")
     print(f"\tRouter Image:\t{cluster.parsed_spec.router_image} / {cluster.parsed_spec.router_image_pull_policy}")
     print(f"\tSidecar Image:\t{cluster.parsed_spec.operator_image} / {cluster.parsed_spec.operator_image_pull_policy}")
+    print(f"\tImagePullPolicy:\t{cluster.parsed_spec.imagePullPolicy}")
+    print(f"\tImageRepository:\t{cluster.parsed_spec.imageRepository}")
     print(f"\tBase ServerId:\t{cluster.parsed_spec.baseServerId}")
+    print(f"\tRouter instances:\t{cluster.parsed_spec.router.instances}")
     print(f"\tBackup profiles:\t{len(cluster.parsed_spec.backupProfiles)}")
     print(f"\tBackup schedules:\t{len(cluster.parsed_spec.backupSchedules)}")
+    print(f"\tServer.TLS.useSelfSigned:\t{cluster.parsed_spec.tlsUseSelfSigned}")
+    if not cluster.parsed_spec.tlsUseSelfSigned:
+        print(f"\tServer.TLS.tlsCASecretName:\t{cluster.parsed_spec.tlsCASecretName}")
+        print(f"\tServer.TLS.tlsSecretName:\t{cluster.parsed_spec.tlsSecretName}")
+        print(f"\tRouter.TLS.tlsSecretName:\t{cluster.parsed_spec.router.tlsSecretName}")
 
     if not cluster.ready:
         try:

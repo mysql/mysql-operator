@@ -224,6 +224,52 @@ spec:
         image: {spec.mysql_image}
         imagePullPolicy: {spec.mysql_image_pull_policy}
         args: {mysql_argv}
+        securityContext:
+          capabilities:
+            # Check mysql/packaging/deb-in/extra/apparmor-profile for the caps needed
+            add:
+            - DAC_OVERRIDE
+            - SETGID
+            - SETUID
+            - SYS_NICE
+            - SYS_RESOURCE
+            drop:
+            - "AUDIT_CONTROL"
+            - "AUDIT_READ"
+            - "AUDIT_WRITE"
+            - "BLOCK_SUSPEND"
+            - "BPF"
+            - "CHECKPOINT_RESTORE"
+            - "CHOWN"
+            - "DAC_READ_SEARCH"
+            - "FOWNER"
+            - "FSETID"
+            - "IPC_LOCK"
+            - "IPC_OWNER"
+            - "KILL"
+            - "LEASE"
+            - "LINUX_IMMUTABLE"
+            - "MAC_ADMIN"
+            - "MAC_OVERRIDE"
+            - "MKNOD"
+            - "NET_ADMIN"
+            - "NET_BIND_SERVICE"
+            - "NET_BROADCAST"
+            - "NET_RAW"
+            - "PERFMON"
+            - "SETFCAP"
+            - "SETPCAP"
+            - "SYS_ADMIN"
+            - "SYS_BOOT"
+            - "SYS_CHROOT"
+            - "SYS_MODULE"
+            - "SYS_PACCT"
+            - "SYS_PTRACE"
+            - "SYS_RAWIO"
+            - "SYS_TIME"
+            - "SYS_TTY_CONFIG"
+            - "SYSLOG"
+            - "WAKE_ALARM"
         env:
         - name: MYSQL_INITIALIZE_ONLY
           value: "1"
@@ -286,7 +332,51 @@ spec:
         imagePullPolicy: {spec.mysql_image_pull_policy}
         args: {mysql_argv}
         securityContext:
-          runAsUser: 27
+          capabilities:
+            # Check mysql/packaging/deb-in/extra/apparmor-profile for the caps needed
+            add:
+            - DAC_OVERRIDE
+            - SETGID
+            - SETUID
+            - SYS_NICE
+            - SYS_RESOURCE
+            drop:
+            - "AUDIT_CONTROL"
+            - "AUDIT_READ"
+            - "AUDIT_WRITE"
+            - "BLOCK_SUSPEND"
+            - "BPF"
+            - "CHECKPOINT_RESTORE"
+            - "CHOWN"
+            - "DAC_READ_SEARCH"
+            - "FOWNER"
+            - "FSETID"
+            - "IPC_LOCK"
+            - "IPC_OWNER"
+            - "KILL"
+            - "LEASE"
+            - "LINUX_IMMUTABLE"
+            - "MAC_ADMIN"
+            - "MAC_OVERRIDE"
+            - "MKNOD"
+            - "NET_ADMIN"
+            - "NET_BIND_SERVICE"
+            - "NET_BROADCAST"
+            - "NET_RAW"
+            - "PERFMON"
+            - "SETFCAP"
+            - "SETPCAP"
+            - "SYS_ADMIN"
+            - "SYS_BOOT"
+            - "SYS_CHROOT"
+            - "SYS_MODULE"
+            - "SYS_PACCT"
+            - "SYS_PTRACE"
+            - "SYS_RAWIO"
+            - "SYS_TIME"
+            - "SYS_TTY_CONFIG"
+            - "SYSLOG"
+            - "WAKE_ALARM"
         lifecycle:
           preStop:
             exec:

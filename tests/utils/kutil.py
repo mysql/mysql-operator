@@ -383,7 +383,7 @@ def delete(ns, rsrc, name, timeout, wait=True):
     kubectl("delete", rsrc, [name] + args, timeout=timeout, ignore=["NotFound"])
 
 
-def delete_ic(ns, name, timeout=200):
+def delete_ic(ns, name, timeout=300):
     delete(ns, "ic", name, timeout=timeout)
 
 

@@ -143,6 +143,51 @@ spec:
         runAsUser: 999
         runAsGroup: 999
         fsGroup: 999
+        capabilities:
+          # Check mysql/packaging/deb-in/extra/apparmor-profile-router.in for the caps needed
+          add:
+          - "CHOWN"
+          - "DAC_OVERRIDE"
+          - "FOWNER"
+          - "SETGID"
+          - "SETUID"
+          - "SYS_RESOURCE"
+          drop:
+          - "AUDIT_CONTROL"
+          - "AUDIT_READ"
+          - "AUDIT_WRITE"
+          - "BLOCK_SUSPEND"
+          - "BPF"
+          - "CHECKPOINT_RESTORE"
+          - "DAC_READ_SEARCH"
+          - "FSETID"
+          - "IPC_LOCK"
+          - "IPC_OWNER"
+          - "KILL"
+          - "LEASE"
+          - "LINUX_IMMUTABLE"
+          - "MAC_ADMIN"
+          - "MAC_OVERRIDE"
+          - "MKNOD"
+          - "NET_ADMIN"
+          - "NET_BIND_SERVICE"
+          - "NET_BROADCAST"
+          - "NET_RAW"
+          - "PERFMON"
+          - "SETFCAP"
+          - "SETPCAP"
+          - "SYS_ADMIN"
+          - "SYS_BOOT"
+          - "SYS_CHROOT"
+          - "SYS_MODULE"
+          - "SYS_NICE"
+          - "SYS_PACCT"
+          - "SYS_PTRACE"
+          - "SYS_RAWIO"
+          - "SYS_TIME"
+          - "SYS_TTY_CONFIG"
+          - "SYSLOG"
+          - "WAKE_ALARM"
       containers:
       - name: router
         image: {spec.router_image}

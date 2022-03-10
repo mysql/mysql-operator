@@ -114,6 +114,10 @@ def check_ssl(self, ns, pod, ca=None, crl=None, ssl_cert_days=None):
 
 
 def check_router_ssl(self, ns, pod, ca=None, has_cert=False, crl=None):
+    # a temporary patch due to timing issues in router - it may report status 'Running' before
+    # some stuff checked in this routine is ready to verify
+    sleep(3)
+
     # check router config file
     router_conf = kutil.cat(ns, pod, "/tmp/mysqlrouter/mysqlrouter.conf")
 

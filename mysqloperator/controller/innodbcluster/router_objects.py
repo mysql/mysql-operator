@@ -95,8 +95,6 @@ def prepare_router_deployment(cluster: InnoDBCluster, *,
             router_bootstrap_options += ["--client-ssl-cert=/router-ssl/tls.crt",
                 "--client-ssl-key=/router-ssl/tls.key"]
 
-    # TODO livenessProbe
-    # TODO setup http
     tmpl = f"""
 apiVersion: apps/v1
 kind: Deployment
@@ -224,6 +222,21 @@ spec:
           name: mysqlxro
         - containerPort: {spec.router_httpport}
           name: http
+        readinessProbe:
+          exec:
+            command:
+            - cat
+            - /tmp/mysqlrouter/mysqlrouter.conf
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /api/20190715/swagger.json
+            port: http
+            scheme: HTTPS
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+
       volumes: {'[]' if not spec.extra_router_volumes else ''}
 {utils.indent(spec.extra_router_volumes if router_tls_exists else spec.extra_router_volumes_no_cert, 6)}
 """

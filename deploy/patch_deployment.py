@@ -49,17 +49,17 @@ def process(config: object):
         operator["spec"]["template"]["spec"]["imagePullSecrets"] = [{"name": config.pull_secret}]
 
     if config.source_volume:
-        container_spec["volumeMounts"] = [{
+        container_spec["volumeMounts"].append({
             "mountPath": "/usr/local/lib/mysqlsh/python-packages/mysqloperator",
             "name": "operator-source-volume"
-        }]
-        operator["spec"]["template"]["spec"]["volumes"] = [{
+        })
+        operator["spec"]["template"]["spec"]["volumes"].append({
             "name": "operator-source-volume",
             "hostPath": {
                   "path": config.source_volume,
                   "type": "Directory"
             }
-        }]
+        })
 
     return docs
 

@@ -186,7 +186,7 @@ class InnoDBClusterSpec:
     router_roport: int = 6447
     router_rwxport: int = 6448
     router_roxport: int = 6449
-    router_httpport: int = 8080
+    router_httpport: int = 8443
 
     def __init__(self, namespace: str, name: str, spec: dict):
         self.namespace = namespace

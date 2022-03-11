@@ -488,7 +488,7 @@ class OperatorTest(unittest.TestCase):
         self.assertNotEqual(kutil.wait_pod(ns or self.ns, name, status_list,
                                            checkabort=self.check_operator_exceptions), None, "timeout waiting for pod")
 
-    def wait_routers(self, name_pattern, num_online, awaited_status=["Running"], ns=None, timeout=30):
+    def wait_routers(self, name_pattern, num_online, awaited_status=["Running"], awaited_ready="1/1", ns=None, timeout=30):
         """
         Wait for routers matching the name-pattern to reach one of the states in the awaited status list.
         Aborts on timeout or when an unexpected error is detected in the operator.
@@ -504,7 +504,7 @@ class OperatorTest(unittest.TestCase):
         def routers_ready():
             pods = kutil.ls_po(ns or self.ns, pattern=name_pattern)
 
-            router_names[:] = [pod["NAME"] for pod in pods if pod["STATUS"] in awaited_status]
+            router_names[:] = [pod["NAME"] for pod in pods if pod["STATUS"] in awaited_status and (awaited_ready == None or pod["READY"] == awaited_ready)]
 
             return num_online == len(router_names)
 

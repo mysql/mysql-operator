@@ -399,6 +399,28 @@ mysqlsh -h127.0.0.1 -P6446 -uroot -p
 
 When promted enter the password used, when creating the Secret above.
 
+## Additional Manifest Configurations
+
+If you are looking for a way to increase the size of the private volume claims (PVCs) that is used by the database pods. you can modify the default manifest found [**here**](https://raw.githubusercontent.com/mysql/mysql-operator/trunk/samples/sample-cluster.yaml) to use the `datadirVolumeClaimTemplate` configuration. This configuration takes the `volumeClaimTemplates.spec` section of a `volumeClaimTemplates` configuration and patches the default configuration.
+
+```yaml
+apiVersion: mysql.oracle.com/v2alpha1
+kind: InnoDBCluster
+metadata:
+  name: mycluster
+spec:
+  secretName: mypwds
+  instances: 3
+  router:
+    instances: 1
+  datadirVolumeClaimTemplate:
+    accessModes: [ "ReadWriteOnce" ]
+    resources:
+      requests:
+        storage: 80Gi
+```
+
+
 ## More Information
 
 For more information please refer to the documentation at

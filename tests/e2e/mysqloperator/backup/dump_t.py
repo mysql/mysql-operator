@@ -21,6 +21,7 @@ class DumpInstance(tutil.OperatorTest):
     oci_dump_name = "dump-test-oci1"
     backup_volume_name = "test-backup-storage"
     oci_storage_prefix = '/e2etest'
+    oci_storage_output = None
 
     @classmethod
     def setUpClass(cls):

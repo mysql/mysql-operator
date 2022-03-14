@@ -82,6 +82,55 @@ spec:
                   x-kubernetes-preserve-unknown-fields: true
                 initDB:
                   type: object
+                  properties:
+                    clone:
+                      type: object
+                      required: ["donorUrl", "secretKeyRef"]
+                      properties:
+                        donorUrl:
+                          type: string
+                          description: "URL of the cluster to clone from"
+                        rootUser:
+                          type: string
+                          default: "root"
+                          description: "The user name to be used for the cloning"
+                        secretKeyRef:
+                          type: object
+                          required: ["name"]
+                          properties:
+                            name:
+                              type: string
+                              description: "Secret name with key 'rootPassword' storing the password for the user specified in rootUser"
+                    dump:
+                      type: object
+                      required: ["storage"]
+                      properties:
+                        name:
+                          type: string
+                          description: "Name of the dump. Not used by the operator but can be set with a value descriptive for the cluster administrator"
+                        path:
+                          type: string
+                          description: "Path to the dump in the PVC. Use when specifying persistentVolumeClaim. Omit for ociObjectStorage."
+                        storage:
+                          type: object
+                          properties:
+                            ociObjectStorage:
+                              type: object
+                              required: ["bucketName", "prefix", "credentials"]
+                              properties:
+                                bucketName:
+                                  type: string
+                                  description: "Name of the bucket where the dump is stored"
+                                prefix:
+                                  type: string
+                                  description: "Path in the bucket where the dump files are stored"
+                                credentials:
+                                  type: string
+                                  description: "Secret name with data for accessing the bucket"
+                            persistentVolumeClaim:
+                              type: object
+                              description : "Specification of the PVC to be used. Used 'as is' in the cloning pod."
+                              x-kubernetes-preserve-unknown-fields: true
                   x-kubernetes-preserve-unknown-fields: true
                 router:
                   type: object
@@ -103,7 +152,7 @@ spec:
                       x-kubernetes-preserve-unknown-fields: true
                 backupProfiles:
                   type: array
-                  description: "Backup profile specifications for the cluster, which can be referenced from backup schedules and one-off backup jobs."
+                  description: "Backup profile specifications for the cluster, which can be referenced from backup schedules and one-off backup jobs"
                   items:
                     type: object
                     required: ["name"]
@@ -112,32 +161,83 @@ spec:
                         type: string
                       dumpInstance:
                         type: object
-                        x-kubernetes-preserve-unknown-fields: true
+                        properties:
+                          dumpOptions:
+                            type: object
+                            x-kubernetes-preserve-unknown-fields: true
+                          storage:
+                            type: object
+                            properties:
+                              ociObjectStorage:
+                                type: object
+                                required: ["bucketName", "prefix", "credentials"]
+                                properties:
+                                  bucketName:
+                                    type: string
+                                    description: "Name of the bucket where to store the backup"
+                                  prefix:
+                                    type: string
+                                    description: "Path in the bucket where to store the backup"
+                                  credentials:
+                                    type: string
+                                    description: "Secret name with data for accessing the bucket"
+                              persistentVolumeClaim:
+                                type: object
+                                description : "Specification of the PVC to be used. Used 'as is' in pod executing the backup."
+                                x-kubernetes-preserve-unknown-fields: true
                       snapshot:
                         type: object
-                        x-kubernetes-preserve-unknown-fields: true
+                        properties:
+                          storage:
+                            type: object
+                            properties:
+                              ociObjectStorage:
+                                type: object
+                                required: ["bucketName", "prefix", "credentials"]
+                                properties:
+                                  bucketName:
+                                    type: string
+                                    description: "Name of the bucket where to store the backup"
+                                  prefix:
+                                    type: string
+                                    description: "Path in the bucket where to store the backup"
+                                  credentials:
+                                    type: string
+                                    description: "Secret name with data for accessing the bucket"
+                              persistentVolumeClaim:
+                                type: object
+                                description : "Specification of the PVC to be used. Used 'as is' in pod executing the backup."
+                                x-kubernetes-preserve-unknown-fields: true
+                    x-kubernetes-preserve-unknown-fields: true
                 backupSchedules:
                   type: array
                   description: "Schedules for periodically executed backups"
                   items:
                     type: object
                     required: ["name", "schedule"]
+                    x-kubernetes-preserve-unknown-fields: true
                     properties:
                       name:
                         type: string
+                        description: "Name of the backup schedule"
                       schedule:
                         type: string
+                        description: "The schedule of the job"
                       backupProfileName:
                         type: string
+                        description: "Name of the backupProfile to be used"
                       backupProfile:
                         type: object
+                        description: "backupProfile specification if backupProfileName is not specified"
                         x-kubernetes-preserve-unknown-fields: true
                       deleteBackupData:
                         type: boolean
                         default: false
+                        description: "Whether to delete the backup data in case the MySQLBackup object created by the job is deleted"
                       enabled:
                         type: boolean
                         default: true
+                        description: "Whether the the schedule is enabled or not"
             status:
               type: object
               x-kubernetes-preserve-unknown-fields: true

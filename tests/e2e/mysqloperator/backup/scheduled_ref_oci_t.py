@@ -29,6 +29,7 @@ class ScheduledBackupRefOci(tutil.OperatorTest):
     dump_name_prefix = f"{cluster_name}-{schedule_name}"
     backup_apikey = "backup-apikey"
     oci_storage_prefix = '/e2etest'
+    oci_storage_output = None
 
     @classmethod
     def setUpClass(cls):

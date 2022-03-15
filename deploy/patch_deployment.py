@@ -50,7 +50,7 @@ def process(config: object):
 
     if config.source_volume:
         container_spec["volumeMounts"].append({
-            "mountPath": "/usr/local/lib/mysqlsh/python-packages/mysqloperator",
+            "mountPath": "/usr/lib/mysqlsh/python-packages/mysqloperator",
             "name": "operator-source-volume"
         })
         operator["spec"]["template"]["spec"]["volumes"].append({

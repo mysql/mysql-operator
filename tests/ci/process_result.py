@@ -237,10 +237,16 @@ class ResultPrinter:
             self.print_worker_summary(index, worker_result)
             index += 1
 
+    def prepare_time_brief(self, tm):
+        if tm:
+            return f"{tm} ({tm.total_seconds()}s)"
+        else:
+            return "no time"
+
     def print_summary(self, summary):
         print("------------------------------ summary -----------------------------")
-        print(f"execution time    : {summary.execution_time} ({summary.execution_time.total_seconds()}s)")
-        print(f"total workers time: {summary.total_workers_time} ({summary.total_workers_time.total_seconds()}s)")
+        print(f"execution time    : {self.prepare_time_brief(summary.execution_time)}")
+        print(f"total workers time: {self.prepare_time_brief(summary.total_workers_time)}")
         print("-------------------")
         print(f"tests   : {summary.tests}")
         print(f"failures: {summary.failures}")

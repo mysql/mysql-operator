@@ -4,6 +4,7 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
+from datetime import timedelta
 import shutil
 import multiprocessing
 import tempfile
@@ -12,23 +13,26 @@ from unittest.util import strclass
 from run_e2e_tests import load_test_suite, parse_filter
 import os
 import sys
+from ci import process_result
 
 class DistTestSuiteRunner:
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    work_dir = None
+    def __init__(self):
+        self.base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.work_dir = None
 
-    env_name = "minikube"
-    tag = "ote-mysql"
-    default_worker_count = 2
-    defer_worker_start = 0
-    sort_cases = False
-    perform_purge = False
-    pattern_include = []
-    pattern_exclude = []
+        self.env_name = "minikube"
+        self.tag = "ote-mysql"
+        self.default_worker_count = 2
+        self.defer_worker_start = 0
+        self.sort_cases = False
+        self.expected_failures_path = None
+        self.perform_purge = False
+        self.pattern_include = []
+        self.pattern_exclude = []
 
-    worker_argv = []
+        self.worker_argv = []
 
-    def __init__(self, argv):
+    def parse_cmdline(self, argv):
         os.chdir(self.base_dir)
 
         for arg in argv:
@@ -43,6 +47,8 @@ class DistTestSuiteRunner:
                 self.defer_worker_start = int(arg.split("=")[-1])
             elif arg.startswith("--sort"):
                 self.sort_cases = True
+            elif arg.startswith("--expected-failures"):
+                self.expected_failures_path = arg.split("=")[-1]
             elif arg.startswith("--purge"):
                 self.perform_purge = True
             elif arg.startswith("-"):
@@ -85,6 +91,10 @@ class DistTestSuiteRunner:
             test_index = end
 
         return portions
+
+    def prepare_work_dir(self):
+        work_dir_prefix = f"{self.tag}-{self.env_name}-"
+        self.work_dir = tempfile.mkdtemp(prefix=work_dir_prefix)
 
     def get_worker_cluster(self, worker_index):
         if self.env_name == "k3d":
@@ -129,7 +139,11 @@ class DistTestSuiteRunner:
         print(f"###### worker {worker_index} completed")
 
     def run_workers(self, portions):
+        start = time.time()
         workers = []
+
+        print("---------------------------------")
+        print(f"workers dir: {self.work_dir}")
 
         worker_index = 0
         for portion in portions:
@@ -148,6 +162,8 @@ class DistTestSuiteRunner:
         for worker in workers:
             worker.join()
 
+        end = time.time()
+        return timedelta(seconds = end - start)
 
     def print_logs(self, worker_count):
         for i in range(worker_count):
@@ -160,10 +176,20 @@ class DistTestSuiteRunner:
             log_path = self.get_worker_log_path(i)
             self.print_file(log_path)
 
+    def process_result(self, worker_count, execution_time):
+        log_paths = []
+        for i in range(worker_count):
+            log_path = self.get_worker_log_path(i)
+            log_paths.append(log_path)
+
+        return process_result.run(self.expected_failures_path, log_paths, execution_time)
+
     def purge(self):
         shutil.rmtree(self.work_dir)
 
-    def run(self):
+    def run(self, argv):
+        self.parse_cmdline(argv)
+
         test_suite = self.prepare_test_suite()
         if not test_suite or len(test_suite) == 0:
             print("No tests matched")
@@ -171,17 +197,24 @@ class DistTestSuiteRunner:
 
         portions = self.divide_test_suite(test_suite)
 
-        work_dir_prefix = f"{self.tag}-{self.env_name}-"
-        self.work_dir = tempfile.mkdtemp(prefix=work_dir_prefix)
-        print("---------------------------------")
-        print(f"workers dir: {self.work_dir}")
-        self.run_workers(portions)
+        self.prepare_work_dir()
 
-        self.print_logs(len(portions))
+        execution_time = self.run_workers(portions)
+
+        worker_count = len(portions)
+
+        self.print_logs(worker_count)
+
+        result = self.process_result(worker_count, execution_time)
 
         if self.perform_purge:
             self.purge()
 
+        if result:
+            return 0
+        else:
+            return 1
 
-test_suite_runner = DistTestSuiteRunner(sys.argv[1:])
-test_suite_runner.run()
+
+test_suite_runner = DistTestSuiteRunner()
+test_suite_runner.run(sys.argv[1:])

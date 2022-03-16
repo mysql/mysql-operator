@@ -70,13 +70,20 @@ fi
 if test -z ${WORKERS+x}; then
 	WORKERS=1
 fi
-TAG=$JOB_BASE_NAME-build-$BUILD_NUMBER
+# TAG=$JOB_BASE_NAME-build-$BUILD_NUMBER
+TAG=$JOB_BASE_NAME-build
 
 if test -z ${WORKERS_DEFER+x}; then
 	WORKERS_DEFER=0
 fi
 
-TESTS_LOG=$WORKSPACE/tests-$JOB_BASE_NAME-$BUILD_NUMBER.log
+LOG_DIR=$WORKSPACE/build-$BUILD_NUMBER
+if test -d ${LOG_DIR}; then
+	rm -rfd $LOG_DIR
+fi
+mkdir -p $LOG_DIR
+TESTS_LOG=$LOG_DIR/tests-$JOB_BASE_NAME-$BUILD_NUMBER.log
+TESTS_XML=$LOG_DIR/$TESTS_LOG.xml
 touch $TESTS_LOG
 tail -f "$TESTS_LOG" &
 
@@ -85,16 +92,20 @@ tail -f "$TESTS_LOG" &
 
 # by default TEST_SUITE is not defined, it means to run all tests
 if test $WORKERS == 1; then
-	./run --env=$K8S_DRIVER $TEST_OPTIONS ${TEST_SUITE} > "$TESTS_LOG" 2>&1
+	./run --env=$K8S_DRIVER $TEST_OPTIONS --xml="$TESTS_LOG.xml" ${TEST_SUITE} > "$TESTS_LOG" 2>&1
+	TMP_SUMMARY_PATH=$(mktemp)
+	# process the tests results
+	python3 $CI_DIR/inspect-result.py $CI_DIR/expected-failures.txt "$TESTS_LOG" > "$TMP_SUMMARY_PATH" 2>&1
+	TESTS_RESULT=$?
+	cat "$TMP_SUMMARY_PATH" | tee -a "$TESTS_LOG"
+	rm $TMP_SUMMARY_PATH
 else
-	python3 ./dist_run_e2e_tests.py --env=$K8S_DRIVER --workers=$WORKERS --defer=$WORKERS_DEFER --tag=$TAG $TEST_OPTIONS ${TEST_SUITE} > "$TESTS_LOG" 2>&1
+	python3 ./dist_run_e2e_tests.py --env=$K8S_DRIVER --workers=$WORKERS --defer=$WORKERS_DEFER --tag=$TAG $TEST_OPTIONS --expected-failures=$CI_DIR/expected-failures.txt ${TEST_SUITE} > "$TESTS_LOG" 2>&1
+	TESTS_RESULT=$?
 fi
 
-# process the tests results
-python3 $CI_DIR/inspect-result.py $CI_DIR/expected-failures.txt "$TESTS_LOG"
-TESTS_RESULT=$?
-
-bzip2 "$TESTS_LOG"
+cd $LOG_DIR
+tar cvjf ../result-$JOB_BASE_NAME-$BUILD_NUMBER.tar.bz2 *
 df -lh | grep /sd
 
 exit $TESTS_RESULT

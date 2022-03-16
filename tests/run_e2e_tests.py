@@ -15,6 +15,9 @@ import unittest
 import os
 import sys
 import logging
+import io
+import xmlrunner
+from xmlrunner.extra.xunit_plugin import transform
 
 
 def setup_k8s():
@@ -123,6 +126,7 @@ if __name__ == '__main__':
     opt_cleanup = True
     opt_env_name = "minikube"
     opt_registry_cfg_path = None
+    opt_xml_report_path = None
 
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     allowed_commands = ["run", "list", "setup", "test", "clean"]
@@ -189,7 +193,9 @@ if __name__ == '__main__':
         elif arg.startswith("--oci-bucket="):
             g_ts_cfg.oci_bucket_name=arg.partition("=")[-1]
         elif arg.startswith("--suite="):
-            opt_suite_path=arg.partition("=")[-1]
+            opt_suite_path = arg.partition("=")[-1]
+        elif arg.startswith("--xml="):
+            opt_xml_report_path = arg.partition("=")[-1]
         elif arg.startswith("-"):
             print(f"Invalid option {arg}")
             sys.exit(1)
@@ -262,8 +268,15 @@ if __name__ == '__main__':
                 if opt_debug:
                     suites.debug()
                 else:
-                    runner = unittest.TextTestRunner(verbosity=opt_verbosity)
-                    runner.run(suites)
+                    if (opt_xml_report_path):
+                        xml_report_output = io.BytesIO()
+                        runner = xmlrunner.XMLTestRunner(output=xml_report_output)
+                        runner.run(suites)
+                        with open(opt_xml_report_path, 'wb') as xml_report:
+                           xml_report.write(transform(xml_report_output.getvalue()))
+                    else:
+                        runner = unittest.TextTestRunner(verbosity=opt_verbosity)
+                        runner.run(suites)
             except:
                 tutil.g_full_log.shutdown()
                 raise

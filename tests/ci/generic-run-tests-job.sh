@@ -23,11 +23,12 @@ export OPERATOR_TEST_REGISTRY=$LOCAL_REGISTRY_CONTAINER_NAME:$LOCAL_REGISTRY_HOS
 export OPERATOR_TEST_VERSION_TAG=$OPERATOR_IMAGE_TAG
 
 # OCI config
-export OPERATOR_TEST_BACKUP_OCI_APIKEY_PATH=${WORKSPACE}/cred/backup
-export OPERATOR_TEST_RESTORE_OCI_APIKEY_PATH=${WORKSPACE}/cred/restore
-export OPERATOR_TEST_BACKUP_OCI_BUCKET=dumps
-
-export OPERATOR_TEST_OCI_CONFIG_PATH=${WORKSPACE}/cred/config
+CREDENTIALS_DIR=${WORKSPACE}/../../cred
+if ! test -d ${CREDENTIALS_DIR}; then
+	echo "credentials directory ${CREDENTIALS_DIR} doesn't exist"
+	exit 1
+fi
+export OPERATOR_TEST_OCI_CONFIG_PATH=${CREDENTIALS_DIR}/config
 export OPERATOR_TEST_OCI_BUCKET=dumps
 
 PUSH_REGISTRY_URL=$OPERATOR_TEST_REGISTRY
@@ -82,8 +83,12 @@ if test -d ${LOG_DIR}; then
 	rm -rfd $LOG_DIR
 fi
 mkdir -p $LOG_DIR
+
 TESTS_LOG=$LOG_DIR/tests-$JOB_BASE_NAME-$BUILD_NUMBER.log
-TESTS_XML=$LOG_DIR/$TESTS_LOG.xml
+
+XML_DIR=$LOG_DIR/xml
+mkdir -p $XML_DIR
+
 touch $TESTS_LOG
 tail -f "$TESTS_LOG" &
 
@@ -92,7 +97,8 @@ tail -f "$TESTS_LOG" &
 
 # by default TEST_SUITE is not defined, it means to run all tests
 if test $WORKERS == 1; then
-	./run --env=$K8S_DRIVER $TEST_OPTIONS --xml="$TESTS_LOG.xml" ${TEST_SUITE} > "$TESTS_LOG" 2>&1
+	TESTS_XML=$XML_DIR/tests-$JOB_BASE_NAME-$BUILD_NUMBER.xml
+	./run --env=$K8S_DRIVER $TEST_OPTIONS --xml="$TESTS_XML" ${TEST_SUITE} > "$TESTS_LOG" 2>&1
 	TMP_SUMMARY_PATH=$(mktemp)
 	# process the tests results
 	python3 $CI_DIR/inspect-result.py $CI_DIR/expected-failures.txt "$TESTS_LOG" > "$TMP_SUMMARY_PATH" 2>&1

@@ -348,8 +348,10 @@ spec:
             - "AUDIT_READ"
             - "AUDIT_WRITE"
             - "BLOCK_SUSPEND"
-            - "BPF"
-            - "CHECKPOINT_RESTORE"
+# CAP_BPF was introduced in Linux 5.8 which could be too new for some K8s installations
+#            - "BPF"
+# CAP_CHECKPOINT_RESTORE was introduced in Linux 5.9 which could be too new for some K8s installations
+#            - "CHECKPOINT_RESTORE"
             - "CHOWN"
             - "DAC_READ_SEARCH"
             - "FOWNER"
@@ -366,7 +368,8 @@ spec:
             - "NET_BIND_SERVICE"
             - "NET_BROADCAST"
             - "NET_RAW"
-            - "PERFMON"
+# CAP_PERFMON was introduced in Linux 5.8 which could be too new for some K8s installations
+#            - "PERFMON"
             - "SETFCAP"
             - "SETPCAP"
             - "SYS_ADMIN"

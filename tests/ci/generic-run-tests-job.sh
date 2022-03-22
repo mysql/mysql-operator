@@ -103,7 +103,7 @@ if test $WORKERS == 1; then
 	# process the tests results
 	python3 $CI_DIR/inspect-result.py $CI_DIR/expected-failures.txt "$TESTS_LOG" > "$TMP_SUMMARY_PATH" 2>&1
 	TESTS_RESULT=$?
-	cat "$TMP_SUMMARY_PATH" | tee -a "$TESTS_LOG"
+	cat "$TMP_SUMMARY_PATH" >> "$TESTS_LOG"
 	rm $TMP_SUMMARY_PATH
 else
 	python3 ./dist_run_e2e_tests.py --env=$K8S_DRIVER --workers=$WORKERS --defer=$WORKERS_DEFER --tag=$TAG $TEST_OPTIONS --expected-failures=$CI_DIR/expected-failures.txt ${TEST_SUITE} > "$TESTS_LOG" 2>&1

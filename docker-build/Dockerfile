@@ -14,6 +14,10 @@ RUN rpm -U %%MYSQL_REPO_URL%%/mysql80-community-release-el8.rpm \
 
 RUN groupadd -g27 mysql && useradd -u27 -g27 mysql
 
+RUN mkdir /mysqlsh && chown 2 /mysqlsh
+
 COPY mysqloperator/ /usr/lib/mysqlsh/python-packages/mysqloperator
 
 USER 2
+
+ENV HOME=/mysqlsh

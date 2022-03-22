@@ -381,10 +381,7 @@ class InnoDBClusterSpec:
 
     @property
     def operator_image(self) -> str:
-        # TODO - We always use community image here, need to change with GA, when we publish enterprise edition!
-        return self.format_image(config.MYSQL_OPERATOR_IMAGE, self.sidecarVersion)
-
-        # shell image version is the same as ours (operator)
+        # version is the same as ours (operator)
         if self.edition == Edition.community:
             image = config.MYSQL_OPERATOR_IMAGE
         else:

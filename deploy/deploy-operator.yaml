@@ -121,7 +121,7 @@ metadata:
     version: "1.0"
     app.kubernetes.io/name: mysql-operator
     app.kubernetes.io/instance: mysql-operator
-    app.kubernetes.io/version: 8.0.28-2.0.3
+    app.kubernetes.io/version: 8.0.29-2.0.4
     app.kubernetes.io/component: controller
     app.kubernetes.io/managed-by: mysql-operator
     app.kubernetes.io/created-by: mysql-operator
@@ -137,7 +137,7 @@ spec:
     spec:
       containers:
         - name: mysql-operator
-          image: mysql/mysql-operator:8.0.28-2.0.3
+          image: mysql/mysql-operator:8.0.29-2.0.4
           imagePullPolicy: IfNotPresent
           args:
             [

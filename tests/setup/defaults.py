@@ -6,10 +6,10 @@
 import os
 
 # version
-VERSION_TAG = "8.0.28"
+VERSION_TAG = "8.0.29"
 
 MIN_SUPPORTED_VERSION = "8.0.24"
-MAX_SUPPORTED_VERSION = "8.0.28"
+MAX_SUPPORTED_VERSION = "8.0.29"
 
 
 # image
@@ -29,7 +29,7 @@ OPERATOR_EE_IMAGE_NAME = os.getenv(
     "OPERATOR_TEST_EE_IMAGE_NAME", default="mysql-operator")
 
 OPERATOR_VERSION_TAG = os.getenv(
-    "OPERATOR_TEST_VERSION_TAG", default="8.0.28-2.0.3")
+    "OPERATOR_TEST_VERSION_TAG", default="8.0.29-2.0.4")
 
 OPERATOR_PULL_POLICY = os.getenv(
     "OPERATOR_TEST_PULL_POLICY", default="IfNotPresent")

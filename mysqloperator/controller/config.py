@@ -18,24 +18,24 @@ else:
 
 
 # Constants
-OPERATOR_VERSION = "2.0.3"
+OPERATOR_VERSION = "2.0.4"
 OPERATOR_EDITION = Edition.community
 
-SHELL_VERSION = "8.0.28"
+SHELL_VERSION = "8.0.29"
 
 MIN_BASE_SERVER_ID = 1
 MAX_BASE_SERVER_ID = 4000000000
 
-DEFAULT_VERSION_TAG = "8.0.28"
+DEFAULT_VERSION_TAG = "8.0.29"
 
 DEFAULT_SERVER_VERSION_TAG = DEFAULT_VERSION_TAG
 MIN_SUPPORTED_MYSQL_VERSION = "8.0.24"
-MAX_SUPPORTED_MYSQL_VERSION = "8.0.28" # SHELL_VERSION
+MAX_SUPPORTED_MYSQL_VERSION = SHELL_VERSION
 
 DEFAULT_ROUTER_VERSION_TAG = DEFAULT_VERSION_TAG
 
 # This is used for the sidecar. The operator version is deploy-operator.yaml
-DEFAULT_OPERATOR_VERSION_TAG = "8.0.28-2.0.3"
+DEFAULT_OPERATOR_VERSION_TAG = "8.0.29-2.0.4"
 
 # TODO - unify those two settings (if we use OCR for community as well we can use the same thing)
 DEFAULT_IMAGE_REPOSITORY = os.getenv(
@@ -51,7 +51,7 @@ MYSQL_OPERATOR_IMAGE = "mysql-operator"
 # TODO
 MYSQL_SERVER_EE_IMAGE = "enterprise-server"
 MYSQL_ROUTER_EE_IMAGE = "enterprise-router"
-MYSQL_OPERATOR_EE_IMAGE = "mysql-operator-commercial"
+MYSQL_OPERATOR_EE_IMAGE = "enterprise-operator"
 
 CLUSTER_ADMIN_USER_NAME = "mysqladmin"
 ROUTER_METADATA_USER_NAME = "mysqlrouter"

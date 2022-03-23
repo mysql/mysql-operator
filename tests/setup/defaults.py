@@ -25,8 +25,7 @@ OPERATOR_IMAGE_NAME = os.getenv(
     "OPERATOR_TEST_IMAGE_NAME", default="mysql-operator")
 
 OPERATOR_EE_IMAGE_NAME = os.getenv(
-    # "OPERATOR_TEST_EE_IMAGE_NAME", default="mysql-operator-commercial")
-    "OPERATOR_TEST_EE_IMAGE_NAME", default="mysql-operator")
+    "OPERATOR_TEST_EE_IMAGE_NAME", default="enterprise-operator")
 
 OPERATOR_VERSION_TAG = os.getenv(
     "OPERATOR_TEST_VERSION_TAG", default="8.0.29-2.0.4")
@@ -42,14 +41,13 @@ OPERATOR_GR_IP_WHITELIST = os.getenv(
 SERVER_VERSION_TAG = VERSION_TAG
 SERVER_IMAGE_NAME = "mysql-server"
 SERVER_EE_IMAGE_NAME = "enterprise-server"
-# SERVER_EE_IMAGE_NAME = "mysql-server"
 
 
 # router
 ROUTER_VERSION_TAG = VERSION_TAG
 ROUTER_IMAGE_NAME = "mysql-router"
 ROUTER_EE_IMAGE_NAME = "enterprise-router"
-# ROUTER_EE_IMAGE_NAME = "mysql-router"
+
 
 # oci
 OCI_SKIP = os.getenv(
@@ -60,6 +58,7 @@ OCI_CONFIG_PATH = os.getenv(
 
 OCI_BUCKET_NAME = os.getenv(
     "OPERATOR_TEST_OCI_BUCKET", default=None)
+
 
 # k8s
 K8S_CLUSTER_NAME = os.getenv(

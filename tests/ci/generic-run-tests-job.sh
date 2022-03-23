@@ -34,7 +34,6 @@ export OPERATOR_TEST_OCI_BUCKET=dumps
 PUSH_REGISTRY_URL=$OPERATOR_TEST_REGISTRY
 PUSH_REPOSITORY_NAME=mysql
 IMAGES_LIST=$CI_DIR/images-list.txt
-IMAGES_LIST_EE=$CI_DIR/images-list-ee.txt
 
 # ensure the local registry is running
 $CI_DIR/run-local-registry.sh $LOCAL_REGISTRY_CONTAINER_NAME $LOCAL_REGISTRY_HOST_PORT $LOCAL_REGISTRY_CONTAINER_PORT
@@ -43,13 +42,13 @@ $CI_DIR/run-local-registry.sh $LOCAL_REGISTRY_CONTAINER_NAME $LOCAL_REGISTRY_HOS
 $CI_DIR/charge-local-registry.sh $PULL_REGISTRY_URL $PULL_REPOSITORY_NAME \
 	$PUSH_REGISTRY_URL $PUSH_REPOSITORY_NAME $IMAGES_LIST
 
-# temporarily push-only, till a proper setup of credentials for the EE registry
-$CI_DIR/charge-local-registry.sh --push-only $PULL_REGISTRY_URL_EE $PULL_REPOSITORY_NAME_EE \
-	$PUSH_REGISTRY_URL $PUSH_REPOSITORY_NAME $IMAGES_LIST_EE
-
 # push the newest operator image to the local registry
 LOCAL_REGISTRY_OPERATOR_IMAGE=$PUSH_REGISTRY_URL/$PUSH_REPOSITORY_NAME/mysql-operator:$OPERATOR_TEST_VERSION_TAG
 docker pull ${OPERATOR_IMAGE}
+if [ $? -ne 0 ]; then
+	echo "cannot pull operator image ${OPERATOR_IMAGE}"
+	exit 2
+fi
 docker tag ${OPERATOR_IMAGE} ${LOCAL_REGISTRY_OPERATOR_IMAGE}
 docker push ${LOCAL_REGISTRY_OPERATOR_IMAGE}
 

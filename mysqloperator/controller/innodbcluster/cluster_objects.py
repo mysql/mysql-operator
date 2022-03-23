@@ -633,7 +633,7 @@ data:
     # GR and replication related options
     # Do not edit.
     [mysqld]
-    log_bin
+    log_bin={spec.name}
     enforce_gtid_consistency=ON
     gtid_mode=ON
     relay_log_info_repository=TABLE

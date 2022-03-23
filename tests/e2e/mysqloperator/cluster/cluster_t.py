@@ -586,6 +586,21 @@ spec:
                 "SELECT concat(user,'@',host) FROM mysql.user").fetch_all()])
             self.assertSetEqual(accts, expected_accounts)
 
+    def test_1_check_binlog_name(self):
+        expected_name = "/var/lib/mysql/mycluster"
+
+        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
+            name = s.query_sql("SELECT @@log_bin_basename").fetch_all()[0][0]
+            self.assertEqual(name, expected_name)
+
+        with mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s:
+            name = s.query_sql("SELECT @@log_bin_basename").fetch_all()[0][0]
+            self.assertEqual(name, expected_name)
+
+        with mutil.MySQLPodSession(self.ns, "mycluster-2", "root", "sakila") as s:
+            name = s.query_sql("SELECT @@log_bin_basename").fetch_all()[0][0]
+            self.assertEqual(name, expected_name)
+
     def run_verify_routing_session(self, address, expected_routing_settings):
         shell = mutil.MySQLInteractivePodSession(
             "appns", "testpod", user="root", password="sakila", host=address)

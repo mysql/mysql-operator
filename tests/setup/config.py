@@ -48,6 +48,11 @@ class Config:
         a,b,c = self.operator_version_tag.split("-")[0].split(".")
         return int(a)*10000 + int(b)*100 + int(c)
 
+    @property
+    def server_version_num(self):
+        a,b,c = self.server_version_tag.split("-")[0].split(".")
+        return int(a)*10000 + int(b)*100 + int(c)
+
     def commit(self):
         if self.image_registry:
             self.image_registry_host, self.image_registry_port, self.image_registry_is_loopback = auxutil.resolve_registry_url(self.image_registry)

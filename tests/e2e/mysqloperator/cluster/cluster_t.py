@@ -297,8 +297,12 @@ spec:
                                       "/var/lib/mysql/mysqld-auto.cnf"))
         # mysqlsh < 8.0.27 was not handling start_on_boot correctly
         if g_ts_cfg.operator_shell_version_num >= 80027:
-            self.assertEqual("OFF", config["mysql_server"]["mysql_server_static_options"]
-                            ["group_replication_start_on_boot"]["Value"])
+            if g_ts_cfg.server_version_num >= 80029:
+                self.assertEqual("OFF", config["mysql_static_variables"]
+                        ["group_replication_start_on_boot"]["Value"])
+            else:
+                self.assertEqual("OFF", config["mysql_server"]["mysql_server_static_options"]
+                        ["group_replication_start_on_boot"]["Value"])
 
         pod = kutil.get_po(self.ns, "mycluster-0")
         check_apiobjects.check_pod_container(

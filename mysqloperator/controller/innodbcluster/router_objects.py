@@ -109,7 +109,7 @@ metadata:
     app.kubernetes.io/managed-by: mysql-operator
     app.kubernetes.io/created-by: mysql-operator
 spec:
-  replicas: {spec.router.instances or 0 if not init_only else 0}
+  replicas: {spec.router.instances or 1 if not init_only else 0}
   selector:
     matchLabels:
       component: mysqlrouter

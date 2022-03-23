@@ -149,7 +149,7 @@ spec:
         self.wait_ic("mycluster", "ONLINE")
 
         check_all(self, self.ns, "mycluster",
-                  instances=1, routers=0, primary=0)
+                  instances=1, routers=1, primary=0)
 
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
@@ -182,7 +182,7 @@ spec:
 
         # check that nothing changed
         check_all(self, self.ns, "mycluster",
-                  instances=1, routers=0, primary=0)
+                  instances=1, routers=1, primary=0)
 
     def test_1_grow_2(self):
         kutil.patch_ic(self.ns, "mycluster", {
@@ -194,7 +194,7 @@ spec:
 
         self.logger.info(kutil.ls_ic(self.ns))
 
-        check_all(self, self.ns, "mycluster", instances=2, primary=0)
+        check_all(self, self.ns, "mycluster", instances=2, routers=1, primary=0)
 
     def test_2_addrouters(self):
         kutil.patch_ic(self.ns, "mycluster", {

@@ -108,7 +108,7 @@ class InitDB:
 
 class RouterSpec:
     # number of Router instances (optional)
-    instances: int = 0
+    instances: int = 1
 
     # Router version, if user wants to override it (latest by default)
     version: str = None # config.DEFAULT_ROUTER_VERSION_TAG

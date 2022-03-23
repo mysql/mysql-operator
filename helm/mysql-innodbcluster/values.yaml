@@ -24,9 +24,9 @@ tls:
   caSecretName:
   certAndPKsecretName:
 
-#serverVersion: 8.0.26
+#serverVersion: 8.0.29
 serverInstances: 3
-routerInstances: 3
+routerInstances: 1
 baseServerId: 1000
 
 #datadirVolumeClaimTemplate:

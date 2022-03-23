@@ -42,8 +42,8 @@ spec:
                   description: "MySQL Server version"
                 edition:
                   type: string
-                  pattern: "^(commercial|enterprise)$"
-                  description: "MySQL Server Edition (commercial or enterprise)"
+                  pattern: "^(community|enterprise)$"
+                  description: "MySQL Server Edition (community or enterprise)"
                 imageRepository:
                   type: string
                   description: "Repository from where images must be pulled from. Default mysql"

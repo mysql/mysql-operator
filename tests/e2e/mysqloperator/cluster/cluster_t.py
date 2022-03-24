@@ -648,15 +648,7 @@ spec:
             "mycluster.testns.svc.cluster.local:3306",
             "mycluster-0.mycluster-instances.testns.svc.cluster.local:3306")
 
-        self.verify_routing(
-            "mycluster.testns.svc.cluster.local:3306",
-            "mycluster-0.mycluster-instances.testns.svc.cluster.local:3306")
-
         # check classic session to alternate R/W port
-        self.verify_routing(
-            "mycluster.testns.svc.cluster.local:6446",
-            "mycluster-0.mycluster-instances.testns.svc.cluster.local:3306")
-
         self.verify_routing(
             "mycluster.testns.svc.cluster.local:6446",
             "mycluster-0.mycluster-instances.testns.svc.cluster.local:3306")
@@ -667,16 +659,7 @@ spec:
             ["mycluster-1.mycluster-instances.testns.svc.cluster.local:3306",
                 "mycluster-2.mycluster-instances.testns.svc.cluster.local:3306"])
 
-        self.verify_routing(
-            "mycluster.testns.svc.cluster.local:6447",
-            ["mycluster-1.mycluster-instances.testns.svc.cluster.local:3306",
-                "mycluster-2.mycluster-instances.testns.svc.cluster.local:3306"])
-
         # check X session to R/W port
-        self.verify_routing(
-            "mycluster.testns.svc.cluster.local:33060",
-            "mycluster-0.mycluster-instances.testns.svc.cluster.local:3306")
-
         self.verify_routing(
             "mycluster.testns.svc.cluster.local:33060",
             "mycluster-0.mycluster-instances.testns.svc.cluster.local:3306")
@@ -686,16 +669,7 @@ spec:
             "mycluster.testns.svc.cluster.local:6448",
             "mycluster-0.mycluster-instances.testns.svc.cluster.local:3306")
 
-        self.verify_routing(
-            "mycluster.testns.svc.cluster.local:6448",
-            "mycluster-0.mycluster-instances.testns.svc.cluster.local:3306")
-
         # check X session to R/O port
-        self.verify_routing(
-            "mycluster.testns.svc.cluster.local:6449",
-            ["mycluster-1.mycluster-instances.testns.svc.cluster.local:3306",
-                "mycluster-2.mycluster-instances.testns.svc.cluster.local:3306"])
-
         self.verify_routing(
             "mycluster.testns.svc.cluster.local:6449",
             ["mycluster-1.mycluster-instances.testns.svc.cluster.local:3306",

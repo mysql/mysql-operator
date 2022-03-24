@@ -327,7 +327,7 @@ class OperatorTest(unittest.TestCase):
 
         leftovers = kutil.ls_all_raw(cls.ns)
         if leftovers:
-            cls.logger.error("Namespace not empty before test: %s", leftovers)
+            cls.logger.error("Namespace %s not empty before test: %s", cls.ns, leftovers)
             raise Exception(f"Namespace {cls.ns} not empty")
 
         kutil.create_ns(cls.ns)
@@ -368,7 +368,7 @@ class OperatorTest(unittest.TestCase):
         leftovers = kutil.ls_all_raw(cls.ns)
         if leftovers:
             cls.logger.error(
-                "Namespace not empty at the end of the test case!")
+                "Namespace %s not empty at the end of the test case!", cls.ns)
             cls.logger.info("%s", leftovers)
             wipe_ns(cls.ns)
 

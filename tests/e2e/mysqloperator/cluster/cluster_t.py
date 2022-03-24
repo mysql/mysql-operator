@@ -134,7 +134,7 @@ kind: InnoDBCluster
 metadata:
   name: mycluster
 spec:
-  instances: 1
+  instances: 0
   secretName: mypwds
   tlsUseSelfSigned: true
 """

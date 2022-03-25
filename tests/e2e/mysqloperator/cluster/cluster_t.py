@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -151,7 +151,7 @@ spec:
         self.wait_ic("mycluster", "ONLINE")
 
         check_all(self, self.ns, "mycluster",
-                  instances=1, routers=1, primary=0)
+                  instances=1, routers=0, primary=0)
 
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
@@ -196,7 +196,7 @@ spec:
 
         self.logger.info(kutil.ls_ic(self.ns))
 
-        check_all(self, self.ns, "mycluster", instances=2, routers=1, primary=0)
+        check_all(self, self.ns, "mycluster", instances=2, routers=0, primary=0)
 
     def test_2_addrouters(self):
         kutil.patch_ic(self.ns, "mycluster", {

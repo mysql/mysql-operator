@@ -44,6 +44,7 @@ metadata:
 spec:
   instances: 1
   secretName: mypwds
+  edition: community
   tlsUseSelfSigned: true
   backupProfiles:
   - name: {self.profile_name}

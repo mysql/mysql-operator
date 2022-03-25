@@ -5,16 +5,9 @@
 
 from utils import tutil
 from utils import kutil
-from utils import dutil
-from utils import mutil
 import logging
 import json
 from e2e.mysqloperator.cluster import check_apiobjects
-from e2e.mysqloperator.cluster import check_group
-from e2e.mysqloperator.cluster import check_adminapi
-from e2e.mysqloperator.cluster import check_routing
-from setup import defaults
-import unittest
 from utils.tutil import g_full_log
 from setup.config import g_ts_cfg
 from utils.optesting import COMMON_OPERATOR_ERRORS
@@ -66,6 +59,7 @@ spec:
   router:
     instances: 2
   secretName: mypwds
+  edition: community
   tlsUseSelfSigned: true
   version: "{g_ts_cfg.get_old_version_tag()}"
 """

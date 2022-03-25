@@ -138,6 +138,7 @@ spec:
   router:
     instances: 0
   secretName: mypwds
+  edition: community
   tlsUseSelfSigned: true
 """
 
@@ -1262,6 +1263,7 @@ metadata:
 spec:
   instances: 2
   secretName: mypwds
+  edition: community
   version: "{g_ts_cfg.get_old_version_tag()}"
   baseServerId: 3210
   tlsUseSelfSigned: true
@@ -1367,6 +1369,7 @@ spec:
     instances: 1
   version: "{g_ts_cfg.get_old_version_tag()}"
   secretName: mypwds
+  edition: community
   tlsUseSelfSigned: true
   imagePullSecrets:
     - name: pullsecrets

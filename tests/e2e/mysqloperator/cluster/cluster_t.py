@@ -1262,6 +1262,8 @@ metadata:
   name: {self.cluster_name}
 spec:
   instances: 2
+  router:
+    instances: 1
   secretName: mypwds
   edition: community
   version: "{g_ts_cfg.get_old_version_tag()}"
@@ -1279,7 +1281,9 @@ spec:
 
         self.wait_ic(self.cluster_name, "ONLINE", 2)
 
-        check_all(self, self.ns, self.cluster_name, instances=2, routers=0,
+        self.wait_routers(f"{self.cluster_name}-router-*", 1)
+
+        check_all(self, self.ns, self.cluster_name, instances=2, routers=1,
                   primary=0, user="admin", password="secret")
 
         with mutil.MySQLPodSession(self.ns, self.cluster_name+"-0", user="admin", password="secret") as session:
@@ -1321,7 +1325,7 @@ spec:
             cont = check_apiobjects.check_pod_container(
                 self, pod, None, None, True)
             self.assertEqual(
-                cont["image"], g_ts_cfg.get_router_image(), p["NAME"])
+                cont["image"], g_ts_cfg.get_old_router_image(), p["NAME"])
 
     # TODO config change in spec (and decide what to do)
 

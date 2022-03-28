@@ -232,6 +232,9 @@ def ls_po(ns, *, pattern=".*"):
     r = re.compile(pattern)
     return [pod for pod in pods if r.match(pod["NAME"])]
 
+def ls_pod(ns, name):
+    return ls_po(ns, pattern=name)
+
 
 def ls_pvc(ns):
     return __ls(ns, "pvc")

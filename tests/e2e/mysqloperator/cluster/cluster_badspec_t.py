@@ -487,12 +487,12 @@ spec:
         }}, type="merge")
 
         # Wait for mycluster-2 to fail upgrading
-        def check(pods):
-            clusterStatus = pods[2]["STATUS"]
+        def check(pod):
+            clusterStatus = pod[0]["STATUS"]
             print(clusterStatus)
             return clusterStatus in ("Init:ErrImageNeverPull", "Init:ErrImagePull", "Init:ImagePullBackOff")
 
-        self.wait(kutil.ls_po, (self.ns,), check, delay=10, timeout=100)
+        self.wait(kutil.ls_pod, (self.ns, "mycluster-2"), check, delay=10, timeout=100)
 
         # check status of the cluster
         self.wait_ic("mycluster", ["ONLINE_PARTIAL"], 2)
@@ -519,12 +519,12 @@ spec:
         }}, type="merge")
 
         # Wait for mycluster-2 to fail upgrading
-        def check(pods):
-            clusterStatus = pods[2]["STATUS"]
+        def check(pod):
+            clusterStatus = pod[0]["STATUS"]
             print(clusterStatus)
             return clusterStatus in ("Init:ErrImageNeverPull", "Init:ErrImagePull", "Init:ImagePullBackOff")
 
-        self.wait(kutil.ls_po, (self.ns,), check, delay=10, timeout=100)
+        self.wait(kutil.ls_pod, (self.ns, "mycluster-2"), check, delay=10, timeout=100)
 
         # check status of the cluster
         self.wait_ic("mycluster", ["ONLINE_PARTIAL"], 2)

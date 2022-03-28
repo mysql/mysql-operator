@@ -4,7 +4,7 @@
 #
 
 GROUP = "mysql.oracle.com"
-VERSION = "v2alpha1"
+VERSION = "v2"
 API_VERSION = GROUP+"/"+VERSION
 
 INNODBCLUSTER_KIND = "InnoDBCluster"

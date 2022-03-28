@@ -1,4 +1,4 @@
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: {{ .Release.Name | default "mycluster" }}

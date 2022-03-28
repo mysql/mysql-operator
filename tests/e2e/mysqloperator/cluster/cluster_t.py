@@ -129,7 +129,7 @@ class Cluster1Defaults(tutil.OperatorTest):
 
         # create cluster with mostly default configs
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
@@ -499,7 +499,7 @@ class Cluster3Defaults(tutil.OperatorTest):
 
         # create cluster with mostly default configs
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
@@ -1099,7 +1099,7 @@ class ClusterRaces(tutil.OperatorTest):
 
         # create cluster with mostly default configs
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
@@ -1146,7 +1146,7 @@ class TwoClustersOneNamespace(tutil.OperatorTest):
 
         # create cluster with mostly default configs
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
@@ -1177,7 +1177,7 @@ spec:
             self.ns, "mypwds2", root_pass="sakilax", root_host="%")
         # create cluster with mostly default configs
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster2
@@ -1256,7 +1256,7 @@ class ClusterCustomConf(tutil.OperatorTest):
 
         # create cluster with mostly default configs, but a specific server version
         yaml = f"""
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: {self.cluster_name}
@@ -1363,7 +1363,7 @@ class ClusterCustomImageConf(tutil.OperatorTest):
 
         # create cluster with mostly default configs, but a specific server version
         yaml = f"""
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
@@ -1441,7 +1441,7 @@ class Cluster1CloneWorksWhenTransactionMissingFromBinlog(tutil.OperatorTest):
 
         # create cluster with mostly default configs, but a specific server version
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster

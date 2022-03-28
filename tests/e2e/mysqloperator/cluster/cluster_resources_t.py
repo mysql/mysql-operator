@@ -36,7 +36,7 @@ class ClusterResources(tutil.OperatorTest):
             self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
 
         yaml = f"""
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: myrouterspec

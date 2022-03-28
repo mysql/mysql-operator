@@ -59,7 +59,7 @@ class ClusterSpecAdmissionChecks(tutil.OperatorTest):
         - Invalid field in spec
         """
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
@@ -70,7 +70,7 @@ spec:
   tlsUseSelfSigned: true
 """
         self.assertApplyFails(
-            yaml, r'ValidationError\(InnoDBCluster.spec\): unknown field "bogus" in com.oracle.mysql.v2alpha1.InnoDBCluster.spec')
+            yaml, r'ValidationError\(InnoDBCluster.spec\): unknown field "bogus" in com.oracle.mysql.v2.InnoDBCluster.spec')
 
     def test_1_name_too_long(self):
         """
@@ -78,7 +78,7 @@ spec:
         - cluster name can't be longer than allowed in innodb cluster (40 chars)
         """
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: veryveryveryveryveryveryveryverylongnamex
@@ -96,7 +96,7 @@ spec:
         (blocked even before the schema validation)
         """
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 spec:
   secretName: mypwds
@@ -110,16 +110,16 @@ spec:
         - spec.secretName is mandatory
         """
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
 """
         self.assertApplyFails(
-            yaml, r'ValidationError\(InnoDBCluster\): missing required field "spec" in com.oracle.mysql.v2alpha1.InnoDBCluster')
+            yaml, r'ValidationError\(InnoDBCluster\): missing required field "spec" in com.oracle.mysql.v2.InnoDBCluster')
 
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
@@ -136,7 +136,7 @@ spec:
         - Invalid values for spec.instances (too small, too big, not number)
         """
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
@@ -149,7 +149,7 @@ spec:
             yaml, 'spec.instances: Invalid value: 0: spec.instances in body should be greater than or equal to 1')
 
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
@@ -162,7 +162,7 @@ spec:
             yaml, 'spec.instances: Invalid value: 14: spec.instances in body should be less than or equal to 9')
 
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
@@ -172,10 +172,10 @@ spec:
   tlsUseSelfSigned: true
 """
         self.assertApplyFails(
-            yaml, r'ValidationError\(InnoDBCluster.spec.instances\): invalid type for com.oracle.mysql.v2alpha1.InnoDBCluster.spec.instances: got "string", expected "integer"')
+            yaml, r'ValidationError\(InnoDBCluster.spec.instances\): invalid type for com.oracle.mysql.v2.InnoDBCluster.spec.instances: got "string", expected "integer"')
 
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
@@ -231,7 +231,7 @@ class ClusterSpecRuntimeChecksCreation(tutil.OperatorTest):
         - cluster can be deleted after the failure
         """
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
@@ -271,7 +271,7 @@ spec:
 
         # create cluster with mostly default configs, but a specific server version
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
@@ -312,7 +312,7 @@ spec:
 
         # create cluster with mostly default configs, but a specific server version
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
@@ -353,7 +353,7 @@ spec:
         # that will be accepted by the runtime checks but will fail at pod
         # creation
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
@@ -392,7 +392,7 @@ spec:
         # that will be accepted by the runtime checks but will fail at pod
         # creation
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
@@ -462,7 +462,7 @@ class ClusterSpecRuntimeChecksModification(tutil.OperatorTest):
 
         # create cluster with mostly default configs
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster

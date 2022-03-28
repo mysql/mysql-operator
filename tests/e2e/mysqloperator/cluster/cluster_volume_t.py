@@ -170,7 +170,7 @@ class ClusterVolume(tutil.OperatorTest):
         kutil.create_default_user_secrets(self.ns)
 
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster

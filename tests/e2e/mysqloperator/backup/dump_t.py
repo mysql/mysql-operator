@@ -48,7 +48,7 @@ class DumpInstance(tutil.OperatorTest):
 
         # create cluster with mostly default configs
         yaml = f"""
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
@@ -129,7 +129,7 @@ spec:
 
     def test_1_backup_to_volume(self):
         yaml = f"""
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: MySQLBackup
 metadata:
   name: {self.dump_name}
@@ -175,7 +175,7 @@ spec:
         kutil.create_apikey_secret(self.ns, "backup-apikey", g_ts_cfg.oci_config_path, "BACKUP")
 
         yaml = f"""
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: MySQLBackup
 metadata:
   name: {self.oci_dump_name}

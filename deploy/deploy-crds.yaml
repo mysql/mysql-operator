@@ -5,7 +5,7 @@ metadata:
 spec:
   group: mysql.oracle.com
   versions:
-    - name: v2alpha1
+    - name: v2
       served: true
       storage: true
       schema:
@@ -288,7 +288,7 @@ spec:
     shortNames:
       - mbk
   versions:
-    - name: v2alpha1
+    - name: v2
       served: true
       storage: true
       schema:

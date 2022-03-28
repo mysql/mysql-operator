@@ -48,7 +48,7 @@ class ClusterFromClone(tutil.OperatorTest):
 
         # create cluster with mostly default configs
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
@@ -85,7 +85,7 @@ spec:
 
         # create cluster with mostly default configs
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: copycluster
@@ -218,7 +218,7 @@ class ClusterFromDumpOCI(tutil.OperatorTest):
 
         # create cluster with mostly default configs
         yaml = f"""
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
@@ -253,7 +253,7 @@ spec:
 
         # create a dump in a bucket
         yaml = f"""
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: MySQLBackup
 metadata:
   name: {self.dump_name}
@@ -299,7 +299,7 @@ spec:
 
         # create cluster with mostly default configs
         yaml = f"""
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: newcluster
@@ -381,7 +381,7 @@ spec:
 
         # create cluster with mostly default configs
         yaml = f"""
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: newcluster

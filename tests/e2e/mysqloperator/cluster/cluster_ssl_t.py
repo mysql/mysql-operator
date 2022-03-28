@@ -185,7 +185,7 @@ class ClusterSSL(tutil.OperatorTest):
 
         # create cluster with server certificates
         yaml = f"""
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
@@ -360,7 +360,7 @@ class ClusterNoSSL(tutil.OperatorTest):
 
         # create cluster with server certificates
         yaml = f"""
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
@@ -458,7 +458,7 @@ class ClusterAddSSL(tutil.OperatorTest):
 
         # create cluster with server certificates
         yaml = f"""
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster
@@ -560,7 +560,7 @@ class ClusterRouterSSL(tutil.OperatorTest):
 
         # create cluster with server certificates
         yaml = f"""
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster

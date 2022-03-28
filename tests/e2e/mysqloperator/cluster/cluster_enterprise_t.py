@@ -42,7 +42,7 @@ class ClusterEnterprise(tutil.OperatorTest):
 
         # create cluster with mostly default configs
         yaml = """
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mycluster

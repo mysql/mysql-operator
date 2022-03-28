@@ -37,7 +37,7 @@ class OrdinaryBackupNoTimestamp(tutil.OperatorTest):
         backupdir = "/tmp/backups"
 
         yaml = f"""
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: {self.cluster_name}
@@ -102,7 +102,7 @@ spec:
 
     def test_1_backup_to_volume(self):
         yaml = f"""
-apiVersion: mysql.oracle.com/v2alpha1
+apiVersion: mysql.oracle.com/v2
 kind: MySQLBackup
 metadata:
   name: {self.dump_name}

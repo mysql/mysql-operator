@@ -52,6 +52,11 @@ fi
 docker tag ${OPERATOR_IMAGE} ${LOCAL_REGISTRY_OPERATOR_IMAGE}
 docker push ${LOCAL_REGISTRY_OPERATOR_IMAGE}
 
+# prepare enterprise image (temporary patch untile we will have it in our hub)
+LOCAL_REGISTRY_ENTERPRISE_OPERATOR_IMAGE=$PUSH_REGISTRY_URL/$PUSH_REPOSITORY_NAME/enterprise-operator:$OPERATOR_TEST_VERSION_TAG
+$CI_DIR/build-enterprise-image.sh $OPERATOR_IMAGE $LOCAL_REGISTRY_ENTERPRISE_OPERATOR_IMAGE
+docker push ${LOCAL_REGISTRY_ENTERPRISE_OPERATOR_IMAGE}
+
 docker images
 
 # set our temporary kubeconfig, because the default one may contain unrelated data that could fail the build

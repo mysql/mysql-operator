@@ -84,7 +84,8 @@ def prepare_router_deployment(cluster: InnoDBCluster, *,
     spec = cluster.parsed_spec
 
     router_tls_exists = False
-    router_bootstrap_options = []
+    # Workaround fro rotuer bug #33996132
+    router_bootstrap_options = ["--conf-set-option=DEFAULT.unknown_config_option=warning"]
     if not spec.tlsUseSelfSigned:
         router_bootstrap_options += ["--server-ssl-ca=/router-ssl/ca.pem",
             "--server-ssl-verify=VERIFY_IDENTITY",

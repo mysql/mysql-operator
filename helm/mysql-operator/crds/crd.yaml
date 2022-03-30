@@ -28,10 +28,10 @@ spec:
                   description: "Name of a generic type Secret containing root/default account password"
                 tlsCASecretName:
                   type: string
-                  description: "Name of a generic type Secret containing CA (ca.pem) and optional CRL (crl.pem) to be used for SSL"
+                  description: "Name of a generic type Secret containing CA (ca.pem) and optional CRL (crl.pem) for SSL"
                 tlsSecretName:
                   type: string
-                  description: "Name of a tls type Secret containing Server certificate and private key to be used for SSL"
+                  description: "Name of a TLS type Secret containing Server certificate and private key for SSL"
                 tlsUseSelfSigned:
                   type: boolean
                   default: false
@@ -46,9 +46,10 @@ spec:
                   description: "MySQL Server Edition (community or enterprise)"
                 imageRepository:
                   type: string
-                  description: "Repository from where images must be pulled from. Default mysql"
+                  description: "Repository from where images must be pulled from; defaults to mysql for community and container-registry.oracle.com/mysql for enterprise"
                 imagePullPolicy:
                   type: string
+                  description: "Defaults to Always, but set to IfNotPresent in deploy-operator.yaml when deploying Operator"
                 imagePullSecrets:
                   type: array
                   items:
@@ -93,7 +94,7 @@ spec:
                         rootUser:
                           type: string
                           default: "root"
-                          description: "The user name to be used for the cloning"
+                          description: "User name used for cloning"
                         secretKeyRef:
                           type: object
                           required: ["name"]
@@ -107,7 +108,7 @@ spec:
                       properties:
                         name:
                           type: string
-                          description: "Name of the dump. Not used by the operator but can be set with a value descriptive for the cluster administrator"
+                          description: "Name of the dump. Not used by the operator, but a descriptive hint for the cluster administrator"
                         path:
                           type: string
                           description: "Path to the dump in the PVC. Use when specifying persistentVolumeClaim. Omit for ociObjectStorage."
@@ -134,15 +135,16 @@ spec:
                   x-kubernetes-preserve-unknown-fields: true
                 router:
                   type: object
+                  description: "MySQL Router specification"
                   properties:
                     instances:
                       type: integer
                       minimum: 0
                       default: 1
-                      description: "Number of MySQL router instances to deploy"
+                      description: "Number of MySQL Router instances to deploy"
                     tlsSecretName:
                       type: string
-                      description: "Name of a tls type Secret containing Router certificate and private key to be used for SSL"
+                      description: "Name of a TLS type Secret containing MySQL Router certificate and private key used for SSL"
                     version:
                       type: string
                       pattern: '^\d+\.\d+\.\d+(-.+)?'
@@ -159,11 +161,13 @@ spec:
                     properties:
                       name:
                         type: string
+                        description: "Embedded backup profile, referenced as backupProfileName elsewhere"
                       dumpInstance:
                         type: object
                         properties:
                           dumpOptions:
                             type: object
+                            description: "A dictionary of key-value pairs passed directly to MySQL Shell's DumpInstance()"
                             x-kubernetes-preserve-unknown-fields: true
                           storage:
                             type: object
@@ -174,10 +178,10 @@ spec:
                                 properties:
                                   bucketName:
                                     type: string
-                                    description: "Name of the bucket where to store the backup"
+                                    description: "Bucket name where backup is stored"
                                   prefix:
                                     type: string
-                                    description: "Path in the bucket where to store the backup"
+                                    description: "Path in bucket where backup is stored"
                                   credentials:
                                     type: string
                                     description: "Secret name with data for accessing the bucket"
@@ -197,10 +201,10 @@ spec:
                                 properties:
                                   bucketName:
                                     type: string
-                                    description: "Name of the bucket where to store the backup"
+                                    description: "Bucket name where backup is stored"
                                   prefix:
                                     type: string
-                                    description: "Path in the bucket where to store the backup"
+                                    description: "Path in bucket where backup is stored"
                                   credentials:
                                     type: string
                                     description: "Secret name with data for accessing the bucket"
@@ -222,7 +226,7 @@ spec:
                         description: "Name of the backup schedule"
                       schedule:
                         type: string
-                        description: "The schedule of the job"
+                        description: "The schedule of the job, syntax as a cron expression"
                       backupProfileName:
                         type: string
                         description: "Name of the backupProfile to be used"

@@ -19,6 +19,8 @@ class DistTestSuiteRunner:
     def __init__(self):
         self.base_dir = os.path.dirname(os.path.abspath(__file__))
         self.work_dir = None
+        self.workers_subdir = "workers"
+        self.xml_subdir = "xml"
 
         self.env_name = "minikube"
         self.tag = "ote-mysql"
@@ -26,6 +28,7 @@ class DistTestSuiteRunner:
         self.defer_worker_start = 0
         self.sort_cases = False
         self.expected_failures_path = None
+        self.generate_xml = False
         self.perform_purge = False
         self.pattern_include = []
         self.pattern_exclude = []
@@ -43,13 +46,17 @@ class DistTestSuiteRunner:
                 self.tag = arg.partition("=")[-1]
             elif arg.startswith("--workers="):
                 self.default_worker_count = int(arg.split("=")[-1])
-            elif arg.startswith("--defer"):
+            elif arg.startswith("--defer="):
                 self.defer_worker_start = int(arg.split("=")[-1])
-            elif arg.startswith("--sort"):
+            elif arg == "--sort":
                 self.sort_cases = True
-            elif arg.startswith("--expected-failures"):
+            elif arg.startswith("--expected-failures="):
                 self.expected_failures_path = arg.split("=")[-1]
-            elif arg.startswith("--purge"):
+            elif arg == "--xml":
+                self.generate_xml = True
+            elif arg.startswith("--work-dir=") or arg.startswith("--workdir="):
+                self.work_dir = arg.split("=")[-1]
+            elif arg == "--purge":
                 self.perform_purge = True
             elif arg.startswith("-"):
                 self.worker_argv.append(arg)
@@ -92,9 +99,33 @@ class DistTestSuiteRunner:
 
         return portions
 
+    def ensure_dir_exists(self, dir):
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+
+        if not os.path.isdir(dir):
+            print(f"path {dir} is not dir")
+            sys.exit(5)
+
+        if any(os.scandir(dir)):
+            print(f"warning: dir {dir} is not empty")
+
     def prepare_work_dir(self):
-        work_dir_prefix = f"{self.tag}-{self.env_name}-"
-        self.work_dir = tempfile.mkdtemp(prefix=work_dir_prefix)
+        # if work dir is not explicitly pointed out, then prepare a tmp dir
+        if not self.work_dir:
+            work_dir_prefix = f"{self.tag}-{self.env_name}-"
+            self.work_dir = tempfile.mkdtemp(prefix=work_dir_prefix)
+        self.ensure_dir_exists(self.work_dir)
+
+    def prepare_work_subdir(self, subdir):
+        work_subdir = os.path.join(self.work_dir, subdir)
+        self.ensure_dir_exists(work_subdir)
+
+    def prepare_workspace(self):
+        self.prepare_work_dir()
+        self.prepare_work_subdir(self.workers_subdir)
+        if self.generate_xml:
+            self.prepare_work_subdir(self.xml_subdir)
 
     def get_worker_cluster(self, worker_index):
         if self.env_name == "k3d":
@@ -103,11 +134,17 @@ class DistTestSuiteRunner:
             prefix = f"{self.env_name}-"
         return f"{prefix}{self.tag}-{worker_index}"
 
+    def get_worker_path(self, subdir, filename):
+        return os.path.join(self.work_dir, subdir, filename)
+
     def get_worker_portion_path(self, worker_index):
-        return os.path.join(self.work_dir, f"suite-{worker_index}.txt")
+        return self.get_worker_path(self.workers_subdir, f"suite-{worker_index}.txt")
 
     def get_worker_log_path(self, worker_index):
-        return os.path.join(self.work_dir, f"worker-{worker_index}.log")
+        return self.get_worker_path(self.workers_subdir, f"worker-{worker_index}.log")
+
+    def get_worker_xml_path(self, worker_index):
+        return self.get_worker_path(self.xml_subdir, f"worker-{worker_index}.xml")
 
     def print_file(self, path):
         try:
@@ -131,7 +168,13 @@ class DistTestSuiteRunner:
 
         log_path = self.get_worker_log_path(worker_index)
 
-        cmd_line = f"./run {' '.join(self.worker_argv)} --cluster={cluster} --suite={portion_path} > {log_path} 2>&1"
+        argv = ["./run", f"--cluster={cluster}", f"--suite={portion_path}"]
+        argv.extend(self.worker_argv)
+        if self.generate_xml:
+            xml_path = self.get_worker_xml_path(worker_index)
+            argv.append(f"--xml={xml_path}")
+
+        cmd_line = f"{' '.join(argv)} > {log_path} 2>&1"
         return cmd_line
 
     def run_worker(self, worker_index, cmd_line):
@@ -168,7 +211,8 @@ class DistTestSuiteRunner:
     def print_logs(self, worker_count):
         for i in range(worker_count):
             cluster = self.get_worker_cluster(i)
-            print(f"worker {i}, cluster: {cluster}")
+            print(f"==========================================")
+            print(f"########## worker {i}, cluster: {cluster}")
 
             portion_path = self.get_worker_portion_path(i)
             self.print_file(portion_path)
@@ -197,7 +241,7 @@ class DistTestSuiteRunner:
 
         portions = self.divide_test_suite(test_suite)
 
-        self.prepare_work_dir()
+        self.prepare_workspace()
 
         execution_time = self.run_workers(portions)
 

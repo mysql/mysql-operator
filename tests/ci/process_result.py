@@ -46,7 +46,9 @@ class LogParser:
     # regex to match issues (errors and failures), e.g.:
     # FAIL: test_4_recover_restart_3_of_3 (e2e.mysqloperator.cluster.cluster_t.Cluster3Defaults)
     # ERROR: tearDownClass (e2e.mysqloperator.cluster.cluster_t.Cluster3Defaults)
-    issue_matcher = re.compile('^(FAIL|ERROR): \w+ \([^)]*\)$')
+    # FAIL [42.676s]: test_2_modify_ssl_certs (e2e.mysqloperator.cluster.cluster_ssl_t.ClusterSSL)
+    # ERROR [54.306s]: test_1_create_cluster_missing_ssl_recover (e2e.mysqloperator.cluster.cluster_ssl_t.ClusterNoSSL)
+    issue_matcher = re.compile('^(FAIL|ERROR)( \[[\w\d.]+\])?: \w+ \([^)]*\)$')
 
     def __init__(self):
         self.result = LogResult()

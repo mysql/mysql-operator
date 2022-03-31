@@ -1,4 +1,8 @@
 #!/bin/bash
+# Copyright (c) 2022, Oracle and/or its affiliates.
+#
+# Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
+#
 # generic script intended for running tests for both k3d / minikube
 set -vx
 
@@ -12,6 +16,7 @@ df -lh | grep /sd
 pwd
 TESTS_DIR=$WORKSPACE/tests
 CI_DIR=$TESTS_DIR/ci
+EXPECTED_FAILURES_PATH="$CI_DIR/expected-failures.txt"
 
 LOCAL_REGISTRY_CONTAINER_NAME=registry.localhost
 LOCAL_REGISTRY_HOST_PORT=5000
@@ -31,6 +36,7 @@ fi
 export OPERATOR_TEST_OCI_CONFIG_PATH=${CREDENTIALS_DIR}/config
 export OPERATOR_TEST_OCI_BUCKET=dumps
 
+PULL_REPOSITORY_NAME=qa
 PUSH_REGISTRY_URL=$OPERATOR_TEST_REGISTRY
 PUSH_REPOSITORY_NAME=mysql
 IMAGES_LIST=$CI_DIR/images-list.txt
@@ -75,11 +81,14 @@ fi
 if test -z ${WORKERS+x}; then
 	WORKERS=1
 fi
-# TAG=$JOB_BASE_NAME-build-$BUILD_NUMBER
-TAG=$JOB_BASE_NAME-build
+TAG=$JOB_BASE_NAME-build-$BUILD_NUMBER
 
 if test -z ${WORKERS_DEFER+x}; then
-	WORKERS_DEFER=0
+	if test "$K8S_DRIVER" == "minikube"; then
+		WORKERS_DEFER=60
+	else
+		WORKERS_DEFER=0
+	fi
 fi
 
 LOG_DIR=$WORKSPACE/build-$BUILD_NUMBER
@@ -93,6 +102,11 @@ TESTS_LOG=$LOG_DIR/tests-$JOB_BASE_NAME-$BUILD_NUMBER.log
 XML_DIR=$LOG_DIR/xml
 mkdir -p $XML_DIR
 
+TESTS_XML=$XML_DIR/tests-$JOB_BASE_NAME-$BUILD_NUMBER.xml
+SINGLE_WORKER_OPTIONS=--xml=${TESTS_XML}
+
+DIST_RUN_OPTIONS="--workers=$WORKERS --workdir=$LOG_DIR --defer=$WORKERS_DEFER --tag=$TAG --xml --expected-failures=$EXPECTED_FAILURES_PATH"
+
 touch $TESTS_LOG
 tail -f "$TESTS_LOG" &
 
@@ -101,16 +115,15 @@ tail -f "$TESTS_LOG" &
 
 # by default TEST_SUITE is not defined, it means to run all tests
 if test $WORKERS == 1; then
-	TESTS_XML=$XML_DIR/tests-$JOB_BASE_NAME-$BUILD_NUMBER.xml
-	./run --env=$K8S_DRIVER $TEST_OPTIONS --xml="$TESTS_XML" ${TEST_SUITE} > "$TESTS_LOG" 2>&1
+	./run --env=$K8S_DRIVER $SINGLE_WORKER_OPTIONS $TEST_OPTIONS ${TEST_SUITE} > "$TESTS_LOG" 2>&1
 	TMP_SUMMARY_PATH=$(mktemp)
 	# process the tests results
-	python3 $CI_DIR/inspect-result.py $CI_DIR/expected-failures.txt "$TESTS_LOG" > "$TMP_SUMMARY_PATH" 2>&1
+	python3 $CI_DIR/inspect-result.py $EXPECTED_FAILURES_PATH "$TESTS_LOG" > $TMP_SUMMARY_PATH 2>&1
 	TESTS_RESULT=$?
-	cat "$TMP_SUMMARY_PATH" >> "$TESTS_LOG"
+	cat $TMP_SUMMARY_PATH >> "$TESTS_LOG"
 	rm $TMP_SUMMARY_PATH
 else
-	python3 ./dist_run_e2e_tests.py --env=$K8S_DRIVER --workers=$WORKERS --defer=$WORKERS_DEFER --tag=$TAG $TEST_OPTIONS --expected-failures=$CI_DIR/expected-failures.txt ${TEST_SUITE} > "$TESTS_LOG" 2>&1
+	python3 ./dist_run_e2e_tests.py --env=$K8S_DRIVER $DIST_RUN_OPTIONS $TEST_OPTIONS ${TEST_SUITE} > "$TESTS_LOG" 2>&1
 	TESTS_RESULT=$?
 fi
 

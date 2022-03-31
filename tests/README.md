@@ -5,6 +5,7 @@ Requirements:
 0) python3
 1) module: kubernetes
 2) module: mysql-connector-python (CAUTION! not mysql-connector)
+3) module: unittest-xml-reporting (optional, to generate JUnit xml reports)
 
 
 The test-suite is configured in three stages:
@@ -32,6 +33,8 @@ OPERATOR_TEST_GR_IP_WHITELIST
 OPERATOR_TEST_SKIP_OCI
 OPERATOR_TEST_OCI_CONFIG_PATH
 OPERATOR_TEST_OCI_BUCKET
+
+OPERATOR_TEST_K8S_CLUSTER_NAME
 
 Ad 2) command-line options
 --env=[k3d|minikube]
@@ -86,7 +89,7 @@ Ad 2) command-line options
 --doci
     enable diagnostics for oci-cli operations
 
---mount-operator|-O
+--mount-operator|-O=<path>
     mount operator sources in the mysql-operator pod, very useful to test patches without building an image
     the sources are drawn from
         .${src_root}/mysqloperator
@@ -94,10 +97,10 @@ Ad 2) command-line options
         .${src_root}/tests
     according to our standard git repo structure
 
---registry
+--registry=<url>
     set the images registry, e.g. registry.localhost:5000
 
---registry-cfg
+--registry-cfg=<path>
     supported only for k3d, the path to a registry config
     if k3d is used and a registry is set, but this path is not set, then the cfg file will
     be generated according to the following template:
@@ -112,10 +115,10 @@ mirrors:
     endpoint:
       - http://registry.localhost:5000
 
---repository
+--repository=<name>
     the image repository, the default value is "mysql"
 
---operator-tag
+--operator-tag=<tag>
     set the operator tag, e.g. 8.0.29-2.0.4 or latest, by default it is the currently developed version
 
 --operator-pull-policy=[Never|IfNotPresent|Always]
@@ -124,7 +127,7 @@ mirrors:
 --skip-oci
     force to skip all OCI tests even if OCI is properly configured, by default it is false
 
---oci-config
+--oci-config=<path>
     path to an OCI config file
     to run OCI tests, it should contain three profiles:
     a) BACKUP - it has permissions to store a backup into the bucket
@@ -134,9 +137,20 @@ mirrors:
     under the hood, it may be the same profile or three different profiles with more fine-grained permissions
     by default the path is empty, then all OCI-related tests are skipped
 
---oci-bucket
+--oci-bucket=<name>
     name of an OCI bucket used to perform backup/restore tests
     by default it is empty, then all OCI-related tests are skipped
+
+--xml=<path>
+    generate results in JUnit xml reports
+
+--suite=<path>
+    point out the file with the list of tests to run, e.g.
+<suite.txt>
+e2e.mysqloperator.cluster.cluster_t.TwoClustersOneNamespace
+e2e.mysqloperator.cluster.cluster_badspec_t.ClusterSpecRuntimeChecksModification
+</suite.txt>
+    filters can be used, see the description of 'arguments'
 
 arguments:
     gtest style test filter like

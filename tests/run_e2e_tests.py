@@ -16,8 +16,6 @@ import os
 import sys
 import logging
 import io
-import xmlrunner
-from xmlrunner.extra.xunit_plugin import transform
 
 
 def setup_k8s():
@@ -269,6 +267,8 @@ if __name__ == '__main__':
                     suites.debug()
                 else:
                     if (opt_xml_report_path):
+                        import xmlrunner
+                        from xmlrunner.extra.xunit_plugin import transform
                         xml_report_output = io.BytesIO()
                         runner = xmlrunner.XMLTestRunner(output=xml_report_output)
                         runner.run(suites)

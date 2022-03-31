@@ -404,20 +404,20 @@ def bootstrap(pod: MySQLPod, datadir: str, logger: Logger) -> int:
     return 1
 
 
-def check_secret_mounted(secret_name: str, namespace: str, paths: list) -> bool:
-    secret = cast(api_client.V1Secret, api_core.read_namespaced_secret(secret_name, namespace))
-
-    for p in paths:
-        datas = secret.data.get(p.split("/")[-1], None)
-        if datas:
-            datas = base64.b64decode(datas.strip()).decode("utf8")
-            if os.path.exists(p):
-                dataf = open(p).read()
-                if dataf != datas:
-                    return False
-            else:
-                return False
-    return True
+#def check_secret_mounted(secret_name: str, namespace: str, paths: list) -> bool:
+#    secret = cast(api_client.V1Secret, api_core.read_namespaced_secret(secret_name, namespace))
+#
+#    for p in paths:
+#       datas = secret.data.get(p.split("/")[-1], None)
+#        if datas:
+#            datas = base64.b64decode(datas.strip()).decode("utf8")
+#            if os.path.exists(p):
+#                dataf = open(p).read()
+#                if dataf != datas:
+#                    return False
+#            else:
+#                return False
+#    return True
 
 
 def reconfigure_tls(enabled: bool, logger: Logger) -> None:
@@ -466,6 +466,29 @@ def reconfigure_tls(enabled: bool, logger: Logger) -> None:
     session.close()
 
 
+def check_secret_mounted(secrets: dict, paths: list, logger: Logger) -> bool:
+    logger.info("check_secret_mounted")
+
+    for path in paths:
+        secret_name = path.split("/")[-1]
+        secret_value = secrets[secret_name]
+        if not secret_value is None:
+            if os.path.exists(path):
+                dataf = open(path).read()
+                if dataf != secret_value:
+                    logger.info(f"check_secret_mounted: No match for {secret_name}")
+                    return False
+                logger.info(f"check_secret_mounted: {secret_name} matches")
+            else:
+                logger.info(f"check_secret_mounted: Path to secret {secret_name} doesn't exist")
+                return False
+        else:
+            logger.info(f"check_secret_mounted: Not checking {path}, expected None value")
+
+    logger.info(f"check_secret_mounted: Success")
+    return True
+
+
 def reload_tls(logger: Logger) -> None:
     logger.info("Reloading TLS")
 
@@ -474,46 +497,83 @@ def reload_tls(logger: Logger) -> None:
     session.close()
 
 
-@kopf.on.create("", "v1", "secrets") # type: ignore
-def on_secret_create(name: str, namespace: str, spec, logger: Logger, **kwargs):
-    global g_cluster_name
+def on_ca_secret_create_or_change(namespace: str, name: str, value: dict, useSelfSigned: bool, logger: Logger):
+    logger.info("on_ca_secret_create_or_change")
 
-    my_namespace = cast(str, os.getenv("MY_POD_NAMESPACE"))
+    ca_pem = utils.b64decode(value['data']['ca.pem']) if 'ca.pem' in value['data'] else None
+    crl_pem = utils.b64decode(value['data']['crl.pem']) if 'crl.pem' in value['data'] else None
+    secrets = {'ca.pem': ca_pem, 'crl.pem': crl_pem}
+
+    max_time = 7 * 60
+    delay = 5
+    for _ in range(max_time//delay):
+        if check_secret_mounted(secrets,
+                                ["/etc/mysql-ssl/ca.pem",
+                                 "/etc/mysql-ssl/crl.pem"],
+                                logger):
+            logger.info(f"TLS CA file change detected, reloading TLS configurations")
+            reconfigure_tls(False if useSelfSigned else True, logger)
+            break
+        else:
+            logger.debug("Waiting for mounted TLS files to refresh...")
+            time.sleep(delay)
+            # TemporaryError was supposed to get this handler called again, but isn't
+            # raise kopf.TemporaryError("TLS CA secret changed, but file didn't refresh yet")
+    else:
+        raise kopf.PermanentError("Timeout waiting for TLS files to get refreshed")
+
+
+def on_tls_secret_create_or_change(namespace: str, name: str, value: dict, useSelfSigned: bool, logger: Logger):
+    logger.info("on_tls_secret_create_or_change")
+
+    tls_crt = utils.b64decode(value['data']['tls.crt']) if 'tls.crt' in value['data'] else None
+    tls_key = utils.b64decode(value['data']['tls.key']) if 'tls.key' in value['data'] else None
+    secrets = {'tls.crt': tls_crt, 'tls.key': tls_key}
 
     max_time = 5 * 60
     delay = 2
+    for _ in range(max_time//delay):
+        if check_secret_mounted(secrets,
+                                ["/etc/mysql-ssl/tls.crt",
+                                 "/etc/mysql-ssl/tls.key"],
+                                logger):
+            logger.info(f"TLS certificate file change detected, reloading TLS configurations")
+            reconfigure_tls(False if useSelfSigned else True, logger)
+            break
+        else:
+            logger.info("Waiting for mounted TLS files to refresh...")
+            time.sleep(delay)
+            #raise kopf.TemporaryError("TLS certificate secret changed, but file didn't refresh yet")
+    else:
+        raise kopf.PermanentError("Timeout waiting for TLS files to get refreshed")
+
+
+@kopf.on.create("", "v1", "secrets") # type: ignore
+@kopf.on.update("", "v1", "secrets") # type: ignore
+def on_secret_create_or_update(name: str, namespace: str, spec, new, logger: Logger, **kwargs):
+    global g_cluster_name
+
+    logger.info("on_secret_create_or_update")
+
+    my_namespace = cast(str, os.getenv("MY_POD_NAMESPACE"))
+
     if namespace == my_namespace:
         ic = InnoDBCluster.read(my_namespace, g_cluster_name)
-        for _ in range(max_time//delay):
-            if ic.parsed_spec.tlsCASecretName == name:
-                if check_secret_mounted(ic.parsed_spec.tlsCASecretName, namespace,
-                                        ["/etc/mysql-ssl/ca.pem",
-                                        "/etc/mysql-ssl/crl.pem"]):
-                    logger.info(f"TLS CA file change detected, reloading TLS configurations")
-                    reconfigure_tls(False if ic.parsed_spec.tlsUseSelfSigned else True, logger)
-                    break
-                else:
-                    logger.debug("Waiting for mounted TLS files to refresh...")
-                    time.sleep(delay)
-                    # TemporaryError was supposed to get this handler called again, but isn't
-                    # raise kopf.TemporaryError("TLS CA secret changed, but file didn't refresh yet")
-            elif ic.parsed_spec.tlsSecretName == name:
-                if check_secret_mounted(ic.parsed_spec.tlsSecretName, namespace,
-                                        ["/etc/mysql-ssl/tls.crt",
-                                        "/etc/mysql-ssl/tls.key"]):
-                    logger.info(f"TLS certificate file change detected, reloading TLS configurations")
-                    reconfigure_tls(False if ic.parsed_spec.tlsUseSelfSigned else True, logger)
-                    break
-                else:
-                    logger.debug("Waiting for mounted TLS files to refresh...")
-                    time.sleep(delay)
-                    #raise kopf.TemporaryError("TLS certificate secret changed, but file didn't refresh yet")
+        handler = None
+        if ic.parsed_spec.tlsCASecretName == name:
+            handler = on_ca_secret_create_or_change
+        elif ic.parsed_spec.tlsSecretName == name:
+            handler = on_tls_secret_create_or_change
         else:
-            raise kopf.PermanentError("Timeout waiting for TLS files to get refreshed")
+            logger.info(f"Secret {namespace}/{name} doesn't belong to this cluster")
+
+        if handler:
+            handler(namespace, name, new, ic.parsed_spec.tlsUseSelfSigned, logger)
 
 
 @kopf.on.startup()
-def configure(settings: kopf.OperatorSettings, **_):
+def configure(settings: kopf.OperatorSettings, logger: Logger, *args, **_):
+    logger.info("sidecar: configure()")
     settings.peering.standalone = True
 
 

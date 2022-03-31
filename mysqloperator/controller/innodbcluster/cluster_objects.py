@@ -666,9 +666,11 @@ data:
     return yaml.safe_load(tmpl)
 
 
-def reconcile_stateful_set(cluster: InnoDBCluster) -> None:
+def reconcile_stateful_set(cluster: InnoDBCluster, logger: Logger) -> None:
+    logger.info("reconcile_stateful_set")
     patch = prepare_cluster_stateful_set(cluster.parsed_spec)
 
+    logger.info(f"reconcile_stateful_set: patch={patch}")
     api_apps.patch_namespaced_stateful_set(
         cluster.name, cluster.namespace, body=patch)
 

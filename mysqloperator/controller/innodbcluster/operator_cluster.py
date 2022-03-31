@@ -441,13 +441,14 @@ def update_tls_field(body: Body, field: str, logger: Logger) -> None:
 
     cluster.parsed_spec.validate(logger)
 
-    cluster_objects.reconcile_stateful_set(cluster)
+    cluster_objects.reconcile_stateful_set(cluster, logger)
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
                field="spec.tlsUseSelfSigned")  # type: ignore
 def on_innodbcluster_field_tls_use_self_signed(body: Body,
                                                logger: Logger, **kwargs):
+    logger.info("on_innodbcluster_field_tls_use_self_signed")
     update_tls_field(body, "spec.tlsUseSelfSigned", logger)
 
 
@@ -455,6 +456,7 @@ def on_innodbcluster_field_tls_use_self_signed(body: Body,
                field="spec.tlsSecretName")  # type: ignore
 def on_innodbcluster_field_tls_secret_name(body: Body,
                                           logger: Logger, **kwargs):
+    logger.info("on_innodbcluster_field_tls_secret_name")
     update_tls_field(body, "spec.tlsSecretName", logger)
 
 
@@ -462,7 +464,7 @@ def on_innodbcluster_field_tls_secret_name(body: Body,
                field="spec.router.tlsSecretName")  # type: ignore
 def on_innodbcluster_field_router_tls_secret_name(body: Body,
                                                   logger: Logger, **kwargs):
-
+    logger.info("on_innodbcluster_field_router_tls_secret_name")
     update_tls_field(body, "spec.router.tlsSecretName", logger)
 
 
@@ -470,6 +472,7 @@ def on_innodbcluster_field_router_tls_secret_name(body: Body,
                field="spec.tlsCASecretName")  # type: ignore
 def on_innodbcluster_field_tls_ca_secret_name(body: Body,
                                               logger: Logger, **kwargs):
+    logger.info("on_innodbcluster_field_tls_ca_secret_name")
     update_tls_field(body, "spec.tlsCASecretName", logger)
 
 
@@ -633,13 +636,16 @@ def on_secret_create(name: str, namespace: str, logger: Logger, **kwargs):
     For the Router, the Router needs to be restarted for the new certificate to
     become active.
     """
+    logger.info("operator: on_secret_create")
     clusters = get_all_clusters(namespace)
 
     # check for any clusters that reference this secret
     for cluster in clusters:
         if cluster.parsed_spec.tlsCASecretName == name:
+            logger.info("operator: Updating TLS CA")
             ic = ClusterController(cluster)
             ic.on_router_tls_changed()
         elif cluster.parsed_spec.router.tlsSecretName == name:
+            logger.info("operator: Updating TLS KEY/CERT")
             ic = ClusterController(cluster)
             ic.on_router_tls_changed()

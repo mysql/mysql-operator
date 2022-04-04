@@ -42,7 +42,7 @@ PUSH_REPOSITORY_NAME=mysql
 IMAGES_LIST=$CI_DIR/images-list.txt
 
 # purge dangling items
-$CI_DIR/purge.sh
+$CI_DIR/cleanup/purge.sh
 
 # ensure the local registry is running
 $CI_DIR/run-local-registry.sh $LOCAL_REGISTRY_CONTAINER_NAME $LOCAL_REGISTRY_HOST_PORT $LOCAL_REGISTRY_CONTAINER_PORT

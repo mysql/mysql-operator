@@ -41,6 +41,9 @@ PUSH_REGISTRY_URL=$OPERATOR_TEST_REGISTRY
 PUSH_REPOSITORY_NAME=mysql
 IMAGES_LIST=$CI_DIR/images-list.txt
 
+# purge dangling items
+$CI_DIR/purge.sh
+
 # ensure the local registry is running
 $CI_DIR/run-local-registry.sh $LOCAL_REGISTRY_CONTAINER_NAME $LOCAL_REGISTRY_HOST_PORT $LOCAL_REGISTRY_CONTAINER_PORT
 
@@ -87,7 +90,7 @@ if test -z ${WORKERS_DEFER+x}; then
 	if test "$K8S_DRIVER" == "minikube"; then
 		WORKERS_DEFER=60
 	else
-		WORKERS_DEFER=0
+		WORKERS_DEFER=30
 	fi
 fi
 
@@ -125,6 +128,7 @@ if test $WORKERS == 1; then
 else
 	python3 ./dist_run_e2e_tests.py --env=$K8S_DRIVER $DIST_RUN_OPTIONS $TEST_OPTIONS ${TEST_SUITE} > "$TESTS_LOG" 2>&1
 	TESTS_RESULT=$?
+	$CI_DIR/remove_networks.sh $TAG
 fi
 
 cd $LOG_DIR

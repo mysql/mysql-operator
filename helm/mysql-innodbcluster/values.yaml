@@ -30,6 +30,12 @@ baseServerId: 1000
 #    requests:
 #      storage:
 
+# mycnf: |
+#   [mysqld]
+#   max_allowed_packet=16M
+#   character-set-server=utf8mb4
+#   collation-server=utf8mb4_general_ci
+
 #initDB:
 #  dump:
 #    name:
@@ -40,7 +46,7 @@ baseServerId: 1000
 #      prefix:
 #      bucketName:
 #      credentials:
-#    persistentVolumeClaim:     
+#    persistentVolumeClaim:
 #  clone:
 #    donorUrl:
 #    rootUser:

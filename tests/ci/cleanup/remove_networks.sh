@@ -6,7 +6,9 @@
 
 set -vx
 
+SCRIPT_DIR=$(dirname $(readlink -f "${BASH_SOURCE[0]}"))
+
 NETWORK_PATTERN=$1
 
 docker network ls -q -f "name=${NETWORK_PATTERN}" \
-  | xargs -r -n 1 ./remove_network.sh
+  | xargs -r -n 1 ${SCRIPT_DIR}/remove_network.sh

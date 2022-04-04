@@ -128,7 +128,7 @@ if test $WORKERS == 1; then
 else
 	python3 ./dist_run_e2e_tests.py --env=$K8S_DRIVER $DIST_RUN_OPTIONS $TEST_OPTIONS ${TEST_SUITE} > "$TESTS_LOG" 2>&1
 	TESTS_RESULT=$?
-	$CI_DIR/remove_networks.sh $TAG
+	$CI_DIR/cleanup/remove_networks.sh $TAG
 fi
 
 cd $LOG_DIR

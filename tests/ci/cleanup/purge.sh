@@ -6,10 +6,12 @@
 
 set -vx
 
-./purge_containers.sh
+SCRIPT_DIR=$(dirname $(readlink -f "${BASH_SOURCE[0]}"))
 
-./purge_volumes.sh
+${SCRIPT_DIR}/purge_containers.sh
 
-./purge_networks.sh
+${SCRIPT_DIR}/purge_volumes.sh
 
-./purge_images.sh
+${SCRIPT_DIR}/purge_networks.sh
+
+${SCRIPT_DIR}/purge_images.sh

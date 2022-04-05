@@ -6,9 +6,16 @@
 
 set -vx
 
+if [ "$#" -ne 1 ]; then
+	echo "usage: <filter>"
+	exit 1
+fi
+
+FILTER=$1
+
 docker container prune -f
 
-CONTAINERS=$(docker ps -q -f 'name=k3d|minikube' | xargs -r -n 1 docker container inspect -f '{{.ID}} {{json .Created}}' \
+CONTAINERS=$(docker ps -q -f name=$FILTER | xargs -r -n 1 docker container inspect -f '{{.ID}} {{json .Created}}' \
   | awk -v cut_off_date=\""$(date -d 'yesterday' -Ins)"\" '$2 <= cut_off_date {print $1}')
 
 if [ -n "$CONTAINERS" ]; then

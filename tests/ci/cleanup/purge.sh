@@ -8,10 +8,16 @@ set -vx
 
 SCRIPT_DIR=$(dirname $(readlink -f "${BASH_SOURCE[0]}"))
 
-${SCRIPT_DIR}/purge_containers.sh
+if [ "$#" -eq 1 ]; then
+    FILTER=$1
+else
+    FILTER='ote-'
+fi
 
-${SCRIPT_DIR}/purge_volumes.sh
+${SCRIPT_DIR}/purge_containers.sh $FILTER
 
-${SCRIPT_DIR}/purge_networks.sh
+${SCRIPT_DIR}/purge_volumes.sh $FILTER
+
+${SCRIPT_DIR}/purge_networks.sh $FILTER
 
 ${SCRIPT_DIR}/purge_images.sh

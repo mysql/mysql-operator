@@ -84,13 +84,13 @@ fi
 if test -z ${WORKERS+x}; then
 	WORKERS=1
 fi
-TAG=$JOB_BASE_NAME-build-$BUILD_NUMBER
+BUILD_TAG=ote-$JOB_BASE_NAME-build-$BUILD_NUMBER
 
 if test -z ${WORKERS_DEFER+x}; then
 	if test "$K8S_DRIVER" == "minikube"; then
 		WORKERS_DEFER=60
 	else
-		WORKERS_DEFER=30
+		WORKERS_DEFER=45
 	fi
 fi
 
@@ -98,17 +98,16 @@ LOG_DIR=$WORKSPACE/build-$BUILD_NUMBER
 if test -d ${LOG_DIR}; then
 	rm -rfd $LOG_DIR
 fi
-mkdir -p $LOG_DIR
 
 TESTS_LOG=$LOG_DIR/tests-$JOB_BASE_NAME-$BUILD_NUMBER.log
 
 XML_DIR=$LOG_DIR/xml
-mkdir -p $XML_DIR
 
 TESTS_XML=$XML_DIR/tests-$JOB_BASE_NAME-$BUILD_NUMBER.xml
-SINGLE_WORKER_OPTIONS=--xml=${TESTS_XML}
+SINGLE_WORKER_OPTIONS="--xml=${TESTS_XML} --cluster=$BUILD_TAG"
 
-DIST_RUN_OPTIONS="--workers=$WORKERS --workdir=$LOG_DIR --defer=$WORKERS_DEFER --tag=$TAG --xml --expected-failures=$EXPECTED_FAILURES_PATH"
+
+DIST_RUN_OPTIONS="--workers=$WORKERS --workdir=$LOG_DIR --defer=$WORKERS_DEFER --tag=$BUILD_TAG --xml --expected-failures=$EXPECTED_FAILURES_PATH"
 
 touch $TESTS_LOG
 tail -f "$TESTS_LOG" &
@@ -118,6 +117,8 @@ tail -f "$TESTS_LOG" &
 
 # by default TEST_SUITE is not defined, it means to run all tests
 if test $WORKERS == 1; then
+	mkdir -p $LOG_DIR
+	mkdir -p $XML_DIR
 	./run --env=$K8S_DRIVER $SINGLE_WORKER_OPTIONS $TEST_OPTIONS ${TEST_SUITE} > "$TESTS_LOG" 2>&1
 	TMP_SUMMARY_PATH=$(mktemp)
 	# process the tests results
@@ -128,7 +129,7 @@ if test $WORKERS == 1; then
 else
 	python3 ./dist_run_e2e_tests.py --env=$K8S_DRIVER $DIST_RUN_OPTIONS $TEST_OPTIONS ${TEST_SUITE} > "$TESTS_LOG" 2>&1
 	TESTS_RESULT=$?
-	$CI_DIR/cleanup/remove_networks.sh $TAG
+	$CI_DIR/cleanup/remove_networks.sh $BUILD_TAG
 fi
 
 cd $LOG_DIR

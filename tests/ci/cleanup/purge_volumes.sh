@@ -6,8 +6,15 @@
 
 set -vx
 
+if [ "$#" -ne 1 ]; then
+	echo "usage: <filter>"
+	exit 1
+fi
+
+FILTER=$1
+
 docker volume prune -f
 
-docker volume ls -q -f 'name=k3d-|minikube-' | xargs -r -n 1 docker volume inspect -f '{{.Name}} {{json .CreatedAt}}' \
+docker volume ls -q -f name=$FILTER | xargs -r -n 1 docker volume inspect -f '{{.Name}} {{json .CreatedAt}}' \
   | awk -v cut_off_date=\""$(date -d 'yesterday' -Ins)"\" '$2 <= cut_off_date {print $1}' \
   | xargs -r -n 1 docker volume rm

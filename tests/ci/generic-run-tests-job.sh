@@ -98,6 +98,7 @@ LOG_DIR=$WORKSPACE/build-$BUILD_NUMBER
 if test -d ${LOG_DIR}; then
 	rm -rfd $LOG_DIR
 fi
+mkdir -p $LOG_DIR
 
 TESTS_LOG=$LOG_DIR/tests-$JOB_BASE_NAME-$BUILD_NUMBER.log
 
@@ -117,7 +118,6 @@ tail -f "$TESTS_LOG" &
 
 # by default TEST_SUITE is not defined, it means to run all tests
 if test $WORKERS == 1; then
-	mkdir -p $LOG_DIR
 	mkdir -p $XML_DIR
 	./run --env=$K8S_DRIVER $SINGLE_WORKER_OPTIONS $TEST_OPTIONS ${TEST_SUITE} > "$TESTS_LOG" 2>&1
 	TMP_SUMMARY_PATH=$(mktemp)

@@ -45,7 +45,7 @@ baseServerId: 1000
 #      prefix:
 #      bucketName:
 #      credentials:
-#    persistentVolumeClaim:     
+#    persistentVolumeClaim:
 #  clone:
 #    donorUrl:
 #    rootUser:

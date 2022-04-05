@@ -11,14 +11,17 @@ import random
 import base64
 import threading
 import json
+import hashlib
 
 
 def b64decode(s: str) -> str:
     return base64.b64decode(s).decode("utf8")
 
-
 def b64encode(s: str) -> str:
     return base64.b64encode(bytes(s, "utf8")).decode("ascii")
+
+def sha256(s: str) -> str:
+    return hashlib.sha256(bytes(s, "utf8")).hexdigest()
 
 
 class EphemeralState:
@@ -144,8 +147,10 @@ def version_to_int(version: str) -> int:
 
 
 def indent(s: str, spaces: int) -> str:
-    ind = "\n" + " "*spaces
-    return " " * spaces + ind.join(s.split("\n"))
+    if s:
+        ind = "\n" + " "*spaces
+        return " " * spaces + ind.join(s.split("\n"))
+    return ""
 
 
 def log_banner(path: str, logger) -> None:

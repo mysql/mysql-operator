@@ -10,6 +10,7 @@ import yaml
 from ..kubeutils import api_apps
 import kopf
 from logging import Logger
+from typing import Optional
 
 
 def prepare_router_service(spec: InnoDBClusterSpec) -> dict:
@@ -301,6 +302,7 @@ def update_router_container_template_property(dpl: api_client.V1Deployment,
 def propagate_router_field_change_to_sts(cluster: InnoDBCluster, field: str, logger: Logger) -> None:
     pass
 
+
 def update_router_image(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, logger: Logger) -> None:
     update_router_container_template_property(dpl, "image", spec.router_image, logger)
 
@@ -308,7 +310,7 @@ def update_router_image(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, l
 def update_router_version(cluster: InnoDBCluster, logger: Logger) -> None:
     dpl = cluster.get_router_deployment()
     if dpl:
-      return update_router_image(dpl, cluster.parsed_spec, logger)
+        return update_router_image(dpl, cluster.parsed_spec, logger)
 
 
 def update_pull_policy(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, logger: Logger) -> None:
@@ -318,6 +320,42 @@ def update_pull_policy(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, lo
     update_router_container_template_property(dpl, "imagePullPolicy", spec.mysql_image_pull_policy, logger)
 
 
-def update_deployment_template_property(dpl: api_client.V1Deployment, property_name: str, property_value: str, logger: Logger) -> None:
+def update_deployment_template_spec_property(dpl: api_client.V1Deployment, property_name: str, property_value: str) -> None:
     patch = {"spec": {"template": {"spec": { property_name: property_value }}}}
     update_deployment_spec(dpl, patch)
+
+
+def get_update_deployment_template_metadata_annotation(dpl: api_client.V1Deployment, annotation_name: str, annotation_value: str) -> str:
+    patch = {"spec": {"template": {"metadata": { "annotations": { annotation_name: annotation_value }}}}}
+    return patch
+
+
+def restart_deployment_for_tls(dpl: api_client.V1Deployment, tls_crt, tls_key, ca_pem, crl_pem: Optional[str], logger: Logger) -> None:
+    logger.info(f"restart_deployment_for_tls \ntls_crt is None={tls_crt is None} \ntls_key is None={tls_key is None} \nca_pem is None={ca_pem is None} \ncrl_pem is None={crl_pem  is None}")
+    logger.info(f"dpl.spec.template.metadata.annotations={dpl.spec.template.metadata.annotations}")
+
+    base = None
+
+    secrets = {'tls.crt': tls_crt, 'tls.key': tls_key, 'ca.pem': ca_pem, 'crl.pem': crl_pem}
+
+    for sec_name, sec_value in secrets.items():
+        if not sec_value is None:
+            ann_name = f"mysql.oracle.com/{sec_name}.sha256"
+            new_ann_value = utils.sha256(sec_value)
+            patch = None
+            if dpl.spec.template.metadata.annotations is None or dpl.spec.template.metadata.annotations.get(ann_name) is None:
+                patch = get_update_deployment_template_metadata_annotation(dpl, ann_name, new_ann_value)
+            elif dpl.spec.template.metadata.annotations.get(ann_name) != new_ann_value:
+                patch = get_update_deployment_template_metadata_annotation(dpl, ann_name, new_ann_value)
+
+            if not patch is None:
+                if base is None:
+                    base = patch
+                else:
+                    utils.merge_patch_object(base, patch)
+
+    if not base is None:
+        patch = get_update_deployment_template_metadata_annotation(dpl, 'kubectl.kubernetes.io/restartedAt', utils.isotime())
+        utils.merge_patch_object(base, patch)
+        logger.info(f"restart_deployment_for_tls patching with {base}")
+        update_deployment_spec(dpl, base)

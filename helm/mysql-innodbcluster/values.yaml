@@ -3,6 +3,7 @@ image:
   repository: mysql
   name: mysql-server
   pullPolicy: IfNotPresent
+
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
   pullSecrets:
@@ -28,6 +29,7 @@ tls:
 serverInstances: 3
 routerInstances: 1
 baseServerId: 1000
+edition: community
 
 #datadirVolumeClaimTemplate:
 #  accessModes:

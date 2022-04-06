@@ -12,6 +12,18 @@ spec:
   baseServerId: {{ required "baseServerId is required" .Values.baseServerId }}
   version: {{ .Values.serverVersion | default .Chart.AppVersion }}
   serviceAccountName: {{ .Release.Name }}-sa
+  {{- $editions := list "community" "enterprise" }}
+  {{- if .Values.edition }}
+    {{- if (has .Values.edition $editions) }}
+  edition: {{ .Values.edition }}
+    {{- else }}
+      {{- $err := printf "edition must be community or enterprise '%s' given "  .Values.edition }}
+      {{- fail $err }}
+    {{- end }}
+  {{- else }}
+  edition: community
+  {{- end }}
+
 
 {{- if .Values.tls }}
   {{- if .Values.tls.useSelfSigned }}

@@ -405,22 +405,6 @@ def bootstrap(pod: MySQLPod, datadir: str, logger: Logger) -> int:
     return 1
 
 
-#def check_secret_mounted(secret_name: str, namespace: str, paths: list) -> bool:
-#    secret = cast(api_client.V1Secret, api_core.read_namespaced_secret(secret_name, namespace))
-#
-#    for p in paths:
-#       datas = secret.data.get(p.split("/")[-1], None)
-#        if datas:
-#            datas = base64.b64decode(datas.strip()).decode("utf8")
-#            if os.path.exists(p):
-#                dataf = open(p).read()
-#                if dataf != datas:
-#                    return False
-#            else:
-#                return False
-#    return True
-
-
 def reconfigure_tls(enabled: bool, logger: Logger) -> None:
     has_crl = os.path.exists("/etc/mysql-ssl/crl.pem")
 
@@ -605,11 +589,12 @@ def main(argv):
                         format='%(asctime)s - [%(levelname)s] [%(name)s] %(message)s',
                         datefmt="%Y-%m-%dT%H:%M:%S")
     logger = logging.getLogger("sidecar")
+    utils.log_banner(__file__, logger)
+
     name = cast(str, os.getenv("MY_POD_NAME"))
     namespace = cast(str, os.getenv("MY_POD_NAMESPACE"))
     pod = MySQLPod.read(name, namespace)
-
-    utils.log_banner(__file__, logger)
+    logger.info(f"My pod is {name} in {namespace}")
 
     logger.info("Bootstrapping")
     r = bootstrap(pod, datadir, logger)

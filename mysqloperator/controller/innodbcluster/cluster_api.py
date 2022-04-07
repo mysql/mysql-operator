@@ -922,7 +922,10 @@ class InnoDBCluster(K8sInterfaceObject):
         if not self.parsed_spec.tlsUseSelfSigned:
             logger.info(f"\tServer.TLS.tlsCASecretName:\t{self.parsed_spec.tlsCASecretName}")
             logger.info(f"\tServer.TLS.tlsSecretName:\t{self.parsed_spec.tlsSecretName}")
-            logger.info(f"\tRouter.TLS.tlsSecretName:\t{self.parsed_spec.router.tlsSecretName}")
+            router_tls_exists = self.router_tls_exists()
+            logger.info(f"\tRouter.TLS exists       :\t{router_tls_exists}")
+            if router_tls_exists:
+                logger.info(f"\tRouter.TLS.tlsSecretName:\t{self.parsed_spec.router.tlsSecretName}")
 
 
 def get_all_clusters(ns: str = None) -> typing.List[InnoDBCluster]:

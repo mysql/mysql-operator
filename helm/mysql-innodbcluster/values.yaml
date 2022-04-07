@@ -100,29 +100,3 @@ baseServerId: 1000
 #          prefix : /
 #          bucketName: idbcluster_backup
 #          credentials: oci-credentials
-
-# Unused
-serviceAccount:
-  annotations: {}
-
-# Unused
-podAnnotations: {}
-
-# Unused
-podSecurityContext: {}
-  # fsGroup: 2000
-
-# Unused
-securityContext: {}
-
-# Unused
-resources: {}
-
-# Unused
-nodeSelector: {}
-
-# Unused
-tolerations: []
-
-# Unused
-affinity: {}

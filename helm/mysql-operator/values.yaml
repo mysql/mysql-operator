@@ -17,27 +17,3 @@ envs:
     imagesPullPolicy: IfNotPresent
     imagesDefaultRegistry: 
     imagesDefaultRepository:
-
-# Unused
-serviceAccount:
-  annotations: {}
-
-podAnnotations: {}
-
-# Unused
-podSecurityContext: {}
-
-# Unused
-securityContext: {}
-
-# Unused
-resources: {}
-
-# Unused
-nodeSelector: {}
-
-# Unused
-tolerations: []
-
-# Unused
-affinity: {}

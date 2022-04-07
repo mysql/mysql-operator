@@ -915,6 +915,7 @@ class InnoDBCluster(K8sInterfaceObject):
         logger.info(f"\tRouter instances:\t{self.parsed_spec.router.instances}")
         logger.info(f"\tBackup profiles:\t{len(self.parsed_spec.backupProfiles)}")
         logger.info(f"\tBackup schedules:\t{len(self.parsed_spec.backupSchedules)}")
+        self.log_tls_info(logger)
 
     def log_tls_info(self, logger: Logger) -> None:
         logger.info(f"\tServer.TLS.useSelfSigned:\t{self.parsed_spec.tlsUseSelfSigned}")

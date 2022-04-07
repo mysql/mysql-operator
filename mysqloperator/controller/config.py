@@ -20,6 +20,7 @@ else:
 # Constants
 OPERATOR_VERSION = "2.0.4"
 OPERATOR_EDITION = Edition.community
+OPERATOR_EDITION_NAME_TO_ENUM = { edition.value : edition.name for edition in Edition }
 
 SHELL_VERSION = "8.0.29"
 
@@ -56,6 +57,17 @@ MYSQL_OPERATOR_EE_IMAGE = "enterprise-operator"
 CLUSTER_ADMIN_USER_NAME = "mysqladmin"
 ROUTER_METADATA_USER_NAME = "mysqlrouter"
 BACKUP_USER_NAME = "mysqlbackup"
+
+
+def log_config_banner(logger) -> None:
+    logger.info(f"OPERATOR_VERSION   ={OPERATOR_VERSION}")
+    logger.info(f"OPERATOR_EDITION   ={OPERATOR_EDITION.value}")
+    logger.info(f"OPERATOR_EDITIONS  ={list(OPERATOR_EDITION_NAME_TO_ENUM)}")
+    logger.info(f"SHELL_VERSION      ={SHELL_VERSION}")
+    logger.info(f"DEFAULT_VERSION_TAG={DEFAULT_VERSION_TAG}")
+    logger.info(f"SIDECAR_VERSION_TAG={DEFAULT_OPERATOR_VERSION_TAG}")
+    logger.info(f"DEFAULT_IMAGE_REPOSITORY   ={DEFAULT_IMAGE_REPOSITORY}")
+    logger.info(f"DEFAULT_IMAGE_REPOSITORY_EE={DEFAULT_IMAGE_REPOSITORY_EE}")
 
 
 def config_from_env() -> None:

@@ -20,6 +20,7 @@ import logging
 @kopf.on.startup()  # type: ignore
 def on_startup(settings: kopf.OperatorSettings, logger: Logger, *args, **_):
     utils.log_banner(__file__, logger)
+    config.log_config_banner(logger)
 
     # don't post logger.debug() calls as k8s events
     settings.posting.level = logging.INFO

@@ -7,46 +7,71 @@ spec:
   instances: {{ required "serverInstances is required" .Values.serverInstances }}
   router:
     instances: {{ required "routerInstances is required" .Values.routerInstances }}
+{{- if .Values.tls }}
+  {{- if not .Values.tls.useSelfSigned }}
+    {{- if .Values.tls.routerCertAndPKsecretName }}
+      {{- $secret_name := .Values.tls.routerCertAndPKsecretName }}
+      {{- if not (lookup "v1" "Secret" .Release.Namespace $secret_name) }}
+        {{- $err := printf "tls.routerCertAndPKsecretName: secret '%s' not found in namespace '%s'" $secret_name .Release.Namespace }}
+        {{- fail $err }}
+      {{- end }}
+    tlsSecretName: {{ .Values.tls.routerCertAndPKsecretName }}
+    {{- else }}
+      {{- $cluster_name :=  default "mycluster" .Release.Name }}
+      {{- $secret_name := printf "%s-router-tls" $cluster_name }}
+      {{- if not (lookup "v1" "Secret" .Release.Namespace $secret_name) }}
+        {{- $err := printf "tls.routerCertAndPKsecretName: secret '%s' not found in namespace '%s'" $secret_name .Release.Namespace }}
+        {{- fail $err }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}
   secretName: {{ .Release.Name }}-cluster-secret
   imagePullPolicy : {{ required "image.pullPolicy is required" .Values.image.pullPolicy }}
   baseServerId: {{ required "baseServerId is required" .Values.baseServerId }}
   version: {{ .Values.serverVersion | default .Chart.AppVersion }}
   serviceAccountName: {{ .Release.Name }}-sa
-  {{- $editions := list "community" "enterprise" }}
-  {{- if .Values.edition }}
-    {{- if (has .Values.edition $editions) }}
-  edition: {{ .Values.edition }}
-    {{- else }}
-      {{- $err := printf "edition must be community or enterprise '%s' given "  .Values.edition }}
-      {{- fail $err }}
-    {{- end }}
-  {{- else }}
-  edition: community
-  {{- end }}
-
 
 {{- if .Values.tls }}
   {{- if .Values.tls.useSelfSigned }}
   tlsUseSelfSigned: true
-  {{- else if and .Values.tls.caSecretName .Values.tls.certAndPKsecretName }}
-    {{- $errors := "" }}
-    {{- $secret_name := .Values.tls.caSecretName }}
-    {{- if not (lookup "v1" "Secret" .Release.Namespace $secret_name) }}
-      {{- $err    := printf "tls.caSecretName: secret '%s' not found in namespace %s" $secret_name .Release.Namespace }}
-      {{- fail $err }}
-      {{- $errors := printf "%s\n%s" $errors $err }}
-    {{- end }}
-    {{- $secret_name := .Values.tls.certAndPKsecretName }}
-    {{- if not (lookup "v1" "Secret" .Release.Namespace $secret_name) }}
-      {{- $err    := printf "tls.certAndPKsecretName: secret '%s' not found in namespace %s" $secret_name .Release.Namespace }}
-    {{- end }}
-  tlsCASecretName: {{ .Values.tls.caSecretName }}
-  tlsSecretName: {{ .Values.tls.certAndPKsecretName }}
   {{- else }}
-    {{- fail "TLS values not provided" }}
+    {{- if .Values.tls.caSecretName }}
+      {{- $secret_name := .Values.tls.caSecretName }}
+      {{- if not (lookup "v1" "Secret" .Release.Namespace $secret_name) }}
+        {{- $err := printf "tls.caSecretName: secret '%s' not found in namespace '%s'" $secret_name .Release.Namespace }}
+        {{- fail $err }}
+      {{- end }}
+  tlsCASecretName: {{ .Values.tls.caSecretName }}
+    {{- else }}
+      {{- $cluster_name :=  default "mycluster" .Release.Name }}
+      {{- $secret_name := printf "%s-ca" $cluster_name }}
+      {{- if not (lookup "v1" "Secret" .Release.Namespace $secret_name) }}
+        {{- $err := printf "tls.caSecretName: secret '%s' not found in namespace '%s'" $secret_name .Release.Namespace }}
+        {{- fail $err }}
+      {{- end }}
+      # no need to provide the default value here, as it will be assumed by the operator
+    {{- end }}
+    {{- if .Values.tls.serverCertAndPKsecretName }}
+      {{- $secret_name := .Values.tls.serverCertAndPKsecretName }}
+      {{- if not (lookup "v1" "Secret" .Release.Namespace $secret_name) }}
+        {{- $err := printf "tls.serverCertAndPKsecretName: secret '%s' not found in namespace '%s'" $secret_name .Release.Namespace }}
+        {{- fail $err }}
+      {{- end }}
+  tlsSecretName: {{ .Values.tls.serverCertAndPKsecretName }}
+    {{- else }}
+      {{- $cluster_name :=  default "mycluster" .Release.Name }}
+      {{- $secret_name := printf "%s-tls" $cluster_name }}
+      {{- if not (lookup "v1" "Secret" .Release.Namespace $secret_name) }}
+        {{- $err := printf "tls.serverCertAndPKsecretName: secret '%s' not found in namespace '%s'" $secret_name .Release.Namespace }}
+        {{- fail $err }}
+      {{- end }}
+      # no need to provide the default value here, as it will be assumed by the operator
+    {{- end }}
+  tlsUseSelfSigned: false
   {{- end }}
 {{- else }}
-  {{- fail "TLS values not provided. Either set tls.useSelfSigned to true or provide tls.caSecretName and tls.certAndPKsecretName" }}
+  {{- fail "TLS values not provided. Either set tls.useSelfSigned to true or provide tls.caSecretName and tls.serverCertAndPKsecretName" }}
 {{- end }}
 
 {{- if .Values.datadirVolumeClaimTemplate }}

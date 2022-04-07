@@ -21,15 +21,16 @@ credentials:
     host: "%"
 
 tls:
-  useSelfSigned: true
-  caSecretName:
-  certAndPKsecretName:
+  useSelfSigned: false
+#  caSecretName:
+#  serverCertAndPKsecretName:
+#  routerCertAndPKsecretName:
 
 #serverVersion: 8.0.29
 serverInstances: 3
 routerInstances: 1
 baseServerId: 1000
-edition: community
+
 
 #datadirVolumeClaimTemplate:
 #  accessModes:

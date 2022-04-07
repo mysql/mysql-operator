@@ -603,6 +603,7 @@ def main(argv):
         return abs(r)
 
     cluster = pod.get_cluster()
+    cluster.log_tls_info(logger)
 
     g_cluster_name = cluster.name
 

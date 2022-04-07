@@ -904,6 +904,25 @@ class InnoDBCluster(K8sInterfaceObject):
             raise
         return True
 
+    def log_cluster_info(self, logger: Logger) -> None:
+        logger.info(f"InnoDB Cluster {self.namespace}/{self.name} Edition({self.parsed_spec.edition}) Edition")
+        logger.info(f"\tServer Image:\t{self.parsed_spec.mysql_image} / {self.parsed_spec.mysql_image_pull_policy}")
+        logger.info(f"\tRouter Image:\t{self.parsed_spec.router_image} / {self.parsed_spec.router_image_pull_policy}")
+        logger.info(f"\tSidecar Image:\t{self.parsed_spec.operator_image} / {self.parsed_spec.operator_image_pull_policy}")
+        logger.info(f"\tImagePullPolicy:\t{self.parsed_spec.imagePullPolicy}")
+        logger.info(f"\tImageRepository:\t{self.parsed_spec.imageRepository}")
+        logger.info(f"\tBase ServerId:\t{self.parsed_spec.baseServerId}")
+        logger.info(f"\tRouter instances:\t{self.parsed_spec.router.instances}")
+        logger.info(f"\tBackup profiles:\t{len(self.parsed_spec.backupProfiles)}")
+        logger.info(f"\tBackup schedules:\t{len(self.parsed_spec.backupSchedules)}")
+
+    def log_tls_info(self, logger: Logger) -> None:
+        logger.info(f"\tServer.TLS.useSelfSigned:\t{self.parsed_spec.tlsUseSelfSigned}")
+        if not self.parsed_spec.tlsUseSelfSigned:
+            logger.info(f"\tServer.TLS.tlsCASecretName:\t{self.parsed_spec.tlsCASecretName}")
+            logger.info(f"\tServer.TLS.tlsSecretName:\t{self.parsed_spec.tlsSecretName}")
+            logger.info(f"\tRouter.TLS.tlsSecretName:\t{self.parsed_spec.router.tlsSecretName}")
+
 
 def get_all_clusters(ns: str = None) -> typing.List[InnoDBCluster]:
     if ns is None:

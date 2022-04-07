@@ -606,6 +606,7 @@ def on_pod_delete(body: Body, logger: Logger, **kwargs):
 
 
 @kopf.on.create("", "v1", "secrets") # type: ignore
+@kopf.on.update("", "v1", "secrets") # type: ignore
 def on_secret_create(name: str, namespace: str, logger: Logger, **kwargs):
     """
     Wait for Secret objects used by clusters for TLS CA and certificate.
@@ -628,10 +629,10 @@ def on_secret_create(name: str, namespace: str, logger: Logger, **kwargs):
     # check for any clusters that reference this secret
     for cluster in clusters:
         if cluster.parsed_spec.tlsCASecretName == name:
-            logger.info("operator: Updating TLS CA")
+            logger.info("operator: TLS CA was changed")
             ic = ClusterController(cluster)
             ic.on_router_tls_changed()
         elif cluster.parsed_spec.router.tlsSecretName == name:
-            logger.info("operator: Updating TLS KEY/CERT")
+            logger.info("operator: TLS KEY/CERT was changed")
             ic = ClusterController(cluster)
             ic.on_router_tls_changed()

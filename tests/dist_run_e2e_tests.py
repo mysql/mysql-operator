@@ -25,7 +25,7 @@ class DistTestSuiteRunner:
         self.env_name = "minikube"
         self.tag = "ote-mysql"
         self.default_worker_count = 2
-        self.defer_worker_start = 0
+        self.defer_worker_start = 60
         self.sort_cases = False
         self.expected_failures_path = None
         self.generate_xml = False

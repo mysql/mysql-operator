@@ -63,6 +63,10 @@ Ad 2) command-line options
 --trace|-t
     enable tracer
 
+--cluster=<name>
+    the name of the cluster/context to use, by default it creates and uses its own
+    the default name is stored in ./src/tests/setup/defaults.py at variable K8S_CLUSTER_NAME
+
 --nosetup|--no-setup
     disable setup of the environment and creation of cluster / an existing cluster will be used
     CAUTION! if not set the default cluster will be deleted (depending on chosen k8s environment - k3d or minikube)
@@ -243,3 +247,47 @@ The operator will pull images from myregistry.local:5000/mysql. The logs will be
 It will use an existing k3d cluster (nosetup) with an already deployed operator (nodeploy). The operator will pull
 images from registry.localhost:5000/mysql. The logs will be verbose (level 2). As no filter was passed, all tests
 will be executed.
+
+=============================
+
+The test suite may also run in parallel on many k3d or minikube instances with src/tests/dist_run_e2e_tests.py script.
+
+It supports the following command-line options:
+--env
+    similarly as for standard run on a single instance
+
+--tag=<name>
+    it should be a unique tag as the created instances will contain it, e.g. build-246, ote-mysql, etc.
+
+--workers=<number>
+    the number of instances to create and run the tests on
+    default is 2
+
+--defer=<number>
+    interval (in seconds) between starting instances
+    we noticed that if many instances run at the same moment, then sometimes one or a few may fail
+    default is 60
+
+--work-dir|workdir=<path>
+    it points out to a directory where to store all data and logs
+    if not provided, then a tmp dir will be used
+
+--sort
+    by default tests are shuffled among workers equally but randomly, hence execution times may differ
+    this option enables identical order for every run
+    default is false
+
+--expected-failures=<path>
+    points to a file where are listed tests that are expected to fail
+    a sample file (timings in brackets are ignored)
+<expected-failures.txt>
+FAIL [2.515s]: test_2_bad_pod_creation (e2e.mysqloperator.cluster.cluster_badspec_t.ClusterSpecRuntimeChecksCreation)
+ERROR [93.934s]: test_3_modify_ssl_certs_and_ca (e2e.mysqloperator.cluster.cluster_ssl_t.ClusterSSL)
+ERROR [71.461s]: test_4_add_crl (e2e.mysqloperator.cluster.cluster_ssl_t.ClusterSSL)
+FAIL [25.968s]: test_1_grow_2 (e2e.mysqloperator.cluster.cluster_t.Cluster1Defaults)
+</expected-failures.txt>
+
+--xml
+    enable generation of results in JUnit xml reports
+    they will be stored in the workdir
+    CAUTION! converse to a single-worker run, a path shouldn't be passed

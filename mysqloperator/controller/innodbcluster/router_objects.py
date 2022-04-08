@@ -330,13 +330,13 @@ def get_update_deployment_template_metadata_annotation(dpl: api_client.V1Deploym
     return patch
 
 
-def restart_deployment_for_tls(dpl: api_client.V1Deployment, tls_crt, tls_key, ca_pem, crl_pem: Optional[str], logger: Logger) -> None:
-    logger.info(f"restart_deployment_for_tls \ntls_crt is None={tls_crt is None} \ntls_key is None={tls_key is None} \nca_pem is None={ca_pem is None} \ncrl_pem is None={crl_pem  is None}")
+def restart_deployment_for_tls(dpl: api_client.V1Deployment, router_tls_crt, router_tls_key, ca_pem, crl_pem: Optional[str], logger: Logger) -> None:
+    logger.info(f"restart_deployment_for_tls \ntrouter_ls_crt is None={router_tls_crt is None} \nrouter_tls_key is None={router_tls_key is None} \nca_pem is None={ca_pem is None} \ncrl_pem is None={crl_pem  is None}")
     logger.info(f"dpl.spec.template.metadata.annotations={dpl.spec.template.metadata.annotations}")
 
     base = None
 
-    secrets = {'tls.crt': tls_crt, 'tls.key': tls_key, 'ca.pem': ca_pem, 'crl.pem': crl_pem}
+    secrets = {'router_tls.crt': router_tls_crt, 'router_tls.key': router_tls_key, 'ca.pem': ca_pem, 'crl.pem': crl_pem}
 
     for sec_name, sec_value in secrets.items():
         if not sec_value is None:

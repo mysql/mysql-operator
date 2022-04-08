@@ -51,6 +51,7 @@ import logging
 import time
 import asyncio
 import kopf
+from threading import Lock
 
 from .controller import utils, mysqlutils, k8sobject
 from .controller.innodbcluster import initdb
@@ -68,6 +69,9 @@ k8sobject.g_component = "sidecar"
 k8sobject.g_host = os.getenv("HOSTNAME")
 
 g_cluster_name = None
+g_pod_index = 0
+g_ca_change_underway = False
+g_ca_change_underway_lock = Lock()
 
 # The time it takes for mysqld to restart after a clone can be very long,
 # because it has to apply redo logs. OTOH we monitor the error log to see
@@ -482,7 +486,7 @@ def reload_tls(logger: Logger) -> None:
     session.close()
 
 
-def on_ca_secret_create_or_change(value: dict, useSelfSigned: bool, router_deployment: Optional[api_client.V1Deployment], logger: Logger):
+def on_ca_secret_create_or_change(value: dict, useSelfSigned: bool, router_deployment: Optional[api_client.V1Deployment], logger: Logger) -> None:
     logger.info("on_ca_secret_create_or_change")
 
     ca_pem = utils.b64decode(value['data']['ca.pem']) if 'ca.pem' in value['data'] else None
@@ -514,7 +518,7 @@ def on_ca_secret_create_or_change(value: dict, useSelfSigned: bool, router_deplo
         raise kopf.PermanentError("Timeout waiting for TLS files to get refreshed")
 
 
-def on_tls_secret_create_or_change(value: dict, useSelfSigned: bool, router_deployment: Optional[api_client.V1Deployment], logger: Logger):
+def on_tls_secret_create_or_change(value: dict, useSelfSigned: bool, router_deployment: Optional[api_client.V1Deployment], logger: Logger) -> None:
     logger.info("on_tls_secret_create_or_change")
 
     tls_crt = utils.b64decode(value['data']['tls.crt']) if 'tls.crt' in value['data'] else None
@@ -530,12 +534,6 @@ def on_tls_secret_create_or_change(value: dict, useSelfSigned: bool, router_depl
                                 logger):
             logger.info(f"TLS certificate file change detected, reloading TLS configurations")
             reconfigure_tls(False if useSelfSigned else True, logger)
-
-            if router_deployment:
-                # give time to all other sidecars to reload the TLS and then restart the router deployment from -0
-                time.sleep(delay)
-                logger.info("Updating router deployment with new TLS data. The deployment should restart")
-                router_objects.restart_deployment_for_tls(router_deployment, tls_crt = tls_crt, tls_key = tls_key, ca_pem = None, crl_pem = None, logger=logger)
             break
         else:
             logger.info("Waiting for mounted TLS files to refresh...")
@@ -545,30 +543,65 @@ def on_tls_secret_create_or_change(value: dict, useSelfSigned: bool, router_depl
         raise kopf.PermanentError("Timeout waiting for TLS files to get refreshed")
 
 
+def on_router_tls_secret_create_or_change(value: dict, useSelfSigned: bool, router_deployment: Optional[api_client.V1Deployment], logger: Logger) -> None:
+    global g_ca_change_underway
+    global g_ca_change_underway_lock
+
+    logger.info("on_router_tls_secret_create_or_change")
+
+    g_ca_change_underway_lock.acquire()
+    ca_change_underway = g_ca_change_underway
+    g_ca_change_underway_lock.release()
+    if not ca_change_underway:
+        if router_deployment:
+            router_tls_crt = utils.b64decode(value['data']['tls.crt']) if 'tls.crt' in value['data'] else None
+            router_tls_key = utils.b64decode(value['data']['tls.key']) if 'tls.key' in value['data'] else None
+            logger.info("Updating router deployment with new TLS data. The deployment should restart")
+            router_objects.restart_deployment_for_tls(router_deployment, router_tls_crt = router_tls_crt, router_tls_key = router_tls_key, ca_pem = None, crl_pem = None, logger=logger)
+        else:
+            logger.info("CA change underway. The CA change handler will restart the router deployment, so we have to do nothing here")
+
+
 @kopf.on.create("", "v1", "secrets") # type: ignore
 @kopf.on.update("", "v1", "secrets") # type: ignore
 def on_secret_create_or_update(name: str, namespace: str, spec, new, logger: Logger, **kwargs):
-    global g_cluster_name
+    # g_cluster_name
+    # g_pod_index
+    global g_ca_change_underway
+    global g_ca_change_underway_lock
 
     logger.info(f"on_secret_create_or_update {namespace}/{name}")
 
     my_namespace = cast(str, os.getenv("MY_POD_NAMESPACE"))
 
     if namespace == my_namespace:
-        my_pod_name = cast(str, os.getenv("MY_POD_NAME"))
-        pod = MySQLPod.read(my_pod_name, my_namespace)
         ic = InnoDBCluster.read(my_namespace, g_cluster_name)
+        ca_changed = False
         handler = None
+        router_deployment = None
         if ic.parsed_spec.tlsCASecretName == name:
+            g_ca_change_underway_lock.acquire()
+            g_ca_change_underway = True
+            ca_changed = True
+            g_ca_change_underway_lock.release()
             handler = on_ca_secret_create_or_change
+            router_deployment = ic.get_router_deployment() if g_pod_index == 0 else None
         elif ic.parsed_spec.tlsSecretName == name:
             handler = on_tls_secret_create_or_change
+        elif ic.parsed_spec.tlsSecretName == name:
+            handler = on_router_tls_secret_create_or_change
+            router_deployment = ic.get_router_deployment() if g_pod_index == 0 else None
         else:
             logger.info(f"Secret {namespace}/{name} doesn't belong to this cluster")
 
         if handler:
-            router_deployment = ic.get_router_deployment() if pod.index == 0 else None
-            handler(new, ic.parsed_spec.tlsUseSelfSigned, router_deployment , logger)
+            try:
+                handler(new, ic.parsed_spec.tlsUseSelfSigned, router_deployment , logger)
+            finally:
+                if ca_changed:
+                    g_ca_change_underway_lock.acquire()
+                    g_ca_change_underway = False
+                    g_ca_change_underway_lock.release()
 
 
 @kopf.on.startup()
@@ -579,6 +612,7 @@ def configure(settings: kopf.OperatorSettings, logger: Logger, *args, **_):
 
 def main(argv):
     global g_cluster_name
+    global g_pod_index
 
     datadir = argv[1] if len(argv) > 1 else "/var/lib/mysql"
 
@@ -606,6 +640,7 @@ def main(argv):
     cluster.log_tls_info(logger)
 
     g_cluster_name = cluster.name
+    g_pod_index = pod.index
 
     if r == 0:
         # refresh TLS settings if we're restarting in case something changed

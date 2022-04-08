@@ -4,24 +4,24 @@ We love getting feedback from our users. Bugs and code contributions are great f
 
 ## Reporting Issues
 
-Before reporting a new bug, please [check first](https://bugs.mysql.com/search.php) to see if a similar bug already exists.
+Before reporting a new bug, please [check](https://bugs.mysql.com/search.php?bug_type[]=Server%3A+Shell+OPR) if a similar bug already exists.
 
-Bug reports should be as complete as possible. Please try and include the following:
+Please report detailed bugs by including the following:
 
 * Complete steps to reproduce the issue.
-* Any information about platform and environment that could be specific to the bug.
-* Specific version of the product you are using.
+* Relevant platform and environment information potentially specific to the bug.
+* Specific version of the relevant products you are using.
 * Specific version of the server being used.
 * Sample code to help reproduce the issue, if possible.
 
 ## Contributing Code
 
-Contributing to MySQL projects is easy. You just need to follow these steps.
+Contributing to MySQL projects is easy by following these steps:
 
-* Make sure you have a user account at [bugs.mysql.com](https://bugs.mysql.com). You will need to reference this user account when you submit your Oracle Contributor Agreement (OCA).
+* Make sure you have a user account at [bugs.mysql.com](https://bugs.mysql.com). This account is referenced when submitting an Oracle Contributor Agreement (OCA).
 * Sign the Oracle Contributor Agreement. You can find instructions for doing that at the [OCA Page](https://oca.opensource.oracle.com/).
 * Develop your pull request. Make sure you are aware of the requirements for the project (e.g. do not require Kubernetes 1.10.x if we are supporting Kubernetes 1.12.x and higher).
-* Validate your pull request by including tests that sufficiently cover the functionality you are adding.
+* Ideally validate your pull request by including tests that sufficiently cover the functionality you are adding.
 * Verify that the entire test suite passes with your code applied.
 * Submit your pull request. While you can submit the pull request via [GitHub](https://github.com/mysql/mysql-operator/pulls), you can also submit it directly via [bugs.mysql.com](https://bugs.mysql.com).
 
@@ -29,7 +29,7 @@ Thanks again for your wish to contribute to MySQL. We truly believe in the princ
 
 ## Setting Up a Development Environment
 
-The following tips provide all the technical directions you should follow when writing code and before actually submitting your contribution.
+The following tips provide technical details to follow when writing code for the contribution.
 
 ### Building a test image
 
@@ -43,25 +43,25 @@ For changes only to the Operator code, which don't require changes to dependenci
 
 After building an image like this:
 
-    docker build -t  mysql-operator:8.0.29-2.0.4  -f Dockerfile.patch . 
+    docker build -t  mysql-operator:8.0.29-2.0.4 -f Dockerfile.patch .
 
 This can be passed to a local registry and used from there. Please refer to the MySQL Operator documentation and the documentation of your Kubernetes distribution of choice.
 
-Be careful that the Operator has specific expectations on the naming to deploy the right image as sidecar to the server pods and for backup purpose. After deploying a cluster verify the expected image is being used.
+Note: the operator has specific naming expectations to deploy the correct image as a sidecar to the server pods and for backup purposes. After deploying a cluster, verify that the expected image was used.
 
-Different Kubernetes distributions also provide the ability to mount local directories into a Kubernetes Node and from there into a pod. Using that functionality constant rebuilding of images can be avoided. For example when using using k3d:
+Different Kubernetes distributions also provide the ability to mount local directories into a Kubernetes Node and from there into a pod. Doing this means avoiding the frequent rebuilding of images. For example, when using using k3d:
 
     k3d  cluster create SOME_NAME --volume /full/path/to/the/git/checkout:/src
 
-Will make the directory available on the k3d node. By editing `deploy/deploy-operator.yaml` that source can then be used. An easy way to patch this is by using the the provided script.
+This makes the directory available on the k3d node. By editing `deploy/deploy-operator.yaml` that source can then be used. An easy way to patch this is by using the the provided script.
 
     deploy/patch_deployment.py --prefix registry.localhost:5000 --pull-policy Always --debug --src-volume /src/mysqloperator  deploy/deploy-operator.yaml
 
-When deployed this way to test code changes you can test the code by simply restarting the Operator pod. The easiest way to do that is by using
+When deployed this way to test code changes, you can test the code by simply restarting the Operator pod. The easiest way to do that is by using:
 
     kubectl rollout restart deployment -n mysql-operator mysql-operator
 
-But mind: This patched code will only be seen on the operator itself. Changes won't affect sidecar or backup usage.
+Note: This patched code will only be seen on the operator itself. Changes won't affect sidecar or backup usage.
 
 ### Executing the Test Suite
 
@@ -74,7 +74,7 @@ For details on running the test suite please refer to the `README.md` file in th
 
 ## Getting Help
 
-If you need help or just want to get in touch with us, please use the following resources:
+If you need help or want to contact us, please use the following resources:
 
 * [MySQL Operator for Kubernetes Documentation](https://dev.mysql.com/doc/mysql-operator/en/)
 * [`#mysql-operator` channel in MySQL Community Slack](https://mysqlcommunity.slack.com/messages/mysql-operator) ([Sign-up](https://lefred.be/mysql-community-on-slack/) required if you do not have an Oracle account)

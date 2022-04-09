@@ -9,15 +9,12 @@ image:
   pullSecrets:
     enabled: false
     secretName:
-    registry:
-    username:
-    password:
-    email:
+
 
 credentials:
   root:
     user: root
-    password: sakila
+#    password: sakila
     host: "%"
 
 tls:

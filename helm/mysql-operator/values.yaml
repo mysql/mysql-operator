@@ -8,10 +8,6 @@ image:
   pullSecrets:
     enabled: false
     secretName:
-    registry:
-    username:
-    password:
-    email: user@example.com
 
 envs:
     imagesPullPolicy: IfNotPresent

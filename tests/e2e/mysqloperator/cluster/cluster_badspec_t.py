@@ -359,6 +359,8 @@ metadata:
   name: mycluster
 spec:
   instances: 1
+  router:
+    instances: 0
   secretName: mypwds
   tlsUseSelfSigned: true
   imageRepository: invalid
@@ -372,7 +374,7 @@ spec:
         self.assertEqual(len(kutil.ls_sts(self.ns)), 1)
 
         def pod_error():
-            clusterStatus = kutil.ls_po(self.ns)[0]["STATUS"]
+            clusterStatus = kutil.ls_pod(self.ns, "mycluster-0")[0]["STATUS"]
             return clusterStatus in ("Init:ErrImageNeverPull", "Init:ErrImagePull", "Init:ImagePullBackOff")
 
         self.wait(pod_error)
@@ -398,6 +400,8 @@ metadata:
   name: mycluster
 spec:
   instances: 1
+  router:
+    instances: 0
   secretName: mypwds
   tlsUseSelfSigned: true
   imageRepository: invalid
@@ -411,7 +415,7 @@ spec:
         self.assertEqual(len(kutil.ls_sts(self.ns)), 1)
 
         def pod_error():
-            clusterStatus = kutil.ls_po(self.ns)[0]["STATUS"]
+            clusterStatus = kutil.ls_pod(self.ns, "mycluster-0")[0]["STATUS"]
             return clusterStatus in ("Init:ErrImageNeverPull", "Init:ErrImagePull", "Init:ImagePullBackOff")
 
         self.wait(pod_error)

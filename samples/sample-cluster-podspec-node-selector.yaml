@@ -1,0 +1,26 @@
+# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
+#
+# Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
+#
+# This sample creates a very simple InnoDB Cluster similar to the one in
+# sample-cluster.yaml but also provides additional Pod spcification values,
+# which will be merged into the specification of the MySQL Server Pods.
+#
+# In this case a nodeSelector is used, which ensures that all Server Pods
+# are scheduled on a Node having that provided label.
+#
+apiVersion: mysql.oracle.com/v2
+kind: InnoDBCluster
+metadata:
+  name: idc-with-selector
+spec:
+  secretName: mypwds
+  instances: 3
+  router:
+    instances: 1
+  tlsUseSelfSigned: true
+
+  podSpec:
+    nodeSelector:
+      failure-domain.beta.kubernetes.io/zone: US-ASHBURN-AD-1
+

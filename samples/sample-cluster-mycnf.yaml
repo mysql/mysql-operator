@@ -1,0 +1,25 @@
+# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
+#
+# Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
+#
+# This sample creates a very simple InnoDB Cluster similar to the one in
+# sample-cluster.yaml but also provides additional configuration variables for the
+# MySQL Server. This will be deployed onto the MySQL Server Pods on creation. Mind
+# that formatting inside the YAML file and that the operator will not validate 
+# these before deploying.
+#
+apiVersion: mysql.oracle.com/v2
+kind: InnoDBCluster
+metadata:
+  name: idc-with-custom-config
+spec:
+  secretName: mypwds
+  instances: 3
+  router:
+    instances: 1
+  tlsUseSelfSigned: true
+
+  mycnf: |
+    [mysqld]
+    innodb_buffer_pool_size=200M
+    innodb_log_file_size=2G

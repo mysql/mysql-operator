@@ -1,0 +1,25 @@
+# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
+#
+# Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
+#
+# This sample creates a very simple InnoDB Cluster similar to the one in
+# sample-cluster.yaml but also defining some storage requirements in a
+# tempalte for a PersistentVolumeClaim (PVC) set as data directory for MySQL
+# Servers. Additional options, like selection of a storage class, which can
+# appear in a PVC can be added.
+#
+apiVersion: mysql.oracle.com/v2
+kind: InnoDBCluster
+metadata:
+  name: idc-with-custom-config
+spec:
+  secretName: mypwds
+  instances: 3
+  router:
+    instances: 1
+  tlsUseSelfSigned: true
+  datadirVolumeClaimTemplate:
+    accessModes: [ "ReadWriteOnce" ]
+    resources:
+      requests:
+        storage: 300Gi

@@ -63,16 +63,23 @@ Ad 2) command-line options
 --trace|-t
     enable tracer
 
---cluster=<name>
-    the name of the cluster/context to use, by default it creates and uses its own
-    the default name is stored in ./src/tests/setup/defaults.py at variable K8S_CLUSTER_NAME
-
 --nosetup|--no-setup
-    disable setup of the environment and creation of cluster / an existing cluster will be used
+    disable the setup of the environment and creation of a new cluster / an existing cluster will be used
     CAUTION! if not set the default cluster will be deleted (depending on chosen k8s environment - k3d or minikube)
 
 --noclean|--no-clean
-    Do not delete the cluster after the tests completed. By default it is deleted.
+    do not delete the cluster after the tests are completed, by default it is deleted
+    the flag --nosetup also enables that option
+
+--cluster=<name>
+    the name of the cluster to use
+    if not set, a default name will be used (it can be found in ./src/tests/setup/defaults.py
+    at variable K8S_CLUSTER_NAME)
+    by default, the test suite runner creates a new cluster on its own
+
+--use-current-context
+    tests will run in the current context (returned with 'kubectl config current-context')
+    no setup will be performed (similarly as for --no-setup flag)
 
 --load
     obsolete! used to load images

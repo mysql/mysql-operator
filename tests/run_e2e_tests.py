@@ -142,6 +142,10 @@ if __name__ == '__main__':
             opt_nodes = int(arg.split("=")[-1])
         elif arg.startswith("--cluster="):
             g_ts_cfg.k8s_cluster = arg.partition("=")[-1]
+        elif arg == "--use-current-context":
+            g_ts_cfg.k8s_context = kutil.get_current_context()
+            g_ts_cfg.k8s_cluster = g_ts_cfg.k8s_context
+            opt_setup = False
         elif arg == "--verbose" or arg == "-v":
             opt_verbose = True
         elif arg == "-vv":
@@ -156,6 +160,7 @@ if __name__ == '__main__':
             tutil.tracer.enabled = True
         elif arg in ("--nosetup", "--no-setup"):
             opt_setup = False
+            opt_cleanup = False
         elif arg in ("--noclean", "--no-clean"):
             opt_cleanup = False
         elif arg == "--load":

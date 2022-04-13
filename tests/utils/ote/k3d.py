@@ -28,7 +28,7 @@ class K3dEnvironment(BaseEnvironment):
         print(cmd)
         subprocess.check_call(cmd, shell=True)
 
-    def get_context(self, cluster_name):
+    def resolve_context(self, cluster_name):
         return f"k3d-{cluster_name}"
 
     def start_cluster(self, nodes, version, registry_cfg_path):

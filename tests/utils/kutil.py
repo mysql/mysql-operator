@@ -87,6 +87,24 @@ def split_table(s):
     splitter = TableSplitter(lines[0])
     return [dict(zip(splitter.columns, splitter.split(l))) for l in lines[1:]]
 
+def decode_stream(stream):
+    if stream:
+        return stream.decode("utf8")
+    return ""
+
+def get_current_context():
+    argv = ["kubectl", "config", "current-context"]
+    if debug_kubectl:
+        logger.debug("run %s", " ".join(argv))
+    ret = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    output = decode_stream(ret.stdout)
+    if debug_kubectl:
+        logger.debug("rc = %s, stdout = %s", ret.returncode, output)
+    if ret.returncode == 0:
+        return output.strip()
+
+    raise Exception(f"Could not get current context {err}")
+
 def kubectl(cmd, rsrc=None, args=None, timeout=None, check=True, ignore=[]):
     argv = ["kubectl", f"--context={g_ts_cfg.k8s_context}", cmd]
     if rsrc:
@@ -103,16 +121,16 @@ def kubectl(cmd, rsrc=None, args=None, timeout=None, check=True, ignore=[]):
             if "(%s)" % ig in e.stderr.decode("utf8"):
                 if debug_kubectl:
                     logger.debug("rc = %s, stderr=%s",
-                                 e.returncode, e.stderr.decode("utf8"))
+                                 e.returncode, decode_stream(e.stderr))
                 return
         else:
             logger.error("kubectl %s failed (rc=%s):\n    stderr=%s\n    stdout=%s",
                          e.cmd, e.returncode,
-                         e.stderr.decode("utf8"), e.stdout.decode("utf8"))
+                         decode_stream(e.stderr), decode_stream(e.stdout))
             raise
     if debug_kubectl:
-        logger.debug("rc = %s, stdout = %s", r.returncode,
-                     r.stdout.decode("utf8"))
+        logger.debug("rc = %s, stdout = %s, stderr = %s", r.returncode,
+                     decode_stream(r.stdout), decode_stream(r.stderr))
     return r
 
 
@@ -524,10 +542,8 @@ def apply(ns, yaml, *, check=True):
             "-n", ns, "-f", "-"], check=check)
     except subprocess.CalledProcessError as e:
         if debug_kubectl:
-            if e.stdout:
-                logger.debug(e.stdout.decode("utf8"))
-            if e.stderr:
-                logger.error(e.stderr.decode("utf8"))
+            logger.debug("rc = %s, stdout = %s, stderr = %s", e.returncode,
+                            decode_stream(e.stdout), decode_stream(e.stderr))
         raise
 
 

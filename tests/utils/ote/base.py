@@ -55,7 +55,8 @@ class BaseEnvironment:
         self._mounts = mounts
         self._cleanup = cleanup
 
-        g_ts_cfg.k8s_context = self.get_context(g_ts_cfg.k8s_cluster)
+        if not g_ts_cfg.k8s_context:
+          g_ts_cfg.k8s_context = self.resolve_context(g_ts_cfg.k8s_cluster)
 
         if self._setup:
           self.delete_cluster()
@@ -65,7 +66,9 @@ class BaseEnvironment:
           if custom_dns:
             self.add_custom_dns(custom_dns)
 
-        subprocess.call(["kubectl", f"--context={g_ts_cfg.k8s_context}", "cluster-info"])
+        ret = subprocess.call(["kubectl", f"--context={g_ts_cfg.k8s_context}", "cluster-info"])
+        if ret:
+          raise Exception(f"cannot get cluster-info for context '{g_ts_cfg.k8s_context}'")
 
     def add_custom_dns(self, custom_dns):
       ote_dir = os.path.dirname(os.path.realpath(__file__))
@@ -114,7 +117,7 @@ class BaseEnvironment:
         self.operator_host_path = os.path.join("/tmp", os.path.basename(path))
         self.operator_mount_path = path
 
-    def get_context(self, cluster_name):
+    def resolve_context(self, cluster_name):
         return cluster_name
 
     def start_cluster(self, nodes, version, registry_cfg_path):

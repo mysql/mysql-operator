@@ -2,11 +2,11 @@
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
-# This sample creates a very simple InnoDB Cluster similar to the one in
-# sample-cluster.yaml but also provides additional configuration variables for the
-# MySQL Server. This will be deployed onto the MySQL Server Pods on creation. Mind
-# that formatting inside the YAML file and that the operator will not validate 
-# these before deploying.
+# This sample creates a simple InnoDB Cluster. It's similar to sample-cluster.yaml
+# but sets additional configuration variables for the MySQL Server.
+# These MySQL settings are deployed onto the MySQL Server Pods upon their creation.
+# These MySQL settings are not validated by the operator before deploying;
+# this example exists to show YAML formatting for the mycnf setting.
 #
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster

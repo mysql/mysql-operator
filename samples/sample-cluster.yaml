@@ -2,11 +2,14 @@
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
-# This sample creates a very simple InnoDB Cluster with help from the MySQL Operator.
-# This will have 3 MySQL Server Pods, one of them will be primary and there will be
-# one MySQL Router in a Pod. It will use self-signed TLS certificates.
-# It requires the Operator to be deployed and credentials for your "root" user 
-# provided via a secret called mypwds (see sample-secret.yaml)
+# This sample creates a simple InnoDB Cluster with help from the MySQL Operator.
+# This yields:
+#   3 MySQL Server Pods; one primary and two secondaries
+#   1 MySQL Router Pod
+# It uses self-signed TLS certificates.
+# It requires a deployed Operator (e.g., deploy/deploy-operator.yaml),
+# and requires root user credentials provided by a Kubernetes Secret;
+# the Secret is named mypwds in this case (e.g., sample-secret.yaml)
 #
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster

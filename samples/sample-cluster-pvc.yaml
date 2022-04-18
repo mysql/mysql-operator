@@ -2,11 +2,10 @@
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
-# This sample creates a very simple InnoDB Cluster similar to the one in
-# sample-cluster.yaml but also defining some storage requirements in a
-# tempalte for a PersistentVolumeClaim (PVC) set as data directory for MySQL
-# Servers. Additional options, like selection of a storage class, which can
-# appear in a PVC can be added.
+# This sample creates a simple InnoDB Cluster. It's similar to sample-cluster.yaml
+# but also defines storage requirements for a PersistentVolumeClaim (PVC) set
+# as the data directory for MySQL Servers.
+# Additional options, like selecting a storage class, can be added.
 #
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster

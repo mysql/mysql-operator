@@ -241,7 +241,7 @@ spec:
                       enabled:
                         type: boolean
                         default: true
-                        description: "Whether the the schedule is enabled or not"
+                        description: "Whether the schedule is enabled or not"
             status:
               type: object
               x-kubernetes-preserve-unknown-fields: true

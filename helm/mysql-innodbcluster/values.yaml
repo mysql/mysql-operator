@@ -1,11 +1,5 @@
 image:
-  registry:
-  repository: mysql
-  name: mysql-server
   pullPolicy: IfNotPresent
-
-  # Overrides the image tag whose default is the chart appVersion.
-  tag: ""
   pullSecrets:
     enabled: false
     secretName:

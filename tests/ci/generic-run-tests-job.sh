@@ -10,7 +10,7 @@ export http_proxy=$HTTP_PROXY
 export https_proxy=$HTTPS_PROXY
 export no_proxy=$NO_PROXY
 
-source $CI_DIR/cleanup/job-env.sh
+source $WORKSPACE/tests/ci/job-env.sh
 
 # set our temporary kubeconfig, because the default one may contain unrelated data that could fail the build
 TMP_KUBE_CONFIG="$WORKSPACE/tmpkubeconfig.$K8S_DRIVER"

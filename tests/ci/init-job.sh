@@ -6,7 +6,7 @@
 # generic script intended for running tests for both k3d / minikube
 set -vx
 
-source $CI_DIR/cleanup/job-env.sh
+source $WORKSPACE/tests/ci/job-env.sh
 
 PULL_REPOSITORY_NAME=qa
 PUSH_REGISTRY_URL=$OPERATOR_TEST_REGISTRY
@@ -38,4 +38,4 @@ LOCAL_REGISTRY_ENTERPRISE_OPERATOR_IMAGE=$PUSH_REGISTRY_URL/$PUSH_REPOSITORY_NAM
 $CI_DIR/build-enterprise-image.sh $OPERATOR_IMAGE $LOCAL_REGISTRY_ENTERPRISE_OPERATOR_IMAGE
 docker push ${LOCAL_REGISTRY_ENTERPRISE_OPERATOR_IMAGE}
 
-docker images
+docker images --digests

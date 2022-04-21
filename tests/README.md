@@ -4,8 +4,9 @@ The test suite of MySQL Operator for Kubernetes
 Requirements:
 0) python3
 1) module: kubernetes
-2) module: mysql-connector-python (CAUTION! not mysql-connector)
-3) module: unittest-xml-reporting (optional, to generate JUnit xml reports)
+2) module: pyyaml
+3) module: mysql-connector-python (CAUTION! not mysql-connector)
+4) module: unittest-xml-reporting (optional, to generate JUnit xml reports)
 
 
 The test-suite is configured in three stages:
@@ -14,6 +15,7 @@ The test-suite is configured in three stages:
 2) command-line options
 
 The defaults may be overridden by envars, in turn, they can be overridden by cmd-line options.
+Related src file is ./src/tests/defaults.py.
 
 Ad 0) defaults
 All defaults are located in

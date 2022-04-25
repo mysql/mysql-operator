@@ -30,6 +30,8 @@ OPERATOR_TEST_VERSION_TAG
 OPERATOR_TEST_PULL_POLICY
 OPERATOR_TEST_GR_IP_WHITELIST
 
+OPERATOR_TEST_SKIP_ENTERPRISE
+
 OPERATOR_TEST_SKIP_OCI
 OPERATOR_TEST_OCI_CONFIG_PATH
 OPERATOR_TEST_OCI_BUCKET
@@ -134,6 +136,9 @@ mirrors:
 
 --operator-pull-policy=[Never|IfNotPresent|Always]
     set the pull policy, the default can be found in defaults.py
+
+--skip-enterprise
+    force to skip all tests related to the enterprise edition, by default it is false
 
 --skip-oci
     force to skip all OCI tests even if OCI is properly configured, by default it is false

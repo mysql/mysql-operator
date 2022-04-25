@@ -34,6 +34,9 @@ class Config:
     router_image_name = defaults.ROUTER_IMAGE_NAME
     router_ee_image_name = defaults.ROUTER_EE_IMAGE_NAME
 
+    # enterprise
+    enterprise_skip = defaults.ENTERPRISE_SKIP
+
     # oci
     oci_skip = defaults.OCI_SKIP
     oci_config_path = defaults.OCI_CONFIG_PATH

@@ -189,6 +189,8 @@ if __name__ == '__main__':
             g_ts_cfg.operator_version_tag=arg.partition("=")[-1]
         elif arg.startswith("--operator-pull-policy="):
             g_ts_cfg.operator_pull_policy=arg.partition("=")[-1]
+        elif arg == "--skip-enterprise":
+            g_ts_cfg.enterprise_skip = True
         elif arg == "--skip-oci":
             g_ts_cfg.oci_skip = True
         elif arg.startswith("--oci-config="):

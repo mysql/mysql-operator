@@ -49,6 +49,11 @@ ROUTER_IMAGE_NAME = "mysql-router"
 ROUTER_EE_IMAGE_NAME = "enterprise-router"
 
 
+# enterprise
+ENTERPRISE_SKIP = os.getenv(
+    "OPERATOR_TEST_SKIP_ENTERPRISE", default=False)
+
+
 # oci
 OCI_SKIP = os.getenv(
     "OPERATOR_TEST_SKIP_OCI", default=False)

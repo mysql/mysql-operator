@@ -3,6 +3,7 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
+import unittest
 from utils.auxutil import isotime
 from utils import tutil
 from utils import kutil
@@ -17,6 +18,7 @@ from .cluster_t import check_all
 # TODO test edition change and upgrades
 
 
+@unittest.skipIf(g_ts_cfg.enterprise_skip, "Enterprise test cases are skipped")
 class ClusterEnterprise(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
 

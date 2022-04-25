@@ -43,6 +43,9 @@ class LogParser:
     # OK
     success_summary_matcher = re.compile('^OK$')
 
+    # OK (skipped=4)
+    success_skipped_summary_matcher = re.compile('^OK \(([a-z=0-9, ]*)\)$')
+
     # regex to match issues (errors and failures), e.g.:
     # FAIL: test_4_recover_restart_3_of_3 (e2e.mysqloperator.cluster.cluster_t.Cluster3Defaults)
     # ERROR: tearDownClass (e2e.mysqloperator.cluster.cluster_t.Cluster3Defaults)
@@ -74,7 +77,7 @@ class LogParser:
     # 'errors=1'
     # 'failures=2, errors=2'
     # 'failures=8, errors=4, skipped=1'
-    def process_failure_stats(self, raw_stats):
+    def process_summary_stats(self, raw_stats):
         stats = raw_stats.split(',')
         for stat in stats:
             m = self.failure_stat_matcher.match(stat)
@@ -114,13 +117,19 @@ class LogParser:
 
                 m = self.failed_summary_matcher.match(line)
                 if m:
-                    self.process_failure_stats(m.group(1))
+                    self.process_summary_stats(m.group(1))
                     self.result.summary += ' ' + line
                     continue
 
                 m = self.success_summary_matcher.match(line)
                 if m:
                     self.result.summary += ' ' + line
+
+                m = self.success_skipped_summary_matcher.match(line)
+                if m:
+                    self.process_summary_stats(m.group(1))
+                    self.result.summary += ' ' + line
+
 
         if not self.result.summary:
             self.add_error("error: a summary not found in the log, the execution could be stopped before completion")

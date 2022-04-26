@@ -3,6 +3,7 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
+from utils import auxutil
 from utils import tutil
 from utils import kutil
 from utils import mutil
@@ -115,6 +116,7 @@ spec:
         for _ in range(5):
             h = tutil.run_from_operator_pod("root:sakila@mycluster.testns.svc.cluster.local:6447",
                 "print(session.run_sql('select @@hostname').fetch_one()[0])")
+            h = auxutil.purge_warnings(h)
             self.assertIn(h, ["mycluster-2"])
 
         # start GR back and ensure it's returned to the pool

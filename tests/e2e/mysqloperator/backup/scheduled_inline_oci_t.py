@@ -24,7 +24,7 @@ class ScheduledBackupInlineOci(tutil.OperatorTest):
     scheduled_dump_prefix = f"{cluster_name}-{schedule_name}"
     exclude_schema = "countries"
     backup_apikey = "backup-apikey"
-    oci_storage_prefix = '/e2etest'
+    oci_storage_prefix = f"/e2etest/{g_ts_cfg.get_worker_label()}"
     oci_storage_output = None
 
     @classmethod

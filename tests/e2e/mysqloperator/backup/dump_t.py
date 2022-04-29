@@ -20,7 +20,7 @@ class DumpInstance(tutil.OperatorTest):
     dump_name = "dump-test1"
     oci_dump_name = "dump-test-oci1"
     backup_volume_name = "test-backup-storage"
-    oci_storage_prefix = '/e2etest'
+    oci_storage_prefix = f"/e2etest/{g_ts_cfg.get_worker_label()}"
     oci_storage_output = None
 
     @classmethod

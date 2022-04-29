@@ -182,7 +182,7 @@ class ClusterFromDumpOCI(tutil.OperatorTest):
     """
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
     dump_name = "cluster-from-dump-test-oci1"
-    oci_storage_prefix = '/e2etest'
+    oci_storage_prefix = f"/e2etest/{g_ts_cfg.get_worker_label()}"
     oci_storage_output = None
 
     @classmethod

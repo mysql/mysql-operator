@@ -7,17 +7,23 @@ from utils import auxutil
 from setup import defaults
 
 class Config:
+    # environment
+    env = None
+
+    # versions
     version_tag = defaults.VERSION_TAG
 
     min_supported_version = defaults.MIN_SUPPORTED_VERSION
     max_supported_version = defaults.MAX_SUPPORTED_VERSION
 
+    # registry
     image_registry = defaults.IMAGE_REGISTRY
     image_repository = defaults.IMAGE_REPOSITORY
     image_registry_host = ""
     image_registry_port = ""
     image_registry_is_loopback = ""
 
+    # operator
     operator_image_name = defaults.OPERATOR_IMAGE_NAME
     operator_ee_image_name = defaults.OPERATOR_EE_IMAGE_NAME
     operator_version_tag = defaults.OPERATOR_VERSION_TAG
@@ -59,6 +65,12 @@ class Config:
     def commit(self):
         if self.image_registry:
             self.image_registry_host, self.image_registry_port, self.image_registry_is_loopback = auxutil.resolve_registry_url(self.image_registry)
+
+    def get_worker_label(self):
+        if self.k8s_cluster:
+            return f"{self.k8s_cluster}"
+        else:
+            return f"{self.env}-internal"
 
     def get_old_version_tag(self):
         return self.min_supported_version

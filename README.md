@@ -2,7 +2,7 @@
 
 ## Introduction
 
-The MySQL Operator for Kubernetes is an operator for managing MySQL InnoDB Cluster setups inside a Kubernetes Cluster. 
+The MySQL Operator for Kubernetes is an operator for managing MySQL InnoDB Cluster setups inside a Kubernetes Cluster.
 It manages the full lifecycle with set up and maintenance that includes automating upgrades and backup.
 
 MySQL Operator for Kubernetes is brought to you by the MySQL team at Oracle.
@@ -57,14 +57,14 @@ Then deploy the operator:
 $> helm install mysql-operator helm/mysql-operator --namespace mysql-operator --create-namespace
 ```
 
-This deploys the latest MySQL Operator for Kubernetes from DockerHub using all defaults; although the deployment 
+This deploys the latest MySQL Operator for Kubernetes from DockerHub using all defaults; although the deployment
 can be customized through a variety of options to override built-in defaults. See the documentation for details.
 
 ## MySQL InnoDB Cluster Installation
 
 ### Using kubectl
 
-For creating a MySQL InnoDB Cluster, first create a secret with credentials for a MySQL root user used to 
+For creating a MySQL InnoDB Cluster, first create a secret with credentials for a MySQL root user used to
 perform administrative tasks in the cluster. For example:
 
 ```sh
@@ -95,7 +95,7 @@ Assuming it's saved as `mycluster.yaml`, deploy it:
 $> kubectl apply -f mycluster.yaml
 ```
 
-This sample creates an InnoDB Cluster with three MySQL Server instances and one MySQL Router instance. 
+This sample creates an InnoDB Cluster with three MySQL Server instances and one MySQL Router instance.
 The process can be observed using:
 
 ```sh
@@ -109,7 +109,7 @@ mycluster     ONLINE    3        3           1         10s
 
 ### Using Helm
 
-Create MySQL InnoDB Cluster installations using defaults or with customization. 
+Create MySQL InnoDB Cluster installations using defaults or with customization.
 Here's an example using all defaults for a cluster named `mycluster`:
 
 ```sh
@@ -140,14 +140,14 @@ NAME        TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                   
 mycluster   ClusterIP   10.110.228.51   <none>        3306/TCP,33060/TCP,6446/TCP,6448/TCP,6447/TCP,6449/TCP   26h
 ```
 
-The ports represent read-write and read-only ports for the MySQL Protocol and the X Protocol. 
+The ports represent read-write and read-only ports for the MySQL Protocol and the X Protocol.
 Use `describe` or see the documentation for additional information.
 
 ### Using MySQL Shell
 
-This example creates a new container named `myshell` using the `mysql/mysql-operator` image (which is used because 
+This example creates a new container named `myshell` using the `mysql/mysql-operator` image (which is used because
 it contains MySQL Shell; other images such as `mysql/mysql-server:8.0` work too), and immediately executes MySQL Shell:
-        
+
 ```sh
 $> kubectl run --rm -it myshell --image=mysql/mysql-operator -- mysqlsh
 If you don't see a command prompt, try pressing enter.
@@ -160,12 +160,12 @@ Please provide the password for 'root@mycluster': ******
 MySQL mycluster JS>
 ```
 
-Using `root@mycluster` connection assumes the default namespace is used; the long form is `{innodbclustername}.{namespace}.svc.cluster.local`. 
+Using `root@mycluster` connection assumes the default namespace is used; the long form is `{innodbclustername}.{namespace}.svc.cluster.local`.
 Each MySQL instance has MySQL Shell installed that can be used when troubleshooting.
 
 ### Using Port Forwarding
 
-Kubernetes port forwarding creates a redirection from your local machine to use a MySQL client, such as `mysql` or MySQL Workbench. 
+Kubernetes port forwarding creates a redirection from your local machine to use a MySQL client, such as `mysql` or MySQL Workbench.
 For example, for read-write connection to the primary using the MySQL protocol:
 
 ```sh
@@ -200,5 +200,4 @@ For additional downloads and the source code, visit:
 
 Contributing to MySQL Operator for Kubernetes, see:
 
-  * See [CONTRIBUTING](https://github.com/mysql/mysql-operator/blob/trunk/CONTRIBUTING)
-
+* See [CONTRIBUTING](https://github.com/mysql/mysql-operator/blob/trunk/CONTRIBUTING.md)

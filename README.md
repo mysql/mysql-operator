@@ -200,4 +200,4 @@ For additional downloads and the source code, visit:
 
 Contributing to MySQL Operator for Kubernetes, see:
 
-  * See [CONTRIBUTING](https://github.com/mysql/mysql-operator/blob/trunk/CONTRIBUTING)
+  * See [CONTRIBUTING](CONTRIBUTING.md)

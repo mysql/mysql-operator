@@ -8,7 +8,7 @@
 MYSQL_REPO_URL="http://repo.mysql.com"
 MYSQL_OPERATOR_PYTHON_DEPS="mysql-operator-python-deps"
 MYSQL_OPERATOR_PYTHON_DEPS_VERSION="3.9.5"
-MYSQL_SHELL_VERSION=8.0.29
+MYSQL_SHELL_VERSION=8.0.30
 if [ -n "${1}" ]; then
   MYSQL_REPO_URL="${1}"
 fi

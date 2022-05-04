@@ -135,7 +135,7 @@ class DistTestSuiteRunner:
         return f"{prefix}{self.tag}-{worker_index}"
 
     def get_worker_path(self, subdir, filename):
-        return os.path.join(self.work_dir, subdir, filename)
+        return os.path.join(self.work_dir, subdir, f"{self.env_name}-{filename}")
 
     def get_worker_portion_path(self, worker_index):
         return self.get_worker_path(self.workers_subdir, f"suite-{worker_index}.txt")

@@ -579,6 +579,10 @@ def on_secret_create_or_update(name: str, namespace: str, spec, new, logger: Log
         ca_changed = False
         handler = None
         router_deployment = None
+        # In case the same secret is used for CA and TLS, and router TLS, then the order
+        # here is very important. on_ca_secret_create_or_change() does what
+        # on_tls_secret_create_or_change() does and restarts the deployment on top
+        # So, either this order of checks or three separate if-statements.
         if ic.parsed_spec.tlsCASecretName == name:
             g_ca_change_underway_lock.acquire()
             g_ca_change_underway = True
@@ -588,7 +592,7 @@ def on_secret_create_or_update(name: str, namespace: str, spec, new, logger: Log
             router_deployment = ic.get_router_deployment() if g_pod_index == 0 else None
         elif ic.parsed_spec.tlsSecretName == name:
             handler = on_tls_secret_create_or_change
-        elif ic.parsed_spec.tlsSecretName == name:
+        elif ic.parsed_spec.router.tlsSecretName == name:
             handler = on_router_tls_secret_create_or_change
             router_deployment = ic.get_router_deployment() if g_pod_index == 0 else None
         else:

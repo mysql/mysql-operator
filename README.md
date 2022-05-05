@@ -119,7 +119,7 @@ $> helm install mycluster mysql-operator/mysql-innodbcluster
 Or customize, this example sets options from the command line:
 
 ```sh
-$> helm install mycluster helm/mysql-innodbcluster \
+$> helm install mycluster mysql-operator/mysql-innodbcluster \
         --namespace mynamespace \
         --create-namespace \
         --set credentials.root.user='root' \

@@ -54,7 +54,7 @@ $> helm repo update
 Then deploy the operator:
 
 ```sh
-$> helm install mysql-operator helm/mysql-operator --namespace mysql-operator --create-namespace
+$> helm install mysql-operator mysql-operator/mysql-operator --namespace mysql-operator --create-namespace
 ```
 
 This deploys the latest MySQL Operator for Kubernetes from DockerHub using all defaults; although the deployment 

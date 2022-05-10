@@ -1,0 +1,234 @@
+// Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+//
+// Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
+//
+
+pipeline {
+	agent {
+		node {
+			label 'operator-ci'
+		}
+	}
+	parameters {
+		string(name: 'OPERATOR_GIT_REVISION', defaultValue: 'dirty-myf-267-setup-jenkins-pipeline', description: 'a git revision or branch to run against')
+		string(name: 'OPERATOR_IMAGE', defaultValue: 'mysql-operator:8.0.29-2.0.4', description: 'an image related to the aforementioned git revision')
+		booleanParam(name: 'OPERATOR_INTERNAL_BUILD', defaultValue: false, description: 'triggered by us (e.g. by a push to a dev branch) or externally (e.g. from the concourse)')
+	}
+	environment {
+		WORKERS_FOLDER = 'Shell/KubernetesOperator/sandbox'
+		BUILD_TRIGGERED_BY = "${env.OPERATOR_INTERNAL_BUILD ? 'internal' : 'concourse'}"
+		LOG_SUBDIR = "build-${BUILD_NUMBER}"
+		LOG_DIR = "${WORKSPACE}/${LOG_SUBDIR}"
+		ARTIFACT_FILENAME = "result-${JOB_BASE_NAME}-${BUILD_NUMBER}.tar.bz2"
+		ARTIFACT_PATH = "${WORKSPACE}/${ARTIFACT_FILENAME}"
+		SLACK_CHANNEL = '#mysql-operator-ci'
+		BUILD_NOTIFICATION_HEADER = "${currentBuild.fullDisplayName} (<${env.BUILD_URL}|Open>)"
+	}
+ 	options {
+		timeout(time: 2, unit: 'HOURS')
+		timestamps()
+	}
+	stages {
+		stage('init') {
+			steps {
+				script {
+					env.GIT_AUTHOR_DATE = sh (script: "git log -1 --pretty='%an <%ae>, %cd' ${GIT_COMMIT}", returnStdout: true).trim()
+					env.GIT_COMMIT_SUBJECT = sh (script: "git log -1 --pretty=%s ${GIT_COMMIT}", returnStdout: true).trim()
+				}
+
+				slackSend channel: "${env.SLACK_CHANNEL}",
+					message: """${env.BUILD_NOTIFICATION_HEADER}
+${currentBuild.getBuildCauses().shortDescription} (${env.BUILD_TRIGGERED_BY})
+Revision: ${env.OPERATOR_GIT_REVISION}
+Image: ${env.OPERATOR_IMAGE}
+The latest commit:
+${env.GIT_COMMIT}
+${env.GIT_AUTHOR_DATE}
+${env.GIT_COMMIT_SUBJECT}"""
+
+				sh 'mkdir -p ${LOG_DIR}'
+
+				build job: "${env.WORKERS_FOLDER}/test-init", parameters: [
+					string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+					string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
+					booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)]
+			}
+		}
+		stage('test') {
+			parallel {
+				stage('minikube') {
+					agent {
+						label "operator-ci"
+					}
+					steps {
+						echo "minikube"
+					}
+					post {
+						always {
+							echo "minikube results"
+						}
+					}
+				}
+				stage('k3d') {
+					steps {
+						echo "k3d"
+						// sleep 300
+						// sleep 60
+						build job: "${env.WORKERS_FOLDER}/qa-k3d", parameters: [
+							string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+							string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
+							booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
+						]
+						// sh "tar -jxvf ${LOG_DIR}/*k3d*.tar.bz2 -C ${LOG_DIR}"
+						// untar file: "${LOG_DIR}/*k3d*.tar.bz2", dir: "$LOG_DIR"
+						// junit allowEmptyResults: true, testResults: "${LOG_DIR}/xml/k3d-*.xml"
+					}
+					post {
+						always {
+							echo "k3d post"
+							copyArtifacts fingerprintArtifacts: true,
+								projectName: "${WORKERS_FOLDER}/qa-k3d",
+								selector: lastCompleted(),
+								target: "${LOG_DIR}"
+						}
+					}
+				}
+			}
+		}
+		// stage('close') {
+		// 	steps {
+		// 	}
+		// }
+	}
+	post {
+		always {
+			slackSend channel: "${env.SLACK_CHANNEL}",
+				color: "good",
+				message: "##################### post build"
+
+			sh 'ls ${LOG_DIR}'
+			sh "tar jxvf ${LOG_DIR}/*.tar.bz2 -C ${LOG_DIR} && rm ${LOG_DIR}/*.tar.bz2"
+
+			script {
+				env.BUILD_DURATION = "${currentBuild.durationString.minus(' and counting')}"
+
+				def summary = junit allowEmptyResults: true, testResults: "${LOG_SUBDIR}/xml/*.xml"
+				env.TESTS_SUMMARY = "${summary.totalCount} tests, ${summary.failCount} failures, ${summary.skipCount} skipped, ${summary.passCount} passed"
+
+				env.CHANGE_LOG = getChangeLog()
+			}
+
+			sh "cd ${LOG_DIR} && tar cvjf ${ARTIFACT_PATH} *"
+			archiveArtifacts artifacts: "${ARTIFACT_FILENAME}", fingerprint: true
+		}
+		changed {
+			script {
+				modifyResult("changed")
+			}
+			// echo 'changed'
+			slackSend channel: "${env.SLACK_CHANNEL}",
+					color: 'good',
+					message: "changed"
+		}
+		fixed {
+			script {
+				modifyResult("fixed")
+			}
+			// echo "fixed"
+			slackSend channel: "${env.SLACK_CHANNEL}",
+					color: 'good',
+					message: "fixed."
+		}
+		unstable {
+			script {
+				modifyResult("unstable")
+			}
+			// echo 'unstable'
+			slackSend channel: "${env.SLACK_CHANNEL}",
+					color: 'warning',
+					message: "unstable."
+		}
+		regression {
+			script {
+				modifyResult("regression")
+			}
+			// echo "regression"
+			slackSend channel: "${env.SLACK_CHANNEL}",
+					color: 'warning',
+					message: "regression."
+		}
+		failure {
+			script {
+				modifyResult("failure")
+			}
+			// echo 'failed'
+			slackSend channel: "${env.SLACK_CHANNEL}",
+					color: 'danger',
+					message: "failed."
+		}
+		aborted {
+			script {
+				modifyResult("aborted")
+			}
+			// echo "aborted"
+			slackSend channel: "${env.SLACK_CHANNEL}",
+					color: 'warning',
+					message: "aborted."
+		}
+		unsuccessful {
+			script {
+				modifyResult("unsuccessful")
+			}
+			// echo "unsuccessful"
+			slackSend channel: "${env.SLACK_CHANNEL}",
+					color: 'danger',
+					message: "unsuccessful."
+		}
+		success {
+			script {
+				modifyResult("success")
+			}
+			// echo 'succeeded'
+			// slackSend channel: "${env.SLACK_CHANNEL}", message: "Build Started - ${env.JOB_NAME} ${env.BUILD_NUMBER} (<${env.BUILD_URL}|Open>)"
+			slackSend channel: "${env.SLACK_CHANNEL}",
+					color: 'good',
+					message: "success ."
+		}
+		cleanup {
+			slackSend channel: "${env.SLACK_CHANNEL}",
+				color: "good",
+					message: """${env.BUILD_NOTIFICATION_HEADER}
+Summary: ${env.BUILD_RESULT_SUMMARY}
+Duration: ${env.BUILD_DURATION}
+Test suite: ${env.TESTS_SUMMARY}
+Changes:
+${env.CHANGE_LOG}"""
+		}
+	}
+}
+
+@NonCPS
+def getChangeLog() {
+	def changeLog = ''
+	def changeSets = currentBuild.changeSets
+	for (int i = 0; i < changeSets.size(); ++i) {
+		def entries = changeSets[i].items
+		for (int j = 0; j < entries.length; ++j) {
+			def entry = entries[j]
+			changeLog += "${entry.msg} [${entry.author}, ${new Date(entry.timestamp)}]\n"
+		}
+	}
+	if (!changeLog) {
+		changeLog = "No changes\n"
+	}
+	return changeLog
+}
+
+@NonCPS
+def modifyResult(String status) {
+	if (!env.BUILD_RESULT_SUMMARY) {
+		env.BUILD_RESULT_SUMMARY = status
+	} else {
+		env.BUILD_RESULT_SUMMARY += ", " + status
+	}
+}

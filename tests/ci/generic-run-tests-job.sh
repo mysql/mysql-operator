@@ -77,6 +77,7 @@ else
 fi
 
 cd $LOG_DIR
+sed -i "s/=\"e2e.mysqloperator./=\"$K8S_DRIVER.e2e.mysqloperator./g" ./xml/*.xml
 tar cvjf ../result-$JOB_BASE_NAME-$BUILD_NUMBER.tar.bz2 *
 df -lh | grep /sd
 

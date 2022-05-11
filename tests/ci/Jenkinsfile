@@ -62,10 +62,19 @@ ${env.GIT_COMMIT_SUBJECT}"""
 					}
 					steps {
 						echo "minikube"
+						build job: "${env.WORKERS_FOLDER}/qa-minikube", parameters: [
+							string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+							string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
+							booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
+						]
 					}
 					post {
 						always {
 							echo "minikube results"
+							copyArtifacts fingerprintArtifacts: true,
+								projectName: "${WORKERS_FOLDER}/qa-minikube",
+								selector: lastCompleted(),
+								target: "${LOG_DIR}"
 						}
 					}
 				}
@@ -73,7 +82,7 @@ ${env.GIT_COMMIT_SUBJECT}"""
 					steps {
 						echo "k3d"
 						// sleep 300
-						// sleep 60
+						sleep 45
 						build job: "${env.WORKERS_FOLDER}/qa-k3d", parameters: [
 							string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
 							string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
@@ -107,13 +116,13 @@ ${env.GIT_COMMIT_SUBJECT}"""
 				message: "##################### post build"
 
 			sh 'ls ${LOG_DIR}'
-			sh "tar jxvf ${LOG_DIR}/*.tar.bz2 -C ${LOG_DIR} && rm ${LOG_DIR}/*.tar.bz2"
+			sh "cat ${LOG_DIR}/*.tar.bz2 | tar jxvf - -i -C ${LOG_DIR} && rm ${LOG_DIR}/*.tar.bz2"
 
 			script {
 				env.BUILD_DURATION = "${currentBuild.durationString.minus(' and counting')}"
 
 				def summary = junit allowEmptyResults: true, testResults: "${LOG_SUBDIR}/xml/*.xml"
-				env.TESTS_SUMMARY = "${summary.totalCount} tests, ${summary.failCount} failures, ${summary.skipCount} skipped, ${summary.passCount} passed"
+				env.TESTS_SUMMARY = "${summary.totalCount} tests, ${summary.passCount} passed, ${summary.failCount} failures, ${summary.skipCount} skipped"
 
 				env.CHANGE_LOG = getChangeLog()
 			}

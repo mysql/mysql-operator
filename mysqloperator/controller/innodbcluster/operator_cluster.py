@@ -133,7 +133,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             if not ignore_404(cluster.get_stateful_set):
                 print("\tPreparing...")
                 statefulset = cluster_objects.prepare_cluster_stateful_set(icspec)
-                print(f"\tCreating...")
+                print(f"\tCreating...{statefulset}")
                 kopf.adopt(statefulset)
 
                 api_apps.create_namespaced_stateful_set(namespace=namespace, body=statefulset)
@@ -159,7 +159,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 print("\tPreparing...")
                 if icspec.router.instances > 0:
                     router_deployment = router_objects.prepare_router_deployment(cluster, init_only=True)
-                    print("\tCreating...")
+                    print("\tCreating...{router_deployment}")
                     kopf.adopt(router_deployment)
                     api_apps.create_namespaced_deployment(namespace=namespace, body=router_deployment)
 

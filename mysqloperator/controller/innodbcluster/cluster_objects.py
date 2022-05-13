@@ -128,9 +128,11 @@ spec:
 # (e.g. because of a deadlock), the container is restarted.
 #
 def prepare_cluster_stateful_set(spec: InnoDBClusterSpec) -> dict:
-    mysql_argv = ["mysqld", "--user=mysql"]
+    init_mysql_argv = ["mysqld", "--user=mysql"]
     if config.enable_mysqld_general_log:
-        mysql_argv.append("--general-log=1")
+        init_mysql_argv.append("--general-log=1")
+
+    mysql_argv = init_mysql_argv
 
     # TODO re-add "--log-file=",
     tmpl = f"""
@@ -223,7 +225,7 @@ spec:
       - name: initmysql
         image: {spec.mysql_image}
         imagePullPolicy: {spec.mysql_image_pull_policy}
-        args: {mysql_argv}
+        args: {init_mysql_argv}
         securityContext:
           capabilities:
             # Check mysql/packaging/deb-in/extra/apparmor-profile for the caps needed
@@ -510,6 +512,9 @@ roleRef:
 
 
 def prepare_initconf(cluster: InnoDBCluster, spec: InnoDBClusterSpec) -> dict:
+    server_ca_and_tls = cluster.get_server_ca_and_tls()
+    ca_file_name = server_ca_and_tls["CA"] if server_ca_and_tls["CA"] else "Unknown"
+
     liveness_probe = """#!/bin/bash
 # Copyright (c) 2020, 2021, Oracle and/or its affiliates.
 
@@ -643,7 +648,7 @@ data:
     # SSL configurations
     # Do not edit.
     [mysqld]
-    {"# " if spec.tlsUseSelfSigned else ""}ssl-ca=/etc/mysql-ssl/ca.pem
+    {"# " if spec.tlsUseSelfSigned else ""}ssl-ca=/etc/mysql-ssl/{ca_file_name}
     {"# " if not has_crl else ""}ssl-crl=/etc/mysql-ssl/crl.pem
     {"# " if spec.tlsUseSelfSigned else ""}ssl-cert=/etc/mysql-ssl/tls.crt
     {"# " if spec.tlsUseSelfSigned else ""}ssl-key=/etc/mysql-ssl/tls.key
@@ -651,7 +656,7 @@ data:
     loose_group_replication_recovery_use_ssl=1
     {"# " if spec.tlsUseSelfSigned else ""}loose_group_replication_recovery_ssl_verify_server_cert=1
 
-    {"# " if spec.tlsUseSelfSigned else ""}loose_group_replication_recovery_ssl_ca=/etc/mysql-ssl/ca.pem
+    {"# " if spec.tlsUseSelfSigned else ""}loose_group_replication_recovery_ssl_ca=/etc/mysql-ssl/{ca_file_name}
     #{"# " if not has_crl else ""}loose_group_replication_recovery_ssl_crl=/etc/mysql-ssl/crl.pem
     {"# " if spec.tlsUseSelfSigned else ""}loose_group_replication_recovery_ssl_cert=/etc/mysql-ssl/tls.crt
     {"# " if spec.tlsUseSelfSigned else ""}loose_group_replication_recovery_ssl_key=/etc/mysql-ssl/tls.key

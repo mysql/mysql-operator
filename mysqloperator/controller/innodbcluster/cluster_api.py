@@ -495,6 +495,18 @@ class InnoDBClusterSpec:
         return "\n".join(volumes)
 
     @property
+    def extra_router_volume_mounts_no_cert(self) -> str:
+        mounts = []
+        if not self.tlsUseSelfSigned:
+            mounts.append(f"""
+- mountPath: /router-ssl/ca/
+  name: ssl-ca-data
+""")
+
+        return "\n".join(mounts)
+
+
+    @property
     def extra_router_volume_mounts(self) -> str:
         mounts = []
         if not self.tlsUseSelfSigned:

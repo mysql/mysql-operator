@@ -216,7 +216,7 @@ spec:
         - name: MYSQL_ROUTER_BOOTSTRAP_EXTRA_OPTIONS
           value: "{' '.join(router_bootstrap_options)}"
         volumeMounts: {'[]' if not spec.extra_router_volume_mounts else ''}
-{utils.indent(spec.extra_router_volume_mounts, 8)}
+{utils.indent(spec.extra_router_volume_mounts if router_tls_exists else spec.extra_router_volume_mounts_no_cert, 8)}
         ports:
         - containerPort: {spec.router_rwport}
           name: mysqlrw

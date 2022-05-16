@@ -311,10 +311,3 @@ def query_members(session):
 
 def parse_uri(uri):
     return mysqlsh.globals.shell.parse_uri(uri)
-
-
-def make_ip_allowlist(pods):
-    member_addresses = []
-    for pod in pods:
-        member_addresses.append(pod.address_fqdn+":33061")
-    return ",".join(member_addresses)

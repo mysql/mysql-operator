@@ -159,7 +159,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 print("\tPreparing...")
                 if icspec.router.instances > 0:
                     router_deployment = router_objects.prepare_router_deployment(cluster, init_only=True)
-                    print("\tCreating...{router_deployment}")
+                    print(f"\tCreating...{router_deployment}")
                     kopf.adopt(router_deployment)
                     api_apps.create_namespaced_deployment(namespace=namespace, body=router_deployment)
 

@@ -23,22 +23,12 @@ import kopf
 import datetime
 import time
 
-MYSQL_OPERATOR_GR_IP_ALLOWLIST_EXTRA = os.getenv("MYSQL_OPERATOR_IP_ALLOWLIST_EXTRA", default="")
-MYSQL_OPERATOR_GR_IP_ALLOWLIST_EXTRA += "," if MYSQL_OPERATOR_GR_IP_ALLOWLIST_EXTRA else ""
-MYSQL_OPERATOR_GR_IP_ALLOWLIST_EXTRA += "127.0.0.1/8,::1/128"
-
 common_gr_options = {
     # Abort the server if member is kicked out of the group, which would trigger
     # an event from the container restart, which we can catch and act upon.
     # This also makes autoRejoinTries irrelevant.
     "exitStateAction": "ABORT_SERVER"
 }
-
-def create_allow_list(pod: MySQLPod, logger) -> str:
-    allowlist = pod.pod_ip_address + "/8," + MYSQL_OPERATOR_GR_IP_ALLOWLIST_EXTRA
-    logger.info(f"allow_list for {pod.name}: ipAllowlist={allowlist}")
-    return allowlist
-
 
 def select_pod_with_most_gtids(gtids: Dict[int, str]) -> int:
     pod_indexes = list(gtids.keys())
@@ -245,7 +235,6 @@ class ClusterController:
             "gtidSetIsComplete": assume_gtid_set_complete,
             "manualStartOnBoot": True,
             "memberSslMode": "REQUIRED" if self.cluster.parsed_spec.tlsUseSelfSigned else "VERIFY_IDENTITY",
-            "ipAllowlist": create_allow_list(seed_pod, logger)
         }
         create_options.update(common_gr_options)
 
@@ -450,7 +439,6 @@ class ClusterController:
 
         add_options = {
             "recoveryMethod": recovery_method,
-            "ipAllowlist": create_allow_list(pod, logger)
         }
         add_options.update(common_gr_options)
 

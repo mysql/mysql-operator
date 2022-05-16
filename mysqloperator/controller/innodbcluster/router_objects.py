@@ -82,15 +82,13 @@ def prepare_router_deployment(cluster: InnoDBCluster, *,
     # value once the cluster is ONLINE, otherwise the router bootstraps could
     # timeout and fail unnecessarily.
 
-    server_ca_and_tls = cluster.get_server_ca_and_tls()
-    ca_file_name = server_ca_and_tls["CA"] if server_ca_and_tls["CA"] else "Unknown"
-
     spec = cluster.parsed_spec
 
     router_tls_exists = False
     # Workaround fro rotuer bug #33996132
     router_bootstrap_options = ["--conf-set-option=DEFAULT.unknown_config_option=warning"]
     if not spec.tlsUseSelfSigned:
+        ca_file_name = cluster.get_server_ca_and_tls().get("CA", "Unknown")
         router_bootstrap_options += [f"--server-ssl-ca=/router-ssl/ca/{ca_file_name}",
             "--server-ssl-verify=VERIFY_IDENTITY",
             f"--ssl-ca=/router-ssl/ca/{ca_file_name}"

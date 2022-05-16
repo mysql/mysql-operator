@@ -477,7 +477,7 @@ spec:
 
 def prepare_service_account(spec: InnoDBClusterSpec) -> dict:
     if not spec.serviceAccountName is None:
-      return None
+        return None
     account = f"""
 apiVersion: v1
 kind: ServiceAccount
@@ -512,8 +512,6 @@ roleRef:
 
 
 def prepare_initconf(cluster: InnoDBCluster, spec: InnoDBClusterSpec) -> dict:
-    server_ca_and_tls = cluster.get_server_ca_and_tls()
-    ca_file_name = server_ca_and_tls["CA"] if server_ca_and_tls["CA"] else "Unknown"
 
     liveness_probe = """#!/bin/bash
 # Copyright (c) 2020, 2021, Oracle and/or its affiliates.
@@ -577,6 +575,11 @@ fi
 """
 
     has_crl = cluster.tls_has_crl()
+
+    if not spec.tlsUseSelfSigned:
+        ca_file_name = cluster.get_server_ca_and_tls().get("CA", "Unknown")
+    else:
+        ca_file_name = ""
 
     tmpl = f"""
 apiVersion: v1

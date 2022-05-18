@@ -28,7 +28,6 @@ class Config:
     operator_ee_image_name = defaults.OPERATOR_EE_IMAGE_NAME
     operator_version_tag = defaults.OPERATOR_VERSION_TAG
     operator_pull_policy = defaults.OPERATOR_PULL_POLICY
-    operator_gr_ip_whitelist = defaults.OPERATOR_GR_IP_WHITELIST
 
     # server
     server_version_tag = defaults.SERVER_VERSION_TAG

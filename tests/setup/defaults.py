@@ -33,9 +33,6 @@ OPERATOR_VERSION_TAG = os.getenv(
 OPERATOR_PULL_POLICY = os.getenv(
     "OPERATOR_TEST_PULL_POLICY", default="IfNotPresent")
 
-OPERATOR_GR_IP_WHITELIST = os.getenv(
-    "OPERATOR_TEST_GR_IP_WHITELIST", default="172.17.0.0/8")
-
 
 # server
 SERVER_VERSION_TAG = VERSION_TAG

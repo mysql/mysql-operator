@@ -184,8 +184,6 @@ spec:
               value: "{self.opt_operator_debug_level}"
             - name: MYSQL_OPERATOR_IMAGE_PULL_POLICY
               value: {g_ts_cfg.operator_pull_policy}
-            - name: MYSQL_OPERATOR_DEFAULT_GR_IP_WHITELIST
-              value: "{g_ts_cfg.operator_gr_ip_whitelist}"
 """
         if override_deployment:
             auxutil.merge_patch_object(operator, next(yaml.safe_load_all(patch)))

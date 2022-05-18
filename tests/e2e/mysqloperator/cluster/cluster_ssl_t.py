@@ -381,13 +381,14 @@ spec:
 
         def check_error():
             out = kutil.describe_po(self.ns, "mycluster-0")
-            if 'secret "mycluster-ca" not found, secret "mycluster-tls" not found' in out:
+            if 'secret "mycluster-tls" not found' in out and 'secret "mycluster-ca" not found' in out:
                 return out
             return ""
 
         # cluster will be stuck at PENDING because of the missing secret
         out = self.wait(check_error)
-        self.assertIn('secret "mycluster-ca" not found, secret "mycluster-tls" not found', out)
+        self.assertIn('secret "mycluster-tls" not found', out)
+        self.assertIn('secret "mycluster-ca" not found', out)
 
 
     def test_1_create_cluster_missing_ssl_recover(self):

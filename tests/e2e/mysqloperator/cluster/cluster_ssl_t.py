@@ -125,11 +125,11 @@ def check_router_ssl(self, ns, pod, ca=None, has_cert=False, crl=None):
     conf.read_string(router_conf.decode("utf-8"))
 
     if has_cert:
-        self.assertEqual("/router-ssl/tls.crt", conf["DEFAULT"]["client_ssl_cert"])
-        self.assertEqual("/router-ssl/tls.key", conf["DEFAULT"]["client_ssl_key"])
+        self.assertEqual("/router-ssl/key/tls.crt", conf["DEFAULT"]["client_ssl_cert"])
+        self.assertEqual("/router-ssl/key/tls.key", conf["DEFAULT"]["client_ssl_key"])
         self.assertEqual("PREFERRED", conf["DEFAULT"]["client_ssl_mode"])
 
-    self.assertEqual("/router-ssl/ca.pem", conf["DEFAULT"]["server_ssl_ca"])
+    self.assertEqual("/router-ssl/ca/ca.pem", conf["DEFAULT"]["server_ssl_ca"])
     self.assertEqual("AS_CLIENT", conf["DEFAULT"]["server_ssl_mode"])
     self.assertEqual("VERIFY_IDENTITY", conf["DEFAULT"]["server_ssl_verify"])
 

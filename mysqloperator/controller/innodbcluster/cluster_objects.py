@@ -511,7 +511,7 @@ roleRef:
     return rolebinding
 
 
-def prepare_initconf(cluster: InnoDBCluster, spec: InnoDBClusterSpec) -> dict:
+def prepare_initconf(cluster: InnoDBCluster, spec: InnoDBClusterSpec, logger) -> dict:
 
     liveness_probe = """#!/bin/bash
 # Copyright (c) 2020, 2021, Oracle and/or its affiliates.
@@ -577,7 +577,8 @@ fi
     has_crl = cluster.tls_has_crl()
 
     if not spec.tlsUseSelfSigned:
-        ca_file_name = cluster.get_server_ca_and_tls().get("CA", "Unknown")
+        logger.info(f"CA={cluster.get_server_ca_and_tls().get('CA')}")
+        ca_file_name = cluster.get_server_ca_and_tls().get("CA", "ca.pem")
     else:
         ca_file_name = ""
 

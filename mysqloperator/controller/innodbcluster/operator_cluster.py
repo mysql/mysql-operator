@@ -81,7 +81,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             print("1. Initial Configuration ConfigMap and Container Probes")
             if not ignore_404(cluster.get_initconf):
                 print("\tPreparing...")
-                configs = cluster_objects.prepare_initconf(cluster, icspec)
+                configs = cluster_objects.prepare_initconf(cluster, icspec, logger)
                 print("\tCreating...")
                 kopf.adopt(configs)
                 api_core.create_namespaced_config_map(namespace, configs)

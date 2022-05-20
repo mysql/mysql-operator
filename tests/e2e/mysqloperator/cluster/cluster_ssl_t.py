@@ -256,7 +256,7 @@ spec:
         available at the same time.
         """
         old_routers = kutil.ls_pod(self.ns, "mycluster-router-.*")
-        self.assertEqual(1, len(old_routers))
+        self.assertEqual(len(old_routers), 1)
 
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0, mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s1:
             before = s0.query_sql("show status like 'Ssl_server_not_after'").fetch_one()[1]
@@ -293,6 +293,9 @@ spec:
 
 
     def test_4_add_crl(self):
+        old_routers = kutil.ls_pod(self.ns, "mycluster-router-.*")
+        self.assertEqual(len(old_routers), 1)
+
         kutil.delete_secret(self.ns, "mycluster-ca")
         kutil.create_ssl_ca_secret(self.ns, "mycluster-ca",
             os.path.join(tutil.g_test_data_dir, "ssl/out/cab.pem"),
@@ -310,6 +313,8 @@ spec:
 
             self.wait(check_tls_loaded, delay=5, timeout=5*60)
 
+        # before verifying the new router, ensure the old one is gone
+        self.wait_pod_gone(old_routers[0]["NAME"])
         routers = self.wait_routers("mycluster-router-.*", 1)
 
         check_all(self, self.ns, "mycluster", instances=2, routers=1, primary=0)

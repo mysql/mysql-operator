@@ -235,7 +235,6 @@ spec:
             - SYS_RESOURCE
             drop:
             - "AUDIT_CONTROL"
-            - "AUDIT_READ"
             - "AUDIT_WRITE"
             - "BLOCK_SUSPEND"
 # CAP_BPF was introduced in Linux 5.8 which could be too new for some K8s installations
@@ -345,7 +344,6 @@ spec:
             - SYS_RESOURCE
             drop:
             - "AUDIT_CONTROL"
-            - "AUDIT_READ"
             - "AUDIT_WRITE"
             - "BLOCK_SUSPEND"
 # CAP_BPF was introduced in Linux 5.8 which could be too new for some K8s installations

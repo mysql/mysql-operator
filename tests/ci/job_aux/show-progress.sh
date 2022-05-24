@@ -7,7 +7,7 @@
 # script to avoid timeout ("FATAL: command execution failed") while
 # running long-lasting 'muted' commands like 'image save | bzip2' operation
 if [ "$#" -ne 2 ]; then
-    echo "usage: <iterations> <sleep-interval>"
+	echo "usage: <iterations> <sleep-interval>"
 	exit 1
 fi
 

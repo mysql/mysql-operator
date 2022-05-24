@@ -9,9 +9,9 @@ set -vx
 SCRIPT_DIR=$(dirname $(readlink -f "${BASH_SOURCE[0]}"))
 
 if [ "$#" -eq 1 ]; then
-    FILTER=$1
+	FILTER=$1
 else
-    FILTER='ote-'
+	FILTER='ote-'
 fi
 
 ${SCRIPT_DIR}/purge_containers.sh $FILTER

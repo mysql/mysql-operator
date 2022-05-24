@@ -4,7 +4,7 @@
 #
 
 import sys
-import process_result
+import process_workers_logs
 
 if len(sys.argv) != 3:
     print("usage: <expected-failues-path> <log-path>")
@@ -14,5 +14,5 @@ expected_failures_path = sys.argv[1]
 log_path = sys.argv[2]
 log_paths = [log_path]
 
-if not process_result.run(expected_failures_path, log_paths, None):
+if not process_workers_logs.run(expected_failures_path, log_paths, None):
     sys.exit(2)

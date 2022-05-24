@@ -13,7 +13,7 @@ from unittest.util import strclass
 from run_e2e_tests import load_test_suite, parse_filter
 import os
 import sys
-from ci import process_result
+from ci.job_aux import process_workers_logs
 
 class DistTestSuiteRunner:
     def __init__(self):
@@ -226,7 +226,7 @@ class DistTestSuiteRunner:
             log_path = self.get_worker_log_path(i)
             log_paths.append(log_path)
 
-        return process_result.run(self.expected_failures_path, log_paths, execution_time)
+        return process_workers_logs.run(self.expected_failures_path, log_paths, execution_time)
 
     def purge(self):
         shutil.rmtree(self.work_dir)

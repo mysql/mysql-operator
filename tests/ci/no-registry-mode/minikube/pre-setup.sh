@@ -19,7 +19,7 @@ minikube delete
 minikube start
 
 # patch to avoid timeout ("FATAL: command execution failed") for long-lasting operations
-"$CI_DIR/show-progress.sh" 40 30 &
+"$JOB_AUX_DIR/show-progress.sh" 40 30 &
 SHOW_PROGRESS_JOB=$!
 source $SCRIPT_DIR/load-n-tag-images.sh $1 $2 $3
 kill $SHOW_PROGRESS_JOB

@@ -8,6 +8,7 @@ set -vx
 
 TESTS_DIR=$WORKSPACE/tests
 CI_DIR=$TESTS_DIR/ci
+JOB_AUX_DIR=$CI_DIR/job_aux
 EXPECTED_FAILURES_PATH="$CI_DIR/expected-failures.txt"
 
 LOCAL_REGISTRY_CONTAINER_NAME=registry.localhost

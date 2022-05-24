@@ -6,7 +6,7 @@
 # generic script intended for running tests for both k3d / minikube
 set -vx
 
-source $WORKSPACE/tests/ci/job-env.sh
+source $WORKSPACE/tests/ci/job_aux/job-env.sh
 
 PULL_REPOSITORY_NAME=qa
 PUSH_REGISTRY_URL=$OPERATOR_TEST_REGISTRY

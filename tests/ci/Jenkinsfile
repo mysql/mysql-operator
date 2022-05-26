@@ -35,17 +35,19 @@ pipeline {
 				script {
 					env.GIT_AUTHOR_DATE = sh (script: "git log -1 --pretty='%an <%ae>, %cd' ${GIT_COMMIT}", returnStdout: true).trim()
 					env.GIT_COMMIT_SUBJECT = sh (script: "git log -1 --pretty=%s ${GIT_COMMIT}", returnStdout: true).trim()
+					env.GIT_COMMIT_SHORT = sh (script: "git rev-parse --short HEAD", returnStdout: true).trim()
 				}
 
 				slackSend channel: "${env.SLACK_CHANNEL}",
+					color: "warning",
 					sendAsText: true,
 					message: """${env.BUILD_NOTIFICATION_HEADER}
 ${currentBuild.getBuildCauses().shortDescription} (${env.BUILD_TRIGGERED_BY})
 Revision: ${env.OPERATOR_GIT_REVISION}
 Image: ${env.OPERATOR_IMAGE}
 The latest commit:
-${env.GIT_COMMIT}
 ${env.GIT_AUTHOR_DATE}
+${env.GIT_COMMIT} [hash: ${env.GIT_COMMIT_SHORT}]
 ${env.GIT_COMMIT_SUBJECT}"""
 
 				sh 'mkdir -p ${LOG_DIR}'
@@ -125,17 +127,21 @@ ${env.GIT_COMMIT_SUBJECT}"""
 						message: "##################### post test"
 
 					script {
-						sh 'ls ${LOG_DIR}'
-						env.TESTS_STATUS_HEADER = "Test suite:"
-						if (env.MINIKUBE_RESULTS_AVAILABLE || env.K3D_RESULTS_AVAILABLE) {
-							if (!env.MINIKUBE_RESULTS_AVAILABLE) {
-								env.TESTS_STATUS_HEADER += "\nNo test results for minikube!"
-							}
-							if (!env.K3D_RESULTS_AVAILABLE) {
-								env.TESTS_STATUS_HEADER += "\nNo test results for k3d!"
-							}
+						if (anyResultsAvailable()) {
+							build job: "${env.WORKERS_FOLDER}/prepare-test-suite-report", parameters: [
+								string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+								string(name: 'TEST_RESULT_BUILD_URL', value: env.BUILD_URL)
+								// booleanParam(name: 'TEST_RESULT_BUILD_URL', value: env.BUILD_URL)
+							]
+
+							copyArtifacts fingerprintArtifacts: true,
+								projectName: "${env.WORKERS_FOLDER}/prepare-test-suite-report",
+								selector: lastCompleted(),
+								target: "${LOG_SUBDIR}"
+
+							env.TEST_SUITE_REPORT = getTestSuiteReport()
 						} else {
-							env.TESTS_STATUS_HEADER = "\nNo test results available!"
+							env.TEST_SUITE_REPORT = ""
 						}
 					}
 				}
@@ -212,8 +218,22 @@ ${env.GIT_COMMIT_SUBJECT}"""
 							color: 'good',
 							message: "post tests success ."
 				}
-		// 		cleanup {
-		// 		}
+				cleanup {
+					script {
+						sh 'ls ${LOG_DIR}'
+						env.TESTS_STATUS_HEADER = "Test suite:"
+						if (anyResultsAvailable()) {
+							if (!env.MINIKUBE_RESULTS_AVAILABLE) {
+								env.TESTS_STATUS_HEADER += "\nNo test results for minikube!"
+							}
+							if (!env.K3D_RESULTS_AVAILABLE) {
+								env.TESTS_STATUS_HEADER += "\nNo test results for k3d!"
+							}
+						} else {
+							env.TESTS_STATUS_HEADER = "\nNo test results available!"
+						}
+					}
+				}
 			}
 		}
 	}
@@ -228,7 +248,7 @@ ${env.GIT_COMMIT_SUBJECT}"""
 				env.CHANGE_LOG = getChangeLog()
 
 				sh 'ls ${LOG_DIR}'
-				if (env.MINIKUBE_RESULTS_AVAILABLE || env.K3D_RESULTS_AVAILABLE) {
+				if (anyResultsAvailable()) {
 					sh "cd ${LOG_DIR} && tar cvjf ${ARTIFACT_PATH} *"
 					archiveArtifacts artifacts: "${ARTIFACT_FILENAME}", fingerprint: true
 				}
@@ -282,12 +302,12 @@ ${env.GIT_COMMIT_SUBJECT}"""
 Status: ${env.BUILD_STATUS}
 Duration: ${env.BUILD_DURATION}
 ${env.CHANGE_LOG}
-${env.TESTS_STATUS_HEADER}"""
+${env.TESTS_STATUS_HEADER}
+${env.TEST_SUITE_REPORT}"""
 		}
 	}
 }
 
-@NonCPS
 def addTestResults(String k8s_env) {
 	sh "ls ${env.LOG_DIR}"
 	def testResults = findFiles glob: "**/${env.LOG_SUBDIR}/result-$k8s_env-*.tar.bz2"
@@ -296,14 +316,39 @@ def addTestResults(String k8s_env) {
 	}
 
 	def resultPattern = "${env.LOG_DIR}/result-$k8s_env-*.tar.bz2"
-	sh "cat ${resultPattern} | tar jxvf - -i -C ${env.LOG_DIR} && rm $resultPattern"
+	sh "cat $resultPattern | tar jxvf - -i -C ${env.LOG_DIR} && rm $resultPattern"
 
-	// useful during refactorings
+	// useful during Jenkins refactorings when some jobs are intentionally skipped
 	sh "touch ${LOG_DIR}/xml/*.xml"
 
-	def summary = junit allowEmptyResults: true, testResults: "${env.LOG_SUBDIR}/xml/*.xml"
+	def summary = junit allowEmptyResults: true, testResults: "${env.LOG_SUBDIR}/xml/tests-$k8s_env-*.xml"
 	echo "${summary.totalCount} tests, ${summary.passCount} passed, ${summary.failCount} failures, ${summary.skipCount} skipped"
 	return true
+}
+
+def anyResultsAvailable() {
+	return env.MINIKUBE_RESULTS_AVAILABLE || env.K3D_RESULTS_AVAILABLE;
+}
+
+def getTestSuiteReport() {
+	sh "ls ${env.LOG_DIR}"
+	def testSuiteReportFiles = findFiles glob: "**/${env.LOG_SUBDIR}/test_suite_report_*.tar.bz2"
+	if (testSuiteReportFiles.length == 0) {
+		return ""
+	}
+
+	def reportPattern = "${env.LOG_DIR}/test_suite_report_*.tar.bz2"
+	sh "cat $reportPattern | tar jxvf - -i -C ${env.LOG_DIR} && rm $reportPattern"
+
+	def reportPath = "${env.LOG_DIR}/test_suite_report.txt"
+	def reportExists = fileExists reportPath
+	if (!reportExists) {
+		return ""
+	}
+
+	def testSuiteReport = readFile(file: reportPath)
+	echo testSuiteReport
+	return testSuiteReport
 }
 
 @NonCPS

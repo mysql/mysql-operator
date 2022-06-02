@@ -10,24 +10,26 @@ pipeline {
 		}
 	}
 	parameters {
-		string(name: 'OPERATOR_GIT_REVISION', defaultValue: 'dirty-myf-267-setup-jenkins-pipeline', description: 'a git revision or branch to run against')
-		string(name: 'OPERATOR_IMAGE', defaultValue: 'mysql-operator:8.0.29-2.0.4', description: 'an image related to the aforementioned git revision')
-		booleanParam(name: 'OPERATOR_INTERNAL_BUILD', defaultValue: false, description: 'triggered by us (e.g. by a push to a dev branch) or externally (e.g. from the concourse)')
+		string(name: 'OPERATOR_GIT_REVISION', defaultValue: 'RESOLVE_GIT_REVISION', description: 'a git revision or branch to run against')
+		string(name: 'OPERATOR_IMAGE', defaultValue: 'BUILD_DEV_OPERATOR_IMAGE', description: 'an image related to the aforementioned git revision')
+		// booleanParam(name: 'OPERATOR_INTERNAL_BUILD', defaultValue: false, description: 'triggered by us (e.g. by a push to a dev branch) or externally (e.g. from the concourse)')
 	}
 	environment {
 		WORKERS_FOLDER = 'Shell/KubernetesOperator/sandbox'
-		BUILD_TRIGGERED_BY = "${env.OPERATOR_INTERNAL_BUILD ? 'internal' : 'concourse'}"
+		BUILD_TRIGGERED_BY = "${env.BUILD_DEV_OPERATOR_IMAGE == 'BUILD_DEV_OPERATOR_IMAGE' ? 'internal' : 'concourse'}"
 		LOG_SUBDIR = "build-${BUILD_NUMBER}"
 		LOG_DIR = "${WORKSPACE}/${LOG_SUBDIR}"
 		ARTIFACT_FILENAME = "result-${JOB_BASE_NAME}-${BUILD_NUMBER}.tar.bz2"
 		ARTIFACT_PATH = "${WORKSPACE}/${ARTIFACT_FILENAME}"
 		SLACK_CHANNEL = '#mysql-operator-ci'
 		BUILD_NOTIFICATION_HEADER = "${currentBuild.fullDisplayName} (<${env.BUILD_URL}|Open>)"
+		// OPERATOR_IMAGE_TAG = ""
 	}
  	options {
 		timeout(time: 2, unit: 'HOURS')
 		timestamps()
-		copyArtifactPermission("${env.WORKERS_FOLDER}/k3d,${env.WORKERS_FOLDER}/minikube")
+		copyArtifactPermission("k3d,minikube,prepare-test-suite-report")
+		// properties(pipelineTriggers([pollSCM('* * * * *')]))
 	}
 	stages {
 		stage('init') {
@@ -36,6 +38,25 @@ pipeline {
 					env.GIT_AUTHOR_DATE = sh (script: "git log -1 --pretty='%an <%ae>, %cd' ${GIT_COMMIT}", returnStdout: true).trim()
 					env.GIT_COMMIT_SUBJECT = sh (script: "git log -1 --pretty=%s ${GIT_COMMIT}", returnStdout: true).trim()
 					env.GIT_COMMIT_SHORT = sh (script: "git rev-parse --short HEAD", returnStdout: true).trim()
+
+					if (params.OPERATOR_GIT_REVISION == 'RESOLVE_GIT_REVISION') {
+						env.TEST_GIT_REVISION = "${GIT_COMMIT}"
+					} else {
+						env.TEST_GIT_REVISION = params.OPERATOR_GIT_REVISION
+					}
+
+					if ("${env.GIT_BRANCH}" == "dev" || "${env.GIT_BRANCH}" == "qa") {
+						sh "git show --oneline -s"
+						sh "git checkout ${env.TEST_GIT_REVISION}"
+						// checkout scm
+						sh "git show --oneline -s"
+					}
+
+					if (params.OPERATOR_IMAGE == 'BUILD_DEV_OPERATOR_IMAGE') {
+						def git_describe = sh (script: "git describe --tags", returnStdout: true).trim()
+						env.OPERATOR_IMAGE_TAG = "dev-$git_describe"
+					}
+					echo "env.OPERATOR_IMAGE_TAG: ${env.OPERATOR_IMAGE_TAG}"
 				}
 
 				slackSend channel: "${env.SLACK_CHANNEL}",
@@ -43,8 +64,8 @@ pipeline {
 					sendAsText: true,
 					message: """${env.BUILD_NOTIFICATION_HEADER}
 ${currentBuild.getBuildCauses().shortDescription} (${env.BUILD_TRIGGERED_BY})
-Revision: ${env.OPERATOR_GIT_REVISION}
-Image: ${env.OPERATOR_IMAGE}
+Revision: ${env.TEST_GIT_REVISION}
+Image: ${env.OPERATOR_IMAGE} [${env.OPERATOR_IMAGE_TAG}]
 The latest commit:
 ${env.GIT_AUTHOR_DATE}
 ${env.GIT_COMMIT} [hash: ${env.GIT_COMMIT_SHORT}]
@@ -52,9 +73,22 @@ ${env.GIT_COMMIT_SUBJECT}"""
 
 				sh 'mkdir -p ${LOG_DIR}'
 
-				build job: "${env.WORKERS_FOLDER}/test-init", parameters: [
-					string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+				build job: "${env.WORKERS_FOLDER}/init", parameters: [
+					string(name: 'OPERATOR_GIT_REVISION', value: env.TEST_GIT_REVISION),
 					string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
+					string(name: 'OPERATOR_IMAGE_TAG', value: env.OPERATOR_IMAGE_TAG),
+					booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)]
+			}
+		}
+		stage('build') {
+			when {
+				expression { env.OPERATOR_IMAGE_TAG != null }
+			}
+			steps {
+				build job: "${env.WORKERS_FOLDER}/build", parameters: [
+					string(name: 'OPERATOR_GIT_REVISION', value: env.TEST_GIT_REVISION),
+					string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
+					string(name: 'OPERATOR_IMAGE_TAG', value: env.OPERATOR_IMAGE_TAG),
 					booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)]
 			}
 		}
@@ -64,8 +98,9 @@ ${env.GIT_COMMIT_SUBJECT}"""
 					steps {
 						echo "minikube"
 						build job: "${env.WORKERS_FOLDER}/minikube", parameters: [
-							string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+							string(name: 'OPERATOR_GIT_REVISION', value: env.TEST_GIT_REVISION),
 							string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
+							string(name: 'OPERATOR_IMAGE_TAG', value: env.OPERATOR_IMAGE_TAG),
 							booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
 						]
 					}
@@ -97,8 +132,9 @@ ${env.GIT_COMMIT_SUBJECT}"""
 						// sleep 300
 						sleep 60
 						build job: "${env.WORKERS_FOLDER}/k3d", parameters: [
-							string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+							string(name: 'OPERATOR_GIT_REVISION', value: env.TEST_GIT_REVISION),
 							string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
+							string(name: 'OPERATOR_IMAGE_TAG', value: env.OPERATOR_IMAGE_TAG),
 							booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
 						]
 					}
@@ -129,7 +165,7 @@ ${env.GIT_COMMIT_SUBJECT}"""
 					script {
 						if (anyResultsAvailable()) {
 							build job: "${env.WORKERS_FOLDER}/prepare-test-suite-report", parameters: [
-								string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+								string(name: 'OPERATOR_GIT_REVISION', value: env.TEST_GIT_REVISION),
 								string(name: 'TEST_RESULT_BUILD_URL', value: env.BUILD_URL)
 								// booleanParam(name: 'TEST_RESULT_BUILD_URL', value: env.BUILD_URL)
 							]
@@ -220,7 +256,7 @@ ${env.GIT_COMMIT_SUBJECT}"""
 				}
 				cleanup {
 					script {
-						sh 'ls ${LOG_DIR}'
+						sh 'ls -lRF ${LOG_DIR}'
 						env.TESTS_STATUS_HEADER = "Test suite:"
 						if (anyResultsAvailable()) {
 							if (!env.MINIKUBE_RESULTS_AVAILABLE) {
@@ -247,7 +283,7 @@ ${env.GIT_COMMIT_SUBJECT}"""
 				env.BUILD_DURATION = "${currentBuild.durationString.minus(' and counting')}"
 				env.CHANGE_LOG = getChangeLog()
 
-				sh 'ls ${LOG_DIR}'
+				sh 'ls -lRF ${LOG_DIR}'
 				if (anyResultsAvailable()) {
 					sh "cd ${LOG_DIR} && tar cvjf ${ARTIFACT_PATH} *"
 					archiveArtifacts artifacts: "${ARTIFACT_FILENAME}", fingerprint: true

@@ -97,3 +97,11 @@ def merge_patch_object(base: dict, patch: dict, prefix: str = "", key: str = "")
                 base[k] = v
         else:
             base[k] = v
+
+def purge_warnings(message):
+    result = []
+    lines = message.splitlines()
+    for line in lines:
+        if 'WARNING' not in line.upper():
+            result.append(line)
+    return '\n'.join(result)

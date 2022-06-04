@@ -128,9 +128,11 @@ spec:
 # (e.g. because of a deadlock), the container is restarted.
 #
 def prepare_cluster_stateful_set(spec: InnoDBClusterSpec) -> dict:
-    mysql_argv = ["mysqld", "--user=mysql"]
+    init_mysql_argv = ["mysqld", "--user=mysql"]
     if config.enable_mysqld_general_log:
-        mysql_argv.append("--general-log=1")
+        init_mysql_argv.append("--general-log=1")
+
+    mysql_argv = init_mysql_argv
 
     # TODO re-add "--log-file=",
     tmpl = f"""
@@ -223,7 +225,7 @@ spec:
       - name: initmysql
         image: {spec.mysql_image}
         imagePullPolicy: {spec.mysql_image_pull_policy}
-        args: {mysql_argv}
+        args: {init_mysql_argv}
         securityContext:
           capabilities:
             # Check mysql/packaging/deb-in/extra/apparmor-profile for the caps needed
@@ -475,7 +477,7 @@ spec:
 
 def prepare_service_account(spec: InnoDBClusterSpec) -> dict:
     if not spec.serviceAccountName is None:
-      return None
+        return None
     account = f"""
 apiVersion: v1
 kind: ServiceAccount
@@ -509,7 +511,8 @@ roleRef:
     return rolebinding
 
 
-def prepare_initconf(cluster: InnoDBCluster, spec: InnoDBClusterSpec) -> dict:
+def prepare_initconf(cluster: InnoDBCluster, spec: InnoDBClusterSpec, logger) -> dict:
+
     liveness_probe = """#!/bin/bash
 # Copyright (c) 2020, 2021, Oracle and/or its affiliates.
 
@@ -572,6 +575,12 @@ fi
 """
 
     has_crl = cluster.tls_has_crl()
+
+    if not spec.tlsUseSelfSigned:
+        logger.info(f"CA={cluster.get_server_ca_and_tls().get('CA')}")
+        ca_file_name = cluster.get_server_ca_and_tls().get("CA", "ca.pem")
+    else:
+        ca_file_name = ""
 
     tmpl = f"""
 apiVersion: v1
@@ -643,7 +652,7 @@ data:
     # SSL configurations
     # Do not edit.
     [mysqld]
-    {"# " if spec.tlsUseSelfSigned else ""}ssl-ca=/etc/mysql-ssl/ca.pem
+    {"# " if spec.tlsUseSelfSigned else ""}ssl-ca=/etc/mysql-ssl/{ca_file_name}
     {"# " if not has_crl else ""}ssl-crl=/etc/mysql-ssl/crl.pem
     {"# " if spec.tlsUseSelfSigned else ""}ssl-cert=/etc/mysql-ssl/tls.crt
     {"# " if spec.tlsUseSelfSigned else ""}ssl-key=/etc/mysql-ssl/tls.key
@@ -651,7 +660,7 @@ data:
     loose_group_replication_recovery_use_ssl=1
     {"# " if spec.tlsUseSelfSigned else ""}loose_group_replication_recovery_ssl_verify_server_cert=1
 
-    {"# " if spec.tlsUseSelfSigned else ""}loose_group_replication_recovery_ssl_ca=/etc/mysql-ssl/ca.pem
+    {"# " if spec.tlsUseSelfSigned else ""}loose_group_replication_recovery_ssl_ca=/etc/mysql-ssl/{ca_file_name}
     #{"# " if not has_crl else ""}loose_group_replication_recovery_ssl_crl=/etc/mysql-ssl/crl.pem
     {"# " if spec.tlsUseSelfSigned else ""}loose_group_replication_recovery_ssl_cert=/etc/mysql-ssl/tls.crt
     {"# " if spec.tlsUseSelfSigned else ""}loose_group_replication_recovery_ssl_key=/etc/mysql-ssl/tls.key

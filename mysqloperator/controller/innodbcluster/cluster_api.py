@@ -5,7 +5,7 @@
 
 import enum
 import typing
-from typing import Optional, List, Tuple, cast, overload
+from typing import Optional, List, Tuple, Dict, cast, overload
 from kopf.structs.bodies import Body
 
 from ..k8sobject import K8sInterfaceObject
@@ -419,17 +419,23 @@ class InnoDBClusterSpec:
     @property
     def extra_volumes(self) -> str:
         volumes = []
+        same_secret = self.tlsCASecretName == self.tlsSecretName
 
         if not self.tlsUseSelfSigned:
-            volumes.append(f"""
+            volume = f"""
 - name: ssldata
   projected:
     sources:
     - secret:
-        name: {self.tlsCASecretName}
-    - secret:
         name: {self.tlsSecretName}
-""")
+"""
+            if not same_secret:
+                volume += f"""
+    - secret:
+        name: {self.tlsCASecretName}
+"""
+
+            volumes.append(volume)
 
         return "\n".join(volumes)
 
@@ -447,13 +453,11 @@ class InnoDBClusterSpec:
     def extra_sidecar_volume_mounts(self) -> str:
         mounts = []
         if not self.tlsUseSelfSigned:
-            mounts.append(f"""
+            mounts.append("""
 - mountPath: /etc/mysql-ssl
   name: ssldata
 """)
         return "\n".join(mounts)
-
-
 
     @property
     def extra_router_volumes_no_cert(self) -> str:
@@ -461,11 +465,12 @@ class InnoDBClusterSpec:
 
         if not self.tlsUseSelfSigned:
             volumes.append(f"""
-- name: ssldata
+- name: ssl-ca-data
   projected:
     sources:
     - secret:
-        name: {self.tlsCASecretName}""")
+        name: {self.tlsCASecretName}
+""")
 
         return "\n".join(volumes)
 
@@ -475,24 +480,43 @@ class InnoDBClusterSpec:
 
         if not self.tlsUseSelfSigned:
             volumes.append(f"""
-- name: ssldata
+- name: ssl-ca-data
   projected:
     sources:
     - secret:
         name: {self.tlsCASecretName}
+- name: ssl-key-data
+  projected:
+    sources:
     - secret:
-        name: {self.router.tlsSecretName}""")
+        name: {self.router.tlsSecretName}
+""")
 
         return "\n".join(volumes)
+
+    @property
+    def extra_router_volume_mounts_no_cert(self) -> str:
+        mounts = []
+        if not self.tlsUseSelfSigned:
+            mounts.append(f"""
+- mountPath: /router-ssl/ca/
+  name: ssl-ca-data
+""")
+
+        return "\n".join(mounts)
+
 
     @property
     def extra_router_volume_mounts(self) -> str:
         mounts = []
         if not self.tlsUseSelfSigned:
             mounts.append(f"""
-- mountPath: /router-ssl
-  name: ssldata
+- mountPath: /router-ssl/ca/
+  name: ssl-ca-data
+- mountPath: /router-ssl/key/
+  name: ssl-key-data
 """)
+
         return "\n".join(mounts)
 
     @property
@@ -720,6 +744,50 @@ class InnoDBCluster(K8sInterfaceObject):
                 return None
             raise
 
+    def get_server_ca_and_tls(self) -> Dict:
+        ca_secret = None
+        server_tls_secret = None
+        same_secret_for_ca_and_tls = False
+        ret = {}
+        try:
+            server_tls_secret = cast(api_client.V1Secret, api_core.read_namespaced_secret(
+                                     self.parsed_spec.tlsSecretName, self.namespace))
+
+        except ApiException as e:
+            if e.status == 404:
+                return {}
+            raise
+
+        if "tls.crt" in server_tls_secret.data:
+            ret["tls.crt"] = utils.b64decode(server_tls_secret.data["tls.crt"])
+        if "tls.key" in server_tls_secret.data:
+            ret["tls.key"] = utils.b64decode(server_tls_secret.data["tls.key"])
+
+        if self.parsed_spec.tlsSecretName == self.parsed_spec.tlsCASecretName:
+            ca_secret = server_tls_secret
+            same_secret_for_ca_and_tls = True
+        else:
+            try:
+                ca_secret = cast(api_client.V1Secret, api_core.read_namespaced_secret(
+                                 self.parsed_spec.tlsCASecretName, self.namespace))
+            except ApiException as e:
+                if e.status == 404:
+                    return ret
+                raise
+
+        ca_file_name = None
+        if "ca.pem" in ca_secret.data:
+            ca_file_name = "ca.pem"
+        elif "ca.crt" in ca_secret.data:
+            ca_file_name = "ca.crt"
+
+        ret["CA"] = ca_file_name
+        if ca_file_name:
+            ret[ca_file_name] = utils.b64decode(ca_secret.data[ca_file_name])
+            ret['same_secret_for_ca_and_tls'] = same_secret_for_ca_and_tls
+
+        return ret
+
     def get_admin_account(self) -> Tuple[str, str]:
         secrets = self.get_private_secrets()
 
@@ -922,6 +990,7 @@ class InnoDBCluster(K8sInterfaceObject):
         if not self.parsed_spec.tlsUseSelfSigned:
             logger.info(f"\tServer.TLS.tlsCASecretName:\t{self.parsed_spec.tlsCASecretName}")
             logger.info(f"\tServer.TLS.tlsSecretName:\t{self.parsed_spec.tlsSecretName}")
+            logger.info(f"\tServer.TLS.keys         :\t{list(self.get_server_ca_and_tls().keys())}")
             router_tls_exists = self.router_tls_exists()
             logger.info(f"\tRouter.TLS exists       :\t{router_tls_exists}")
             if router_tls_exists:

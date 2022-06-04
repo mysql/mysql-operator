@@ -507,7 +507,7 @@ def on_ca_secret_create_or_change(value: dict, useSelfSigned: bool, router_deplo
                 # give time to all other sidecars to reload the TLS and then restart the router deployment from -0
                 time.sleep(delay)
                 logger.info("Updating router deployment with new TLS data. The deployment should restart")
-                router_objects.restart_deployment_for_tls(router_deployment, tls_crt = None, tls_key = None, ca_pem = ca_pem, crl_pem = crl_pem, logger=logger)
+                router_objects.restart_deployment_for_tls(router_deployment, router_tls_crt = None, router_tls_key = None, ca_pem = ca_pem, crl_pem = crl_pem, logger=logger)
             break
         else:
             logger.debug("Waiting for mounted TLS files to refresh...")
@@ -570,7 +570,7 @@ def on_secret_create_or_update(name: str, namespace: str, spec, new, logger: Log
     global g_ca_change_underway
     global g_ca_change_underway_lock
 
-    logger.info(f"on_secret_create_or_update {namespace}/{name}")
+    logger.info(f"on_secret_create_or_update {namespace}/{name} pod_index={g_pod_index}")
 
     my_namespace = cast(str, os.getenv("MY_POD_NAMESPACE"))
 
@@ -579,6 +579,10 @@ def on_secret_create_or_update(name: str, namespace: str, spec, new, logger: Log
         ca_changed = False
         handler = None
         router_deployment = None
+        # In case the same secret is used for CA and TLS, and router TLS, then the order
+        # here is very important. on_ca_secret_create_or_change() does what
+        # on_tls_secret_create_or_change() does and restarts the deployment on top
+        # So, either this order of checks or three separate if-statements.
         if ic.parsed_spec.tlsCASecretName == name:
             g_ca_change_underway_lock.acquire()
             g_ca_change_underway = True
@@ -588,7 +592,7 @@ def on_secret_create_or_update(name: str, namespace: str, spec, new, logger: Log
             router_deployment = ic.get_router_deployment() if g_pod_index == 0 else None
         elif ic.parsed_spec.tlsSecretName == name:
             handler = on_tls_secret_create_or_change
-        elif ic.parsed_spec.tlsSecretName == name:
+        elif ic.parsed_spec.router.tlsSecretName == name:
             handler = on_router_tls_secret_create_or_change
             router_deployment = ic.get_router_deployment() if g_pod_index == 0 else None
         else:

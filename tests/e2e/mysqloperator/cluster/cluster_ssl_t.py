@@ -125,11 +125,11 @@ def check_router_ssl(self, ns, pod, ca=None, has_cert=False, crl=None):
     conf.read_string(router_conf.decode("utf-8"))
 
     if has_cert:
-        self.assertEqual("/router-ssl/tls.crt", conf["DEFAULT"]["client_ssl_cert"])
-        self.assertEqual("/router-ssl/tls.key", conf["DEFAULT"]["client_ssl_key"])
+        self.assertEqual("/router-ssl/key/tls.crt", conf["DEFAULT"]["client_ssl_cert"])
+        self.assertEqual("/router-ssl/key/tls.key", conf["DEFAULT"]["client_ssl_key"])
         self.assertEqual("PREFERRED", conf["DEFAULT"]["client_ssl_mode"])
 
-    self.assertEqual("/router-ssl/ca.pem", conf["DEFAULT"]["server_ssl_ca"])
+    self.assertEqual("/router-ssl/ca/ca.pem", conf["DEFAULT"]["server_ssl_ca"])
     self.assertEqual("AS_CLIENT", conf["DEFAULT"]["server_ssl_mode"])
     self.assertEqual("VERIFY_IDENTITY", conf["DEFAULT"]["server_ssl_verify"])
 
@@ -255,6 +255,9 @@ spec:
         CA changes, so if no downtime is wanted, both CAs need to be made
         available at the same time.
         """
+        old_routers = kutil.ls_pod(self.ns, "mycluster-router-.*")
+        self.assertEqual(len(old_routers), 1)
+
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0, mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s1:
             before = s0.query_sql("show status like 'Ssl_server_not_after'").fetch_one()[1]
 
@@ -270,6 +273,8 @@ spec:
             self.wait_tls_changed(s0, before)
             self.wait_tls_changed(s1, before)
 
+        # before verifying the new router, ensure the old one is gone
+        self.wait_pod_gone(old_routers[0]["NAME"])
         routers = self.wait_routers("mycluster-router-.*", 1)
 
         check_all(self, self.ns, "mycluster", instances=2, routers=1, primary=0)
@@ -288,6 +293,9 @@ spec:
 
 
     def test_4_add_crl(self):
+        old_routers = kutil.ls_pod(self.ns, "mycluster-router-.*")
+        self.assertEqual(len(old_routers), 1)
+
         kutil.delete_secret(self.ns, "mycluster-ca")
         kutil.create_ssl_ca_secret(self.ns, "mycluster-ca",
             os.path.join(tutil.g_test_data_dir, "ssl/out/cab.pem"),
@@ -305,6 +313,8 @@ spec:
 
             self.wait(check_tls_loaded, delay=5, timeout=5*60)
 
+        # before verifying the new router, ensure the old one is gone
+        self.wait_pod_gone(old_routers[0]["NAME"])
         routers = self.wait_routers("mycluster-router-.*", 1)
 
         check_all(self, self.ns, "mycluster", instances=2, routers=1, primary=0)
@@ -381,13 +391,14 @@ spec:
 
         def check_error():
             out = kutil.describe_po(self.ns, "mycluster-0")
-            if 'secret "mycluster-ca" not found, secret "mycluster-tls" not found' in out:
+            if 'secret "mycluster-tls" not found' in out and 'secret "mycluster-ca" not found' in out:
                 return out
             return ""
 
         # cluster will be stuck at PENDING because of the missing secret
         out = self.wait(check_error)
-        self.assertIn('secret "mycluster-ca" not found, secret "mycluster-tls" not found', out)
+        self.assertIn('secret "mycluster-tls" not found', out)
+        self.assertIn('secret "mycluster-ca" not found', out)
 
 
     def test_1_create_cluster_missing_ssl_recover(self):

@@ -8,7 +8,7 @@ import os
 # version
 VERSION_TAG = "8.0.29"
 
-MIN_SUPPORTED_VERSION = "8.0.24"
+MIN_SUPPORTED_VERSION = "8.0.27"
 MAX_SUPPORTED_VERSION = "8.0.29"
 
 
@@ -33,9 +33,6 @@ OPERATOR_VERSION_TAG = os.getenv(
 OPERATOR_PULL_POLICY = os.getenv(
     "OPERATOR_TEST_PULL_POLICY", default="IfNotPresent")
 
-OPERATOR_GR_IP_WHITELIST = os.getenv(
-    "OPERATOR_TEST_GR_IP_WHITELIST", default="172.17.0.0/8")
-
 
 # server
 SERVER_VERSION_TAG = VERSION_TAG
@@ -47,6 +44,11 @@ SERVER_EE_IMAGE_NAME = "enterprise-server"
 ROUTER_VERSION_TAG = VERSION_TAG
 ROUTER_IMAGE_NAME = "mysql-router"
 ROUTER_EE_IMAGE_NAME = "enterprise-router"
+
+
+# enterprise
+ENTERPRISE_SKIP = os.getenv(
+    "OPERATOR_TEST_SKIP_ENTERPRISE", default=False)
 
 
 # oci

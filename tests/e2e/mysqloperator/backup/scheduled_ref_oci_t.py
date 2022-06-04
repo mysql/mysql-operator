@@ -28,7 +28,7 @@ class ScheduledBackupRefOci(tutil.OperatorTest):
     schedule_name = "schedule-ref-oci"
     dump_name_prefix = f"{cluster_name}-{schedule_name}"
     backup_apikey = "backup-apikey"
-    oci_storage_prefix = '/e2etest'
+    oci_storage_prefix = f"/e2etest/{g_ts_cfg.get_worker_label()}"
     oci_storage_output = None
 
     @classmethod

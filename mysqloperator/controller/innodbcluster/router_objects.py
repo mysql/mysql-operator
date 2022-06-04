@@ -88,14 +88,15 @@ def prepare_router_deployment(cluster: InnoDBCluster, *,
     # Workaround fro rotuer bug #33996132
     router_bootstrap_options = ["--conf-set-option=DEFAULT.unknown_config_option=warning"]
     if not spec.tlsUseSelfSigned:
-        router_bootstrap_options += ["--server-ssl-ca=/router-ssl/ca.pem",
+        ca_file_name = cluster.get_server_ca_and_tls().get("CA", "ca.pem")
+        router_bootstrap_options += [f"--server-ssl-ca=/router-ssl/ca/{ca_file_name}",
             "--server-ssl-verify=VERIFY_IDENTITY",
-            "--ssl-ca=/router-ssl/ca.pem"
+            f"--ssl-ca=/router-ssl/ca/{ca_file_name}"
             ]
         if cluster.router_tls_exists():
             router_tls_exists = True
-            router_bootstrap_options += ["--client-ssl-cert=/router-ssl/tls.crt",
-                "--client-ssl-key=/router-ssl/tls.key"]
+            router_bootstrap_options += ["--client-ssl-cert=/router-ssl/key/tls.crt",
+                "--client-ssl-key=/router-ssl/key/tls.key"]
 
     tmpl = f"""
 apiVersion: apps/v1
@@ -215,7 +216,7 @@ spec:
         - name: MYSQL_ROUTER_BOOTSTRAP_EXTRA_OPTIONS
           value: "{' '.join(router_bootstrap_options)}"
         volumeMounts: {'[]' if not spec.extra_router_volume_mounts else ''}
-{utils.indent(spec.extra_router_volume_mounts, 8)}
+{utils.indent(spec.extra_router_volume_mounts if router_tls_exists else spec.extra_router_volume_mounts_no_cert, 8)}
         ports:
         - containerPort: {spec.router_rwport}
           name: mysqlrw

@@ -44,7 +44,7 @@ def check_instance(test, icobj, all_pods, pod, is_primary, num_sessions=None, ve
     for p in all_pods:
         if p != pod:
             group_seeds.add(p["metadata"]["name"]+"."+icobj["metadata"]["name"] +
-                            "-instances."+icobj["metadata"]["namespace"]+".svc.cluster.local:33061")
+                            "-instances."+icobj["metadata"]["namespace"]+".svc.cluster.local:3306")
 
     name = pod["metadata"]["name"]
     base_id = icobj["spec"].get("baseServerId", 1000)

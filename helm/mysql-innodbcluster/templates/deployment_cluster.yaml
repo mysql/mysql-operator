@@ -17,7 +17,7 @@ spec:
     {{- $err := printf "tls.routerCertAndPKsecretName: secret '%s' not found in namespace '%s'" $secret_name .Release.Namespace }}
     {{- fail $err }}
   {{- end }}
-  tlsSecretName: {{ $secret_name }}
+    tlsSecretName: {{ $secret_name }}
 {{- end }}
   secretName: {{ .Release.Name }}-cluster-secret
   imagePullPolicy : {{ required "image.pullPolicy is required" .Values.image.pullPolicy }}

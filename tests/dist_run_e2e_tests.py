@@ -13,7 +13,7 @@ from unittest.util import strclass
 from run_e2e_tests import load_test_suite, parse_filter
 import os
 import sys
-from ci.job_aux import process_workers_logs
+from ci.jobs.auxiliary import process_workers_logs
 
 class DistTestSuiteRunner:
 	def __init__(self):

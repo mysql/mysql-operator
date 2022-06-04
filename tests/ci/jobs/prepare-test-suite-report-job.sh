@@ -3,10 +3,10 @@
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
-#!/bin/bash
+# pulls test results for a specified job, then prepares a summary that will be sent in a slack notification
 set -vx
 
-source $WORKSPACE/tests/ci/job_aux/job-env.sh
+source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh
 
 LOG_DIR=$WORKSPACE/build-$BUILD_NUMBER
 if test -d ${LOG_DIR}; then
@@ -19,7 +19,7 @@ curl -X GET -u $JENKINS_USER_CRED ${TEST_RESULT_BUILD_URL}/testReport/api/json?p
 
 TEST_SUITE_REPORT_FNAME=test_suite_report.txt
 TEST_SUITE_REPORT_PATH=$LOG_DIR/$TEST_SUITE_REPORT_FNAME
-"$WORKSPACE/tests/ci/job_aux/parse_job_test_result.py" $JOB_RESULT_PATH > $TEST_SUITE_REPORT_PATH
+"$CI_DIR/jobs/auxiliary/parse_job_test_result.py" $JOB_RESULT_PATH > $TEST_SUITE_REPORT_PATH
 cat $TEST_SUITE_REPORT_PATH
 
 cd $LOG_DIR

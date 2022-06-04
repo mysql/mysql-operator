@@ -6,7 +6,7 @@
 # init script executed before running tests, it purges old items and charges the local registry with necessary images
 set -vx
 
-source $WORKSPACE/tests/ci/job_aux/job-env.sh
+source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh
 
 # purge dangling items
 $CI_DIR/cleanup/purge.sh
@@ -20,8 +20,9 @@ IMAGES_LIST=$CI_DIR/registry/images-list.txt
 $CI_DIR/registry/charge-local-registry.sh $REMOTE_REGISTRY_ADDRESS $REMOTE_REPOSITORY_NAME \
 	$LOCAL_REGISTRY_ADDRESS $LOCAL_REPOSITORY_NAME $IMAGES_LIST
 
-# push the newest operator image to the local registry
-if [ "${OPERATOR_IMAGE}" != 'BUILD_DEV_OPERATOR_IMAGE' ]; then
+# push images only for a build triggered from concourse (for dev branches we build images on our own)
+if [[ $OPERATOR_INTERNAL_BUILD == 'false' ]]; then
+	# push the operator image to the local registry
 	docker pull ${OPERATOR_IMAGE}
 	if [ $? -ne 0 ]; then
 		echo "cannot pull operator image ${OPERATOR_IMAGE}"

@@ -10,7 +10,7 @@ export http_proxy=$HTTP_PROXY
 export https_proxy=$HTTPS_PROXY
 export no_proxy=$NO_PROXY
 
-source $WORKSPACE/tests/ci/job_aux/job-env.sh
+source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh
 
 # set our temporary kubeconfig, because the default one may contain unrelated data that could fail the build
 TMP_KUBE_CONFIG="$WORKSPACE/tmpkubeconfig.$K8S_DRIVER"
@@ -58,7 +58,7 @@ touch $TESTS_LOG
 tail -f "$TESTS_LOG" &
 
 # a patch to avoid timeout ("FATAL: command execution failed") for long-lasting operations
-"$JOB_AUX_DIR/show-progress.sh" 240 30 &
+"$CI_DIR/jobs/auxiliary/show-progress.sh" 240 30 &
 
 # by default TEST_SUITE is not defined, it means to run all tests
 if test $WORKERS == 1; then
@@ -66,7 +66,7 @@ if test $WORKERS == 1; then
 	./run --env=$K8S_DRIVER $SINGLE_WORKER_OPTIONS $TEST_OPTIONS ${TEST_SUITE} > "$TESTS_LOG" 2>&1
 	TMP_SUMMARY_PATH=$(mktemp)
 	# process the tests results
-	python3 $JOB_AUX_DIR/process_single_worker_log.py $EXPECTED_FAILURES_PATH "$TESTS_LOG" > $TMP_SUMMARY_PATH 2>&1
+	python3 $CI_DIR/jobs/auxiliary/process_single_worker_log.py $EXPECTED_FAILURES_PATH "$TESTS_LOG" > $TMP_SUMMARY_PATH 2>&1
 	TESTS_RESULT=$?
 	cat $TMP_SUMMARY_PATH >> "$TESTS_LOG"
 	rm $TMP_SUMMARY_PATH

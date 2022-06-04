@@ -10,26 +10,24 @@ pipeline {
 		}
 	}
 	parameters {
-		string(name: 'OPERATOR_GIT_REVISION', defaultValue: 'RESOLVE_GIT_REVISION', description: 'a git revision or branch to run against')
-		string(name: 'OPERATOR_IMAGE', defaultValue: 'BUILD_DEV_OPERATOR_IMAGE', description: 'an image related to the aforementioned git revision')
-		// booleanParam(name: 'OPERATOR_INTERNAL_BUILD', defaultValue: false, description: 'triggered by us (e.g. by a push to a dev branch) or externally (e.g. from the concourse)')
+		string(name: 'OPERATOR_GIT_REVISION', description: 'a git revision or branch to run against')
+		string(name: 'OPERATOR_IMAGE', description: 'an image related to the aforementioned git revision')
+		booleanParam(name: 'OPERATOR_INTERNAL_BUILD', defaultValue: false, description: 'triggered by us (e.g. by a push to a dev branch) or externally (e.g. from the concourse)')
 	}
 	environment {
 		WORKERS_FOLDER = 'Shell/KubernetesOperator/sandbox'
-		BUILD_TRIGGERED_BY = "${env.BUILD_DEV_OPERATOR_IMAGE == 'BUILD_DEV_OPERATOR_IMAGE' ? 'internal' : 'concourse'}"
+		BUILD_TRIGGERED_BY = "${params.OPERATOR_INTERNAL_BUILD ? 'internal' : 'concourse'}"
 		LOG_SUBDIR = "build-${BUILD_NUMBER}"
 		LOG_DIR = "${WORKSPACE}/${LOG_SUBDIR}"
 		ARTIFACT_FILENAME = "result-${JOB_BASE_NAME}-${BUILD_NUMBER}.tar.bz2"
 		ARTIFACT_PATH = "${WORKSPACE}/${ARTIFACT_FILENAME}"
 		SLACK_CHANNEL = '#mysql-operator-ci'
 		BUILD_NOTIFICATION_HEADER = "${currentBuild.fullDisplayName} (<${env.BUILD_URL}|Open>)"
-		// OPERATOR_IMAGE_TAG = ""
 	}
  	options {
 		timeout(time: 2, unit: 'HOURS')
 		timestamps()
 		copyArtifactPermission("k3d,minikube,prepare-test-suite-report")
-		// properties(pipelineTriggers([pollSCM('* * * * *')]))
 	}
 	stages {
 		stage('init') {
@@ -38,25 +36,6 @@ pipeline {
 					env.GIT_AUTHOR_DATE = sh (script: "git log -1 --pretty='%an <%ae>, %cd' ${GIT_COMMIT}", returnStdout: true).trim()
 					env.GIT_COMMIT_SUBJECT = sh (script: "git log -1 --pretty=%s ${GIT_COMMIT}", returnStdout: true).trim()
 					env.GIT_COMMIT_SHORT = sh (script: "git rev-parse --short HEAD", returnStdout: true).trim()
-
-					if (params.OPERATOR_GIT_REVISION == 'RESOLVE_GIT_REVISION') {
-						env.TEST_GIT_REVISION = "${GIT_COMMIT}"
-					} else {
-						env.TEST_GIT_REVISION = params.OPERATOR_GIT_REVISION
-					}
-
-					if ("${env.GIT_BRANCH}" == "dev" || "${env.GIT_BRANCH}" == "qa") {
-						sh "git show --oneline -s"
-						sh "git checkout ${env.TEST_GIT_REVISION}"
-						// checkout scm
-						sh "git show --oneline -s"
-					}
-
-					if (params.OPERATOR_IMAGE == 'BUILD_DEV_OPERATOR_IMAGE') {
-						def git_describe = sh (script: "git describe --tags", returnStdout: true).trim()
-						env.OPERATOR_IMAGE_TAG = "dev-$git_describe"
-					}
-					echo "env.OPERATOR_IMAGE_TAG: ${env.OPERATOR_IMAGE_TAG}"
 				}
 
 				slackSend channel: "${env.SLACK_CHANNEL}",
@@ -64,8 +43,8 @@ pipeline {
 					sendAsText: true,
 					message: """${env.BUILD_NOTIFICATION_HEADER}
 ${currentBuild.getBuildCauses().shortDescription} (${env.BUILD_TRIGGERED_BY})
-Revision: ${env.TEST_GIT_REVISION}
-Image: ${env.OPERATOR_IMAGE} [${env.OPERATOR_IMAGE_TAG}]
+Revision: ${params.OPERATOR_GIT_REVISION}
+Image: ${params.OPERATOR_IMAGE}
 The latest commit:
 ${env.GIT_AUTHOR_DATE}
 ${env.GIT_COMMIT} [hash: ${env.GIT_COMMIT_SHORT}]
@@ -74,22 +53,22 @@ ${env.GIT_COMMIT_SUBJECT}"""
 				sh 'mkdir -p ${LOG_DIR}'
 
 				build job: "${env.WORKERS_FOLDER}/init", parameters: [
-					string(name: 'OPERATOR_GIT_REVISION', value: env.TEST_GIT_REVISION),
+					string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
 					string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
-					string(name: 'OPERATOR_IMAGE_TAG', value: env.OPERATOR_IMAGE_TAG),
-					booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)]
+					booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
+				]
 			}
 		}
 		stage('build') {
 			when {
-				expression { env.OPERATOR_IMAGE_TAG != null }
+				expression { params.OPERATOR_INTERNAL_BUILD }
 			}
 			steps {
 				build job: "${env.WORKERS_FOLDER}/build", parameters: [
-					string(name: 'OPERATOR_GIT_REVISION', value: env.TEST_GIT_REVISION),
+					string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
 					string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
-					string(name: 'OPERATOR_IMAGE_TAG', value: env.OPERATOR_IMAGE_TAG),
-					booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)]
+					booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
+				]
 			}
 		}
 		stage('test') {
@@ -98,9 +77,8 @@ ${env.GIT_COMMIT_SUBJECT}"""
 					steps {
 						echo "minikube"
 						build job: "${env.WORKERS_FOLDER}/minikube", parameters: [
-							string(name: 'OPERATOR_GIT_REVISION', value: env.TEST_GIT_REVISION),
+							string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
 							string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
-							string(name: 'OPERATOR_IMAGE_TAG', value: env.OPERATOR_IMAGE_TAG),
 							booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
 						]
 					}
@@ -129,12 +107,11 @@ ${env.GIT_COMMIT_SUBJECT}"""
 					steps {
 						echo "k3d"
 
-						// sleep 300
-						sleep 60
+						sleep 300
+						// sleep 60
 						build job: "${env.WORKERS_FOLDER}/k3d", parameters: [
-							string(name: 'OPERATOR_GIT_REVISION', value: env.TEST_GIT_REVISION),
+							string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
 							string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
-							string(name: 'OPERATOR_IMAGE_TAG', value: env.OPERATOR_IMAGE_TAG),
 							booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
 						]
 					}
@@ -158,16 +135,11 @@ ${env.GIT_COMMIT_SUBJECT}"""
 			}
 			post {
 				always {
-					slackSend channel: "${env.SLACK_CHANNEL}",
-						color: "good",
-						message: "##################### post test"
-
 					script {
 						if (anyResultsAvailable()) {
 							build job: "${env.WORKERS_FOLDER}/prepare-test-suite-report", parameters: [
-								string(name: 'OPERATOR_GIT_REVISION', value: env.TEST_GIT_REVISION),
+								string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
 								string(name: 'TEST_RESULT_BUILD_URL', value: env.BUILD_URL)
-								// booleanParam(name: 'TEST_RESULT_BUILD_URL', value: env.BUILD_URL)
 							]
 
 							copyArtifacts fingerprintArtifacts: true,
@@ -180,79 +152,6 @@ ${env.GIT_COMMIT_SUBJECT}"""
 							env.TEST_SUITE_REPORT = ""
 						}
 					}
-				}
-				changed {
-					// script {
-					// 	modifyBuildStatus("changed")
-					// }
-					// echo 'changed'
-					slackSend channel: "${env.SLACK_CHANNEL}",
-							color: 'good',
-							message: "post tests changed"
-				}
-				fixed {
-					// script {
-					// 	modifyBuildStatus("fixed")
-					// }
-					// echo "fixed"
-					slackSend channel: "${env.SLACK_CHANNEL}",
-							color: 'good',
-							message: "post tests fixed."
-				}
-				unstable {
-					// script {
-					// 	modifyBuildStatus("unstable")
-					// }
-					// echo 'unstable'
-					slackSend channel: "${env.SLACK_CHANNEL}",
-							color: 'warning',
-							message: "post tests unstable."
-				}
-				regression {
-					// script {
-					// 	modifyBuildStatus("regression")
-					// }
-					// echo "regression"
-					slackSend channel: "${env.SLACK_CHANNEL}",
-							color: 'warning',
-							message: "post tests regression."
-				}
-				failure {
-					// script {
-					// 	modifyBuildStatus("failure")
-					// }
-					// echo 'failed'
-					slackSend channel: "${env.SLACK_CHANNEL}",
-							color: 'danger',
-							message: "post tests failed."
-				}
-				aborted {
-					// script {
-					// 	modifyBuildStatus("aborted")
-					// }
-					// echo "aborted"
-					slackSend channel: "${env.SLACK_CHANNEL}",
-							color: 'warning',
-							message: "post tests aborted."
-				}
-				unsuccessful {
-					// script {
-					// 	modifyBuildStatus("unsuccessful")
-					// }
-					// echo "unsuccessful"
-					slackSend channel: "${env.SLACK_CHANNEL}",
-							color: 'danger',
-							message: "post tests unsuccessful."
-				}
-				success {
-					// script {
-					// 	modifyBuildStatus("success")
-					// }
-					// echo 'succeeded'
-					// slackSend channel: "${env.SLACK_CHANNEL}", message: "post tests Build Started - ${env.JOB_NAME} ${env.BUILD_NUMBER} (<${env.BUILD_URL}|Open>)"
-					slackSend channel: "${env.SLACK_CHANNEL}",
-							color: 'good',
-							message: "post tests success ."
 				}
 				cleanup {
 					script {
@@ -275,10 +174,6 @@ ${env.GIT_COMMIT_SUBJECT}"""
 	}
 	post {
 		always {
-			slackSend channel: "${env.SLACK_CHANNEL}",
-				color: "good",
-				message: "##################### post build"
-
 			script {
 				env.BUILD_DURATION = "${currentBuild.durationString.minus(' and counting')}"
 				env.CHANGE_LOG = getChangeLog()
@@ -354,8 +249,8 @@ def addTestResults(String k8s_env) {
 	def resultPattern = "${env.LOG_DIR}/result-$k8s_env-*.tar.bz2"
 	sh "cat $resultPattern | tar jxvf - -i -C ${env.LOG_DIR} && rm $resultPattern"
 
-	// useful during Jenkins refactorings when some jobs are intentionally skipped
-	sh "touch ${LOG_DIR}/xml/*.xml"
+	// uncomment during Jenkins refactorings when some jobs are intentionally skipped
+	// sh "touch ${LOG_DIR}/xml/*.xml"
 
 	def summary = junit allowEmptyResults: true, testResults: "${env.LOG_SUBDIR}/xml/tests-$k8s_env-*.xml"
 	echo "${summary.totalCount} tests, ${summary.passCount} passed, ${summary.failCount} failures, ${summary.skipCount} skipped"

@@ -48,7 +48,7 @@ TESTS_LOG=$LOG_DIR/tests-$JOB_BASE_NAME-$BUILD_NUMBER.log
 
 XML_DIR=$LOG_DIR/xml
 
-TESTS_XML=$XML_DIR/tests-$JOB_BASE_NAME-$BUILD_NUMBER.xml
+TESTS_XML=$XML_DIR/$K8S_DRIVER-tests-$BUILD_NUMBER.xml
 SINGLE_WORKER_OPTIONS="--xml=${TESTS_XML} --cluster=$OTE_BUILD_TAG"
 
 
@@ -77,7 +77,10 @@ else
 fi
 
 cd $LOG_DIR
+# badge results to discern the environment in the overall result
 sed -i "s/=\"e2e.mysqloperator./=\"$K8S_DRIVER.e2e.mysqloperator./g" ./xml/*.xml
+sed -i "s/<testcase classname=\"\" name=\"\(\w*\) (e2e.mysqloperator./<testcase classname=\"\" name=\"$K8S_DRIVER.\1 ($K8S_DRIVER.e2e.mysqloperator./g" ./xml/*.xml
+
 tar cvjf ../result-$JOB_BASE_NAME-$BUILD_NUMBER.tar.bz2 *
 df -lh | grep /sd
 

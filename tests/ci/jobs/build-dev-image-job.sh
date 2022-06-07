@@ -13,6 +13,9 @@ OPERATOR_BASE_VERSION_TAG=$(grep -m 1 OPERATOR_TEST_VERSION_TAG $WORKSPACE/tests
 
 DEV_IMAGE_DOCKERFILE=$CI_DIR/registry/dev/Dockerfile
 
+# overwrite the default version tag with the dev one
+sed -i "s/${OPERATOR_BASE_VERSION_TAG}/${OPERATOR_TEST_VERSION_TAG}/" mysqloperator/controller/config.py
+
 # community
 BASE_IMAGE_COMMUNITY=$LOCAL_REGISTRY_ADDRESS/$LOCAL_REPOSITORY_NAME/mysql-operator:$OPERATOR_BASE_VERSION_TAG
 docker build -f $DEV_IMAGE_DOCKERFILE \

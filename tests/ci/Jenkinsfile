@@ -108,7 +108,6 @@ ${env.GIT_COMMIT_SUBJECT}"""
 						echo "k3d"
 
 						sleep 300
-						// sleep 60
 						build job: "${env.WORKERS_FOLDER}/k3d", parameters: [
 							string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
 							string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
@@ -252,7 +251,7 @@ def addTestResults(String k8s_env) {
 	// uncomment during Jenkins refactorings when some jobs are intentionally skipped
 	// sh "touch ${LOG_DIR}/xml/*.xml"
 
-	def summary = junit allowEmptyResults: true, testResults: "${env.LOG_SUBDIR}/xml/tests-$k8s_env-*.xml"
+	def summary = junit allowEmptyResults: true, testResults: "${env.LOG_SUBDIR}/xml/$k8s_env-*.xml"
 	echo "${summary.totalCount} tests, ${summary.passCount} passed, ${summary.failCount} failures, ${summary.skipCount} skipped"
 	return true
 }

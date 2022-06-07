@@ -263,10 +263,10 @@ class ResultPrinter:
 		print(f"execution time    : {self.prepare_time_brief(summary.execution_time)}")
 		print(f"total workers time: {self.prepare_time_brief(summary.total_workers_time)}")
 		print("-------------------")
-		print(f"tests   : {summary.tests}")
-		print(f"failures: {summary.failures}")
-		print(f"errors  : {summary.errors}")
-		print(f"skipped : {summary.skipped}")
+		print(f"tests   : {summary.test_count}")
+		print(f"failures: {summary.failure_count}")
+		print(f"errors  : {summary.error_count}")
+		print(f"skipped : {summary.skipped_count}")
 		print(f"success : {summary.success}")
 
 

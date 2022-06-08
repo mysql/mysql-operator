@@ -15,7 +15,8 @@ pipeline {
 		booleanParam(name: 'OPERATOR_INTERNAL_BUILD', defaultValue: false, description: 'triggered by us (e.g. by a push to a dev branch) or externally (e.g. from the concourse)')
 	}
 	environment {
-		WORKERS_FOLDER = 'Shell/KubernetesOperator/sandbox'
+		WORKERS_FOLDER = 'Shell/KubernetesOperator/workers'
+		// WORKERS_FOLDER = 'Shell/KubernetesOperator/sandbox'
 		BUILD_TRIGGERED_BY = "${params.OPERATOR_INTERNAL_BUILD ? 'internal' : 'concourse'}"
 		LOG_SUBDIR = "build-${BUILD_NUMBER}"
 		LOG_DIR = "${WORKSPACE}/${LOG_SUBDIR}"
@@ -27,7 +28,7 @@ pipeline {
  	options {
 		timeout(time: 2, unit: 'HOURS')
 		timestamps()
-		copyArtifactPermission("k3d,minikube,prepare-test-suite-report")
+		copyArtifactPermission("${env.WORKERS_FOLDER}/k3d,${env.WORKERS_FOLDER}/minikube,${env.WORKERS_FOLDER}/prepare-test-suite-report")
 	}
 	stages {
 		stage('init') {

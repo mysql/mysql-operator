@@ -22,7 +22,8 @@ pipeline {
 		LOG_DIR = "${WORKSPACE}/${LOG_SUBDIR}"
 		ARTIFACT_FILENAME = "result-${JOB_BASE_NAME}-${BUILD_NUMBER}.tar.bz2"
 		ARTIFACT_PATH = "${WORKSPACE}/${ARTIFACT_FILENAME}"
-		SLACK_CHANNEL = '#mysql-operator-ci'
+		// SLACK_CHANNEL = '#mysql-operator-ci'
+		SLACK_CHANNEL = '#mysql-operator-dev'
 		BUILD_NOTIFICATION_HEADER = "${currentBuild.fullDisplayName} (<${env.BUILD_URL}|Open>)"
 	}
  	options {

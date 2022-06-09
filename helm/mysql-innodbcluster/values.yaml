@@ -23,6 +23,13 @@ routerInstances: 1
 baseServerId: 1000
 
 
+#serverConfig:
+#  mycnf: |
+#    [mysqld]
+#    core_file
+#    local_infile=off
+
+
 #datadirVolumeClaimTemplate:
 #  accessModes:
 #  resources:

@@ -43,6 +43,16 @@ spec:
   tlsSecretName: {{ $secret_name }}
 {{- end }}
 
+{{- if ((.Values).serverConfig) }}
+  {{- if (((.Values).serverConfig).mycnf) }}
+  mycnf: |
+    {{- if not (hasPrefix "[mysqld]" (((.Values).serverConfig).mycnf) ) }}
+    [mysqld]
+    {{- end }}
+{{ (((.Values).serverConfig).mycnf) | indent 4 }}
+  {{- end }}
+{{- end }}
+
 {{- if .Values.datadirVolumeClaimTemplate }}
   {{- with .Values.datadirVolumeClaimTemplate }}
   datadirVolumeClaimTemplate:

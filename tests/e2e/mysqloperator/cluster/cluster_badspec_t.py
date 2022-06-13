@@ -301,6 +301,7 @@ spec:
         kutil.delete_ic(self.ns, "mycluster")
 
         self.wait_pod_gone("mycluster-0")
+        self.wait_routers_gone("mycluster-router-*")
         self.wait_ic_gone("mycluster")
         kutil.delete_pvc(self.ns, None)
 
@@ -342,6 +343,7 @@ spec:
         kutil.delete_ic(self.ns, "mycluster")
 
         self.wait_pod_gone("mycluster-0")
+        self.wait_routers_gone("mycluster-router-*")
         self.wait_ic_gone("mycluster")
         kutil.delete_pvc(self.ns, None)
 

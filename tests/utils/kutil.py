@@ -217,12 +217,12 @@ def feed_kubectl(input, cmd, rsrc=None, args=None, check=True):
 #
 
 
-def __ls(ns, rsrc):
-    return split_table(kubectl("get", rsrc, args=["-n", ns]).stdout.decode("utf8"))
+def __ls(ns, rsrc, ignore=[]):
+    return split_table(kubectl("get", rsrc, args=["-n", ns], ignore=ignore).stdout.decode("utf8"))
 
 
-def ls_ic(ns):
-    return __ls(ns, "ic")
+def ls_ic(ns, ignore=[]):
+    return __ls(ns, "ic", ignore=ignore)
 
 
 def ls_mbk(ns):
@@ -666,7 +666,7 @@ def wait_ic_gone(ns, name, timeout=120, checkabort=lambda: None):
     i = 0
     while i < timeout:
         checkabort()
-        ics = ls_ic(ns)
+        ics = ls_ic(ns, ignore=['error: the server doesn\'t have a resource type "ic"'])
         for ic in ics:
             if ic["NAME"] == name:
                 if last_state != ic["STATUS"]:

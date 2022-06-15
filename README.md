@@ -7,6 +7,14 @@ It manages the full lifecycle with set up and maintenance that includes automati
 
 MySQL Operator for Kubernetes is brought to you by the MySQL team at Oracle.
 
+## Issues and Pull Requests
+
+As with all MySQL projects, issues (including bugs and feature requests) are tracked here:
+
+  * https://bugs.mysql.com/
+
+Pull requests submitted via github are also tracked at bugs.mysql.com; see [CONTRIBUTING](CONTRIBUTING.md) for related information.
+
 ## License
 
 Copyright (c) 2020, 2022, Oracle and/or its affiliates.

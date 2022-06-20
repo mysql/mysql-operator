@@ -110,6 +110,8 @@ ${env.GIT_COMMIT_SUBJECT}"""
 					steps {
 						echo "k3d"
 
+						// run k3d clusters with some delay, after all minikube clusters already have started
+						// when clusters start at the same moment, they may fail randomly
 						sleep 300
 						build job: "${env.WORKERS_FOLDER}/k3d", parameters: [
 							string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),

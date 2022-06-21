@@ -465,7 +465,7 @@ class OperatorTest(unittest.TestCase):
     def get_pod(self, name, ns=None):
         return PodHelper(self, ns if ns else self.ns, name)
 
-    def wait_ic(self, name, status_list, num_online=None, ns=None, timeout=300, probe_time=None):
+    def wait_ic(self, name, status_list, num_online=None, ns=None, timeout=500, probe_time=None):
         """
         Wait for given ic object to reach one of the states in the list.
         Aborts on timeout or when an unexpected error is detected in the operator.

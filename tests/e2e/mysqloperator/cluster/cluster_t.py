@@ -710,6 +710,7 @@ spec:
 
         # wait for operator to restore it
         self.wait_ic("mycluster", "ONLINE", 3)
+        self.wait_routers("mycluster-router-*", 2)
 
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
@@ -718,7 +719,7 @@ spec:
             "mycluster", after=apply_time, type="Normal",
             reason="StatusChange", msg=r"Cluster status changed to ONLINE. 3 member\(s\) ONLINE")
 
-        check_all(self, self.ns, "mycluster", instances=3, primary=None)
+        check_all(self, self.ns, "mycluster", instances=3, routers=2, primary=None)
 
     def test_4_recover_crash_2_of_3(self):
         # TODO add a loadchecker
@@ -736,7 +737,8 @@ spec:
         # TODO
 
         # wait for operator to restore it
-        self.wait_ic("mycluster", "ONLINE", 3, timeout=300)
+        self.wait_ic("mycluster", "ONLINE", 3)
+        self.wait_routers("mycluster-router-*", 2)
 
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
@@ -759,7 +761,7 @@ spec:
             "mycluster", after=apply_time, type="Normal",
             reason="StatusChange", msg=r"Cluster status changed to ONLINE. 3 member\(s\) ONLINE")
 
-        check_all(self, self.ns, "mycluster", instances=3, primary=2)
+        check_all(self, self.ns, "mycluster", instances=3, routers=2, primary=2)
 
     def test_4_recover_crash_3_of_3(self):
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0:
@@ -780,7 +782,9 @@ spec:
         self.wait_member_state("mycluster-1", ["ONLINE"])
         self.wait_member_state("mycluster-2", ["ONLINE"])
 
-        check_all(self, self.ns, "mycluster", instances=3)
+        self.wait_routers("mycluster-router-*", 2)
+
+        check_all(self, self.ns, "mycluster", instances=3, routers=2)
 
         # switch primary back to -0
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0:
@@ -818,7 +822,9 @@ spec:
         self.wait_member_state("mycluster-1", ["ONLINE"])
         self.wait_member_state("mycluster-2", ["ONLINE"])
 
-        check_all(self, self.ns, "mycluster", instances=3, primary=1)
+        self.wait_routers("mycluster-router-*", 2)
+
+        check_all(self, self.ns, "mycluster", instances=3, routers=2, primary=1)
 
         # switch primary back to -0
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0:
@@ -833,6 +839,7 @@ spec:
 
         # wait for operator to restore everything
         self.wait_ic("mycluster", "ONLINE", 3)
+        self.wait_routers("mycluster-router-*", 2)
 
         pod0 = kutil.get_po(self.ns, "mycluster-0")
 
@@ -840,7 +847,7 @@ spec:
         self.assertEqual(pod0["status"]["containerStatuses"]
                          [0]["restartCount"], 0)
 
-        check_all(self, self.ns, "mycluster", instances=3, primary=None)
+        check_all(self, self.ns, "mycluster", instances=3, routers=2, primary=None)
 
         kutil.exec(self.ns, ("mycluster-0", "sidecar"),
                    ["mysqlsh", "root:sakila@localhost", "--",
@@ -852,7 +859,7 @@ spec:
             "root", "sakila")
 
         all_pods = check_all(self, self.ns, "mycluster",
-                             instances=3, primary=0)
+                             instances=3, routers=2, primary=0)
 
         check_group.check_data(self, all_pods, primary=0)
 
@@ -873,6 +880,7 @@ spec:
 
         # wait for operator to restore everything
         self.wait_ic("mycluster", "ONLINE", 3, timeout=300)
+        self.wait_routers("mycluster-router-*", 2)
 
         # the pods were deleted, which means they would cleanly shutdown and
         # removed from the cluster
@@ -915,7 +923,7 @@ spec:
             "root", "sakila")
 
         all_pods = check_all(self, self.ns, "mycluster",
-                             instances=3, primary=2)
+                             instances=3, routers=2, primary=2)
         check_group.check_data(self, all_pods)
 
         kutil.exec(self.ns, ("mycluster-0", "sidecar"), ["mysqlsh", "root:sakila@localhost", "--", "cluster",
@@ -932,6 +940,7 @@ spec:
 
         # wait for operator to restore everything
         self.wait_ic("mycluster", "ONLINE", 3)
+        self.wait_routers("mycluster-router-*", 2)
 
         pod1 = kutil.get_po(self.ns, "mycluster-1")
 
@@ -940,7 +949,7 @@ spec:
                          [0]["restartCount"], 0)
 
         all_pods = check_all(self, self.ns, "mycluster",
-                             instances=3, primary=0)
+                             instances=3, routers=2, primary=0)
 
         check_group.check_data(self, all_pods, primary=0)
 
@@ -966,10 +975,11 @@ spec:
 
         # wait for operator to restore everything
         self.wait_ic("mycluster", "ONLINE", 3)
+        self.wait_routers("mycluster-router-*", 2)
 
         # TODO ensure router traffic is resumed
 
-        check_all(self, self.ns, "mycluster", instances=3, primary=0)
+        check_all(self, self.ns, "mycluster", instances=3, routers=2, primary=0)
 
     def test_4_recover_stop_2_of_3(self):
         return
@@ -985,8 +995,9 @@ spec:
 
         # wait for operator to restore everything
         self.wait_ic("mycluster", "ONLINE")
+        self.wait_routers("mycluster-router-*", 2)
 
-        check_all(self, self.ns, "mycluster", instances=3, primary=1)
+        check_all(self, self.ns, "mycluster", instances=3, routers=2, primary=1)
 
     def test_4_recover_stop_3_of_3(self):
         return
@@ -1004,8 +1015,9 @@ spec:
 
         # wait for operator to restore everything
         self.wait_ic("mycluster", "ONLINE")
+        self.wait_routers("mycluster-router-*", 2)
 
-        check_all(self, self.ns, "mycluster", instances=3, primary=0)
+        check_all(self, self.ns, "mycluster", instances=3, routers=2, primary=0)
 
     def test_4_recover_restart_1_of_3(self):
         initial_probe_time = kutil.get_ic(self.ns, "mycluster")["status"]["cluster"]["lastProbeTime"]
@@ -1021,8 +1033,9 @@ spec:
 
         # wait for operator to restore everything
         self.wait_ic("mycluster", "ONLINE", num_online=3, timeout=300)
+        self.wait_routers("mycluster-router-*", 2)
 
-        check_all(self, self.ns, "mycluster", instances=3, primary=None)
+        check_all(self, self.ns, "mycluster", instances=3, routers=2, primary=None)
 
     def test_4_recover_restart_2_of_3(self):
         initial_probe_time = kutil.get_ic(self.ns, "mycluster")["status"]["cluster"]["lastProbeTime"]
@@ -1039,8 +1052,9 @@ spec:
 
         # wait for operator to restore everything
         self.wait_ic("mycluster", "ONLINE", num_online=3)
+        self.wait_routers("mycluster-router-*", 2)
 
-        check_all(self, self.ns, "mycluster", instances=3, primary=1)
+        check_all(self, self.ns, "mycluster", instances=3, routers=2, primary=1)
 
     def test_4_recover_restart_3_of_3(self):
         initial_probe_time = kutil.get_ic(self.ns, "mycluster")["status"]["cluster"]["lastProbeTime"]
@@ -1058,10 +1072,11 @@ spec:
         # check status of each pod
 
         # wait for operator to restore everything
-        self.wait_ic("mycluster", "ONLINE", num_online=3, timeout=300, probe_time=initial_probe_time)
+        self.wait_ic("mycluster", "ONLINE", num_online=3, probe_time=initial_probe_time)
+        self.wait_routers("mycluster-router-*", 2)
 
         all_pods = check_all(self, self.ns, "mycluster",
-                             instances=3)
+                             instances=3, routers=2)
         check_group.check_data(self, all_pods)
 
     def test_9_destroy(self):

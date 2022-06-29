@@ -408,7 +408,7 @@ def on_innodbcluster_field_backup_schedules(old: str, new: str, body: Body,
     # don't need to take actions in post_create_actions() in the cluster controller
     # but async await for Kopf to call again this handler.
     if not cluster.get_create_time():
-        raise kopf.TemporaryError("Cluster is not created or not ready."
+        raise kopf.TemporaryError("Cluster is not created or not ready. "
                                   "Will create the schedules once the first instance is up and running", delay=30)
 
     logger.info("on_innodbcluster_field_backup_schedules")

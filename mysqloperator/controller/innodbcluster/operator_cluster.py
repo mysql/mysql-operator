@@ -385,15 +385,13 @@ def on_innodbcluster_field_router_version(old: str, new: str, body: Body,
             router_objects.update_router_image(router_deploy, cluster.parsed_spec, logger)
 
 
-
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
                field="spec.backupSchedules")  # type: ignore
 def on_innodbcluster_field_backup_schedules(old: str, new: str, body: Body,
-                                          logger: Logger, **kwargs):
+                                            logger: Logger, **kwargs):
     if old == new:
         return
 
-    logger.info("on_innodbcluster_field_backup_schedules")
     cluster = InnoDBCluster(body)
 
     # Ignore spec changes if the cluster is still being initialized
@@ -410,8 +408,10 @@ def on_innodbcluster_field_backup_schedules(old: str, new: str, body: Body,
     # don't need to take actions in post_create_actions() in the cluster controller
     # but async await for Kopf to call again this handler.
     if not cluster.get_create_time():
-        raise kopf.TemporaryError("The cluster is not ready. Will create the schedules once the first instance is up and running", delay=10)
+        raise kopf.TemporaryError("Cluster is not created or not ready. "
+                                  "Will create the schedules once the first instance is up and running", delay=30)
 
+    logger.info("on_innodbcluster_field_backup_schedules")
     cluster.parsed_spec.validate(logger)
     with ClusterMutex(cluster):
         backup_objects.update_schedules(cluster.parsed_spec, old, new, logger)
@@ -605,8 +605,10 @@ def on_pod_delete(body: Body, logger: Logger, **kwargs):
         logger.error(f"Owner cluster for {pod.name} does not exist anymore")
 
 
-@kopf.on.create("", "v1", "secrets") # type: ignore
-@kopf.on.update("", "v1", "secrets") # type: ignore
+@kopf.on.create("", "v1", "secrets",
+                field="type", value="kubernetes.io/tls")  # type: ignore
+@kopf.on.update("", "v1", "secrets",
+                field="type", value="kubernetes.io/tls")  # type: ignore
 def on_secret_create(name: str, namespace: str, logger: Logger, **kwargs):
     """
     Wait for Secret objects used by clusters for TLS CA and certificate.

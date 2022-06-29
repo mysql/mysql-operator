@@ -6,7 +6,7 @@
 import enum
 import typing
 from typing import Optional, List, Tuple, Dict, cast, overload
-from kopf.structs.bodies import Body
+from kopf._cogs.structs.bodies import Body
 
 from ..k8sobject import K8sInterfaceObject
 from .. import utils, config, consts

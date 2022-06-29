@@ -1,10 +1,10 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
 
-from kopf.structs.bodies import Body
+from kopf._cogs.structs.bodies import Body
 from .. import consts, errors, kubeutils, shellutils, utils, config, mysqlutils
 from .. import diagnose
 from ..backup import backup_objects

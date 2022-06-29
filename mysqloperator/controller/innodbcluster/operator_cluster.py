@@ -605,8 +605,10 @@ def on_pod_delete(body: Body, logger: Logger, **kwargs):
         logger.error(f"Owner cluster for {pod.name} does not exist anymore")
 
 
-@kopf.on.create("", "v1", "secrets") # type: ignore
-@kopf.on.update("", "v1", "secrets") # type: ignore
+@kopf.on.create("", "v1", "secrets",
+                field="type", value="kubernetes.io/tls")  # type: ignore
+@kopf.on.update("", "v1", "secrets",
+                field="type", value="kubernetes.io/tls")  # type: ignore
 def on_secret_create(name: str, namespace: str, logger: Logger, **kwargs):
     """
     Wait for Secret objects used by clusters for TLS CA and certificate.

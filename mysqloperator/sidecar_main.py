@@ -545,8 +545,10 @@ def on_tls_secret_create_or_change(value: dict, useSelfSigned: bool, router_depl
         raise kopf.PermanentError("Timeout waiting for TLS files to get refreshed")
 
 
-@kopf.on.create("", "v1", "secrets") # type: ignore
-@kopf.on.update("", "v1", "secrets") # type: ignore
+@kopf.on.create("", "v1", "secrets",
+                field="type", value="kubernetes.io/tls")  # type: ignore
+@kopf.on.update("", "v1", "secrets",
+                field="type", value="kubernetes.io/tls")  # type: ignore
 def on_secret_create_or_update(name: str, namespace: str, spec, new, logger: Logger, **kwargs):
     global g_cluster_name
 

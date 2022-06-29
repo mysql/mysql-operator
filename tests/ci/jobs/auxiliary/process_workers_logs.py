@@ -115,6 +115,13 @@ class LogParser:
 					self.result.summary = line
 					continue
 
+				if not self.result.summary:
+					# the execution summary comes first, before any stats
+					# in case it wasn't met yet, there is no need to match stats
+					# also to avoid false hits (e.g. a line "OK" is treated as a success
+					# and may happen anywhere)
+					continue
+
 				m = self.failed_summary_matcher.match(line)
 				if m:
 					self.process_summary_stats(m.group(1))
@@ -124,6 +131,7 @@ class LogParser:
 				m = self.success_summary_matcher.match(line)
 				if m:
 					self.result.summary += ' ' + line
+					continue
 
 				m = self.success_skipped_summary_matcher.match(line)
 				if m:

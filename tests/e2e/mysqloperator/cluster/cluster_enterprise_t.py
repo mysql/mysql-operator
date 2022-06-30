@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -8,7 +8,6 @@ from utils.auxutil import isotime
 from utils import tutil
 from utils import kutil
 from utils import mutil
-from setup import defaults
 import logging
 from utils.tutil import g_full_log
 from setup.config import g_ts_cfg
@@ -132,7 +131,8 @@ spec:
     def test_9_destroy(self):
         kutil.delete_ic(self.ns, "mycluster")
 
-        self.wait_pod_gone("mycluster-0")
+        self.wait_pods_gone("mycluster-*")
+        self.wait_routers_gone("mycluster-router-*")
         self.wait_ic_gone("mycluster")
 
         kutil.delete_secret(self.ns, "mypwds")

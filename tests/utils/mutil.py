@@ -90,13 +90,18 @@ class MySQLPodSession:
             self.proc.terminate()
             self.proc = None
 
-def load_script(ns, podname, script, password="sakila"):
+def load_script(ns, podname, script, user='root', password='sakila'):
     if type(podname) is str or len(podname) == 1:
         args = [podname, "-c", "mysql"]
     else:
         args = [podname[0], "-c", podname[1]]
     kutil.feed_kubectl(script, "exec", args=args +
-                       [f"-n{ns}", "-i", "--", "mysql", "-uroot", f"-p{password}"], check=True)
+                       [f"-n{ns}", "-i", "--", "mysql", f"-u{user}", f"-p{password}"], check=True)
+
+
+def load_file(ns, podname, script_path, user='root', password='sakila'):
+    script = open(script_path).read()
+    load_script(ns, podname, script, user, password)
 
 
 # Emulate an interactive MySQL session directly in a pod (localroot@localhost)

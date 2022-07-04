@@ -137,7 +137,7 @@ if __name__ == '__main__':
         if arg.startswith("--env="):
             opt_env_name = arg.partition("=")[-1]
             g_ts_cfg.env = opt_env_name
-        elif arg == "--kube-version=":
+        elif arg.startswith("--kube-version="):
             opt_kube_version = arg.split("=")[-1]
         elif arg.startswith("--nodes="):
             opt_nodes = int(arg.split("=")[-1])

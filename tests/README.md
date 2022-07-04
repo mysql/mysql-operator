@@ -44,8 +44,11 @@ Ad 2) command-line options
     set the k8s environment
 
 --kube-version
-    set the kubernetes version to use, supported for minikube only
-    if not set, the default depends on the installed minikube
+    set the kubernetes version to use
+    if not set, the default depends on the installed minikube or k3d
+    for k3d it is used to pass an argument to the --image=<value> option, e.g.:
+      * k3d cluster create --image=rancher/k3s:v1.21.7-k3s1
+      * k3d cluster create --image=rancher/k3s:v1.23.6-k3s1
 
 --nodes
     points out the nodes to use, supported for minikube only

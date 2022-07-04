@@ -32,9 +32,11 @@ class K3dEnvironment(BaseEnvironment):
         return f"k3d-{cluster_name}"
 
     def start_cluster(self, nodes, version, registry_cfg_path):
-        assert version is None
-
         args = ["k3d", "cluster", "create", g_ts_cfg.k8s_cluster, "--timeout", "5m"]
+
+        if version:
+            args.append(f"--image={version}")
+
         if g_ts_cfg.image_registry:
             if not registry_cfg_path:
                 registry_cfg_path = self.prepare_registry_cfg()

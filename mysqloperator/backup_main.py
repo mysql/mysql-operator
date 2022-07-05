@@ -174,8 +174,8 @@ def do_backup(backup : MySQLBackup, job_name: str, start, backupdir: Optional[st
 
     if profile.dumpInstance:
         return execute_dump_instance(backup_source, profile.dumpInstance, backupdir, job_name, logger)
-    elif profile.cloneSnapshot:
-        return execute_clone_snapshot(backup_source, profile.cloneSnapshot, backupdir, job_name, logger)
+    elif profile.snapshot:
+        return execute_clone_snapshot(backup_source, profile.snapshot, backupdir, job_name, logger)
     else:
         raise Exception(f"Invalid backup method in profile {profile.name}")
 

@@ -18,6 +18,11 @@ RUN mkdir /mysqlsh && chown 2 /mysqlsh
 
 COPY mysqloperator/ /usr/lib/mysqlsh/python-packages/mysqloperator
 
+# Workaround for BC issue with newest Python library for Kubernetes
+# See move here: https://github.com/kubernetes-client/python/issues/1718
+RUN sed -i "s/available_replicas=None,/available_replicas=0,/" /usr/lib/mysqlsh/python-packages/kubernetes/client/models/v1_stateful_set_status.py
+
+
 USER 2
 
 ENV HOME=/mysqlsh

@@ -27,9 +27,9 @@ def main(argv):
 
     myconfig.config_from_env()
 
-    kopf.configure(verbose=True if myconfig.debug >= 1 else False, quiet=True)
+    kopf.configure(verbose=True if myconfig.debug >= 1 else False)
 
-    logging.basicConfig(level=logging.WARNING,
+    logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s - [%(levelname)s] [%(name)s] %(message)s',
                         datefmt="%Y-%m-%dT%H:%M:%S")
 

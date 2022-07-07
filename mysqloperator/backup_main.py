@@ -310,7 +310,7 @@ def main(argv):
 
     debug = False
 
-    logging.basicConfig(level=logging.INFO,
+    logging.basicConfig(level=logging.DEBUG,
                         format='%(asctime)s - [%(levelname)s] [%(name)s] %(message)s',
                         datefmt="%Y-%m-%dT%H:%M:%S")
 

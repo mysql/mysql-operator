@@ -623,6 +623,7 @@ def on_secret_create(name: str, namespace: str, logger: Logger, **kwargs):
     For the Router, the Router needs to be restarted for the new certificate to
     become active.
     """
+    logger.info("operator: on_secret_create")
     clusters = get_all_clusters(namespace)
 
     # check for any clusters that reference this secret

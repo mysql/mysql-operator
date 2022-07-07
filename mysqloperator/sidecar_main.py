@@ -570,7 +570,7 @@ def on_secret_create_or_update(name: str, namespace: str, spec, new, logger: Log
     global g_ca_change_underway
     global g_ca_change_underway_lock
 
-#    logger.info(f"on_secret_create_or_update {namespace}/{name} pod_index={g_pod_index}")
+    logger.info(f"on_secret_create_or_update {namespace}/{name} pod_index={g_pod_index}")
 
     my_namespace = cast(str, os.getenv("MY_POD_NAMESPACE"))
 
@@ -595,9 +595,10 @@ def on_secret_create_or_update(name: str, namespace: str, spec, new, logger: Log
         elif ic.parsed_spec.router.tlsSecretName == name:
             handler = on_router_tls_secret_create_or_change
             router_deployment = ic.get_router_deployment() if g_pod_index == 0 else None
+        else:
+            logger.info(f"Secret {namespace}/{name} doesn't belong to this cluster")
 
         if handler:
-            logger.info(f"on_secret_create_or_update {namespace}/{name} pod_index={g_pod_index}")
             try:
                 handler(new, ic.parsed_spec.tlsUseSelfSigned, router_deployment , logger)
             finally:

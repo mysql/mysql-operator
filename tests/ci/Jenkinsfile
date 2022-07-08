@@ -257,7 +257,7 @@ def addTestResults(String k8s_env) {
 	// sh "touch ${LOG_DIR}/xml/*.xml"
 
 	def summary = junit allowEmptyResults: true, testResults: "${env.LOG_SUBDIR}/xml/$k8s_env-*.xml"
-	echo "${summary.totalCount} tests, ${summary.passCount} passed, ${summary.failCount} failures, ${summary.skipCount} skipped"
+	echo "${summary.totalCount} tests, ${summary.passCount} passed, ${summary.failCount} failed, ${summary.skipCount} skipped"
 	return true
 }
 
@@ -281,7 +281,11 @@ def getTestSuiteReport() {
 		return ""
 	}
 
-	def testSuiteReport = readFile(file: reportPath)
+	def briefReportPath = "${env.LOG_DIR}/test_suite_brief_report.txt"
+	def ReportedIssuesMaxCount = 8
+	sh "cat $reportPath | sed -ne '1,$ReportedIssuesMaxCount p' -e '${ReportedIssuesMaxCount+1} iand more...' > $briefReportPath"
+
+	def testSuiteReport = readFile(file: briefReportPath)
 	echo testSuiteReport
 	return testSuiteReport
 }

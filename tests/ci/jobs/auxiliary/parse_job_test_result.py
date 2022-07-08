@@ -72,7 +72,7 @@ class PrintTestSuiteReport:
 	def print_stats(self, ts_result):
 		print((f"{ts_result.tests_count()} tests, " +
 			f"{ts_result.passed_count} passed, " +
-			f"{ts_result.failed_count} failures, " +
+			f"{ts_result.failed_count} failed, " +
 			f"{ts_result.skipped_count} skipped"))
 		print(f"Total execution time (all tests): {ts_result.duration}s")
 

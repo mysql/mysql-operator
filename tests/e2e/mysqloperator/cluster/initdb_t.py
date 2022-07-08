@@ -172,7 +172,7 @@ spec:
 # TODO check that errors are reported well
 # TODO clone not installed in source
 # TODO bad version
-        # TODO regression test for bug where a failed clone doesn't abort the pod
+# TODO regression test for bug where a failed clone doesn't abort the pod
 
 @unittest.skipIf(g_ts_cfg.oci_skip or not g_ts_cfg.oci_config_path or not g_ts_cfg.oci_bucket_name,
   "OCI config path and/or bucket name not set")

@@ -38,7 +38,7 @@ dev)
 qa)
 	JOB_NAME="qa"
 	;;
-qa-*|sqa*)
+qa*|sqa*|ci*)
 	JOB_NAME="qa"
 	;;
 *)

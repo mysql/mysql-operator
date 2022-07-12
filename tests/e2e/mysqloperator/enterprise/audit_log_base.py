@@ -18,6 +18,9 @@ class AuditLogBase(tutil.OperatorTest):
     password = 'sakila'
     cluster_size = 3
     audit_log_filename = 'audit.json'
+    filter_user_any = '%'
+    default_filter_label = 'log_all'
+    default_filter = '{"filter": {"log": true}}'
 
     @classmethod
     def setUpClass(cls):
@@ -92,36 +95,59 @@ spec:
 
 
     def install_plugin_on_secondary(self, instance):
-        kutil.exec(self.ns, (instance, "mysql"), "SET GLOBAL super_read_only=off")
-        kutil.exec(self.ns, (instance, "mysql"), "INSTALL PLUGIN audit_log SONAME 'audit_log.so")
-        kutil.exec(self.ns, (instance, "mysql"), "SET GLOBAL super_read_only=on")
-
-
-    def set_filter(self, instance, user, filter, log):
         with mutil.MySQLPodSession(self.ns, instance, self.user, self.password) as s:
-            res = s.query_sql("SELECT audit_log_filter_set_filter('log_all', '{ \"filter\": { \"log\": true } }')").fetch_one()
-            self.assertEqual(res, ('OK',))
-            res = s.query_sql("SELECT audit_log_filter_set_user('%', 'log_all')").fetch_one()
-            self.assertEqual(res, ('OK',))
+            s.exec_sql("SET GLOBAL super_read_only=off")
+            s.exec_sql("INSTALL PLUGIN audit_log SONAME 'audit_log.so'")
+            s.exec_sql("SET GLOBAL super_read_only=on")
 
 
-    def set_filter_on_all(self, instance):
+    def set_filter(self, instance, user, filter_name, filter):
         with mutil.MySQLPodSession(self.ns, instance, self.user, self.password) as s:
-            res = s.query_sql("SELECT audit_log_filter_set_filter('log_all', '{ \"filter\": { \"log\": true } }')").fetch_one()
+            res = s.query_sql(f"SELECT audit_log_filter_set_filter('{filter_name}', '{filter}')").fetch_one()
             self.assertEqual(res, ('OK',))
-            res = s.query_sql("SELECT audit_log_filter_set_user('%', 'log_all')").fetch_one()
+            res = s.query_sql(f"SELECT audit_log_filter_set_user('{user}', '{filter_name}')").fetch_one()
             self.assertEqual(res, ('OK',))
+
+
+    def set_default_filter(self, instance):
+        self.set_filter(instance, self.filter_user_any, self.default_filter_label, self.default_filter)
+
+
+    def has_filter(self, instance, user, filter_name, filter):
+        with mutil.MySQLPodSession(self.ns, instance, self.user, self.password) as s:
+            res = s.query_sql("SELECT * FROM audit_log_filter").fetch_all()
+            if not res:
+                return False
+            if res != (filter_name, filter):
+                return False
+
+            res = s.query_sql("SELECT * FROM audit_log_user").fetch_all()
+            if not res:
+                return False
+            if res != (user, '', filter_name):
+                return False
+
+            return True
+
+
+    def has_default_filter_set(self, instance):
+        return self.has_filter(instance, self.filter_user_any, self.default_filter_label, self.default_filter)
 
 
     def get_log_path(self, instance):
         with mutil.MySQLPodSession(self.ns, instance, self.user, self.password) as s:
             datadir = s.query_sql("SHOW VARIABLES LIKE 'datadir'").fetch_one()[1]
-            audit_log_fname = s.query_sql("SHOW VARIABLES LIKE 'audit_log_file'").fetch_one()[1]
+            res = s.query_sql("SHOW VARIABLES LIKE 'audit_log_file'").fetch_one()
+            if not res:
+                return None
+            audit_log_fname = res[1]
             return os.path.join(datadir, audit_log_fname)
 
 
     def does_log_exist(self, instance):
         audit_log_path = self.get_log_path(instance)
+        if not audit_log_path:
+            return False
         cmd = ['ls', '-l', audit_log_path]
         ls_res = kutil.execp(self.ns, (instance, "mysql"), cmd)
         return self.audit_log_filename in str(ls_res)
@@ -133,5 +159,7 @@ spec:
                 + timestamp + "\"} }') USING UTF8MB4))")
             data = s.query_sql(query)
             rows = data.fetch_all()
+            if not rows:
+                return None
             self.assertEqual(len(rows), 1)
             return str(rows[0])

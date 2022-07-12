@@ -135,6 +135,7 @@ spec:
         Checks:
         - Invalid values for spec.instances (too small, too big, not number)
         """
+        # This will fail on 1.18 and 1.19 (and previous due to https://github.com/kubernetes/kubernetes/issues/90128)
         yaml = """
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster

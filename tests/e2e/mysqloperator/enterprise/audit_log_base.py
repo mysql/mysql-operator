@@ -18,7 +18,8 @@ class AuditLogBase(tutil.OperatorTest):
     password = 'sakila'
     cluster_size = 3
     audit_log_filename = 'audit.json'
-    filter_user_any = '%'
+    default_filter_user = '%'
+    default_filter_host = ''
     default_filter_label = 'log_all'
     default_filter = '{"filter": {"log": true}}'
 
@@ -88,8 +89,6 @@ spec:
             # enable logging and assign it to the default account:
             install_script_dir = s.query_sql("SHOW VARIABLES LIKE 'lc_messages_dir'").fetch_one()[1]
             install_script_path = os.path.join(install_script_dir, 'audit_log_filter_linux_install.sql')
-            print(install_script_path)
-
             cmd = ['mysql', '-u', self.user, f"--password={self.password}", '-e', f"source {install_script_path}"]
             kutil.exec(self.ns, (instance, "mysql"), cmd)
 
@@ -110,28 +109,41 @@ spec:
 
 
     def set_default_filter(self, instance):
-        self.set_filter(instance, self.filter_user_any, self.default_filter_label, self.default_filter)
+        self.set_filter(instance, self.default_filter_user, self.default_filter_label, self.default_filter)
 
 
-    def has_filter(self, instance, user, filter_name, filter):
+    def remove_filter(self, instance, user, filter_name):
+        with mutil.MySQLPodSession(self.ns, instance, self.user, self.password) as s:
+            res = s.query_sql(f"SELECT audit_log_filter_remove_filter('{filter_name}')").fetch_one()
+            self.assertEqual(res, ('OK',))
+            res = s.query_sql(f"SELECT audit_log_filter_remove_user('{user}')").fetch_one()
+            self.assertEqual(res, ('OK',))
+
+
+    def remove_default_filter(self, instance):
+        return self.remove_filter(instance, self.default_filter_user, self.default_filter_label)
+
+
+    def has_filter(self, instance, user, host, filter_name, filter):
         with mutil.MySQLPodSession(self.ns, instance, self.user, self.password) as s:
             res = s.query_sql("SELECT * FROM audit_log_filter").fetch_all()
             if not res:
                 return False
-            if res != (filter_name, filter):
+            if res != [(filter_name, filter)]:
                 return False
 
             res = s.query_sql("SELECT * FROM audit_log_user").fetch_all()
+            print(res)
             if not res:
                 return False
-            if res != (user, '', filter_name):
+            if res != [(user, host, filter_name)]:
                 return False
 
             return True
 
 
     def has_default_filter_set(self, instance):
-        return self.has_filter(instance, self.filter_user_any, self.default_filter_label, self.default_filter)
+        return self.has_filter(instance, self.default_filter_user, self.default_filter_host, self.default_filter_label, self.default_filter)
 
 
     def get_log_path(self, instance):
@@ -163,3 +175,13 @@ spec:
                 return None
             self.assertEqual(len(rows), 1)
             return str(rows[0])
+
+
+    def destroy_cluster(self):
+        kutil.delete_ic(self.ns, "mycluster")
+
+        self.wait_pods_gone("mycluster-*")
+        self.wait_routers_gone("mycluster-router-*")
+        self.wait_ic_gone("mycluster")
+
+        kutil.delete_secret(self.ns, "mypwds")

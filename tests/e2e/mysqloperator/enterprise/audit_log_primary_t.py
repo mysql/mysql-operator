@@ -38,7 +38,7 @@ class AuditLogPrimary(audit_log_base.AuditLogBase):
     def test_3_verify_log(self):
         self.assertTrue(self.does_log_exist(self.instance_primary))
 
-        self.has_default_filter_set(self.instance_primary)
+        self.assertTrue(self.has_default_filter_set(self.instance_primary))
 
         log_data = self.get_log_data(self.instance_primary, self.__class__.add_data_timestamp)
         self.assertIn("CREATE SCHEMA audit_foo", log_data)
@@ -48,10 +48,4 @@ class AuditLogPrimary(audit_log_base.AuditLogBase):
 
 
     def test_9_destroy(self):
-        kutil.delete_ic(self.ns, "mycluster")
-
-        self.wait_pods_gone("mycluster-*")
-        self.wait_routers_gone("mycluster-router-*")
-        self.wait_ic_gone("mycluster")
-
-        kutil.delete_secret(self.ns, "mypwds")
+        self.destroy_cluster()

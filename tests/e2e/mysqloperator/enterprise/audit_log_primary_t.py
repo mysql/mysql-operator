@@ -40,7 +40,7 @@ class AuditLogPrimary(audit_log_base.AuditLogBase):
 
         self.assertTrue(self.has_default_filter_set(self.instance_primary))
 
-        log_data = self.get_log_data(self.instance_primary, self.__class__.add_data_timestamp)
+        log_data = self.get_log_data(self.instance_primary, self.add_data_timestamp)
         self.assertIn("CREATE SCHEMA audit_foo", log_data)
         self.assertIn(f"CREATE TABLE audit_foo.{self.test_table} (id INT NOT NULL, name VARCHAR(20), PRIMARY KEY(id))", log_data)
         self.assertIn(f'INSERT INTO audit_foo.{self.test_table} VALUES (123456, \\\\"first_audit\\\\")', log_data)

@@ -6,8 +6,8 @@
 import unittest
 from e2e.mysqloperator.enterprise import audit_log_base
 from setup.config import g_ts_cfg
-from utils import auxutil, mutil
-from utils import kutil
+from utils import auxutil
+from utils import mutil
 
 # test the audit log on the primary of a cluster
 @unittest.skipIf(g_ts_cfg.enterprise_skip, "Enterprise test cases are skipped")

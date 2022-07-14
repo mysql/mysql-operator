@@ -7,7 +7,6 @@ import unittest
 from e2e.mysqloperator.enterprise.audit_log_base import AuditLogBase
 from setup.config import g_ts_cfg
 from utils import auxutil
-from utils import kutil
 from utils import mutil
 
 # test the audit log on the 3-instance cluster, with plugin installed on two

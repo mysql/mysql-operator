@@ -12,6 +12,7 @@ import unittest
 import subprocess
 import logging
 import os
+from utils import auxutil
 
 from utils.auxutil import isotime
 from . import fmt
@@ -533,3 +534,33 @@ class OperatorTest(unittest.TestCase):
 
     def wait_routers_gone(self, name_pattern, timeout=180, ns=None):
         self.wait_pods_gone(name_pattern, timeout, ns)
+
+    def get_instances_by_role(self, instance="mycluster-0", user="root", password="sakila"):
+        primaries = []
+        secondaries = []
+        with mutil.MySQLPodSession(self.ns, instance, user, password) as session:
+            members = session.query_sql(
+                "SELECT member_host, member_role FROM performance_schema.replication_group_members ORDER BY member_host").fetch_all()
+
+            print(members)
+
+            for mhost, mrole in members:
+                instance_name = auxutil.extract_instance_name(mhost)
+                if mrole == "PRIMARY":
+                    primaries.append(instance_name)
+                elif mrole == "SECONDARY":
+                    secondaries.append(instance_name)
+                else:
+                    raise Exception(f"unexpected role {mrole}")
+
+        return (primaries, secondaries)
+
+    def get_primary_instance(self, instance="mycluster-0", user="root", password="sakila"):
+        primaries, _ = self.get_instances_by_role(instance, user, password)
+        if len(primaries) != 1:
+            raise Exception(f"expected one primary, but got {primaries}")
+        return primaries[0]
+
+    def get_secondary_instances(self, instance="mycluster-0", user="root", password="sakila"):
+        _, secondaries = self.get_instances_by_role(instance, user, password)
+        return secondaries

@@ -17,11 +17,20 @@ class AuditLogBase(tutil.OperatorTest):
     user = 'root'
     password = 'sakila'
     cluster_size = 3
+    routers_count = 2
+
     audit_log_filename = 'audit.json'
+
     default_filter_user = '%'
     default_filter_host = ''
     default_filter_label = 'log_all'
     default_filter = '{"filter": {"log": true}}'
+
+    custom_filter_user = user
+    custom_filter_host = '%'
+    custom_filter_label = 'custom_log'
+    custom_filter = '{"filter": {"class": [{"name": "table_access"}]}}'
+
 
     @classmethod
     def setUpClass(cls):
@@ -53,7 +62,7 @@ metadata:
 spec:
     instances: {self.cluster_size}
     router:
-        instances: 2
+        instances: {self.routers_count}
     secretName: mypwds
     edition: enterprise
     tlsUseSelfSigned: true
@@ -75,12 +84,12 @@ spec:
         self.wait_pod("mycluster-1", "Running")
         self.wait_pod("mycluster-2", "Running")
 
-        self.wait_ic("mycluster", "ONLINE", num_online=3)
+        self.wait_ic("mycluster", "ONLINE", num_online=self.cluster_size)
 
-        self.wait_routers("mycluster-router-*", 2)
+        self.wait_routers("mycluster-router-*", self.routers_count)
 
         check_all(self, self.ns, "mycluster",
-                    instances=3, routers=2, primary=0)
+            instances=self.cluster_size, routers=self.routers_count, primary=0)
 
 
     def install_plugin_on_primary(self, instance):
@@ -107,9 +116,11 @@ spec:
             res = s.query_sql(f"SELECT audit_log_filter_set_user('{user}', '{filter_name}')").fetch_one()
             self.assertEqual(res, ('OK',))
 
-
     def set_default_filter(self, instance):
         self.set_filter(instance, self.default_filter_user, self.default_filter_label, self.default_filter)
+
+    def set_custom_filter(self, instance):
+        self.set_filter(instance, self.custom_filter_user, self.custom_filter_label, self.custom_filter)
 
 
     def remove_filter(self, instance, user, filter_name):
@@ -119,14 +130,17 @@ spec:
             res = s.query_sql(f"SELECT audit_log_filter_remove_user('{user}')").fetch_one()
             self.assertEqual(res, ('OK',))
 
-
     def remove_default_filter(self, instance):
-        return self.remove_filter(instance, self.default_filter_user, self.default_filter_label)
+        self.remove_filter(instance, self.default_filter_user, self.default_filter_label)
+
+    def remove_custom_filter(self, instance):
+        self.remove_filter(instance, self.custom_filter_user, self.custom_filter_label)
 
 
     def has_filter(self, instance, user, host, filter_name, filter):
         with mutil.MySQLPodSession(self.ns, instance, self.user, self.password) as s:
             res = s.query_sql("SELECT * FROM audit_log_filter").fetch_all()
+            print(res)
             if not res:
                 return False
             if res != [(filter_name, filter)]:
@@ -141,9 +155,11 @@ spec:
 
             return True
 
-
     def has_default_filter_set(self, instance):
         return self.has_filter(instance, self.default_filter_user, self.default_filter_host, self.default_filter_label, self.default_filter)
+
+    def has_custom_filter_set(self, instance):
+        return self.has_filter(instance, self.custom_filter_user, self.custom_filter_host, self.custom_filter_label, self.custom_filter)
 
 
     def get_log_path(self, instance):
@@ -162,6 +178,12 @@ spec:
             return False
         cmd = ['ls', '-l', audit_log_path]
         ls_res = kutil.execp(self.ns, (instance, "mysql"), cmd)
+        print(str(ls_res))
+
+        cmd = ['cat', audit_log_path]
+        cat_res = kutil.execp(self.ns, (instance, "mysql"), cmd)
+        print(str(cat_res))
+
         return self.audit_log_filename in str(ls_res)
 
 

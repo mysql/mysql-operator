@@ -40,6 +40,9 @@ def resolve_registry_url(registry_url):
     is_loopback = host_ip4.is_loopback
     return host, port, is_loopback
 
+def extract_instance_name(host):
+    return host.split(".")[0]
+
 def merge_patch_object(base: dict, patch: dict, prefix: str = "", key: str = "") -> None:
     assert not key, "not implemented"  # TODO support key
 

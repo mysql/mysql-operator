@@ -180,9 +180,9 @@ spec:
         ls_res = kutil.execp(self.ns, (instance, "mysql"), cmd)
         print(str(ls_res))
 
-        cmd = ['cat', audit_log_path]
-        cat_res = kutil.execp(self.ns, (instance, "mysql"), cmd)
-        print(str(cat_res))
+        # cmd = ['cat', audit_log_path]
+        # cat_res = kutil.execp(self.ns, (instance, "mysql"), cmd)
+        # print(str(cat_res))
 
         return self.audit_log_filename in str(ls_res)
 

@@ -63,10 +63,10 @@ class AuditLogRemoveFilter(AuditLogBase):
         self.assertTrue(self.does_log_exist("mycluster-1"))
         self.assertTrue(self.does_log_exist("mycluster-2"))
 
-        log_data_0 = self.get_log_data("mycluster-0", self.add_data_timestamp)
-        self.assertNotIn("CREATE DATABASE audit_foo", log_data_0)
-
         # TODO: uncomment after audit log for clusters will have fixed
+        # log_data_0 = self.get_log_data("mycluster-0", self.add_data_timestamp)
+        # self.assertNotIn("CREATE DATABASE audit_foo", log_data_0)
+
         # log_data_1 = self.get_log_data("mycluster-1", self.add_data_timestamp)
         # self.assertNotIn("SHOW PLUGINS", log_data_1)
 

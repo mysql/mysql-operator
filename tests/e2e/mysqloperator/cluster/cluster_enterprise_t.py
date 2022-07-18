@@ -128,6 +128,19 @@ spec:
         self.assertIn(":"+g_ts_cfg.version_tag, image, "router")
         self.assertIn(g_ts_cfg.router_ee_image_name + ":", image, "router")
 
+    def test_1_check_enterprise_plugin(self):
+        with mutil.MySQLPodSession(self.ns, "mycluster-2", "root", "sakila") as session:
+            res = {
+                row[0]: row[1] for row in  session.query_sql(
+                    "SELECT dl, COUNT(*) FROM mysql.func WHERE dl IN ('data_masking.so', 'openssl_udf.so') GROUP BY dl").fetch_all()
+            }
+            self.assertDictEqual(res, {
+                "data_masking.so": 14,
+                "openssl_udf.so": 9
+            })
+
+
+
     def test_9_destroy(self):
         kutil.delete_ic(self.ns, "mycluster")
 

@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -54,10 +54,12 @@ import kopf
 from threading import Lock
 
 from .controller import utils, mysqlutils, k8sobject
+from .controller.api_utils import Edition
 from .controller.innodbcluster import initdb
 from .controller.innodbcluster.cluster_api import CloneInitDBSpec, DumpInitDBSpec, InnoDBCluster, MySQLPod
 from .controller.kubeutils import api_core, client as api_client
 from .controller.innodbcluster import router_objects
+from .controller.enterprise import install_enterprise_plugins
 
 if TYPE_CHECKING:
     from mysqlsh.mysql import ClassicSession
@@ -321,7 +323,7 @@ def connect(user: str, password: str, logger: Logger, timeout: Optional[int] = 6
     return mysqlsh.globals.session
 
 
-def initialize(session, datadir: str, pod: MySQLPod, cluster, logger: Logger) -> None:
+def initialize(session, datadir: str, pod: MySQLPod, cluster: InnoDBCluster, logger: Logger) -> None:
     session.run_sql("SET sql_log_bin=0")
     create_root_account(session, pod, cluster, logger)
     create_admin_account(session, cluster, logger)
@@ -335,6 +337,10 @@ def initialize(session, datadir: str, pod: MySQLPod, cluster, logger: Logger) ->
     # if this is the 1st pod of the cluster, then initialize it and create default accounts
     if pod.index == 0 and cluster.get_create_time() is None:
         session = populate_db(datadir, session, cluster, pod, logger)
+
+        # With enterprise edition activate enterprise plugins
+        if cluster.parsed_spec.edition == Edition.enterprise:
+            install_enterprise_plugins(session, logger)
 
     # # shutdown mysqld to let the definitive container start it back
     # logger.info("Shutting down mysql...")

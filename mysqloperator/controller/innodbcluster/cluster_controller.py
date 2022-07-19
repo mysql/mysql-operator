@@ -316,7 +316,6 @@ class ClusterController:
 
         # update the router deployment
         n = self.cluster.parsed_spec.router.instances
-        logger.info(f"ROUTER: {n=} {type(n)=}")
         if n:
             logger.debug(f"Setting router replicas to {n}")
             router_objects.update_size(self.cluster, n, logger)

@@ -483,7 +483,7 @@ def on_pod_create(body: Body, logger: Logger, **kwargs):
     if not configured:
         # TODO add extra diagnostics about why the pod is not ready yet, for
         # example, unbound volume claims, initconf not finished etc
-        raise kopf.TemporaryError(f"Sidecar of {pod.name} is not yet configured", delay=10)
+        raise kopf.TemporaryError(f"Sidecar of {pod.name} is not yet configured", delay=30)
 
     # If we are here all containers have started. This means, that if we are initializing
     # the database from a donor (cloning) the sidecar has already started a seed instance

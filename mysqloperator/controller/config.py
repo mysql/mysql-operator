@@ -18,7 +18,7 @@ else:
 
 
 # Constants
-OPERATOR_VERSION = "2.0.5"
+OPERATOR_VERSION = "2.0.6"
 OPERATOR_EDITION = Edition.community
 OPERATOR_EDITION_NAME_TO_ENUM = { edition.value : edition.name for edition in Edition }
 
@@ -31,12 +31,12 @@ DEFAULT_VERSION_TAG = "8.0.30"
 
 DEFAULT_SERVER_VERSION_TAG = DEFAULT_VERSION_TAG
 MIN_SUPPORTED_MYSQL_VERSION = "8.0.27"
-MAX_SUPPORTED_MYSQL_VERSION = SHELL_VERSION
+MAX_SUPPORTED_MYSQL_VERSION = "8.0.31" # SHELL_VERSION
 
 DEFAULT_ROUTER_VERSION_TAG = DEFAULT_VERSION_TAG
 
 # This is used for the sidecar. The operator version is deploy-operator.yaml
-DEFAULT_OPERATOR_VERSION_TAG = "8.0.30-2.0.5"
+DEFAULT_OPERATOR_VERSION_TAG = "8.0.31-2.0.6"
 
 # TODO - unify those two settings (if we use OCR for community as well we can use the same thing)
 DEFAULT_IMAGE_REPOSITORY = os.getenv(

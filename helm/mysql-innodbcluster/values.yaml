@@ -17,7 +17,7 @@ tls:
 #  serverCertAndPKsecretName:
 #  routerCertAndPKsecretName:
 
-#serverVersion: 8.0.30
+#serverVersion: 8.0.31
 serverInstances: 3
 routerInstances: 1
 baseServerId: 1000

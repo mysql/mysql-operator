@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -28,7 +28,7 @@ OPERATOR_EE_IMAGE_NAME = os.getenv(
     "OPERATOR_TEST_EE_IMAGE_NAME", default="enterprise-operator")
 
 OPERATOR_VERSION_TAG = os.getenv(
-    "OPERATOR_TEST_VERSION_TAG", default="8.0.30-2.0.5")
+    "OPERATOR_TEST_VERSION_TAG", default="8.0.31-2.0.6")
 
 OPERATOR_PULL_POLICY = os.getenv(
     "OPERATOR_TEST_PULL_POLICY", default="IfNotPresent")

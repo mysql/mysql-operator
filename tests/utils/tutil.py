@@ -527,9 +527,9 @@ class OperatorTest(unittest.TestCase):
                             checkabort=self.check_operator_exceptions)
 
     def wait_pods_gone(self, name_pattern, timeout=180, ns=None):
-        routers = kutil.ls_pod(ns or self.ns, name_pattern)
-        for router in routers:
-            kutil.wait_pod_gone(ns or self.ns, router, timeout=timeout,
+        pods = kutil.ls_pod(ns or self.ns, name_pattern)
+        for pod in pods:
+            kutil.wait_pod_gone(ns or self.ns, pod["NAME"], timeout=timeout,
                                 checkabort=self.check_operator_exceptions)
 
     def wait_routers_gone(self, name_pattern, timeout=180, ns=None):

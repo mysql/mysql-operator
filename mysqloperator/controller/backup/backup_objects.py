@@ -64,7 +64,13 @@ spec:
       - name: operator-backup-job
         image: {spec.operator_image}
         imagePullPolicy: {spec.operator_image_pull_policy}
-        command: ["mysqlsh", "--pym", "mysqloperator", "backup", "execute-backup", "{spec.namespace}", "{spec.name}", "{jobname}", "/mnt/storage"]
+        command: ["mysqlsh", "--pym", "mysqloperator", "backup",
+                  "--command", "execute-backup",
+                  "--namespace", "{spec.namespace}",
+                  "--backup-object-name", "{spec.name}",
+                  "--job-name", "{jobname}",
+                  "--backup-dir", "/mnt/storage"
+        ]
         env:
         - name: MYSQLSH_USER_CONFIG_HOME
           value: /mysqlsh
@@ -151,7 +157,7 @@ def patch_cron_template_for_backup_schedule(base: dict, cluster_name: str, sched
     new_object["metadata"]["name"] = schedule_cron_job_name(cluster_name, schedule_profile.name)
     new_object["spec"]["suspend"] = not schedule_profile.enabled
     new_object["spec"]["schedule"] = schedule_profile.schedule
-    new_object["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"][0]["command"].append(schedule_profile.name)
+    new_object["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"][0]["command"].extend(["--schedule-name", schedule_profile.name])
 
     return new_object
 
@@ -179,7 +185,11 @@ spec:
           - name: operator-backup-job-cron
             image: {spec.operator_image}
             imagePullPolicy: {spec.operator_image_pull_policy}
-            command: ["mysqlsh", "--pym", "mysqloperator", "backup", "create-backup-object", "{spec.namespace}", "{spec.name}"]
+            command: ["mysqlsh", "--pym", "mysqloperator", "backup",
+                      "--command", "create-backup-object",
+                      "--namespace", "{spec.namespace}",
+                      "--cluster-name", "{spec.name}"
+            ]
             securityContext:
               runAsUser: 27
             env:

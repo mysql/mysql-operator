@@ -4,10 +4,11 @@
 #
 
 
-import mysqlsh
 import sys
 import os
 import multiprocessing
+import argparse
+import mysqlsh
 from .controller import consts, utils, config, shellutils
 from .controller import storage_api
 from .controller.backup.backup_api import MySQLBackup
@@ -308,11 +309,22 @@ def main(argv):
 
     import datetime, time
 
-    debug = False
+    parser = argparse.ArgumentParser(description = "MySQL InnoDB Cluster Instance Sidecar Container")
+    parser.add_argument('--debug',   type = int, nargs="?", const = 1, default = 0, help = "Debug")
+    parser.add_argument('--namespace', type = str, default = "", help = "Namespace")
+    parser.add_argument('--command', type = str, default = "", help = "Command")
+    parser.add_argument('--backup-object-name', type = str, default = "", help = "Backup Object Name")
+    parser.add_argument('--job-name', type = str, default = "", help = "Job name")
+    parser.add_argument('--backup-dir', type = str, default = os.environ.get('DUMP_MOUNT_PATH', ""), help = "Backup Directory")
+    parser.add_argument('--cluster-name', type = str, default = "", help = "Cluster Name")
+    parser.add_argument('--schedule-name', type = str, default = "", help = "Schedule Name")
+    args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s - [%(levelname)s] [%(name)s] %(message)s',
                         datefmt="%Y-%m-%dT%H:%M:%S")
+
+    debug = args.debug
 
     # suppress logging from other libs
     for name in ['kubernetes']:
@@ -325,7 +337,7 @@ def main(argv):
     ts = datetime.datetime.fromtimestamp(
         os.stat(__file__).st_mtime).isoformat()
 
-    command = argv[1]
+    command = args.command
 
     logger.info(f"[BACKUP] command={command} version={config.OPERATOR_VERSION} timestamp={ts}")
 
@@ -337,18 +349,17 @@ def main(argv):
         subprocess.run(["ls", "-la", "/"])
         subprocess.run(["ls", "-l", "/.oci"])
 
-        namespace = argv[2]
-        backup_object_name = argv[3]
-        job_name = argv[4]
-        backup_dir = os.environ.get('DUMP_MOUNT_PATH', None)
+        namespace = args.namespace
+        backup_object_name = args.backup_object_name
+        job_name = args.job_name
+        backup_dir = args.backup_dir
         logger.info(f"backupdir={backup_dir}")
-        backup_dir = argv[5] if len(argv) > 5 else None
 
         ret = command_do_create_backup(namespace, backup_object_name, job_name, backup_dir, logger, debug)
     elif command == "create-backup-object":
-        namespace = argv[2]
-        cluster_name = argv[3]
-        schedule_name = argv[4]
+        namespace = args.namespace
+        cluster_name = args.cluster_name
+        schedule_name = args.schedule_name
         ret = command_create_backup_object(namespace, cluster_name, schedule_name, logger)
     else:
         raise Exception(f"Unknown command {command}")

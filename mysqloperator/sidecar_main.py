@@ -46,10 +46,12 @@ import base64
 from logging import Logger
 from typing import Optional, TYPE_CHECKING, Tuple, cast
 import mysqlsh
+import sys
 import os
 import logging
 import time
 import asyncio
+import argparse
 import kopf
 from threading import Lock
 
@@ -72,6 +74,8 @@ k8sobject.g_host = os.getenv("HOSTNAME")
 
 g_cluster_name = None
 g_pod_index = 0
+g_pod_name = None
+g_pod_namespace = None
 g_ca_change_underway = False
 g_ca_change_underway_lock = Lock()
 
@@ -589,9 +593,10 @@ def on_secret_create_or_update(name: str, namespace: str, spec, new, logger: Log
     global g_ca_change_underway
     global g_ca_change_underway_lock
 
-    my_namespace = cast(str, os.getenv("MY_POD_NAMESPACE"))
+    my_namespace = cast(str, g_pod_namespace)
 
     if namespace == my_namespace:
+        logger.info(f"on_secret_create_or_update: Same namespace name={name}")
         ic = InnoDBCluster.read(my_namespace, g_cluster_name)
         ca_changed = False
         handler = None
@@ -601,6 +606,7 @@ def on_secret_create_or_update(name: str, namespace: str, spec, new, logger: Log
         # on_tls_secret_create_or_change() does and restarts the deployment on top
         # So, either this order of checks or three separate if-statements.
         if ic.parsed_spec.tlsCASecretName == name:
+            logger.info(f"on_secret_create_or_update: tlsCASecretName, acquiring lock. pod {g_pod_index}")
             g_ca_change_underway_lock.acquire()
             g_ca_change_underway = True
             ca_changed = True
@@ -608,8 +614,10 @@ def on_secret_create_or_update(name: str, namespace: str, spec, new, logger: Log
             handler = on_ca_secret_create_or_change
             router_deployment = ic.get_router_deployment() if g_pod_index == 0 else None
         elif ic.parsed_spec.tlsSecretName == name:
+            logger.info(f"on_secret_create_or_update: tlsSecretName, pod {g_pod_index}")
             handler = on_tls_secret_create_or_change
         elif ic.parsed_spec.router.tlsSecretName == name:
+            logger.info(f"on_secret_create_or_update: router.tlsSecretName, pod {g_pod_index}")
             handler = on_router_tls_secret_create_or_change
             router_deployment = ic.get_router_deployment() if g_pod_index == 0 else None
 
@@ -633,20 +641,39 @@ def configure(settings: kopf.OperatorSettings, logger: Logger, *args, **_):
 def main(argv):
     global g_cluster_name
     global g_pod_index
+    global g_pod_name
+    global g_pod_namespace
 
-    datadir = argv[1] if len(argv) > 1 else "/var/lib/mysql"
+    # const - when there is an argument without value
+    # default - when there is no argument at all
+    # nargs = "?" - zero or one arguments
+    # nargs = "+" - one or more arguments, returns a list()
+    # nargs = 8 - 8 arguments will be consumed
+    # nargs = 1 - 1 argument will be consumed, returns a list with one element
+    parser = argparse.ArgumentParser(description = "MySQL InnoDB Cluster Instance Sidecar Container")
+    parser.add_argument('--debug',  type = int, nargs="?", const = 1, default = 0, help = "Debug")
+    parser.add_argument('--logging-level', type = int, nargs="?", default = logging.INFO, help = "Logging Level")
+    parser.add_argument('--pod-name', type = str, default = "", help = "Pod Name")
+    parser.add_argument('--pod-namespace', type = str, default = "", help = "Pod Namespace")
+    parser.add_argument('--datadir', type = str, nargs=1, help = "Path do data directory")
+    args = parser.parse_args(argv)
 
-    kopf.configure(verbose=True if os.getenv("MYSQL_OPERATOR_DEBUG")=="1" else False)
+    datadir = args.datadir
+
+    kopf.configure(verbose=True if args.debug != 0 else False)
 
     mysqlsh.globals.shell.options.useWizards = False
-    logging.basicConfig(level=logging.INFO,
+    logging.basicConfig(level=args.logging_level,
                         format='%(asctime)s - [%(levelname)s] [%(name)s] %(message)s',
                         datefmt="%Y-%m-%dT%H:%M:%S")
     logger = logging.getLogger("sidecar")
     utils.log_banner(__file__, logger)
 
-    name = cast(str, os.getenv("MY_POD_NAME"))
-    namespace = cast(str, os.getenv("MY_POD_NAMESPACE"))
+    g_pod_namespace = args.pod_namespace
+    g_pod_name = args.pod_name
+
+    name = args.pod_name
+    namespace = args.pod_namespace
     pod = MySQLPod.read(name, namespace)
     logger.info(f"My pod is {name} in {namespace}")
 

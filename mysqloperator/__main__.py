@@ -23,7 +23,9 @@ if sys.argv[1] in entrypoints:
     ret = 0
     try:
         mod = importlib.import_module(entrypoints[sys.argv[1]], "mysqloperator")
-        ret = mod.main(sys.argv[1:])  # type: ignore
+        # don't pass the name of the module, thus [2:] istead of [1:]
+        ret = mod.main(sys.argv[2:])  # type: ignore
+
     except Exception as exc:
         print(f"Exception happened in entrypoint {sys.argv[1]}. The message is: {exc}")
         ret = 1

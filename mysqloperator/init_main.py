@@ -4,12 +4,13 @@
 #
 
 import subprocess
-import mysqlsh
 import sys
 import os
 import logging
 import shutil
+import argparse
 from typing import cast
+import mysqlsh
 from .controller import utils, k8sobject
 from .controller.innodbcluster.cluster_api import MySQLPod
 
@@ -30,7 +31,7 @@ def init_conf(datadir, pod, cluster, logger):
     initializing for the 1st time.
     """
     server_id = pod.index + cluster.parsed_spec.baseServerId
-    report_host = f'{os.getenv("MY_POD_NAME")}.{cluster.name}-instances.{cluster.namespace}.svc.cluster.local'
+    report_host = f"{pod.name}.{cluster.name}-instances.{cluster.namespace}.svc.cluster.local"
     logger.info(
         f"Setting up configurations for {pod.name}  server_id={server_id}  report_host={report_host}")
 
@@ -62,20 +63,33 @@ def init_conf(datadir, pod, cluster, logger):
 
 
 def main(argv):
-    datadir = "/var/lib/mysql"
+    # const - when there is an argument without value
+    # default - when there is no argument at all
+    # nargs = "?" - zero or one arguments
+    # nargs = "+" - one or more arguments, returns a list()
+    # nargs = 8 - 8 arguments will be consumed
+    # nargs = 1 - 1 argument will be consumed, returns a list with one element
+    parser = argparse.ArgumentParser(description = "MySQL InnoDB Cluster Instance Sidecar Container")
+    parser.add_argument('--logging-level', type = int, nargs="?", default = logging.INFO, help = "Logging Level")
+    parser.add_argument('--pod-name', type = str, nargs=1, default=None, help = "Pod Name")
+    parser.add_argument('--pod-namespace', type = str, nargs=1, default=None, help = "Pod Namespace")
+    parser.add_argument('--datadir', type = str, default = "/var/lib/mysql", help = "Path do data directory")
+    args = parser.parse_args(argv)
+
+    datadir = args.datadir
 
     mysqlsh.globals.shell.options.useWizards = False
-    logging.basicConfig(level=logging.INFO,
+    logging.basicConfig(level=args.logging_level,
                         format='%(asctime)s - [%(levelname)s] [%(name)s] %(message)s',
                         datefmt="%Y-%m-%dT%H:%M:%S")
     logger = logging.getLogger("initmysql")
 
-    name = cast(str, os.getenv("MY_POD_NAME"))
-    namespace = cast(str, os.getenv("MY_POD_NAMESPACE"))
-
-    utils.log_banner(__file__, logger)
+    name = args.pod_name[0] # nargs returns a list
+    namespace = args.pod_namespace[0] # nargs returns a list
 
     logger.info(f"Configuring mysql pod {namespace}/{name}, datadir={datadir}")
+
+    utils.log_banner(__file__, logger)
 
     logger.debug(f"Initial contents of {datadir}:")
     subprocess.run(["ls", "-l", datadir])

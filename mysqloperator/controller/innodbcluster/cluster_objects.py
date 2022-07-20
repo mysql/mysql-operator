@@ -200,15 +200,20 @@ spec:
       - name: initconf
         image: {spec.operator_image}
         imagePullPolicy: {spec.sidecar_image_pull_policy}
-        command: ["mysqlsh", "--log-level=@INFO", "--pym", "mysqloperator", "init"]
+        # For datadir see the datadir volum mount
+        command: ["mysqlsh", "--log-level=@INFO", "--pym", "mysqloperator", "init",
+                  "--pod-name", "$(POD_NAME)",
+                  "--pod-namespace", "$(POD_NAMESPACE)",
+                  "--datadir", "/var/lib/mysql"
+        ]
         securityContext:
           runAsUser: 27
         env:
-        - name: MY_POD_NAME
+        - name: POD_NAME
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
-        - name: MY_POD_NAMESPACE
+        - name: POD_NAMESPACE
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
@@ -304,16 +309,20 @@ spec:
       - name: sidecar
         image: {spec.operator_image}
         imagePullPolicy: {spec.sidecar_image_pull_policy}
-        command: ["mysqlsh", "--pym", "mysqloperator", "sidecar"]
+        command: ["mysqlsh", "--pym", "mysqloperator", "sidecar",
+                  "--pod-name", "$(POD_NAME)",
+                  "--pod-namespace", "$(POD_NAMESPACE)",
+                  "--datadir", "/var/lib/mysql"
+        ]
         securityContext:
           runAsUser: 27
           fsgroup: 27
         env:
-        - name: MY_POD_NAME
+        - name: POD_NAME
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
-        - name: MY_POD_NAMESPACE
+        - name: POD_NAMESPACE
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace

@@ -32,7 +32,13 @@ if [[ $OPERATOR_INTERNAL_BUILD == 'false' ]]; then
 	docker push ${LOCAL_REGISTRY_OPERATOR_IMAGE}
 
 	# prepare enterprise image (temporary patch until we will have it in our hub)
-	$CI_DIR/registry/build-enterprise-image.sh $OPERATOR_IMAGE $LOCAL_REGISTRY_ENTERPRISE_OPERATOR_IMAGE
+	if [[ "$OPERATOR_IMAGE" =~ .*"$ENTERPRISE_OPERATOR_PATTERN".* ]]; then
+		# if the image name contains pattern, then just tag to push it...
+		docker tag ${OPERATOR_IMAGE} ${LOCAL_REGISTRY_ENTERPRISE_OPERATOR_IMAGE}
+	else
+		# ...else build a "stub" enterprise image
+		$CI_DIR/registry/build-enterprise-image.sh $OPERATOR_IMAGE $LOCAL_REGISTRY_ENTERPRISE_OPERATOR_IMAGE
+	fi
 	docker push ${LOCAL_REGISTRY_ENTERPRISE_OPERATOR_IMAGE}
 fi
 

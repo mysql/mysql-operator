@@ -35,7 +35,7 @@ pipeline {
 		stage('init') {
 			steps {
 				script {
-					env.GIT_AUTHOR_DATE = sh (script: "git log -1 --pretty='%an <%ae>, %cd' ${GIT_COMMIT}", returnStdout: true).trim()
+					env.GIT_AUTHOR_DATE = sh (script: "git log -1 --pretty='%an <%ae>, %ad' ${GIT_COMMIT}", returnStdout: true).trim()
 					env.GIT_BRANCH_NAME = sh (script: "git name-rev --name-only ${GIT_COMMIT}", returnStdout: true).trim()
 					env.GIT_COMMIT_SUBJECT = sh (script: "git log -1 --pretty=%s ${GIT_COMMIT}", returnStdout: true).trim()
 					env.GIT_COMMIT_SHORT = sh (script: "git rev-parse --short HEAD", returnStdout: true).trim()

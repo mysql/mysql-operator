@@ -59,7 +59,7 @@ from .controller.innodbcluster import initdb
 from .controller.innodbcluster.cluster_api import CloneInitDBSpec, DumpInitDBSpec, InnoDBCluster, MySQLPod
 from .controller.kubeutils import api_core, client as api_client
 from .controller.innodbcluster import router_objects
-from .controller.enterprise import install_enterprise_plugins
+from .controller.enterprise import install_enterprise_plugins, install_enterprise_encryption
 
 if TYPE_CHECKING:
     from mysqlsh.mysql import ClassicSession
@@ -340,7 +340,20 @@ def initialize(session, datadir: str, pod: MySQLPod, cluster: InnoDBCluster, log
 
         # With enterprise edition activate enterprise plugins
         if cluster.parsed_spec.edition == Edition.enterprise:
-            install_enterprise_plugins(session, logger)
+            install_enterprise_plugins(cluster.parsed_spec.version, session, logger)
+    elif pod.index > 0 and cluster.parsed_spec.edition == Edition.enterprise:
+        # We only have to install the encryption plugin here, as
+        # the INSTALL COMPONENT command is not being replicated
+        try:
+            # In rare cases this might throw, we need to reset readonly mode in any case, the error however my bubble up
+            session.run_sql("SET sql_log_bin=0")
+            session.run_sql("SET GLOBAL super_read_only=off")
+
+            install_enterprise_encryption(cluster.parsed_spec.version, session, logger)
+        finally:
+            session.run_sql("SET GLOBAL super_read_only=on")
+            session.run_sql("SET sql_log_bin=1")
+
 
     # # shutdown mysqld to let the definitive container start it back
     # logger.info("Shutting down mysql...")

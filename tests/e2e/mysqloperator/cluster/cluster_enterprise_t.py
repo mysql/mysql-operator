@@ -133,11 +133,11 @@ spec:
         with mutil.MySQLPodSession(self.ns, "mycluster-2", "root", "sakila") as session:
             res = {
                 row[0]: row[1] for row in  session.query_sql(
-                    "SELECT dl, COUNT(*) FROM mysql.func WHERE dl IN ('data_masking.so', 'openssl_udf.so') GROUP BY dl").fetch_all()
+                    "SELECT dl, COUNT(*) FROM mysql.func WHERE dl IN ('data_masking.so') GROUP BY dl UNION SELECT 'encryption', COUNT(*) FROM mysql.component WHERE component_urn = 'file://component_enterprise_encryption' ").fetch_all()
             }
             self.assertDictEqual(res, {
                 "data_masking.so": 14,
-                "openssl_udf.so": 9
+                "encryption": 1
             })
 
 

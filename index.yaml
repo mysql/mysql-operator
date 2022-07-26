@@ -3,10 +3,10 @@ entries:
   mysql-innodbcluster:
   - apiVersion: v2
     appVersion: 8.0.30
-    created: "2022-07-26T13:01:34.719285185+02:00"
+    created: "2022-07-26T14:06:20.806786588+02:00"
     description: MySQL InnoDB Cluster Helm Chart for deploying MySQL InnoDB Cluster
       in Kubernetes
-    digest: ff415e62ce7d9f2a630de08d8c46262748ff68214a10d8aa9cdadd23d6896cbe
+    digest: 6a8a09dade4ec0a9f2a5520668fa5cccdc902e05a656e8da3fb38e122a4ffc83
     icon: https://labs.mysql.com/common/themes/sakila/favicon.ico
     name: mysql-innodbcluster
     type: application
@@ -16,13 +16,13 @@ entries:
   mysql-operator:
   - apiVersion: v2
     appVersion: 8.0.30-2.0.5
-    created: "2022-07-26T13:01:34.719640039+02:00"
+    created: "2022-07-26T14:06:20.807261921+02:00"
     description: MySQL Operator Helm Chart for deploying MySQL InnoDB Cluster in Kubernetes
-    digest: 64f7603a943a5bb2ba620797b92f93a60a1bdb2b9fea7c2008cb22119d5e560f
+    digest: a4c02175d479cad91822340da1ff5ff60e13ee07ad1e46d99ca19869ef9f06bd
     icon: https://labs.mysql.com/common/themes/sakila/favicon.ico
     name: mysql-operator
     type: application
     urls:
     - mysql-operator-2.0.5.tgz
     version: 2.0.5
-generated: "2022-07-26T13:01:34.718927014+02:00"
+generated: "2022-07-26T14:06:20.806285206+02:00"

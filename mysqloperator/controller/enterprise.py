@@ -7,32 +7,11 @@ from typing import TYPE_CHECKING
 
 import mysqlsh
 
+from . import utils
+
 if TYPE_CHECKING:
     from mysqlsh.mysql import ClassicSession
 
-SQL_INSTALL_OPENSSL_UDF = [
-    "CREATE FUNCTION asymmetric_decrypt         RETURNS STRING  SONAME 'openssl_udf.so'",
-    "CREATE FUNCTION asymmetric_derive          RETURNS STRING  SONAME 'openssl_udf.so'",
-    "CREATE FUNCTION asymmetric_encrypt         RETURNS STRING  SONAME 'openssl_udf.so'",
-    "CREATE FUNCTION asymmetric_sign            RETURNS STRING  SONAME 'openssl_udf.so'",
-    "CREATE FUNCTION asymmetric_verify          RETURNS INTEGER SONAME 'openssl_udf.so'",
-    "CREATE FUNCTION create_asymmetric_priv_key RETURNS STRING  SONAME 'openssl_udf.so'",
-    "CREATE FUNCTION create_asymmetric_pub_key  RETURNS STRING  SONAME 'openssl_udf.so'",
-    "CREATE FUNCTION create_dh_parameters       RETURNS STRING  SONAME 'openssl_udf.so'",
-    "CREATE FUNCTION create_digest              RETURNS STRING  SONAME 'openssl_udf.so'"
-]
-
-SQL_UNINSTALL_OPENSSL_UDF = [
-    "DROP FUNCTION asymmetric_decrypt",
-    "DROP FUNCTION asymmetric_derive",
-    "DROP FUNCTION asymmetric_encrypt",
-    "DROP FUNCTION asymmetric_sign",
-    "DROP FUNCTION asymmetric_verify",
-    "DROP FUNCTION create_asymmetric_priv_key",
-    "DROP FUNCTION create_asymmetric_pub_key",
-    "DROP FUNCTION create_dh_parameters",
-    "DROP FUNCTION create_digest"
-]
 
 SQL_INSTALL_MASKING_UDF = [
     "INSTALL PLUGIN data_masking SONAME 'data_masking.so'",
@@ -85,12 +64,39 @@ def run_plugin_sql(session: 'ClassicSession', stmts: list[str], logger) -> None:
             logger.error(f"Failed to run plugin install statement \"{stmt}\": {e}")
             raise
 
-def install_enterprise_plugins(session: 'ClassicSession', logger) -> None:
-    run_plugin_sql(session, SQL_INSTALL_OPENSSL_UDF, logger)
+def install_enterprise_encryption(server_version: str, session: 'ClassicSession', logger) -> None:
+    min_version = utils.version_to_int("8.0.30")
+    installed_version = utils.version_to_int(server_version)
+    if installed_version < min_version:
+        logger.info(f"Deploying Enterprise Server {server_version}, older than 8.0.30, skipping encryption function installation")
+        return
+
+    res = session.run_sql("SELECT * FROM mysql.component WHERE component_urn = 'file://component_enterprise_encryption'")
+    row = res.fetch_one()
+    if row:
+        logger.warn("Enterprise Encryption Component already installed. Skipping.")
+        return
+
+    try:
+        session.run_sql("INSTALL COMPONENT 'file://component_enterprise_encryption'")
+    except mysqlsh.Error as e:
+        logger.error(f"Failed to install encryption component: {e}")
+        raise
+
+def uninstall_enterprise_encryption(server_version: str, session: 'ClassicSession') -> None:
+    min_version = utils.version_to_int("8.0.30")
+    installed_version = utils.version_to_int(server_version)
+    if installed_version < min_version:
+        return
+
+    session.run_sql("UNINSTALL COMPONENT 'file://component_enterprise_encryption'")
+
+def install_enterprise_plugins(server_version: str, session: 'ClassicSession', logger) -> None:
     run_plugin_sql(session, SQL_INSTALL_MASKING_UDF, logger)
+    install_enterprise_encryption(server_version, session, logger)
 
 
-def uninstall_enterprise_plugins(session: 'ClassicSession', logger) -> None:
-    run_plugin_sql(session, SQL_UNINSTALL_OPENSSL_UDF, logger)
+def uninstall_enterprise_plugins(server_version: str, session: 'ClassicSession', logger) -> None:
     run_plugin_sql(session, SQL_UNINSTALL_MASKING_UDF, logger)
+    uninstall_enterprise_plugins(server_version, session)
 

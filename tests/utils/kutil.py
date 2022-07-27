@@ -438,11 +438,11 @@ def delete_svc(ns, name, timeout=5):
     delete(ns, "svc", name, timeout=timeout)
 
 
-def delete_pvc(ns, name, timeout=300, wait=True):
+def delete_pvc(ns, name, timeout=500, wait=True):
     delete(ns, "pvc", name, timeout=timeout, wait=wait)
 
 
-def delete_pv(name, timeout=300):
+def delete_pv(name, timeout=500):
     delete(None, "pv", name, timeout=timeout)
 
 

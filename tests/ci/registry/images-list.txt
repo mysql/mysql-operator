@@ -42,6 +42,10 @@ mysql-operator:8.0.30-2.0.5
 mysql-operator:8.0.30-2.0.5
 1
 ---
+mysql-operator:8.0.31-2.0.6
+mysql-operator:8.0.31-2.0.6
+1
+---
 mysql-operator:latest
 mysql-operator:latest
 1

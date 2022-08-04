@@ -257,7 +257,6 @@ def getEnterpriseImageInfo(String operatorEnterpriseImage) {
 	return "not specified, it will be built internally"
 }
 
-
 def addTestResults(String k8s_env) {
 	sh "ls ${env.LOG_DIR}"
 	def testResults = findFiles glob: "**/${env.LOG_SUBDIR}/result-$k8s_env-*.tar.bz2"

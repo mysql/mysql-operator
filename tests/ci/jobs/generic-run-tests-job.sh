@@ -25,6 +25,11 @@ if test -z ${TEST_OPTIONS+x}; then
 	TEST_OPTIONS='-t -vvv --doperator --dkube --doci'
 fi
 
+if [[ -n ${OPERATOR_K8S_VERSION} ]]; then
+	TEST_OPTIONS="$TEST_OPTIONS --kube-version=$OPERATOR_K8S_VERSION"
+fi
+
+
 if test -z ${WORKERS+x}; then
 	WORKERS=1
 fi
@@ -78,8 +83,12 @@ fi
 
 cd $LOG_DIR
 # badge results to discern the environment in the overall result
-sed -i "s/=\"e2e.mysqloperator./=\"$K8S_DRIVER.e2e.mysqloperator./g" ./xml/*.xml
-sed -i "s/<testcase classname=\"\" name=\"\(\w*\) (e2e.mysqloperator./<testcase classname=\"\" name=\"$K8S_DRIVER.\1 ($K8S_DRIVER.e2e.mysqloperator./g" ./xml/*.xml
+BADGE=$K8S_DRIVER
+if [[ -n ${OPERATOR_K8S_VERSION} ]]; then
+	BADGE="${BADGE}_${OPERATOR_K8S_VERSION}"
+fi
+sed -i "s/=\"e2e.mysqloperator./=\"$BADGE.e2e.mysqloperator./g" ./xml/*.xml
+sed -i "s/<testcase classname=\"\" name=\"\(\w*\) (e2e.mysqloperator./<testcase classname=\"\" name=\"$BADGE.\1 ($BADGE.e2e.mysqloperator./g" ./xml/*.xml
 
 tar cvjf ../result-$JOB_BASE_NAME-$BUILD_NUMBER.tar.bz2 *
 df -lh | grep /sd

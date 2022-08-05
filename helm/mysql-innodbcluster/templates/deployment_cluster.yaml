@@ -56,6 +56,9 @@ spec:
 {{- if .Values.datadirVolumeClaimTemplate }}
   {{- with .Values.datadirVolumeClaimTemplate }}
   datadirVolumeClaimTemplate:
+    {{- if .storageClassName }}
+    storageClassName: "{{ .storageClassName }}"
+    {{- end}}
     {{- if .accessModes }}
     accessModes: [ "{{ .accessModes }}" ]
     {{- end }}

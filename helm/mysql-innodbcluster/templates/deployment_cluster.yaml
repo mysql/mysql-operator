@@ -1,3 +1,4 @@
+{{- $disable_lookups:= .Values.disableLookups }}
 {{- $cluster_name :=  default "mycluster" .Release.Name }}
 {{- $use_self_signed := default false ((.Values.tls).useSelfSigned) }}
 apiVersion: mysql.oracle.com/v2
@@ -13,7 +14,7 @@ spec:
 {{- if not $use_self_signed }}
   {{- $default_secret_name := printf "%s-router-tls" $cluster_name }}
   {{- $secret_name := default $default_secret_name ((.Values.tls).routerCertAndPKsecretName) }}
-  {{- if not (lookup "v1" "Secret" .Release.Namespace $secret_name) }}
+  {{- if and (not $disable_lookups) (not (lookup "v1" "Secret" .Release.Namespace $secret_name)) }}
     {{- $err := printf "tls.routerCertAndPKsecretName: secret '%s' not found in namespace '%s'" $secret_name .Release.Namespace }}
     {{- fail $err }}
   {{- end }}
@@ -28,7 +29,7 @@ spec:
 {{- if not $use_self_signed }}
   {{- $default_secret_name := printf "%s-ca" $cluster_name }}
   {{- $secret_name := default $default_secret_name ((.Values.tls).caSecretName) }}
-  {{- if not (lookup "v1" "Secret" .Release.Namespace $secret_name) }}
+  {{- if and (not $disable_lookups) (not (lookup "v1" "Secret" .Release.Namespace $secret_name)) }}
     {{- $err := printf "tls.caSecretName: secret '%s' not found in namespace '%s'" $secret_name .Release.Namespace }}
     {{- fail $err }}
   {{- end }}
@@ -36,7 +37,7 @@ spec:
 
   {{- $default_secret_name := printf "%s-tls" $cluster_name }}
   {{- $secret_name := default $default_secret_name ((.Values.tls).serverCertAndPKsecretName) }}
-  {{- if not (lookup "v1" "Secret" .Release.Namespace $secret_name) }}
+  {{- if and (not $disable_lookups) (not (lookup "v1" "Secret" .Release.Namespace $secret_name)) }}
     {{- $err := printf "tls.serverCertAndPKsecretName: secret '%s' not found in namespace '%s'" $secret_name .Release.Namespace }}
     {{- fail $err }}
   {{- end }}
@@ -194,5 +195,8 @@ spec:
     {{- end }}
   {{- end }}
 {{- end }}
-{{- if false }}
-{{- end }}
+
+{{ if ((.Values).podSpec) }}
+  podSpec:
+{{ toYaml ((.Values).podSpec) | indent 4 }}
+{{ end }}

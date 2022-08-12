@@ -35,6 +35,9 @@ spec:
   imagePullPolicy : {{ required "image.pullPolicy is required" .Values.image.pullPolicy }}
   baseServerId: {{ required "baseServerId is required" .Values.baseServerId }}
   version: {{ .Values.serverVersion | default .Chart.AppVersion }}
+  {{- if ((.Values).edition) }}
+  edition: {{ .Values.edition | quote }}
+  {{- end }}
   serviceAccountName: {{ .Release.Name }}-sa
 
 {{- if not $use_self_signed }}

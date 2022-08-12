@@ -23,6 +23,18 @@ routerInstances: 1
 baseServerId: 1000
 
 
+#podSpec:
+#  containers:
+#  - name: mysql
+#    resources:
+#      requests:
+#        memory: "2048Mi"  # adapt to your needs
+#        cpu: "1800m"      # adapt to your needs
+#      limits:
+#        memory: "8192Mi"  # adapt to your needs
+#        cpu: "3600m"      # adapt to your needs
+
+
 #serverConfig:
 #  mycnf: |
 #    [mysqld]

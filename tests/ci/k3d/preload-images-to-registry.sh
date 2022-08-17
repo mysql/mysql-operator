@@ -23,6 +23,7 @@
 # 5) then update below the IMAGES list accordingly and charge the local registry
 # 5a) the first images like rancher/k3d-proxy rancher/k3d-tools should be updated
 #     according to the proper version (e.g. 5.3.0)
+set -vx
 
 REGISTRY=registry.localhost:5000
 
@@ -34,9 +35,12 @@ IMAGES_v5_4_0="ghcr.io/k3d-io/k3d-proxy:5.4.4 ghcr.io/k3d-io/k3d-tools:5.4.4 ran
 
 IMAGES=$IMAGES_v5_4_0
 
-for IMAGE in $IMAGES; do
-	docker pull $IMAGE
-	docker tag $IMAGE $REGISTRY/$IMAGE
-	docker push $REGISTRY/$IMAGE
-	docker image rm $REGISTRY/$IMAGE
+HOST=ghcr.io/
+for IMAGE_PULL in $IMAGES; do
+	docker pull $IMAGE_PULL
+	# cut a host name before pushing to a local repo
+	IMAGE_PUSH=${IMAGE_PULL/$HOST/}
+	docker tag $IMAGE_PULL $REGISTRY/$IMAGE_PUSH
+	docker push $REGISTRY/$IMAGE_PUSH
+	docker image rm $REGISTRY/$IMAGE_PUSH
 done

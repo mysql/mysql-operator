@@ -86,6 +86,7 @@ cd $LOG_DIR
 BADGE=$K8S_DRIVER
 if [[ -n ${OPERATOR_K8S_VERSION} ]]; then
 	BADGE="${BADGE}_${OPERATOR_K8S_VERSION}"
+	BADGE=$(sed -e 's/[.:\/]/_/g' <<< $BADGE)
 fi
 sed -i "s/=\"e2e.mysqloperator./=\"$BADGE.e2e.mysqloperator./g" ./xml/*.xml
 sed -i "s/<testcase classname=\"\" name=\"\(\w*\) (e2e.mysqloperator./<testcase classname=\"\" name=\"$BADGE.\1 ($BADGE.e2e.mysqloperator./g" ./xml/*.xml

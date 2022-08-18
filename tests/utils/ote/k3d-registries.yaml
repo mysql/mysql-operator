@@ -5,3 +5,6 @@ mirrors:
   "docker.io":
     endpoint:
      - http://registry.localhost:5000
+  "ghcr.io":
+    endpoint:
+     - http://registry.localhost:5000

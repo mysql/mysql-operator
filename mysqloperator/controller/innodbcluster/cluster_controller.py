@@ -768,5 +768,8 @@ class ClusterController:
         return self.on_upgrade(version = version)
 
     def on_upgrade(self, version: str) -> None:
-        # TODO check if version change is valid
-        pass
+        # TODO change status as needed - especially on version error, but make sure we recover
+        [version_valid, version_error] = utils.version_in_range(version)
+        if not version_valid:
+            raise kopf.PermanentError(version_error)
+

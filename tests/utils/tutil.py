@@ -383,7 +383,7 @@ class OperatorTest(unittest.TestCase):
         self.op_fatal_errors = []
         self.op_logged_errors = []
 
-    def assertGotClusterEvent(self, cluster, after=None, *, type, reason, msg):
+    def has_got_cluster_event(self, cluster, after=None, *, type, reason, msg):
         if after is None:
             after = self.start_time
 
@@ -399,12 +399,21 @@ class OperatorTest(unittest.TestCase):
 
         for t, r, m in events:
             if t == type and r == reason and msgpat.match(m):
-                break
+                return True
         else:
             print(f"Events for {cluster}", "\n".join([str(x) for x in events]))
+            return False
 
+    def assertGotClusterEvent(self, cluster, after=None, *, type, reason, msg):
+        if not self.has_got_cluster_event(cluster, after, type=type, reason=reason, msg=msg):
             self.fail(
                 f"Event ({type}, {reason}, {msg}) not found for {cluster}")
+
+    def wait_got_cluster_event(self, cluster, after=None, timeout=90, delay=2, *, type, reason, msg):
+        def check_has_got_cluster_event():
+            return self.has_got_cluster_event(cluster, after, type=type, reason=reason, msg=msg)
+
+        self.wait(check_has_got_cluster_event, timeout=timeout, delay=delay)
 
     def check_operator_exceptions(self):
         # Raise an exception if there's no hope that the operator will make progress

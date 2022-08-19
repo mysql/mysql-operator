@@ -156,12 +156,18 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
 
             print("10. Router Deployment")
             if not ignore_404(cluster.get_router_deployment):
-                print("\tPreparing...")
                 if icspec.router.instances > 0:
+                    print("\tPreparing...")
+                    # This will create the deployment but 0 instances. When the cluster is created (first
+                    # instance joins it) the instance count will be set to icspec.router.instances
                     router_deployment = router_objects.prepare_router_deployment(cluster, init_only=True)
-                    print(f"\tCreating...{router_deployment}")
+                    print("\tCreating...")
                     kopf.adopt(router_deployment)
                     api_apps.create_namespaced_deployment(namespace=namespace, body=router_deployment)
+                else:
+                    # If the user decides to set !0 routers, the routine that handles that that
+                    # will create the deployment
+                    print("\tRouter count is 0. No Deployment is created.")
 
             print("11. Backup Secrets")
             if not ignore_404(cluster.get_backup_account):

@@ -83,6 +83,8 @@ pipeline {
 							script {
 								if (utils.addTestResults("minikube")) {
 									env.MINIKUBE_RESULTS_AVAILABLE = true
+								} else {
+									env.SOME_MINIKUBE_RESULTS_UNAVAILABLE = true
 								}
 							}
 						}
@@ -118,6 +120,8 @@ pipeline {
 							script {
 								if (utils.addTestResults("k3d")) {
 									env.K3D_RESULTS_AVAILABLE = true
+								} else {
+									env.SOME_K3D_RESULTS_UNAVAILABLE = true
 								}
 							}
 						}

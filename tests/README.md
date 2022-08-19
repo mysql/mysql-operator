@@ -46,6 +46,9 @@ Ad 2) command-line options
 --kube-version
     set the kubernetes version to use
     if not set, the default depends on the installed minikube or k3d
+    for minikube it is used to pass an argument to the --kubernetes-version=<value> option, e.g.:
+      * minikube start --kubernetes-version=v1.22.5
+      * minikube start --kubernetes-version=v1.23.4
     for k3d it is used to pass an argument to the --image=<value> option, e.g.:
       * k3d cluster create --image=rancher/k3s:v1.21.7-k3s1
       * k3d cluster create --image=rancher/k3s:v1.23.6-k3s1

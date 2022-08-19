@@ -60,7 +60,7 @@ def addTestResults(String k8s_env) {
 
 	def summary = junit allowEmptyResults: true, testResults: "${env.LOG_SUBDIR}/xml/$k8s_env-*.xml"
 	echo "${summary.totalCount} tests, ${summary.passCount} passed, ${summary.failCount} failed, ${summary.skipCount} skipped"
-	return true
+	return summary.totalCount > 0
 }
 
 def anyResultsAvailable() {
@@ -98,9 +98,14 @@ def getTestsStatusHeader() {
 	if (anyResultsAvailable()) {
 		if (!env.MINIKUBE_RESULTS_AVAILABLE) {
 			testStatusHeader += "\nNo test results for minikube!"
+		} else if (env.SOME_MINIKUBE_RESULTS_UNAVAILABLE) {
+			testStatusHeader += "\nSome test results for minikube unavailable!"
 		}
+
 		if (!env.K3D_RESULTS_AVAILABLE) {
 			testStatusHeader += "\nNo test results for k3d!"
+		} else if (env.SOME_K3D_RESULTS_UNAVAILABLE) {
+			testStatusHeader += "\nSome test results for k3d unavailable!"
 		}
 	} else {
 		testStatusHeader = "\nNo test results available!"

@@ -92,8 +92,8 @@ class Config:
     def get_old_server_image(self):
         return self.get_server_image(self.get_old_version_tag())
 
-    def get_router_image(self):
-        return f"{self.get_image_registry_repository()}/{self.router_image_name}:{self.version_tag}"
+    def get_router_image(self, version=None):
+        return f"{self.get_image_registry_repository()}/{self.router_image_name}:{version if version else self.version_tag}"
 
     def get_old_router_image(self):
         return f"{self.get_image_registry_repository()}/{self.router_image_name}:{self.get_old_version_tag()}"

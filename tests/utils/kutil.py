@@ -457,6 +457,8 @@ def delete_cm(ns, name, timeout=5):
 def delete_secret(ns, name, timeout=5):
     delete(ns, "secret", name, timeout=timeout)
 
+def delete_default_secret(ns, name="mypwds", timeout=5):
+    delete_secret(ns, name, timeout=timeout)
 
 #
 

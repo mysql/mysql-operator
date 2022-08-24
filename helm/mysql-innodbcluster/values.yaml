@@ -98,3 +98,10 @@ baseServerId: 1000
 #          prefix : /
 #          bucketName: idbcluster_backup
 #          credentials: oci-credentials
+
+#routerPodSpec:
+#  containers:
+#  - name: router
+#    env:
+#    - name: MYSQL_ROUTER_BOOTSTRAP_EXTRA_OPTIONS
+#      value: --conf-set-option=DEFAULT.unknown_config_option=warning --conf-set-option=SECTION.some_config_option=foo

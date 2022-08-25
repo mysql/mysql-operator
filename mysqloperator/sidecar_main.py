@@ -575,51 +575,58 @@ def on_router_tls_secret_create_or_change(value: dict, useSelfSigned: bool, rout
             logger.info("CA change underway. The CA change handler will restart the router deployment, so we have to do nothing here")
 
 
-@kopf.on.create("", "v1", "secrets") # type: ignore
-@kopf.on.update("", "v1", "secrets") # type: ignore
-def on_secret_create_or_update(name: str, namespace: str, spec, new, logger: Logger, **kwargs):
+def secret_belongs_to_cluster_checker(meta, namespace:str, name, logger: Logger, **_) -> bool:
+    # This should be always true but some precaution won't hurt
+    # It is true when the sidecar runs as standalone operator. If for some reason it doesn't
+    # that it will listen to all namespaces and then this won't hold true all the time
+    if namespace == g_pod_namespace:
+        ic = InnoDBCluster.read(namespace, g_cluster_name)
+        return name in (ic.parsed_spec.tlsCASecretName, ic.parsed_spec.tlsSecretName, ic.parsed_spec.router.tlsSecretName)
+    return False
+
+
+@kopf.on.create("", "v1", "secrets", when=secret_belongs_to_cluster_checker) # type: ignore
+@kopf.on.update("", "v1", "secrets", when=secret_belongs_to_cluster_checker) # type: ignore
+def on_secret_create_or_update(name: str, namespace: str, spec, meta, new, logger: Logger, **kwargs):
     # g_cluster_name
     # g_pod_index
     global g_ca_change_underway
     global g_ca_change_underway_lock
 
-    my_namespace = cast(str, g_pod_namespace)
+    logger.info(f"on_secret_create_or_update: name={name} labels={meta.labels}")
+    ic = InnoDBCluster.read(namespace, g_cluster_name)
+    ca_changed = False
+    handler = None
+    router_deployment = None
+    # In case the same secret is used for CA and TLS, and router TLS, then the order
+    # here is very important. on_ca_secret_create_or_change() does what
+    # on_tls_secret_create_or_change() does and restarts the deployment on top
+    # So, either this order of checks or three separate if-statements.
+    if ic.parsed_spec.tlsCASecretName == name:
+        logger.info(f"on_secret_create_or_update: tlsCASecretName, acquiring lock. pod {g_pod_index}")
+        g_ca_change_underway_lock.acquire()
+        g_ca_change_underway = True
+        ca_changed = True
+        g_ca_change_underway_lock.release()
+        handler = on_ca_secret_create_or_change
+        router_deployment = ic.get_router_deployment() if g_pod_index == 0 else None
+    elif ic.parsed_spec.tlsSecretName == name:
+        logger.info(f"on_secret_create_or_update: tlsSecretName, pod {g_pod_index}")
+        handler = on_tls_secret_create_or_change
+    elif ic.parsed_spec.router.tlsSecretName == name:
+        logger.info(f"on_secret_create_or_update: router.tlsSecretName, pod {g_pod_index}")
+        handler = on_router_tls_secret_create_or_change
+        router_deployment = ic.get_router_deployment() if g_pod_index == 0 else None
 
-    if namespace == my_namespace:
-        logger.info(f"on_secret_create_or_update: Same namespace name={name}")
-        ic = InnoDBCluster.read(my_namespace, g_cluster_name)
-        ca_changed = False
-        handler = None
-        router_deployment = None
-        # In case the same secret is used for CA and TLS, and router TLS, then the order
-        # here is very important. on_ca_secret_create_or_change() does what
-        # on_tls_secret_create_or_change() does and restarts the deployment on top
-        # So, either this order of checks or three separate if-statements.
-        if ic.parsed_spec.tlsCASecretName == name:
-            logger.info(f"on_secret_create_or_update: tlsCASecretName, acquiring lock. pod {g_pod_index}")
-            g_ca_change_underway_lock.acquire()
-            g_ca_change_underway = True
-            ca_changed = True
-            g_ca_change_underway_lock.release()
-            handler = on_ca_secret_create_or_change
-            router_deployment = ic.get_router_deployment() if g_pod_index == 0 else None
-        elif ic.parsed_spec.tlsSecretName == name:
-            logger.info(f"on_secret_create_or_update: tlsSecretName, pod {g_pod_index}")
-            handler = on_tls_secret_create_or_change
-        elif ic.parsed_spec.router.tlsSecretName == name:
-            logger.info(f"on_secret_create_or_update: router.tlsSecretName, pod {g_pod_index}")
-            handler = on_router_tls_secret_create_or_change
-            router_deployment = ic.get_router_deployment() if g_pod_index == 0 else None
-
-        if handler:
-            logger.info(f"on_secret_create_or_update {namespace}/{name} pod_index={g_pod_index}")
-            try:
-                handler(new, ic.parsed_spec.tlsUseSelfSigned, router_deployment , logger)
-            finally:
-                if ca_changed:
-                    g_ca_change_underway_lock.acquire()
-                    g_ca_change_underway = False
-                    g_ca_change_underway_lock.release()
+    if handler:
+        logger.info(f"on_secret_create_or_update {namespace}/{name} pod_index={g_pod_index}")
+        try:
+            handler(new, ic.parsed_spec.tlsUseSelfSigned, router_deployment , logger)
+        finally:
+            if ca_changed:
+                g_ca_change_underway_lock.acquire()
+                g_ca_change_underway = False
+                g_ca_change_underway_lock.release()
 
 
 @kopf.on.startup()

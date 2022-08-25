@@ -254,11 +254,9 @@ class DistTestSuiteRunner:
 		if self.perform_purge:
 			self.purge()
 
-		if result:
-			return 0
-		else:
-			return 1
+		return result
 
 
 test_suite_runner = DistTestSuiteRunner()
-test_suite_runner.run(sys.argv[1:])
+if not test_suite_runner.run(sys.argv[1:]):
+	sys.exit(6)

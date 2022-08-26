@@ -76,8 +76,12 @@ g_cluster_name = None
 g_pod_index = 0
 g_pod_name = None
 g_pod_namespace = None
+g_tls_change_underway = False
 g_ca_change_underway = False
-g_ca_change_underway_lock = Lock()
+g_ca_tls_change_underway_lock = Lock()
+
+g_ready_gate = False
+g_ready_gate_lock = Lock()
 
 # The time it takes for mysqld to restart after a clone can be very long,
 # because it has to apply redo logs. OTOH we monitor the error log to see
@@ -431,29 +435,32 @@ def bootstrap(pod: MySQLPod, datadir: str, logger: Logger) -> int:
 
     return 1
 
-
-def reconfigure_tls(enabled: bool, logger: Logger) -> None:
+def ensure_correct_tls_sysvars(session, enabled: bool, caller: str, logger: Logger) -> None:
     has_crl = os.path.exists("/etc/mysql-ssl/crl.pem")
 
-    logger.info(f"Ensuring custom TLS certificates are {'enabled' if enabled else 'disabled'} {'(with crl)' if has_crl else ''}")
-
-    session = connect("localroot", "", logger, timeout=None)
+    logger.info(f"Ensuring custom TLS certificates are {'enabled' if enabled else 'disabled'} {'(with crl)' if has_crl else ''} caller={caller}")
 
     def ensure_sysvar(var, value):
-        curval = session.run_sql("show variables like ?", [var]).fetch_one()[1]
-        if curval != value:
-            logger.debug(f"Changing {var} to {value}")
-            session.run_sql(f"set persist {var} = ?", [value])
+        logger.info(f"\tChecking if {var} is [{value}]")
+        res = session.run_sql("SHOW VARIABLES LIKE ?", [var])
+        row = res.fetch_one()
+        if row:
+            curval = row[1]
+            if curval != value:
+                logger.info(f"\t{var} is [{curval}] persisting to [{value}]")
+                session.run_sql(f"SET PERSIST {var} = ?", [value])
+        else:
+            raise kopf.PermanentError(f"Variable {var} not found!")
 
     # first ensure configured paths are correct
     if enabled:
         ensure_sysvar("ssl_ca", "/etc/mysql-ssl/ca.pem")
-        ensure_sysvar("ssl_crl", "/etc/mysql-ssl/crl.pem" if has_crl else "")
-        ensure_sysvar("ssl_cert", "/etc/mysql-ssl/tls.crt")
-        ensure_sysvar("ssl_key", "/etc/mysql-ssl/tls.key")
         ensure_sysvar("group_replication_recovery_ssl_verify_server_cert", "ON")
+        ensure_sysvar("ssl_crl", "/etc/mysql-ssl/crl.pem" if has_crl else "")
         ensure_sysvar("group_replication_ssl_mode", "VERIFY_IDENTITY")
+        ensure_sysvar("ssl_cert", "/etc/mysql-ssl/tls.crt")
         ensure_sysvar("group_replication_recovery_ssl_ca", "/etc/mysql-ssl/ca.pem")
+        ensure_sysvar("ssl_key", "/etc/mysql-ssl/tls.key")
         ensure_sysvar("group_replication_recovery_ssl_cert", "/etc/mysql-ssl/tls.crt")
         ensure_sysvar("group_replication_recovery_ssl_key", "/etc/mysql-ssl/tls.key")
     else:
@@ -466,6 +473,13 @@ def reconfigure_tls(enabled: bool, logger: Logger) -> None:
         ensure_sysvar("group_replication_recovery_ssl_ca", "")
         ensure_sysvar("group_replication_recovery_ssl_cert", "")
         ensure_sysvar("group_replication_recovery_ssl_key", "")
+
+
+def reconfigure_tls(enabled: bool, caller: str, logger: Logger) -> None:
+
+    session = connect("localroot", "", logger, timeout=None)
+
+    ensure_correct_tls_sysvars(session, enabled, caller, logger)
 
     try:
         logger.info("Reloading TLS")
@@ -514,7 +528,7 @@ def on_ca_secret_create_or_change(value: dict, useSelfSigned: bool, router_deplo
                                  "/etc/mysql-ssl/crl.pem"],
                                 logger):
             logger.info(f"TLS CA file change detected, reloading TLS configurations")
-            reconfigure_tls(False if useSelfSigned else True, logger)
+            reconfigure_tls(False if useSelfSigned else True, "on_ca_secret_create_or_change", logger)
 
             if router_deployment:
                 # give time to all other sidecars to reload the TLS and then restart the router deployment from -0
@@ -546,7 +560,7 @@ def on_tls_secret_create_or_change(value: dict, useSelfSigned: bool, router_depl
                                  "/etc/mysql-ssl/tls.key"],
                                 logger):
             logger.info(f"TLS certificate file change detected, reloading TLS configurations")
-            reconfigure_tls(False if useSelfSigned else True, logger)
+            reconfigure_tls(False if useSelfSigned else True, "on_tls_secret_create_or_change", logger)
             break
         else:
             logger.info("Waiting for mounted TLS files to refresh...")
@@ -557,25 +571,16 @@ def on_tls_secret_create_or_change(value: dict, useSelfSigned: bool, router_depl
 
 
 def on_router_tls_secret_create_or_change(value: dict, useSelfSigned: bool, router_deployment: Optional[api_client.V1Deployment], logger: Logger) -> None:
-    global g_ca_change_underway
-    global g_ca_change_underway_lock
-
     logger.info("on_router_tls_secret_create_or_change")
 
-    g_ca_change_underway_lock.acquire()
-    ca_change_underway = g_ca_change_underway
-    g_ca_change_underway_lock.release()
-    if not ca_change_underway:
-        if router_deployment:
-            router_tls_crt = utils.b64decode(value['data']['tls.crt']) if 'tls.crt' in value['data'] else None
-            router_tls_key = utils.b64decode(value['data']['tls.key']) if 'tls.key' in value['data'] else None
-            logger.info("Updating router deployment with new TLS data. The deployment should restart")
-            router_objects.restart_deployment_for_tls(router_deployment, router_tls_crt = router_tls_crt, router_tls_key = router_tls_key, ca_pem = None, crl_pem = None, logger=logger)
-        else:
-            logger.info("CA change underway. The CA change handler will restart the router deployment, so we have to do nothing here")
+    if router_deployment:
+        router_tls_crt = utils.b64decode(value['data']['tls.crt']) if 'tls.crt' in value['data'] else None
+        router_tls_key = utils.b64decode(value['data']['tls.key']) if 'tls.key' in value['data'] else None
+        logger.info("Updating router deployment with new TLS data. The deployment should restart")
+        router_objects.restart_deployment_for_tls(router_deployment, router_tls_crt = router_tls_crt, router_tls_key = router_tls_key, ca_pem = None, crl_pem = None, logger=logger)
 
 
-def secret_belongs_to_cluster_checker(meta, namespace:str, name, logger: Logger, **_) -> bool:
+def secret_belongs_to_the_cluster_checker(namespace:str, name, **_) -> bool:
     # This should be always true but some precaution won't hurt
     # It is true when the sidecar runs as standalone operator. If for some reason it doesn't
     # that it will listen to all namespaces and then this won't hold true all the time
@@ -585,16 +590,33 @@ def secret_belongs_to_cluster_checker(meta, namespace:str, name, logger: Logger,
     return False
 
 
-@kopf.on.create("", "v1", "secrets", when=secret_belongs_to_cluster_checker) # type: ignore
-@kopf.on.update("", "v1", "secrets", when=secret_belongs_to_cluster_checker) # type: ignore
-def on_secret_create_or_update(name: str, namespace: str, spec, meta, new, logger: Logger, **kwargs):
+@kopf.on.create("", "v1", "secrets", when=secret_belongs_to_the_cluster_checker) # type: ignore
+@kopf.on.update("", "v1", "secrets", when=secret_belongs_to_the_cluster_checker) # type: ignore
+def on_secret_create_or_update(name: str, namespace: str, spec, new, logger: Logger, **kwargs):
     # g_cluster_name
     # g_pod_index
+    global g_tls_change_underway
     global g_ca_change_underway
-    global g_ca_change_underway_lock
+    global g_ca_tls_change_underway_lock
+    global g_ready_gate
+    global g_ready_gate_lock
 
-    logger.info(f"on_secret_create_or_update: name={name} labels={meta.labels}")
+    logger.info(f"on_secret_create_or_update: name={name} pod_index={g_pod_index}")
+
+    try:
+        g_ready_gate_lock.acquire()
+        if not g_ready_gate:
+            logger.info("Cached value of gate[ready] is false, re-checking")
+            ready = MySQLPod.read(g_pod_name, g_pod_namespace).get_member_readiness_gate("ready")
+            if not ready:
+                raise kopf.TemporaryError(f"Pod not ready - not yet part of the IC. Will retry", delay=15)
+            g_ready_gate = True
+            logger.info("Readiness gate 'ready' is true. Handling event.")
+    finally:
+        g_ready_gate_lock.release()
+
     ic = InnoDBCluster.read(namespace, g_cluster_name)
+    tls_changed = False
     ca_changed = False
     handler = None
     router_deployment = None
@@ -603,30 +625,54 @@ def on_secret_create_or_update(name: str, namespace: str, spec, meta, new, logge
     # on_tls_secret_create_or_change() does and restarts the deployment on top
     # So, either this order of checks or three separate if-statements.
     if ic.parsed_spec.tlsCASecretName == name:
-        logger.info(f"on_secret_create_or_update: tlsCASecretName, acquiring lock. pod {g_pod_index}")
-        g_ca_change_underway_lock.acquire()
-        g_ca_change_underway = True
-        ca_changed = True
-        g_ca_change_underway_lock.release()
+        logger.info(f"on_secret_create_or_update: tlsCASecretName")
+        g_ca_tls_change_underway_lock.acquire()
+        try:
+            if g_tls_change_underway:
+                raise kopf.TemporaryError(f"TLS change underway. Wait to finish. {name}", delay=15)
+            g_ca_change_underway = True
+            ca_changed = True
+        finally:
+            g_ca_tls_change_underway_lock.release()
+
         handler = on_ca_secret_create_or_change
         router_deployment = ic.get_router_deployment() if g_pod_index == 0 else None
     elif ic.parsed_spec.tlsSecretName == name:
-        logger.info(f"on_secret_create_or_update: tlsSecretName, pod {g_pod_index}")
+        logger.info(f"on_secret_create_or_update: tlsSecretName")
+        g_ca_tls_change_underway_lock.acquire()
+        try:
+            if g_ca_change_underway:
+                raise kopf.TemporaryError(f"CA change underway. Wait to finish. {name}", delay=15)
+            g_tls_change_underway = True
+            tls_changed = True
+        finally:
+            g_ca_tls_change_underway_lock.release()
+
         handler = on_tls_secret_create_or_change
     elif ic.parsed_spec.router.tlsSecretName == name:
-        logger.info(f"on_secret_create_or_update: router.tlsSecretName, pod {g_pod_index}")
-        handler = on_router_tls_secret_create_or_change
-        router_deployment = ic.get_router_deployment() if g_pod_index == 0 else None
+        logger.info(f"on_secret_create_or_update: router.tlsSecretName")
+        try:
+            g_ca_tls_change_underway_lock.acquire()
+            if g_ca_change_underway:
+                logger.info("CA/TLS change underway. The CA change handler will restart the router deployment, so we have to do nothing here")
+            else:
+                handler = on_router_tls_secret_create_or_change
+                router_deployment = ic.get_router_deployment() if g_pod_index == 0 else None
+        finally:
+            g_ca_tls_change_underway_lock.release()
 
     if handler:
-        logger.info(f"on_secret_create_or_update {namespace}/{name} pod_index={g_pod_index}")
         try:
             handler(new, ic.parsed_spec.tlsUseSelfSigned, router_deployment , logger)
         finally:
             if ca_changed:
-                g_ca_change_underway_lock.acquire()
+                g_ca_tls_change_underway_lock.acquire()
                 g_ca_change_underway = False
-                g_ca_change_underway_lock.release()
+                g_ca_tls_change_underway_lock.release()
+            if tls_changed:
+                g_ca_tls_change_underway_lock.acquire()
+                g_tls_change_underway = False
+                g_ca_tls_change_underway_lock.release()
 
 
 @kopf.on.startup()
@@ -688,7 +734,7 @@ def main(argv):
 
     if r == 0:
         # refresh TLS settings if we're restarting in case something changed
-        reconfigure_tls(False if cluster.parsed_spec.tlsUseSelfSigned else True, logger)
+        reconfigure_tls(False if cluster.parsed_spec.tlsUseSelfSigned else True, "main", logger)
 
     logger.info("Starting Operator request handler...")
     try:

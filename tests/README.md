@@ -103,8 +103,11 @@ Ad 2) command-line options
 --dkube
     more verbose logging of kubectl operations
 
---doperator
-    set the operator debug level to 3
+--doperator[=level]
+    set the operator debug level (by default the logging is disabled, i.e. level = 0)
+    it influences how much information will be written to the operator pod logs
+    level is an integer number, and it is optional
+    if it is not passed (just '--doperator'), then default debug level value will be set
 
 --doci
     enable diagnostics for oci-cli operations

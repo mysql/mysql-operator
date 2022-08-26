@@ -33,7 +33,7 @@ def wait_operator(ns):
 
 
 class BaseEnvironment:
-    opt_operator_debug_level: int = 1
+    opt_operator_debug_level: int = 0
 
     def __init__(self):
         super().__init__()

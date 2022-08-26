@@ -107,6 +107,8 @@ if __name__ == '__main__':
 
     tutil.g_test_data_dir = os.path.join(basedir, "data")
 
+    DEFAULT_OPERATOR_DEBUG_LEVEL = 3
+
     opt_include = []
     opt_exclude = []
     opt_suite_path = None
@@ -171,7 +173,9 @@ if __name__ == '__main__':
         elif arg == "--dkube":
             kutil.debug_kubectl = True
         elif arg == "--doperator":
-            BaseEnvironment.opt_operator_debug_level = 3
+            BaseEnvironment.opt_operator_debug_level = DEFAULT_OPERATOR_DEBUG_LEVEL
+        elif arg.startswith("--doperator="):
+            BaseEnvironment.opt_operator_debug_level = int(arg.split("=")[-1])
         elif arg == "--doci":
             ociutil.debug_ocicli = True
         elif arg == "--mount-operator" or arg == "-O":

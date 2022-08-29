@@ -721,6 +721,7 @@ def portfw(ns, name, in_port):
     p = kubectl_popen("port-forward", ["pod/%s" % name, ":%s" %
                                        in_port, "--address", "127.0.0.1", "-n", ns])
     line = p.stdout.readline().decode("utf8")
+    logger.info(f"portfw: {line}")
     return p, int(line.split("->")[0].split(":")[-1].strip())
 
 #

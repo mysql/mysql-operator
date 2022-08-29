@@ -22,4 +22,8 @@ CONTAINER=$(docker container create ${BASE_OPERATOR_IMAGE})
 sed 's/Edition.community/Edition.enterprise/' < mysqloperator/controller/config.py > mysqloperator/controller/config.enterprise.py
 docker container cp mysqloperator/controller/config.enterprise.py ${CONTAINER}:/usr/lib/mysqlsh/python-packages/mysqloperator/controller/config.py
 docker container commit ${CONTAINER} ${ENTERPRISE_OPERATOR_IMAGE}
+if [ $? -ne 0 ]; then
+	echo "cannot build enterprise dev-image ${LOCAL_REGISTRY_ENTERPRISE_OPERATOR_IMAGE}"
+	exit 2
+fi
 docker container rm ${CONTAINER}

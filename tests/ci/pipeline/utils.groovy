@@ -67,6 +67,16 @@ def anyResultsAvailable() {
 	return env.MINIKUBE_RESULTS_AVAILABLE || env.K3D_RESULTS_AVAILABLE;
 }
 
+def getBrokenWorkersInfo(String k8s_env) {
+	def brokenWorkersPattern = "egrep '^broken\s+: [0-9]+$' ${env.LOG_DIR}/tests-${k8s_env}-*.log | awk '{print $3}'"
+	def brokenWorkersStr = sh (script: brokenWorkersPattern, returnStdout: true).trim()
+	if (!brokenWorkersStr.isInteger()) {
+		return ""
+	}
+	def brokenWorkersNum = brokenWorkersStr as Integer
+	return "${brokenWorkersNum} broken ${k8s_env} worker(s), some test results are missing!\n"
+}
+
 def getTestSuiteReport() {
 	sh "ls ${env.LOG_DIR}"
 	def testSuiteReportFiles = findFiles glob: "**/${env.LOG_SUBDIR}/test_suite_report_*.tar.bz2"
@@ -77,17 +87,19 @@ def getTestSuiteReport() {
 	def reportPattern = "${env.LOG_DIR}/test_suite_report_*.tar.bz2"
 	sh "cat $reportPattern | tar jxvf - -i -C ${env.LOG_DIR} && rm $reportPattern"
 
+	def testSuiteReport = getBrokenWorkersInfo('k3d') + getBrokenWorkersInfo('minikube')
+
 	def reportPath = "${env.LOG_DIR}/test_suite_report.txt"
 	def reportExists = fileExists reportPath
 	if (!reportExists) {
-		return ""
+		return testSuiteReport
 	}
 
 	def briefReportPath = "${env.LOG_DIR}/test_suite_brief_report.txt"
 	def ReportedIssuesMaxCount = 10
 	sh "cat $reportPath | sed -ne '1,$ReportedIssuesMaxCount p' -e '${ReportedIssuesMaxCount+1} iand more...' > $briefReportPath"
 
-	def testSuiteReport = readFile(file: briefReportPath)
+	testSuiteReport += readFile(file: briefReportPath)
 	echo testSuiteReport
 	return testSuiteReport
 }

@@ -212,9 +212,9 @@ class ClusterController:
                     self.cluster.update_cluster_info({
                         "initialDataSource": f"dump={self.cluster.parsed_spec.initDB.dump.storage.ociObjectStorage.bucketName}",
                     })
-                elif self.cluster.parse_spec.initDB.dump.storage.persistentVolumeClaim:
+                elif self.cluster.parsed_spec.initDB.dump.storage.persistentVolumeClaim:
                     self.cluster.update_cluster_info({
-                        "initialDataSource": f"dump={self.cluster.parsed_spec.initDB.dump.storage.ociObjectStorage.bucketName}",
+                        "initialDataSource": f"dump={self.cluster.parsed_spec.initDB.dump.storage.persistentVolumeClaim}",
                     })
                     # A : How to import from a dump?
                 else:

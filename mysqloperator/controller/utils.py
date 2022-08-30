@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -13,6 +13,7 @@ import threading
 import json
 import hashlib
 
+from . import config
 
 def b64decode(s: str) -> str:
     return base64.b64decode(s).decode("utf8")
@@ -145,6 +146,28 @@ def version_to_int(version: str) -> int:
     else:
         return parts[0] * 1000000000000 + parts[1] * 10000000000 + parts[2] + 100000000
 
+def version_in_range(version: str, minimum = None, maximum = None, check_disabled = True) -> list[bool, str]:
+    if not minimum:
+        minimum = config.MIN_SUPPORTED_MYSQL_VERSION
+
+    if not maximum:
+        maximum = config.MAX_SUPPORTED_MYSQL_VERSION
+
+    # Some versions have been disabled due to major issues
+    if check_disabled and version in config.DISABLED_MYSQL_VERSION:
+        return [False, config.DISABLED_MYSQL_VERSION[version]]
+
+
+    version_int = version_to_int(version)
+    min_version = version_to_int(minimum)
+    max_version = version_to_int(maximum)
+
+    if not max_version >= version_int >= min_version:
+        return [False,
+            f"version {version} must be between "
+            f"{minimum} and {maximum}"]
+
+    return [True, None]
 
 def indent(s: str, spaces: int) -> str:
     if s:

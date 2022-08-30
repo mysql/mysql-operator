@@ -56,10 +56,26 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
 
     cluster = InnoDBCluster(body)
 
+    # TODO: If we set the status here it will be emptied for unknown reasons later
+    #       and hide other later set status (i.e. when using an invalid spec.version)
+    #
+    #cluster.set_status({
+    #    "cluster": {
+    #        "status":  diagnose.ClusterDiagStatus.INITIALIZING.value,
+    #        "onlineInstances": 0,
+    #        "lastProbeTime": utils.isotime()
+    #    }})
+
     try:
         cluster.parse_spec()
         cluster.parsed_spec.validate(logger)
     except ApiSpecError as e:
+        cluster.set_status({
+            "cluster": {
+                "status":  diagnose.ClusterDiagStatus.INVALID.value,
+                "onlineInstances": 0,
+                "lastProbeTime": utils.isotime()
+            }})
         cluster.error(action="CreateCluster",
                       reason="InvalidArgument", message=str(e))
         raise kopf.TemporaryError(f"Error in InnoDBCluster spec: {e}")

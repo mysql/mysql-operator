@@ -296,8 +296,8 @@ def ls_ns():
 #
 
 
-def get(ns, rsrc, name, **kwargs):
-    r = kubectl("get", rsrc, args=[name, "-n", ns, "-o=yaml"], **kwargs)
+def get(ns, rsrc, name, check=True, **kwargs):
+    r = kubectl("get", rsrc, args=[name, "-n", ns, "-o=yaml"], check=check, **kwargs)
     if r and r.stdout:
         return yaml.safe_load(r.stdout.decode("utf8"))
     return None
@@ -327,8 +327,8 @@ def get_svc(ns, name, jpath=None):
     return get(ns, "svc", name)
 
 
-def get_po(ns, name, jpath=None):
-    return get(ns, "po", name)
+def get_po(ns, name, jpath=None, check=True):
+    return get(ns, "po", name, check=check)
 
 
 def get_ev(ns, selector, *, after=None, fields=None):
@@ -457,6 +457,8 @@ def delete_cm(ns, name, timeout=5):
 def delete_secret(ns, name, timeout=5):
     delete(ns, "secret", name, timeout=timeout)
 
+def delete_default_secret(ns, name="mypwds", timeout=5):
+    delete_secret(ns, name, timeout=timeout)
 
 #
 

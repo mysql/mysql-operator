@@ -468,14 +468,12 @@ def reconfigure_tls(enabled: bool, logger: Logger) -> None:
         ensure_sysvar("group_replication_recovery_ssl_key", "")
 
     try:
+        logger.info("Reloading TLS")
         session.run_sql("ALTER INSTANCE RELOAD TLS")
     except Exception as e:
         logger.error(f"MySQL error reloading TLS certificates: {e}")
-
+    finally:
         session.close()
-        return
-
-    session.close()
 
 
 def check_secret_mounted(secrets: dict, paths: list, logger: Logger) -> bool:
@@ -499,14 +497,6 @@ def check_secret_mounted(secrets: dict, paths: list, logger: Logger) -> bool:
 
     logger.info(f"check_secret_mounted: Success")
     return True
-
-
-def reload_tls(logger: Logger) -> None:
-    logger.info("Reloading TLS")
-
-    session = connect("localroot", "", logger, timeout=None)
-    session.run_sql("ALTER INSTANCE RELOAD TLS")
-    session.close()
 
 
 def on_ca_secret_create_or_change(value: dict, useSelfSigned: bool, router_deployment: Optional[api_client.V1Deployment], logger: Logger) -> None:

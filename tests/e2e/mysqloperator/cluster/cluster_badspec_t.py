@@ -297,7 +297,7 @@ spec:
         # there should be an event for the cluster resource indicating the
         # problem
         self.assertGotClusterEvent(
-            "mycluster", type="Error", reason="InvalidArgument", msg="spec.version is 5.7.30 but must be between .*")
+            "mycluster", type="Error", reason="InvalidArgument", msg="version 5.7.30 must be between .*")
 
         # deleting the ic should work despite the error
         kutil.delete_ic(self.ns, "mycluster")

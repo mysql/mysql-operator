@@ -128,7 +128,7 @@ spec:
         self.wait_got_cluster_event(
             "mycluster", after=update_time, type="Error",
             reason="Logging",
-            msg=rf"Handler 'on_innodbcluster_field_version/spec.version' failed permanently\: Support for MySQL {to_version} is disabled. Please see http\://....")
+            msg=rf"Handler 'on_innodbcluster_field_version/spec.version' failed permanently\: Support for MySQL {to_version} is disabled. Please see https\://dev.mysql.com/doc/relnotes/mysql-operator/en/news-8-0-29.html")
         self.wait_got_cluster_event(
             "mycluster", after=update_time, type="Normal",
             reason="Logging",

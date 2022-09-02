@@ -23,14 +23,19 @@ class PVCStorageSpec:
 
     def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
         # /mnt/storage is passed as parameter to the backup_main.py
+        backup_job_container_spec = pod_spec['spec']['containers'][0]
         patch = f"""
 spec:
-    securityContext:
-      runAsUser: 0
-#      allowPrivilegeEscalation: false
-#      privileged: false
-#      readOnlyRootFilesystem: true
-#      runAsNonRoot: false
+    initContainers:
+    - name: fixdumpdir
+      image: {backup_job_container_spec['image']}
+      imagePullPolicy: {backup_job_container_spec['imagePullPolicy']}
+      command: ["bash", "-c", "chown 27:27 /mnt/storage && chmod 0700 /mnt/storage"]
+      securityContext:
+        runAsUser: 0
+      volumeMounts:
+      - name: tmp-storage
+        mountPath: /mnt/storage
     containers:
     - name: {container_name}
       env:

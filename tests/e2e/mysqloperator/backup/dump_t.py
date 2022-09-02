@@ -169,6 +169,43 @@ spec:
         # TODO add and check details about the profile used
         # check backup data, ensure that excluded DB is not included etc
 
+        yaml = f"""
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pvc-inspector
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 27
+    runAsGroup: 27
+    fsGroup: 27
+  containers:
+  - name: shell
+    image: "{g_ts_cfg.get_operator_image()}"
+    command: ["/bin/sleep", "600"]
+    volumeMounts:
+    - mountPath: /pvc
+      name: pvc-mount
+    env:
+    - name: MYSQLSH_USER_CONFIG_HOME
+      value: /tmp
+  volumes:
+  - name: pvc-mount
+    persistentVolumeClaim:
+      claimName: {self.backup_volume_name}
+"""
+        kutil.apply(self.ns, yaml)
+        kutil.wait_pod(self.ns, "pvc-inspector", "Running")
+        dumpdir = mbk['status']['output']
+        command = ["stat", "-c", "%U:%G", f"/pvc/{dumpdir}"]
+        res = kutil.exec(self.ns, ("pvc-inspector", "shell"), command)
+#        print(res)
+        self.assertIn("mysql:mysql", res.stdout.decode("utf-8"), "mysql:mysql not found")
+        self.assertNotIn("root:root", res.stdout.decode("utf-8"), "root:root found")
+        kutil.delete_po(self.ns, "pvc-inspector")
+
+
     @unittest.skipIf(g_ts_cfg.oci_skip or not g_ts_cfg.oci_config_path or not g_ts_cfg.oci_bucket_name,
       "OCI backup config path and/or bucket name not set")
     def test_1_backup_to_oci_bucket(self):

@@ -5,7 +5,7 @@
 
 # OCI (oci-cli) utilities
 
-
+import json
 import logging
 import subprocess
 from setup.config import g_ts_cfg
@@ -45,3 +45,19 @@ def ocicli(profile, cmd, subcmd=None, args=None, timeout=None, check=True, ignor
 def bulk_delete(profile, bucket_name, prefix):
     return ocicli(profile, "os", subcmd=["object", "bulk-delete"],
         args=["--force", "--bucket-name", bucket_name, "--prefix", prefix])
+
+def list_objects(profile, bucket_name, prefix = None):
+    args = ["--bucket-name", bucket_name ]
+    if prefix:
+         args += ["--prefix", prefix]
+
+    runresult = ocicli(profile, "os", subcmd=["object", "list"], args=args)
+    result = json.loads(runresult.stdout)
+
+    # if no elements with the given prefix are found oci will return {prefix:[]}
+    if not "data" in result:
+        return []
+
+    return result["data"]
+
+

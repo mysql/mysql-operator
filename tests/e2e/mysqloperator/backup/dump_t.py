@@ -71,6 +71,8 @@ spec:
           prefix: {self.oci_storage_prefix}
           bucketName: {bucket or "not-set"}
           credentials: backup-apikey
+      dumpOptions:
+        excludeSchemas: ["excludeme"]
   - name: snapshot
     snapshot:
       storage:
@@ -217,7 +219,15 @@ spec:
         # secondary
         self.assertTrue(mbk["status"]["source"].startswith(""))
 
-        # TODO check that the bucket contains the expected files
+        # TODO check that the bucket contains all expected files
+
+        donefile = ociutil.list_objects("RESTORE", g_ts_cfg.oci_bucket_name, f"{self.__class__.oci_storage_output}/@.done.json")
+        self.assertEqual(1, len(donefile))
+
+        # excluded schemas should be excluded
+        excludedfile = ociutil.list_objects("RESTORE", g_ts_cfg.oci_bucket_name, f"{self.__class__.oci_storage_output}/excludeme")
+        self.assertListEqual([], excludedfile)
+
 
     def test_2_backup_custom_profile(self):
         pass

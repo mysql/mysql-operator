@@ -91,6 +91,24 @@ fi
 sed -i "s/=\"e2e.mysqloperator./=\"$BADGE.e2e.mysqloperator./g" ./xml/*.xml
 sed -i "s/<testcase classname=\"\" name=\"\(\w*\) (e2e.mysqloperator./<testcase classname=\"\" name=\"$BADGE.\1 ($BADGE.e2e.mysqloperator./g" ./xml/*.xml
 
+# store extraordinary issues
+BROKEN_WORKERS=$(egrep '^broken\s+: [0-9]+$' ${TESTS_LOG} | awk '{print $3}')
+if [[ -n $BROKEN_WORKERS && $BROKEN_WORKERS -gt 0 ]]; then
+	ALL_WORKERS=$(egrep '^all\s+: [0-9]+$' ${TESTS_LOG} | awk '{print $3}')
+	BROKEN_WORKERS_MSG="${K8S_DRIVER}: ${BROKEN_WORKERS} out of ${ALL_WORKERS} worker(s) have broken, some test results are missing!"
+	ISSUES_LOG=$LOG_DIR/${K8S_DRIVER}-issues.log
+	echo ${BROKEN_WORKERS_MSG} > ${ISSUES_LOG}
+	cat ${ISSUES_LOG}
+fi
+
+# store runtime environment
+RUNTIME_ENV_LOG=${K8S_DRIVER}-runtime-env.log
+${K8S_DRIVER} version > $RUNTIME_ENV_LOG
+KUBECTL_VERSION=$(kubectl version --client -o json | jq '.clientVersion.gitVersion')
+echo "kubectl: ${KUBECTL_VERSION}" >> $RUNTIME_ENV_LOG
+cat ${RUNTIME_ENV_LOG}
+
+# archive all logs and auxiliary files
 tar cvjf ../result-$JOB_BASE_NAME-$BUILD_NUMBER.tar.bz2 *
 df -lh | grep /sd
 

@@ -33,7 +33,7 @@ IMAGES_v5_3_0="rancher/k3d-proxy:5.3.0 rancher/k3d-tools:5.3.0 rancher/pause:3.1
 
 IMAGES_v5_4_0="ghcr.io/k3d-io/k3d-proxy:5.4.4 ghcr.io/k3d-io/k3d-tools:5.4.4 rancher/mirrored-pause:3.6 rancher/mirrored-coredns-coredns:1.9.1 rancher/mirrored-metrics-server:v0.5.2 rancher/klipper-helm:v0.7.3-build20220613 rancher/local-path-provisioner:v0.0.21 rancher/mirrored-library-traefik:2.6.2 rancher/klipper-lb:v0.3.5 rancher/library-busybox:1.32.1"
 
-IMAGES=$IMAGES_v5_4_0
+IMAGES=$IMAGES_v5_1_0
 
 HOST=ghcr.io/
 for IMAGE_PULL in $IMAGES; do

@@ -29,21 +29,22 @@ pipeline {
 					utils = load "${WORKSPACE}/tests/ci/pipeline/utils.groovy"
 					utils.initEnv()
 					initMessage = utils.getInitMessage()
+
+					slackSend channel: "${env.SLACK_CHANNEL}",
+						color: "warning",
+						sendAsText: true,
+						message: initMessage
+
+					sh 'mkdir -p ${LOG_DIR}'
+
+					build job: "${env.WORKERS_FOLDER}/init", parameters: [
+						string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+						string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
+						string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
+						booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
+					]
+					env.INIT_STAGE_SUCCEEDED = true
 				}
-
-				slackSend channel: "${env.SLACK_CHANNEL}",
-					color: "warning",
-					sendAsText: true,
-					message: initMessage
-
-				sh 'mkdir -p ${LOG_DIR}'
-
-				build job: "${env.WORKERS_FOLDER}/init", parameters: [
-					string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
-					string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
-					string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
-					booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
-				]
 			}
 		}
 		stage('build') {
@@ -51,12 +52,15 @@ pipeline {
 				expression { params.OPERATOR_INTERNAL_BUILD }
 			}
 			steps {
-				build job: "${env.WORKERS_FOLDER}/build", parameters: [
-					string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
-					string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
-					string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
-					booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
-				]
+				script {
+					build job: "${env.WORKERS_FOLDER}/build", parameters: [
+						string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+						string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
+						string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
+						booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
+					]
+					env.BUILD_STAGE_SUCCEEDED = true
+				}
 			}
 		}
 		stage('test') {

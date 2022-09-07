@@ -67,14 +67,16 @@ def anyResultsAvailable() {
 	return env.MINIKUBE_RESULTS_AVAILABLE || env.K3D_RESULTS_AVAILABLE;
 }
 
-def getBrokenWorkersInfo(String k8s_env) {
-	def brokenWorkersPattern = "egrep '^broken\s+: [0-9]+$' ${env.LOG_DIR}/tests-${k8s_env}-*.log | awk '{print $3}'"
-	def brokenWorkersStr = sh (script: brokenWorkersPattern, returnStdout: true).trim()
-	if (!brokenWorkersStr.isInteger()) {
+def getIssuesReport(String k8s_env) {
+	def issuesReportPath = "${env.LOG_DIR}/${k8s_env}-issues.log"
+	def issuesReportExists = fileExists issuesReportPath
+	if (!issuesReportExists) {
 		return ""
 	}
-	def brokenWorkersNum = brokenWorkersStr as Integer
-	return "${brokenWorkersNum} broken ${k8s_env} worker(s), some test results are missing!\n"
+
+	def issuesReport = readFile(file: issuesReportPath)
+	echo issuesReport
+	return issuesReport
 }
 
 def getTestSuiteReport() {
@@ -87,7 +89,7 @@ def getTestSuiteReport() {
 	def reportPattern = "${env.LOG_DIR}/test_suite_report_*.tar.bz2"
 	sh "cat $reportPattern | tar jxvf - -i -C ${env.LOG_DIR} && rm $reportPattern"
 
-	def testSuiteReport = getBrokenWorkersInfo('k3d') + getBrokenWorkersInfo('minikube')
+	def testSuiteReport = getIssuesReport('k3d') + getIssuesReport('minikube')
 
 	def reportPath = "${env.LOG_DIR}/test_suite_report.txt"
 	def reportExists = fileExists reportPath
@@ -155,13 +157,28 @@ def modifyBuildStatus(String status) {
 	}
 }
 
+def getSummaryResult() {
+	if (!env.INIT_STAGE_SUCCEEDED) {
+		return "Init (local registry) stage failed!"
+	}
+
+	if (!env.BUILD_STAGE_SUCCEEDED) {
+		return "Build dev-images stage failed!"
+	}
+
+	if (env.TESTS_STATUS_HEADER && env.TEST_SUITE_REPORT) {
+		return "${env.TESTS_STATUS_HEADER}\n${env.TEST_SUITE_REPORT}"
+	}
+
+	return "Test stage failed!"
+}
+
 def getSummaryMessage(Boolean includeChangeLog) {
 	changeLog = includeChangeLog ? "${env.CHANGE_LOG}\n" : ""
 	return """${env.BUILD_NOTIFICATION_HEADER}
 Status: ${env.BUILD_STATUS}
 Duration: ${env.BUILD_DURATION}
-$changeLog${env.TESTS_STATUS_HEADER}
-${env.TEST_SUITE_REPORT}"""
+$changeLog${getSummaryResult()}"""
 }
 
 return this

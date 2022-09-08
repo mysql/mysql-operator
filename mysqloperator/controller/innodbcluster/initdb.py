@@ -134,6 +134,36 @@ def load_dump(session: 'ClassicSession', cluster: InnoDBCluster, pod: MySQLPod, 
             "ociProfile" : config_profile,
         }
 
+    def clear_oci_config() -> dict:
+        oci_config_file     = f"{os.getenv('MYSQLSH_USER_CONFIG_HOME')}/oci_config"
+        oci_privatekey_file = f"{os.getenv('MYSQLSH_USER_CONFIG_HOME')}/privatekey.pem"
+
+        try:
+            os.remove(oci_config_file)
+            os.remove(oci_privatekey_file)
+        except:
+            pass
+
+    def create_s3_config(s3_credentials: dict) -> dict:
+        configdir = f"{os.getenv('HOME')}/.aws"
+        try:
+            os.mkdir(configdir)
+        except FileExistsError:
+            # ok if directory exists
+            pass
+
+        for filename in s3_credentials:
+            with open(f"{configdir}/{filename}", "w") as file:
+                file.write(s3_credentials[filename])
+
+    def clear_s3_config() -> dict:
+        configdir = f"{os.getenv('HOME')}/.aws"
+        try:
+            os.remove(f"{configdir}/credentials")
+            os.remove(f"{configdir}/config")
+            os.rmdir(configdir)
+        except:
+            pass
 
     logger.info("::load_dump")
     options = init_spec.loadOptions.copy()
@@ -146,6 +176,16 @@ def load_dump(session: 'ClassicSession', cluster: InnoDBCluster, pod: MySQLPod, 
             path = init_spec.storage.ociObjectStorage.prefix
             options["osBucketName"] = init_spec.storage.ociObjectStorage.bucketName
             options.update(create_oci_config(oci_credentials))
+    elif init_spec.storage.s3:
+        s3_credentials = get_secret(init_spec.storage.s3.config, cluster.namespace, logger)
+        if isinstance(s3_credentials, dict):
+            create_s3_config(s3_credentials)
+            path = init_spec.storage.s3.prefix
+            options["s3BucketName"] = init_spec.storage.s3.bucketName
+            options["s3Profile"] = init_spec.storage.s3.profile
+            if init_spec.storage.s3.endpoint:
+                options["s3EndpointOverride"] = init_spec.storage.s3.endpoint
+
     else:
         path = init_spec.path
 
@@ -158,3 +198,11 @@ def load_dump(session: 'ClassicSession', cluster: InnoDBCluster, pod: MySQLPod, 
     except mysqlsh.Error as e:
         logger.error(f"Error loading dump: {e}")
         raise
+
+    try:
+        if init_spec.storage.ociObjectStorage:
+            clear_oci_config()
+        elif init_spec.storage.s3:
+            clear_s3_config()
+    except:
+        pass

@@ -162,7 +162,7 @@ def getSummaryResult() {
 		return "Init (local registry) stage failed!"
 	}
 
-	if (!env.BUILD_STAGE_SUCCEEDED) {
+	if (params.OPERATOR_INTERNAL_BUILD && !env.BUILD_STAGE_SUCCEEDED) {
 		return "Build dev-images stage failed!"
 	}
 

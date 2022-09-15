@@ -29,10 +29,16 @@ if [[ -n ${OPERATOR_K8S_VERSION} ]]; then
 	TEST_OPTIONS="$TEST_OPTIONS --kube-version=$OPERATOR_K8S_VERSION"
 fi
 
-
 if test -z ${WORKERS+x}; then
-	WORKERS=1
+	if [[ $K8S_DRIVER == "minikube" ]]; then
+		WORKERS=3
+	elif [[ $K8S_DRIVER == "k3d" ]]; then
+		WORKERS=4
+	else
+		WORKERS=1
+	fi
 fi
+
 OTE_BUILD_TAG=ote-$JOB_BASE_NAME-build-$BUILD_NUMBER
 
 if test -z ${WORKERS_DEFER+x}; then
@@ -102,10 +108,13 @@ if [[ -n $BROKEN_WORKERS && $BROKEN_WORKERS -gt 0 ]]; then
 fi
 
 # store runtime environment
-RUNTIME_ENV_LOG=${K8S_DRIVER}-runtime-env.log
+RUNTIME_ENV_LOG=${K8S_DRIVER}-runtime-env-$BUILD_NUMBER.log
 ${K8S_DRIVER} version > $RUNTIME_ENV_LOG
 KUBECTL_VERSION=$(kubectl version --client -o json | jq '.clientVersion.gitVersion')
 echo "kubectl: ${KUBECTL_VERSION}" >> $RUNTIME_ENV_LOG
+if [[ -n ${OPERATOR_K8S_VERSION} ]]; then
+	echo "custom k8s version: ${OPERATOR_K8S_VERSION}" >> $RUNTIME_ENV_LOG
+fi
 cat ${RUNTIME_ENV_LOG}
 
 # archive all logs and auxiliary files

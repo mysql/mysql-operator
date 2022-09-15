@@ -1,6 +1,17 @@
 {{- $disable_lookups:= .Values.disableLookups }}
 {{- $cluster_name :=  default "mycluster" .Release.Name }}
 {{- $use_self_signed := default false ((.Values.tls).useSelfSigned) }}
+{{- $minimalVersion := "8.0.27" }}
+{{- $forbiddenVersions := list "8.0.29" }}
+{{- $serverVersion := .Values.serverVersion | default .Chart.AppVersion }}
+{{- if lt $serverVersion $minimalVersion }}
+    {{- $err := printf "It is not possible to use MySQL version %s . Please, use %s or above" $serverVersion $minimalVersion }}
+    {{- fail $err }}
+{{- end }}
+{{- if has $serverVersion $forbiddenVersions }}
+    {{- $err := printf "It is not possible to use MySQL version %s . Please, use %s or above except %v" $serverVersion $minimalVersion $forbiddenVersions }}
+    {{- fail $err }}
+{{- end }}
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
@@ -79,7 +90,7 @@ spec:
     {{- fail "Dump and Clone are mutually exclusive" }}
   {{- end }}
 
-  {{- if and .Values.initDB .Values.initDB.clone }}
+  {{- if (((.Values).initDB).clone) }}
     {{- with .Values.initDB.clone }}
   initDB:
     clone:
@@ -90,9 +101,9 @@ spec:
     {{- end }}
   {{- end }}
 
-  {{- if and .Values.initDB .Values.initDB.dump }}
+  {{- if (((.Values).initDB).dump) }}
     {{- with .Values.initDB.dump }}
-      {{- if and .name (or .ociObjectStorage .persistentVolumeClaim) }}
+      {{- if and .name (or .ociObjectStorage .persistentVolumeClaim .options) }}
   initDB:
     dump:
         {{- if .name }}
@@ -100,6 +111,9 @@ spec:
         {{- end }}
         {{- if .path }}
       path: {{ .path }}
+        {{- end }}
+        {{- if .options }}
+      options: {{ toYaml .options | nindent 8 }}
         {{- end }}
       storage:
         {{- if .ociObjectStorage }}
@@ -109,8 +123,7 @@ spec:
           credentials: {{ required "initDB.dump.ociObjectStorage.credentials is required" .ociObjectStorage.credentials }}
         {{- end }}
         {{- if .persistentVolumeClaim }}
-        persistentVolumeClaim:
-          {{- toYaml .persistentVolumeClaim | nindent 10}}
+        persistentVolumeClaim: {{ toYaml .persistentVolumeClaim | nindent 10}}
         {{- end }}
       {{- end }}
     {{- end }}
@@ -203,6 +216,5 @@ spec:
 {{- end }}
 
 {{ if ((.Values).podSpec) }}
-  podSpec:
-{{ toYaml ((.Values).podSpec) | indent 4 }}
+  podSpec: {{ toYaml ((.Values).podSpec) | nindent 4 }}
 {{ end }}

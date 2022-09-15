@@ -26,14 +26,11 @@ echo "GIT_PREVIOUS_SUCCESSFUL_COMMIT: ${GIT_PREVIOUS_SUCCESSFUL_COMMIT}"
 BRANCH_SHORT_NAME=${GIT_BRANCH#"origin/"}
 
 case "${BRANCH_SHORT_NAME}" in
-trunk)
+dev|trunk)
 	# skip, should be triggered by concourse
 	;;
 itch)
 	PIPELINE_NAME="itch"
-	;;
-dev)
-	PIPELINE_NAME="dev"
 	;;
 qa)
 	PIPELINE_NAME="qa"

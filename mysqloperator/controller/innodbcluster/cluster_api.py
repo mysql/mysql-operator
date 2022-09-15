@@ -344,16 +344,10 @@ class InnoDBClusterSpec:
         # validate version
         if self.version:
             # note: format of the version string is defined in the CRD
-            version = utils.version_to_int(self.version)
-            min_version = utils.version_to_int(
-                config.MIN_SUPPORTED_MYSQL_VERSION)
-            max_version = utils.version_to_int(
-                config.MAX_SUPPORTED_MYSQL_VERSION)
-            if not max_version >= version >= min_version:
-                raise ApiSpecError(
-                    f"spec.version is {self.version} but must be between "
-                    f"{config.MIN_SUPPORTED_MYSQL_VERSION} and "
-                    f"{config.MAX_SUPPORTED_MYSQL_VERSION}")
+            [valid_version, version_error] = utils.version_in_range(self.version)
+
+            if not valid_version:
+                raise ApiSpecError(version_error)
 
     def format_image(self, image, version):
         if self.imageRepository:

@@ -56,10 +56,26 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
 
     cluster = InnoDBCluster(body)
 
+    # TODO: If we set the status here it will be emptied for unknown reasons later
+    #       and hide other later set status (i.e. when using an invalid spec.version)
+    #
+    #cluster.set_status({
+    #    "cluster": {
+    #        "status":  diagnose.ClusterDiagStatus.INITIALIZING.value,
+    #        "onlineInstances": 0,
+    #        "lastProbeTime": utils.isotime()
+    #    }})
+
     try:
         cluster.parse_spec()
         cluster.parsed_spec.validate(logger)
     except ApiSpecError as e:
+        cluster.set_status({
+            "cluster": {
+                "status":  diagnose.ClusterDiagStatus.INVALID.value,
+                "onlineInstances": 0,
+                "lastProbeTime": utils.isotime()
+            }})
         cluster.error(action="CreateCluster",
                       reason="InvalidArgument", message=str(e))
         raise kopf.TemporaryError(f"Error in InnoDBCluster spec: {e}")
@@ -156,12 +172,18 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
 
             print("10. Router Deployment")
             if not ignore_404(cluster.get_router_deployment):
-                print("\tPreparing...")
                 if icspec.router.instances > 0:
+                    print("\tPreparing...")
+                    # This will create the deployment but 0 instances. When the cluster is created (first
+                    # instance joins it) the instance count will be set to icspec.router.instances
                     router_deployment = router_objects.prepare_router_deployment(cluster, init_only=True)
-                    print(f"\tCreating...{router_deployment}")
+                    print("\tCreating...")
                     kopf.adopt(router_deployment)
                     api_apps.create_namespaced_deployment(namespace=namespace, body=router_deployment)
+                else:
+                    # If the user decides to set !0 routers, the routine that handles that that
+                    # will create the deployment
+                    print("\tRouter count is 0. No Deployment is created.")
 
             print("11. Backup Secrets")
             if not ignore_404(cluster.get_backup_account):
@@ -604,34 +626,18 @@ def on_pod_delete(body: Body, logger: Logger, **kwargs):
 
         logger.error(f"Owner cluster for {pod.name} does not exist anymore")
 
-
-@kopf.on.create("", "v1", "secrets") # type: ignore
-@kopf.on.update("", "v1", "secrets") # type: ignore
-def on_secret_create(name: str, namespace: str, logger: Logger, **kwargs):
-    """
-    Wait for Secret objects used by clusters for TLS CA and certificate.
-    Two scenarios are handled:
-    - cluster does not use custom certificates and they get enabled
-    - cluster already uses custom certificates and they're being updated
-
-    Pods mount the secret objects directly so they're always directly
-    accessible to MySQL/Router.
-
-    For MySQL, in both cases, an ALTER INSTANCE RELOAD TLS is invoked to reload
-    the certificates.
-
-    For the Router, the Router needs to be restarted for the new certificate to
-    become active.
-    """
-    clusters = get_all_clusters(namespace)
-
-    # check for any clusters that reference this secret
-    for cluster in clusters:
-        if cluster.parsed_spec.tlsCASecretName == name:
-            logger.info("operator: TLS CA was changed")
-            ic = ClusterController(cluster)
-            ic.on_router_tls_changed()
-        elif cluster.parsed_spec.router.tlsSecretName == name:
-            logger.info("operator: TLS KEY/CERT was changed")
-            ic = ClusterController(cluster)
-            ic.on_router_tls_changed()
+# An example of a `when` hook for finding secrets belonging to a IC
+#
+#def secret_belongs_to_a_cluster_checker(meta, namespace:str, name, logger: Logger, **_) -> bool:
+#    clusters = get_all_clusters(namespace)
+#    for cluster in clusters:
+#        if name in (cluster.parsed_spec.tlsCASecretName,
+#                    cluster.parsed_spec.tlsSecretName,
+#                    cluster.parsed_spec.router.tlsSecretName):
+#            return True
+#    return False
+#
+# Use like the following
+#@kopf.on.create("", "v1", "secrets", when=secret_belongs_to_a_cluster_checker) # type: ignore
+#@kopf.on.update("", "v1", "secrets", when=secret_belongs_to_a_cluster_checker) # type: ignore
+#

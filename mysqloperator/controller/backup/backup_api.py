@@ -39,7 +39,7 @@ class DumpInstance:
         self.storage.add_to_pod_spec(pod_spec, container_name)
 
     def parse(self, spec: dict, prefix: str) -> None:
-        self.options = dget_dict(spec, "dumpOptions", prefix, {})
+        self.dumpOptions = dget_dict(spec, "dumpOptions", prefix, {})
 
         storage = dget_dict(spec, "storage", prefix)
         self.storage = StorageSpec()

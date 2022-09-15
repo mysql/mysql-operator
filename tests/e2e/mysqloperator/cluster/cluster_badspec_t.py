@@ -297,7 +297,7 @@ spec:
         # there should be an event for the cluster resource indicating the
         # problem
         self.assertGotClusterEvent(
-            "mycluster", type="Error", reason="InvalidArgument", msg="spec.version is 5.7.30 but must be between .*")
+            "mycluster", type="Error", reason="InvalidArgument", msg="version 5.7.30 must be between .*")
 
         # deleting the ic should work despite the error
         kutil.delete_ic(self.ns, "mycluster")
@@ -487,69 +487,37 @@ spec:
 
     def test_1_bad_upgrade(self):
         """
-        Check invalid spec change that would cause a rolling restart by setting
-        an invalid version.
+        Change spec with invalid version, it should be ignored but notified in events.
         """
+        ic_ev_num = len(kutil.get_ic_ev(self.ns, "mycluster"))
+
         kutil.patch_ic(self.ns, "mycluster", {"spec": {
             "version": "8.8.8"
         }}, type="merge")
 
-        # Wait for mycluster-2 to fail upgrading
-        def check(pod):
-            clusterStatus = pod[0]["STATUS"]
-            print(clusterStatus)
-            return clusterStatus in ("Init:ErrImageNeverPull", "Init:ErrImagePull", "Init:ImagePullBackOff")
-
-        self.wait(kutil.ls_pod, (self.ns, "mycluster-2"), check, delay=10, timeout=100)
-
-        # check status of the cluster
-        self.wait_ic("mycluster", ["ONLINE_PARTIAL"], 2)
-
-        # revert the version
-        kutil.patch_ic(self.ns, "mycluster", {"spec": {
-            "version": g_ts_cfg.server_version_tag
-        }}, type="merge")
-
-        # delete the pod in error state so it can recover
-        kutil.delete_po(self.ns, "mycluster-2")
-
-        # Wait for mycluster-2 to recover
+        # ensure cluster is still healthy
+        self.wait_pod("mycluster-0", "Running")
+        self.wait_pod("mycluster-1", "Running")
         self.wait_pod("mycluster-2", "Running")
 
-        self.wait_ic("mycluster", ["ONLINE"], 3)
+        self.wait_ic("mycluster", "ONLINE", 3)
 
-    def test_2_bad_change_recover(self):
-        """
-        Checks that using a bad spec that fails at the pod (once the ic is created) can be recovered.
-        """
-        kutil.patch_ic(self.ns, "mycluster", {"spec": {
-            "imageRepository": "invalid"
-        }}, type="merge")
+        # ensure new events arrived
+        self.wait(kutil.get_ic_ev, (self.ns, "mycluster"),
+                  lambda evs: len(evs) > ic_ev_num)
 
-        # Wait for mycluster-2 to fail upgrading
-        def check(pod):
-            clusterStatus = pod[0]["STATUS"]
-            print(clusterStatus)
-            return clusterStatus in ("Init:ErrImageNeverPull", "Init:ErrImagePull", "Init:ImagePullBackOff")
+        # there should be events for the cluster resource indicating the update problem
+        self.assertGotClusterEvent(
+            "mycluster", type="Normal", reason="Logging", msg=rf"Propagating spec.version=8.8.8 for {self.ns}/mycluster \(was None\)")
+        self.assertGotClusterEvent(
+            "mycluster", type="Error", reason="Logging", msg="Handler 'on_innodbcluster_field_version/spec.version' failed permanently: version 8.8.8 must be between .*")
+        self.assertGotClusterEvent(
+            "mycluster", type="Normal", reason="Logging", msg="Updating is processed: 0 succeeded; 1 failed.")
 
-        self.wait(kutil.ls_pod, (self.ns, "mycluster-2"), check, delay=10, timeout=100)
-
-        # check status of the cluster
-        self.wait_ic("mycluster", ["ONLINE_PARTIAL"], 2)
-
-        # revert the version
-        kutil.patch_ic(self.ns, "mycluster", {"spec": {
-            "imageRepository": g_ts_cfg.get_image_registry_repository()
-        }}, type="merge")
-
-        # delete the pod in error state so it can recover
-        kutil.delete_po(self.ns, "mycluster-2")
-
-        # Wait for mycluster-2 to recover
-        self.wait_pod("mycluster-2", "Running")
-
-        self.wait_ic("mycluster", ["ONLINE"], 3)
-
+        # version is invalid/not supported, runtime check should prevent the
+        # sts from being created
+        self.assertTrue(kutil.ls_po(self.ns))
+        self.assertTrue(kutil.ls_sts(self.ns))
 
     def test_9_destroy(self):
         kutil.delete_ic(self.ns, "mycluster", 180)

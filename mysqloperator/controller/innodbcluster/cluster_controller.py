@@ -212,9 +212,9 @@ class ClusterController:
                     self.cluster.update_cluster_info({
                         "initialDataSource": f"dump={self.cluster.parsed_spec.initDB.dump.storage.ociObjectStorage.bucketName}",
                     })
-                elif self.cluster.parse_spec.initDB.dump.storage.persistentVolumeClaim:
+                elif self.cluster.parsed_spec.initDB.dump.storage.persistentVolumeClaim:
                     self.cluster.update_cluster_info({
-                        "initialDataSource": f"dump={self.cluster.parsed_spec.initDB.dump.storage.ociObjectStorage.bucketName}",
+                        "initialDataSource": f"dump={self.cluster.parsed_spec.initDB.dump.storage.persistentVolumeClaim}",
                     })
                     # A : How to import from a dump?
                 else:
@@ -767,5 +767,8 @@ class ClusterController:
         return self.on_upgrade(version = version)
 
     def on_upgrade(self, version: str) -> None:
-        # TODO check if version change is valid
-        pass
+        # TODO change status as needed - especially on version error, but make sure we recover
+        [version_valid, version_error] = utils.version_in_range(version)
+        if not version_valid:
+            raise kopf.PermanentError(version_error)
+

@@ -6,7 +6,7 @@
 # generic script intended for building dev images
 set -vx
 
-source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh
+source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || return
 
 OPERATOR_BASE_VERSION_TAG=$(grep -m 1 OPERATOR_TEST_VERSION_TAG $WORKSPACE/tests/setup/defaults.py \
 	| sed 's/[[:blank:]]*"OPERATOR_TEST_VERSION_TAG", default="\([0-9.-]*\)")/\1/')

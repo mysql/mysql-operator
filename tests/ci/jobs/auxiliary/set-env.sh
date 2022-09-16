@@ -26,8 +26,8 @@ LOCAL_REGISTRY_OPERATOR_IMAGE=$LOCAL_REGISTRY_ADDRESS/$LOCAL_REPOSITORY_NAME/mys
 LOCAL_REGISTRY_ENTERPRISE_OPERATOR_IMAGE=$LOCAL_REGISTRY_ADDRESS/$LOCAL_REPOSITORY_NAME/enterprise-operator:$OPERATOR_TEST_VERSION_TAG
 
 # OCI config
-if ! test -d ${CREDENTIALS_DIR}; then
-	echo "credentials directory ${CREDENTIALS_DIR} doesn't exist"
+if ! test -d "${CREDENTIALS_DIR}"; then
+	echo "credentials directory '${CREDENTIALS_DIR}' doesn't exist"
 	exit 1
 fi
 export OPERATOR_TEST_OCI_CONFIG_PATH=${CREDENTIALS_DIR}/config

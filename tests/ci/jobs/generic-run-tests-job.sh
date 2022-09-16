@@ -10,7 +10,7 @@ export http_proxy=$HTTP_PROXY
 export https_proxy=$HTTPS_PROXY
 export no_proxy=$NO_PROXY
 
-source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh
+source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || return
 
 # set our temporary kubeconfig, because the default one may contain unrelated data that could fail the build
 TMP_KUBE_CONFIG="$WORKSPACE/tmpkubeconfig.$K8S_DRIVER"
@@ -50,7 +50,7 @@ if test -z ${WORKERS_DEFER+x}; then
 fi
 
 LOG_DIR=$WORKSPACE/build-$BUILD_NUMBER
-if test -d ${LOG_DIR}; then
+if test -d "${LOG_DIR}"; then
 	rm -rfd $LOG_DIR
 fi
 mkdir -p $LOG_DIR

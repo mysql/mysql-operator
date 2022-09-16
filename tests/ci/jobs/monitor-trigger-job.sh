@@ -9,7 +9,7 @@
 # but it shall change in the future, hopefully
 set -vx
 
-source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh
+source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || return
 
 echo "GIT_COMMIT: ${GIT_COMMIT}"
 echo "GIT_COMMITTER_NAME: ${GIT_COMMITTER_NAME}"

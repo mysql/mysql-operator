@@ -6,10 +6,10 @@
 # pulls test results for a specified job, then prepares a summary that will be sent in a slack notification
 set -vx
 
-source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh
+source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || return
 
 LOG_DIR=$WORKSPACE/build-$BUILD_NUMBER
-if test -d ${LOG_DIR}; then
+if test -d "${LOG_DIR}"; then
 	rm -rfd $LOG_DIR
 fi
 mkdir -p $LOG_DIR

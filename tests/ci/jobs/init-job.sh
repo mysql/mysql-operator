@@ -6,7 +6,7 @@
 # init script executed before running tests, it purges old items and charges the local registry with necessary images
 set -vx
 
-source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh
+source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || return
 
 # purge dangling items
 $CI_DIR/cleanup/purge.sh

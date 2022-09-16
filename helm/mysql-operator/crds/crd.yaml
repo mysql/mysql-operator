@@ -111,7 +111,7 @@ spec:
                           description: "Name of the dump. Not used by the operator, but a descriptive hint for the cluster administrator"
                         path:
                           type: string
-                          description: "Path to the dump in the PVC. Use when specifying persistentVolumeClaim. Omit for ociObjectStorage."
+                          description: "Path to the dump in the PVC. Use when specifying persistentVolumeClaim. Omit for ociObjectStorage or S3."
                         storage:
                           type: object
                           properties:
@@ -128,6 +128,26 @@ spec:
                                 credentials:
                                   type: string
                                   description: "Secret name with data for accessing the bucket"
+                            s3:
+                              type: object
+                              required: ["bucketName", "prefix", "config"]
+                              properties:
+                                bucketName:
+                                  type: string
+                                  description: "Name of the bucket where the dump is stored"
+                                prefix:
+                                  type: string
+                                  description: "Path in the bucket where the dump files are stored"
+                                config:
+                                  type: string
+                                  description: "Secret name with S3 configuration and credentials"
+                                profile:
+                                  type: string
+                                  default: ""
+                                  description: "Profile being used in configuration files"
+                                endpoint:
+                                  type: string
+                                  description: "Override endpoint URL"
                             persistentVolumeClaim:
                               type: object
                               description : "Specification of the PVC to be used. Used 'as is' in the cloning pod."

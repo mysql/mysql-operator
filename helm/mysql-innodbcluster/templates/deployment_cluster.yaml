@@ -153,7 +153,9 @@ spec:
         {{- else if hasKey $backupProfile.storage "ociObjectStorage" }}
       storage:
         ociObjectStorage:
-          prefix: {{ required "prefix is required" $backupProfile.storage.ociObjectStorage.prefix }}
+        {{- if $backupProfile.storage.ociObjectStorage.prefix }}
+          prefix: {{ $backupProfile.storage.ociObjectStorage.prefix }}
+        {{- end }}
           bucketName: {{ required "bucketName is required"  $backupProfile.storage.ociObjectStorage.bucketName }}
           credentials: {{ required "credentials is required"  $backupProfile.storage.ociObjectStorage.credentials }}
         {{- else if hasKey $backupProfile.storage "persistentVolumeClaim" }}
@@ -196,7 +198,9 @@ spec:
         {{- else if hasKey $backupProfile.storage "ociObjectStorage" }}
         storage:
           ociObjectStorage:
-            prefix: {{ required "prefix is required" $backupProfile.storage.ociObjectStorage.prefix }}
+          {{- if $backupProfile.storage.ociObjectStorage.prefix }}
+            prefix: {{ $backupProfile.storage.ociObjectStorage.prefix }}
+          {{- end }}
             bucketName: {{ required "bucketName is required"  $backupProfile.storage.ociObjectStorage.bucketName }}
             credentials: {{ required "credentials is required"  $backupProfile.storage.ociObjectStorage.credentials }}
         {{- else if hasKey $backupProfile.storage "persistentVolumeClaim" }}

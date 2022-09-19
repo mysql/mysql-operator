@@ -85,7 +85,7 @@ pipeline {
 						}
 						cleanup {
 							script {
-								if (utils.addTestResults("minikube")) {
+								if (utils.addTestResults("minikube", 1)) {
 									env.MINIKUBE_RESULTS_AVAILABLE = true
 								} else {
 									env.SOME_MINIKUBE_RESULTS_UNAVAILABLE = true
@@ -122,7 +122,7 @@ pipeline {
 						}
 						cleanup {
 							script {
-								if (utils.addTestResults("k3d")) {
+								if (utils.addTestResults("k3d", 1)) {
 									env.K3D_RESULTS_AVAILABLE = true
 								} else {
 									env.SOME_K3D_RESULTS_UNAVAILABLE = true

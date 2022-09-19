@@ -39,7 +39,8 @@ if test -z ${WORKERS+x}; then
 	fi
 fi
 
-OTE_BUILD_TAG=ote-$JOB_BASE_NAME-build-$BUILD_NUMBER
+OTE_LOG_PREFIX=$K8S_DRIVER-build-$BUILD_NUMBER
+OTE_BUILD_TAG=ote-$OTE_LOG_PREFIX
 
 if test -z ${WORKERS_DEFER+x}; then
 	if test "$K8S_DRIVER" == "minikube"; then
@@ -55,11 +56,11 @@ if test -d "${LOG_DIR}"; then
 fi
 mkdir -p $LOG_DIR
 
-TESTS_LOG=$LOG_DIR/tests-$JOB_BASE_NAME-$BUILD_NUMBER.log
+TESTS_LOG=$LOG_DIR/$OTE_LOG_PREFIX-all.log
 
 XML_DIR=$LOG_DIR/xml
 
-TESTS_XML=$XML_DIR/$K8S_DRIVER-tests-$BUILD_NUMBER.xml
+TESTS_XML=$XML_DIR/$OTE_LOG_PREFIX-tests.xml
 SINGLE_WORKER_OPTIONS="--xml=${TESTS_XML} --cluster=$OTE_BUILD_TAG"
 
 
@@ -102,13 +103,13 @@ BROKEN_WORKERS=$(egrep '^broken\s+: [0-9]+$' ${TESTS_LOG} | awk '{print $3}')
 if [[ -n $BROKEN_WORKERS && $BROKEN_WORKERS -gt 0 ]]; then
 	ALL_WORKERS=$(egrep '^all\s+: [0-9]+$' ${TESTS_LOG} | awk '{print $3}')
 	BROKEN_WORKERS_MSG="${K8S_DRIVER}: ${BROKEN_WORKERS} out of ${ALL_WORKERS} worker(s) have broken, some test results are missing!"
-	ISSUES_LOG=$LOG_DIR/${K8S_DRIVER}-issues.log
+	ISSUES_LOG=$LOG_DIR/${OTE_LOG_PREFIX}-issues.log
 	echo ${BROKEN_WORKERS_MSG} > ${ISSUES_LOG}
 	cat ${ISSUES_LOG}
 fi
 
 # store runtime environment
-RUNTIME_ENV_LOG=${K8S_DRIVER}-runtime-env-$BUILD_NUMBER.log
+RUNTIME_ENV_LOG=${OTE_LOG_PREFIX}-runtime-env.log
 ${K8S_DRIVER} version > $RUNTIME_ENV_LOG
 KUBECTL_VERSION=$(kubectl version --client -o json | jq '.clientVersion.gitVersion')
 echo "kubectl: ${KUBECTL_VERSION}" >> $RUNTIME_ENV_LOG
@@ -118,7 +119,7 @@ fi
 cat ${RUNTIME_ENV_LOG}
 
 # archive all logs and auxiliary files
-tar cvjf ../result-$JOB_BASE_NAME-$BUILD_NUMBER.tar.bz2 *
+tar cvjf ../$OTE_LOG_PREFIX-result.tar.bz2 *
 df -lh | grep /sd
 
 exit $TESTS_RESULT

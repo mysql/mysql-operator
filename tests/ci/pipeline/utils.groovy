@@ -20,7 +20,7 @@ def initEnv() {
 	env.BUILD_TRIGGERED_BY = "${params.OPERATOR_INTERNAL_BUILD ? 'internal' : 'concourse'}"
 	env.LOG_SUBDIR = "build-${BUILD_NUMBER}"
 	env.LOG_DIR = "${WORKSPACE}/${LOG_SUBDIR}"
-	env.ARTIFACT_FILENAME = "result-${JOB_BASE_NAME}-${BUILD_NUMBER}.tar.bz2"
+	env.ARTIFACT_FILENAME = "${JOB_BASE_NAME}-${BUILD_NUMBER}-result.tar.bz2"
 	env.ARTIFACT_PATH = "${WORKSPACE}/${ARTIFACT_FILENAME}"
 
 	env.SLACK_CHANNEL = "${isCIExperimentalBuild() ? '#mysql-operator-ci' : '#mysql-operator-dev'}"
@@ -45,22 +45,23 @@ ${env.GIT_COMMIT} [hash: ${env.GIT_COMMIT_SHORT}]
 ${env.GIT_COMMIT_SUBJECT}"""
 }
 
-def addTestResults(String k8s_env) {
+def addTestResults(String k8s_env, int expectedResultsCount) {
 	sh "ls ${env.LOG_DIR}"
-	def testResults = findFiles glob: "**/${env.LOG_SUBDIR}/result-$k8s_env-*.tar.bz2"
+	def testResultsPattern = "$k8s_env-*-result.tar.bz2"
+	def testResults = findFiles glob: "**/${env.LOG_SUBDIR}/$testResultsPattern"
 	if (testResults.length == 0) {
 		return false
 	}
 
-	def resultPattern = "${env.LOG_DIR}/result-$k8s_env-*.tar.bz2"
+	def resultPattern = "${env.LOG_DIR}/$testResultsPattern"
 	sh "cat $resultPattern | tar jxvf - -i -C ${env.LOG_DIR} && rm $resultPattern"
 
 	// uncomment during Jenkins refactorings when some jobs are intentionally skipped
 	// sh "touch ${LOG_DIR}/xml/*.xml"
 
-	def summary = junit allowEmptyResults: true, testResults: "${env.LOG_SUBDIR}/xml/$k8s_env-*.xml"
+	def summary = junit allowEmptyResults: true, testResults: "${env.LOG_SUBDIR}/xml/*$k8s_env-*.xml"
 	echo "${summary.totalCount} tests, ${summary.passCount} passed, ${summary.failCount} failed, ${summary.skipCount} skipped"
-	return summary.totalCount > 0
+	return (summary.totalCount > 0) && (testResults.length == expectedResultsCount)
 }
 
 def anyResultsAvailable() {
@@ -68,25 +69,26 @@ def anyResultsAvailable() {
 }
 
 def getIssuesReport(String k8s_env) {
-	def issuesReportPath = "${env.LOG_DIR}/${k8s_env}-issues.log"
-	def issuesReportExists = fileExists issuesReportPath
-	if (!issuesReportExists) {
+	def issuesReportPattern = "${k8s_env}-*-issues.log"
+	def issuesReports = findFiles glob: "**/${env.LOG_SUBDIR}/$issuesReportPattern"
+	if (issuesReports.length == 0) {
 		return ""
 	}
 
-	def issuesReport = readFile(file: issuesReportPath)
-	echo issuesReport
-	return issuesReport
+	issuesReportSummary = sh (script: "cat ${env.LOG_DIR}/$issuesReportPattern", returnStdout: true).trim()
+	echo issuesReportSummary
+	return issuesReportSummary
 }
 
 def getTestSuiteReport() {
 	sh "ls ${env.LOG_DIR}"
-	def testSuiteReportFiles = findFiles glob: "**/${env.LOG_SUBDIR}/test_suite_report_*.tar.bz2"
+	def testSuiteReportPattern = 'test_suite_report_*.tar.bz2'
+	def testSuiteReportFiles = findFiles glob: "**/${env.LOG_SUBDIR}/$testSuiteReportPattern"
 	if (testSuiteReportFiles.length == 0) {
 		return ""
 	}
 
-	def reportPattern = "${env.LOG_DIR}/test_suite_report_*.tar.bz2"
+	def reportPattern = "${env.LOG_DIR}/$testSuiteReportPattern"
 	sh "cat $reportPattern | tar jxvf - -i -C ${env.LOG_DIR} && rm $reportPattern"
 
 	def testSuiteReport = getIssuesReport('k3d') + getIssuesReport('minikube')

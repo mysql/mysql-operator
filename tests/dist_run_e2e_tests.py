@@ -113,7 +113,7 @@ class DistTestSuiteRunner:
 	def prepare_work_dir(self):
 		# if work dir is not explicitly pointed out, then prepare a tmp dir
 		if not self.work_dir:
-			work_dir_prefix = f"{self.tag}-{self.env_name}-"
+			work_dir_prefix = f"{self.tag}-env-{self.env_name}-"
 			self.work_dir = tempfile.mkdtemp(prefix=work_dir_prefix)
 		self.ensure_dir_exists(self.work_dir)
 
@@ -135,7 +135,7 @@ class DistTestSuiteRunner:
 		return f"{prefix}{self.tag}-{worker_index}"
 
 	def get_worker_path(self, subdir, filename):
-		return os.path.join(self.work_dir, subdir, f"{self.env_name}-{filename}")
+		return os.path.join(self.work_dir, subdir, f"{self.tag}-{filename}")
 
 	def get_worker_portion_path(self, worker_index):
 		return self.get_worker_path(self.workers_subdir, f"suite-{worker_index}.txt")

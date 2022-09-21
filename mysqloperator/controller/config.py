@@ -5,6 +5,7 @@
 
 
 from mysqloperator.controller.api_utils import Edition, ImagePullPolicy
+from .kubeutils import k8s_version
 import os
 
 debug = False
@@ -64,6 +65,7 @@ BACKUP_USER_NAME = "mysqlbackup"
 
 
 def log_config_banner(logger) -> None:
+    logger.info(f"KUBERNETES_VERSION ={k8s_version()}")
     logger.info(f"OPERATOR_VERSION   ={OPERATOR_VERSION}")
     logger.info(f"OPERATOR_EDITION   ={OPERATOR_EDITION.value}")
     logger.info(f"OPERATOR_EDITIONS  ={list(OPERATOR_EDITION_NAME_TO_ENUM)}")

@@ -71,7 +71,7 @@ data:
 
 def prepare_cluster_pod_disruption_budget(spec: InnoDBClusterSpec) -> dict:
     tmpl = f"""
-apiVersion: policy/v1beta1
+apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: {spec.name}-pdb

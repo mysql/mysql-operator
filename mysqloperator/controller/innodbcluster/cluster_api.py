@@ -663,9 +663,9 @@ class InnoDBCluster(K8sInterfaceObject):
 
     # As of K8s 1.21 this is no more beta.
     # Thus, eventually this needs to be upgraded to V1PodDisruptionBudget and api_policy to PolicyV1Api
-    def get_disruption_budget(self) -> typing.Optional[api_client.V1beta1PodDisruptionBudget]:
+    def get_disruption_budget(self) -> typing.Optional[api_client.V1PodDisruptionBudget]:
         try:
-            return cast(api_client.V1beta1PodDisruptionBudget,
+            return cast(api_client.V1PodDisruptionBudget,
                         api_policy.read_namespaced_pod_disruption_budget(self.name + "-pdb", self.namespace))
         except ApiException as e:
             if e.status == 404:
@@ -700,9 +700,9 @@ class InnoDBCluster(K8sInterfaceObject):
             raise
 
     def get_cron_job(self, schedule_name: str) -> typing.Callable:
-        def get_cron_job_inner() -> typing.Optional[api_client.V1beta1CronJob]:
+        def get_cron_job_inner() -> typing.Optional[api_client.V1CronJob]:
             try:
-                return cast(api_client.V1beta1CronJob,
+                return cast(api_client.V1CronJob,
                             api_cron_job.read_namespaced_cron_job(schedule_name, self.namespace))
             except ApiException as e:
                 if e.status == 404:

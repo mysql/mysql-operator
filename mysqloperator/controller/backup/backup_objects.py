@@ -164,7 +164,7 @@ def patch_cron_template_for_backup_schedule(base: dict, cluster_name: str, sched
 
 def get_cron_job_template(spec: InnoDBClusterSpec) -> dict:
     tmpl = f"""
-apiVersion: batch/v1beta1
+apiVersion: batch/v1
 kind: CronJob
 metadata:
   labels:

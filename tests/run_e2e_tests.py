@@ -198,6 +198,8 @@ if __name__ == '__main__':
             g_ts_cfg.oci_config_path=arg.partition("=")[-1]
         elif arg.startswith("--oci-bucket="):
             g_ts_cfg.oci_bucket_name=arg.partition("=")[-1]
+        elif arg.startswith("--vault-cfg="):
+            g_ts_cfg.vault_cfg_path=arg.partition("=")[-1]
         elif arg.startswith("--suite="):
             opt_suite_path = arg.partition("=")[-1]
         elif arg.startswith("--xml="):

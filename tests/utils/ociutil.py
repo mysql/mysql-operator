@@ -60,4 +60,21 @@ def list_objects(profile, bucket_name, prefix = None):
 
     return result["data"]
 
+def delete_vault_secret_by_id(profile, secret_ocid):
+    args = ['--secret-id', secret_ocid]
+    return ocicli(profile, 'vault', subcmd=['secret', 'schedule-secret-deletion'], args=args)
 
+def delete_vault_secret_by_name(profile, compartment_id, vault_id, secret_name):
+    args = ['--compartment-id', compartment_id, '--vault-id', vault_id]
+    result = ocicli(profile, 'vault', subcmd=['secret', 'list'], args=args)
+    vault_secrets = json.loads(result.stdout)
+    for vault_secret in vault_secrets["data"]:
+        if "freeform-tags" not in vault_secret:
+            continue
+        secret_freeform_tags = vault_secret["freeform-tags"]
+        if "name_id" not in secret_freeform_tags:
+            continue
+        vault_secret_name = secret_freeform_tags["name_id"]
+        if vault_secret_name == secret_name:
+            secret_id = vault_secret["id"]
+            delete_vault_secret_by_id(profile, secret_id)

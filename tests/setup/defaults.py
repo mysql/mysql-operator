@@ -61,6 +61,9 @@ OCI_CONFIG_PATH = os.getenv(
 OCI_BUCKET_NAME = os.getenv(
     "OPERATOR_TEST_OCI_BUCKET", default=None)
 
+OCI_VAULT_CONFIG_PATH = os.getenv(
+    "OPERATOR_TEST_VAULT_CONFIG_PATH", default=None)
+
 
 # k8s
 K8S_CLUSTER_NAME = os.getenv(

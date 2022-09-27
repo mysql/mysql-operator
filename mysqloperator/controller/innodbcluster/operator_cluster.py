@@ -89,11 +89,25 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             if e.status == 404:
                 return None
             raise
+
     #print(f"Default operator IC edition: {config.MYSQL_OPERATOR_DEFAULT_IC_EDITION} Edition")
     cluster.log_cluster_info(logger)
 
     if not cluster.ready:
         try:
+            print("0.Configuration ConfigMaps")
+            for cm in cluster_objects.prepare_config_configmaps(cluster, logger):
+                if not cluster.get_configmap(cm['metadata']['name']):
+                    print(f"\tCreating...{cm}")
+                    kopf.adopt(cm)
+                    api_core.create_namespaced_config_map(namespace, cm)
+
+            for secret in cluster_objects.prepare_config_secrets(cluster, logger):
+                if not cluster.get_secret(secret['metadata']['name']):
+                    print(f"\tCreating...{secret}")
+                    kopf.adopt(secret)
+                    api_core.create_namespaced_secret(namespace, secret)
+
             print("1. Initial Configuration ConfigMap and Container Probes")
             if not ignore_404(cluster.get_initconf):
                 print("\tPreparing...")

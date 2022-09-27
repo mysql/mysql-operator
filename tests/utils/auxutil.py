@@ -5,7 +5,9 @@
 
 import base64
 import datetime
+import random
 import socket
+import string
 from urllib.parse import urlparse
 from ipaddress import IPv4Address
 
@@ -111,3 +113,6 @@ def purge_warnings(message):
         if 'WARNING' not in line.upper():
             result.append(line)
     return '\n'.join(result)
+
+def random_string(len):
+    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=len))

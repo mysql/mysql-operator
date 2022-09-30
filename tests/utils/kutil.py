@@ -821,6 +821,13 @@ def create_ssl_cert_secret(ns, name, cert_path, key_path):
     kubectl("create", "secret", options)
 
 
+def create_generic_secret(ns, name, key_path, local_key_path):
+    options = [ "generic", name, "-n", ns]
+    options.append(f"--from-file={key_path}={local_key_path}")
+
+    kubectl("create", "secret", options)
+
+
 def create_user_secrets(ns, name, root_user=None, root_host=None, root_pass=None, extra_keys=[]):
     data = []
     if root_user is not None:

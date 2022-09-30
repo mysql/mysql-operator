@@ -57,6 +57,16 @@ def execute_dump_instance(backup_source, profile, backupdir, backup_name, logger
                 profile.storage.ociObjectStorage.prefix, backup_name)
         else:
             output = backup_name
+    elif profile.storage.s3:
+        options["s3BucketName"] = profile.storage.s3.bucketName
+        options["s3Profile"] = profile.storage.s3.profile
+        if profile.storage.s3.endpoint:
+            options["s3EndpointOverride"] = profile.storage.s3.endpoint
+        if profile.storage.s3.prefix:
+            output = os.path.join(
+                profile.storage.s3.prefix, backup_name)
+        else:
+            output = backup_name
     else:
         output = os.path.join(backupdir, backup_name)
 
@@ -87,6 +97,12 @@ def execute_dump_instance(backup_source, profile, backupdir, backup_name, logger
             "source": f"{backup_source['user']}@{backup_source['host']}:{backup_source['port']}",
             "bucket": profile.storage.ociObjectStorage.bucketName,
             "ociTenancy": tenancy
+        }
+    elif profile.storage.s3:
+        info = {
+            "method": "dump-instance/s3",
+            "source": f"{backup_source['user']}@{backup_source['host']}:{backup_source['port']}",
+            "bucket": profile.storage.s3.bucketName,
         }
     elif profile.storage.persistentVolumeClaim:
         fsinfo = os.statvfs(backupdir)

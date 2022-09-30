@@ -32,6 +32,7 @@ if ! test -d "${CREDENTIALS_DIR}"; then
 fi
 export OPERATOR_TEST_OCI_CONFIG_PATH=${CREDENTIALS_DIR}/config
 export OPERATOR_TEST_OCI_BUCKET=dumps
+export OPERATOR_TEST_VAULT_CONFIG_PATH=${CREDENTIALS_DIR}/vault.cfg
 
 # log some infos
 pwd

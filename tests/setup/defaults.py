@@ -9,7 +9,7 @@ import os
 VERSION_TAG = "8.0.31"
 
 MIN_SUPPORTED_VERSION = "8.0.27"
-MAX_SUPPORTED_VERSION = "8.0.31"
+MAX_SUPPORTED_VERSION = "8.0.32"
 
 
 # image
@@ -28,7 +28,7 @@ OPERATOR_EE_IMAGE_NAME = os.getenv(
     "OPERATOR_TEST_EE_IMAGE_NAME", default="enterprise-operator")
 
 OPERATOR_VERSION_TAG = os.getenv(
-    "OPERATOR_TEST_VERSION_TAG", default="8.0.31-2.0.7")
+    "OPERATOR_TEST_VERSION_TAG", default="8.0.32-2.0.8")
 
 OPERATOR_PULL_POLICY = os.getenv(
     "OPERATOR_TEST_PULL_POLICY", default="IfNotPresent")
@@ -60,6 +60,9 @@ OCI_CONFIG_PATH = os.getenv(
 
 OCI_BUCKET_NAME = os.getenv(
     "OPERATOR_TEST_OCI_BUCKET", default=None)
+
+OCI_VAULT_CONFIG_PATH = os.getenv(
+    "OPERATOR_TEST_VAULT_CONFIG_PATH", default=None)
 
 
 # k8s

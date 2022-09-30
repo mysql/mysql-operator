@@ -103,7 +103,7 @@ spec:
 
   {{- if (((.Values).initDB).dump) }}
     {{- with .Values.initDB.dump }}
-      {{- if and .name (or .ociObjectStorage .persistentVolumeClaim .options) }}
+      {{- if and .name (or .ociObjectStorage .s3 .persistentVolumeClaim .options) }}
   initDB:
     dump:
         {{- if .name }}
@@ -121,6 +121,18 @@ spec:
           prefix: {{ required "initDB.dump.ociObjectStorage.prefix is required" .ociObjectStorage.prefix }}
           bucketName: {{ required "initDB.dump.ociObjectStorage.bucketName is required" .ociObjectStorage.bucketName }}
           credentials: {{ required "initDB.dump.ociObjectStorage.credentials is required" .ociObjectStorage.credentials }}
+        {{- end }}
+        {{- if .s3 }}
+        s3:
+          prefix: {{ required "initDB.dump.s3.prefix is required" .s3.prefix }}
+          bucketName: {{ required "initDB.dump.s3.bucketName is required" .s3.bucketName }}
+          config: {{ required "initDB.dump.s3.config is required" .s3.config }}
+          {{- if .s3.profile }}
+          profile: {{ .s3.profile }}
+          {{- end }}
+          {{- if .s3.endpoint }}
+          endpoint: {{ .s3.endpoint }}
+          {{- end }}
         {{- end }}
         {{- if .persistentVolumeClaim }}
         persistentVolumeClaim: {{ toYaml .persistentVolumeClaim | nindent 10}}
@@ -153,9 +165,25 @@ spec:
         {{- else if hasKey $backupProfile.storage "ociObjectStorage" }}
       storage:
         ociObjectStorage:
-          prefix: {{ required "prefix is required" $backupProfile.storage.ociObjectStorage.prefix }}
+        {{- if $backupProfile.storage.ociObjectStorage.prefix }}
+          prefix: {{ $backupProfile.storage.ociObjectStorage.prefix }}
+        {{- end }}
           bucketName: {{ required "bucketName is required"  $backupProfile.storage.ociObjectStorage.bucketName }}
           credentials: {{ required "credentials is required"  $backupProfile.storage.ociObjectStorage.credentials }}
+        {{- else if hasKey $backupProfile.storage "s3" }}
+      storage:
+        s3:
+        {{- if $backupProfile.storage.s3.prefix }}
+          prefix: {{ $backupProfile.storage.s3.prefix }}
+        {{- end }}
+          bucketName: {{ required "bucketName is required" $backupProfile.storage.s3.bucketName }}
+          config: {{ required "config is required" $backupProfile.storage.s3.config }}
+          {{- if $backupProfile.storage.s3.profile }}
+          profile: {{ $backupProfile.storage.s3.profile }}
+          {{- end }}
+          {{- if $backupProfile.storage.s3.endpoint }}
+          endpoint: {{ $backupProfile.storage.s3.endpoint }}
+          {{- end }}
         {{- else if hasKey $backupProfile.storage "persistentVolumeClaim" }}
       storage:
         persistentVolumeClaim: {{ toYaml $backupProfile.storage.persistentVolumeClaim | nindent 12}}
@@ -196,9 +224,25 @@ spec:
         {{- else if hasKey $backupProfile.storage "ociObjectStorage" }}
         storage:
           ociObjectStorage:
-            prefix: {{ required "prefix is required" $backupProfile.storage.ociObjectStorage.prefix }}
+          {{- if $backupProfile.storage.ociObjectStorage.prefix }}
+            prefix: {{ $backupProfile.storage.ociObjectStorage.prefix }}
+          {{- end }}
             bucketName: {{ required "bucketName is required"  $backupProfile.storage.ociObjectStorage.bucketName }}
             credentials: {{ required "credentials is required"  $backupProfile.storage.ociObjectStorage.credentials }}
+        {{- else if hasKey $backupProfile.storage "s3" }}
+        storage:
+          s3:
+          {{- if $backupProfile.storage.s3.prefix }}
+            prefix: {{ $backupProfile.storage.s3.prefix }}
+          {{- end }}
+            bucketName: {{ required "bucketName is required" $backupProfile.storage.s3.bucketName }}
+            config: {{ required "config is required" $backupProfile.storage.s3.config }}
+          {{- if $backupProfile.storage.s3.profile }}
+            profile: {{ $backupProfile.storage.s3.profile }}
+          {{- end }}
+          {{- if $backupProfile.storage.s3.endpoint }}
+            endpoint: {{ $backupProfile.storage.s3.endpoint }}
+          {{- end }}
         {{- else if hasKey $backupProfile.storage "persistentVolumeClaim" }}
         storage:
           persistentVolumeClaim: {{ toYaml $backupProfile.storage.persistentVolumeClaim | nindent 12}}

@@ -131,15 +131,63 @@ spec:
               self.ociCredentials == other.ociCredentials)
 
 
+class S3StorageSpec:
+    bucketName: str = ""
+    prefix: str = ""
+    config: str = ""
+    profile: str = ""
+    endpoint: str = ""
+
+    def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
+        patch = f"""
+spec:
+    securityContext:
+      allowPrivilegeEscalation: false
+      privileged: false
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      runAsUser: 27
+      fsGroup: 27
+    containers:
+    - name: {container_name}
+      volumeMounts:
+      - name: s3-config-volume
+        readOnly: true
+        # /mysqlsh is the container's $HOME
+        mountPath: "/mysqlsh/.aws"
+    volumes:
+    - name: s3-config-volume
+      secret:
+        secretName: {self.config}
+"""
+        merge_patch_object(pod_spec, yaml.safe_load(patch))
+
+    def parse(self, spec: dict, prefix: str) -> None:
+        self.prefix = dget_str(spec, "prefix", prefix, default_value = "")
+        self.bucketName = dget_str(spec, "bucketName", prefix)
+        self.config = dget_str(spec, "config", prefix)
+        self.profile = dget_str(spec, "profile", prefix, default_value="default")
+        self.endpoint = dget_str(spec, "endpoint", prefix, default_value = "")
+
+    def __eq__(self, other) -> bool:
+        return (isinstance(other, S3StorageSpec) and \
+              self.bucketName == other.bucketName and \
+              self.prefix == other.prefix and \
+              self.config == other.config and \
+              self.profile == other.profile and \
+              self.endpoint == other.endpoint)
+
 ALL_STORAGE_SPEC_TYPES = {
     "ociObjectStorage": OCIOSStorageSpec,
-    "persistentVolumeClaim": PVCStorageSpec
+    "persistentVolumeClaim": PVCStorageSpec,
+    "s3": S3StorageSpec
 }
 
 
 class StorageSpec:
     ociObjectStorage: Optional[OCIOSStorageSpec] = None
     persistentVolumeClaim: Optional[PVCStorageSpec] = None
+    s3: Optional[S3StorageSpec] = None
 
     def __init__(self, allowed_types: list = list(ALL_STORAGE_SPEC_TYPES.keys())):
         self._allowed_types = {}
@@ -151,6 +199,8 @@ class StorageSpec:
             self.ociObjectStorage.add_to_pod_spec(pod_spec, container_name)
         if self.persistentVolumeClaim:
             self.persistentVolumeClaim.add_to_pod_spec(pod_spec, container_name)
+        if self.s3:
+            self.s3.add_to_pod_spec(pod_spec, container_name)
 
     def parse(self, spec: dict, prefix: str) -> None:
         storage_spec = None
@@ -177,4 +227,5 @@ class StorageSpec:
     def __eq__(self, other) -> bool:
         return (isinstance(other, StorageSpec) and \
               self.ociObjectStorage == other.ociObjectStorage and \
-              self.persistentVolumeClaim == other.persistentVolumeClaim)
+              self.persistentVolumeClaim == other.persistentVolumeClaim and \
+              self.s3 == other.s3)

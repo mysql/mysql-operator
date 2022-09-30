@@ -111,7 +111,7 @@ spec:
                           description: "Name of the dump. Not used by the operator, but a descriptive hint for the cluster administrator"
                         path:
                           type: string
-                          description: "Path to the dump in the PVC. Use when specifying persistentVolumeClaim. Omit for ociObjectStorage."
+                          description: "Path to the dump in the PVC. Use when specifying persistentVolumeClaim. Omit for ociObjectStorage or S3."
                         storage:
                           type: object
                           properties:
@@ -128,10 +128,31 @@ spec:
                                 credentials:
                                   type: string
                                   description: "Secret name with data for accessing the bucket"
+                            s3:
+                              type: object
+                              required: ["bucketName", "prefix", "config"]
+                              properties:
+                                bucketName:
+                                  type: string
+                                  description: "Name of the bucket where the dump is stored"
+                                prefix:
+                                  type: string
+                                  description: "Path in the bucket where the dump files are stored"
+                                config:
+                                  type: string
+                                  description: "Secret name with S3 configuration and credentials"
+                                profile:
+                                  type: string
+                                  default: ""
+                                  description: "Profile being used in configuration files"
+                                endpoint:
+                                  type: string
+                                  description: "Override endpoint URL"
                             persistentVolumeClaim:
                               type: object
                               description : "Specification of the PVC to be used. Used 'as is' in the cloning pod."
                               x-kubernetes-preserve-unknown-fields: true
+                          x-kubernetes-preserve-unknown-fields: true
                   x-kubernetes-preserve-unknown-fields: true
                 router:
                   type: object
@@ -174,7 +195,7 @@ spec:
                             properties:
                               ociObjectStorage:
                                 type: object
-                                required: ["bucketName", "prefix", "credentials"]
+                                required: ["bucketName", "credentials"]
                                 properties:
                                   bucketName:
                                     type: string
@@ -185,10 +206,31 @@ spec:
                                   credentials:
                                     type: string
                                     description: "Secret name with data for accessing the bucket"
+                              s3:
+                                type: object
+                                required: ["bucketName", "config"]
+                                properties:
+                                  bucketName:
+                                    type: string
+                                    description: "Name of the bucket where the dump is stored"
+                                  prefix:
+                                    type: string
+                                    description: "Path in the bucket where the dump files are stored"
+                                  config:
+                                    type: string
+                                    description: "Secret name with S3 configuration and credentials"
+                                  profile:
+                                    type: string
+                                    default: ""
+                                    description: "Profile being used in configuration files"
+                                  endpoint:
+                                    type: string
+                                    description: "Override endpoint URL"
                               persistentVolumeClaim:
                                 type: object
                                 description : "Specification of the PVC to be used. Used 'as is' in pod executing the backup."
                                 x-kubernetes-preserve-unknown-fields: true
+                            x-kubernetes-preserve-unknown-fields: true
                       snapshot:
                         type: object
                         properties:
@@ -197,7 +239,7 @@ spec:
                             properties:
                               ociObjectStorage:
                                 type: object
-                                required: ["bucketName", "prefix", "credentials"]
+                                required: ["bucketName", "credentials"]
                                 properties:
                                   bucketName:
                                     type: string
@@ -208,10 +250,31 @@ spec:
                                   credentials:
                                     type: string
                                     description: "Secret name with data for accessing the bucket"
+                              s3:
+                                type: object
+                                required: ["bucketName", "config"]
+                                properties:
+                                  bucketName:
+                                    type: string
+                                    description: "Name of the bucket where the dump is stored"
+                                  prefix:
+                                    type: string
+                                    description: "Path in the bucket where the dump files are stored"
+                                  config:
+                                    type: string
+                                    description: "Secret name with S3 configuration and credentials"
+                                  profile:
+                                    type: string
+                                    default: ""
+                                    description: "Profile being used in configuration files"
+                                  endpoint:
+                                    type: string
+                                    description: "Override endpoint URL"
                               persistentVolumeClaim:
                                 type: object
                                 description : "Specification of the PVC to be used. Used 'as is' in pod executing the backup."
                                 x-kubernetes-preserve-unknown-fields: true
+                            x-kubernetes-preserve-unknown-fields: true
                     x-kubernetes-preserve-unknown-fields: true
                 backupSchedules:
                   type: array
@@ -234,6 +297,55 @@ spec:
                         type: object
                         description: "backupProfile specification if backupProfileName is not specified"
                         x-kubernetes-preserve-unknown-fields: true
+                        properties:
+                          dumpInstance:
+                            type: object
+                            properties:
+                              dumpOptions:
+                                type: object
+                                description: "A dictionary of key-value pairs passed directly to MySQL Shell's DumpInstance()"
+                                x-kubernetes-preserve-unknown-fields: true
+                              storage:
+                                type: object
+                                properties:
+                                  ociObjectStorage:
+                                    type: object
+                                    required: ["bucketName", "credentials"]
+                                    properties:
+                                      bucketName:
+                                        type: string
+                                        description: "Bucket name where backup is stored"
+                                      prefix:
+                                        type: string
+                                        description: "Path in bucket where backup is stored"
+                                      credentials:
+                                        type: string
+                                        description: "Secret name with data for accessing the bucket"
+                                  s3:
+                                    type: object
+                                    required: ["bucketName", "config"]
+                                    properties:
+                                      bucketName:
+                                        type: string
+                                        description: "Name of the bucket where the dump is stored"
+                                      prefix:
+                                        type: string
+                                        description: "Path in the bucket where the dump files are stored"
+                                      config:
+                                        type: string
+                                        description: "Secret name with S3 configuration and credentials"
+                                      profile:
+                                        type: string
+                                        default: ""
+                                        description: "Profile being used in configuration files"
+                                      endpoint:
+                                        type: string
+                                        description: "Override endpoint URL"
+                                  persistentVolumeClaim:
+                                    type: object
+                                    description : "Specification of the PVC to be used. Used 'as is' in pod executing the backup."
+                                    x-kubernetes-preserve-unknown-fields: true
+                                x-kubernetes-preserve-unknown-fields: true
                       deleteBackupData:
                         type: boolean
                         default: false
@@ -309,7 +421,57 @@ spec:
                   type: string
                 backupProfile:
                   type: object
+                  description: "backupProfile specification if backupProfileName is not specified"
                   x-kubernetes-preserve-unknown-fields: true
+                  properties:
+                    dumpInstance:
+                      type: object
+                      properties:
+                        dumpOptions:
+                          type: object
+                          description: "A dictionary of key-value pairs passed directly to MySQL Shell's DumpInstance()"
+                          x-kubernetes-preserve-unknown-fields: true
+                        storage:
+                          type: object
+                          properties:
+                            ociObjectStorage:
+                              type: object
+                              required: ["bucketName", "credentials"]
+                              properties:
+                                bucketName:
+                                  type: string
+                                  description: "Bucket name where backup is stored"
+                                prefix:
+                                  type: string
+                                  description: "Path in bucket where backup is stored"
+                                credentials:
+                                  type: string
+                                  description: "Secret name with data for accessing the bucket"
+                            s3:
+                              type: object
+                              required: ["bucketName", "config"]
+                              properties:
+                                bucketName:
+                                  type: string
+                                  description: "Name of the bucket where the dump is stored"
+                                prefix:
+                                  type: string
+                                  description: "Path in the bucket where the dump files are stored"
+                                config:
+                                  type: string
+                                  description: "Secret name with S3 configuration and credentials"
+                                profile:
+                                  type: string
+                                  default: ""
+                                  description: "Profile being used in configuration files"
+                                endpoint:
+                                  type: string
+                                  description: "Override endpoint URL"
+                            persistentVolumeClaim:
+                              type: object
+                              description : "Specification of the PVC to be used. Used 'as is' in pod executing the backup."
+                              x-kubernetes-preserve-unknown-fields: true
+                          x-kubernetes-preserve-unknown-fields: true
                 addTimestampToBackupDirectory:
                   type: boolean
                   default: true

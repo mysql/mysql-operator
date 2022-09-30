@@ -21,7 +21,7 @@ class Snapshot:
     def parse(self, spec: dict, prefix: str) -> None:
         storage = dget_dict(spec, "storage", prefix)
         self.storage = StorageSpec(
-            ["ociObjectStorage", "persistentVolumeClaim"])
+            ["ociObjectStorage", "persistentVolumeClaim", "s3"])
         self.storage.parse(storage, prefix+".storage")
 
     def __eq__(self, other : 'Snapshot') -> bool:

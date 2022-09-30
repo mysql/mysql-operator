@@ -13,7 +13,7 @@ from .. import consts, kubeutils, config, utils, errors, diagnose
 from .. import shellutils
 from ..group_monitor import g_group_monitor
 from ..utils import g_ephemeral_pod_state
-from ..kubeutils import api_core, api_apps, api_policy, api_rbac, api_cron_job
+from ..kubeutils import api_core, api_apps, api_policy, api_rbac, api_cron_job, k8s_version
 from ..backup import backup_objects
 from ..config import DEFAULT_OPERATOR_VERSION_TAG
 from .cluster_controller import ClusterController, ClusterMutex
@@ -52,7 +52,7 @@ def monitor_existing_clusters(logger: Logger) -> None:
 def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                             logger: Logger, **kwargs) -> None:
     logger.info(
-        f"Initializing InnoDB Cluster name={name} namespace={namespace}")
+        f"Initializing InnoDB Cluster name={name} namespace={namespace} on K8s {k8s_version()}")
 
     cluster = InnoDBCluster(body)
 

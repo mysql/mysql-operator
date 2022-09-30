@@ -22,9 +22,11 @@ api_core: client.CoreV1Api = client.CoreV1Api()
 api_customobj: client.CustomObjectsApi = client.CustomObjectsApi()
 api_apps: client.AppsV1Api = client.AppsV1Api()
 api_batch: client.BatchV1Api = client.BatchV1Api()
-api_cron_job: client.BatchV1beta1Api = client.BatchV1beta1Api()
-api_policy: client.PolicyV1beta1Api = client.PolicyV1beta1Api()
+api_cron_job: client.BatchV1Api = client.BatchV1Api()
+api_policy: client.PolicyV1Api = client.PolicyV1Api()
 api_rbac: client.RbacAuthorizationV1Api = client.RbacAuthorizationV1Api()
+api_client: client.ApiClient = client.ApiClient()
+api_apis: client.ApisApi() = client.ApisApi()
 
 T = TypeVar("T")
 
@@ -36,3 +38,13 @@ def catch_404(f: Callable[..., T]) -> Optional[T]:
         if e.status == 404:
             return None
         raise
+
+
+def available_apis():
+    return api_apis.get_api_versions()
+
+def k8s_version() -> str:
+    api_instance = client.VersionApi(api_client)
+
+    api_response = api_instance.get_code()
+    return f"{api_response.major}.{api_response.minor}"

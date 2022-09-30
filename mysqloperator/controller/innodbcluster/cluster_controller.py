@@ -212,6 +212,10 @@ class ClusterController:
                     self.cluster.update_cluster_info({
                         "initialDataSource": f"dump={self.cluster.parsed_spec.initDB.dump.storage.ociObjectStorage.bucketName}",
                     })
+                elif self.cluster.parsed_spec.initDB.dump.storage.s3:
+                    self.cluster.update_cluster_info({
+                        "initialDataSource": f"dump={self.cluster.parsed_spec.initDB.dump.storage.s3.bucketName}",
+                    })
                 elif self.cluster.parsed_spec.initDB.dump.storage.persistentVolumeClaim:
                     self.cluster.update_cluster_info({
                         "initialDataSource": f"dump={self.cluster.parsed_spec.initDB.dump.storage.persistentVolumeClaim}",

@@ -47,6 +47,9 @@ class Config:
     oci_config_path = defaults.OCI_CONFIG_PATH
     oci_bucket_name = defaults.OCI_BUCKET_NAME
 
+    # vault
+    vault_cfg_path = None
+
     # k8s
     k8s_cluster = defaults.K8S_CLUSTER_NAME
     k8s_context = None

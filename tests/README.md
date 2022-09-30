@@ -161,6 +161,9 @@ mirrors:
     name of an OCI bucket used to perform backup/restore tests
     by default it is empty, then all OCI-related tests are skipped
 
+--vault-cfg=<path>
+    
+
 --xml=<path>
     generate results in JUnit xml reports
 

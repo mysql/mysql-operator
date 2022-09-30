@@ -36,6 +36,7 @@ OPERATOR_TEST_SKIP_ENTERPRISE
 OPERATOR_TEST_SKIP_OCI
 OPERATOR_TEST_OCI_CONFIG_PATH
 OPERATOR_TEST_OCI_BUCKET
+OPERATOR_TEST_VAULT_CONFIG_PATH
 
 OPERATOR_TEST_K8S_CLUSTER_NAME
 
@@ -154,6 +155,7 @@ mirrors:
     b) RESTORE - it has permissions to restore a backup from the bucket
     c) DELETE - it has permissions to delete items from the bucket, after a given OCI-related test
         is completed (at tear down)
+    d) VAULT - it has permissions to create, use, and delete secrets in an OCI vault (see also --vault-cfg)
     under the hood, it may be the same profile or three different profiles with more fine-grained permissions
     by default the path is empty, then all OCI-related tests are skipped
 
@@ -162,7 +164,22 @@ mirrors:
     by default it is empty, then all OCI-related tests are skipped
 
 --vault-cfg=<path>
-    
+    Used for OCI vault-related tests. See also profile VAULT in --oci-config. It contains a single section [OCI]
+    with the following data in any order (the data below are fake and used as an illustration of what format is expected):
+    <vault-cfg>
+    [OCI]
+    user=ocid1.user.oc1..aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbba
+    tenancy=ocid1.tenancy.oc1..aaaaaaaaabbbbbbbbbbbbbbbbbbbbbbccccccccccccccccdddddddddddde
+    compartment=ocid1.compartment.oc1..aaaaaaaabbbbbbbbbbbbbbbbbccccccccc11111111112222222233333333
+    virtual_vault=ocid1.vault.oc1.iad.baaaaaaaaaaae.abccccccccccccccccccccccccccccccddddddddddddddeeeeeeee123456
+    master_key=ocid1.key.oc1.iad.b5rtlrieaaece.aaaaaaaaaaaaabbbbbbbbbbbbbbccccccccccccc11111111111122222223
+    encryption_endpoint=bbbbbbbbbbbbb-crypto.kms.us-ashburn-1.oraclecloud.com
+    management_endpoint=bbbbbbbbbbbbb-management.kms.us-ashburn-1.oraclecloud.com
+    vaults_endpoint=vaults.us-ashburn-1.oci.oraclecloud.com
+    secrets_endpoint=secrets.vaults.us-ashburn-1.oci.oraclecloud.com
+    key_file=/home/user/.oci/vault/key.pem
+    key_fingerprint=aa:bb:cc:dd:ee:ff:gg:hh:ii:jj:kk:ll:mm:nn:oo:pp
+    </vault-cfg>
 
 --xml=<path>
     generate results in JUnit xml reports

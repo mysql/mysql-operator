@@ -7,7 +7,7 @@ import logging
 import unittest
 from e2e.mysqloperator.cluster.cluster_t import check_all
 from setup.config import g_ts_cfg
-from utils import auxutil, mutil
+from utils import auxutil, mutil, ociutil
 from utils import kutil
 from utils import tutil
 from utils.optesting import COMMON_OPERATOR_ERRORS
@@ -67,11 +67,11 @@ class KeyRingWithOciVault(tutil.OperatorTest):
         self.assertEqual(is_table_encrypted, encryption_expected)
         print('fetch_one: ', session.query_sql(query).fetch_one())
 
-    def keyring_key_remove(self, session, keyring_name):
-        try:
-            session.query_sql(f"SELECT keyring_key_remove('{keyring_name}')").fetch_one()
-        except:
-            pass
+    def keyring_secret_remove(self, keyring_name):
+        if keyring_name:
+            compartment_id = self.__class__.vault_cfg['compartment']
+            vault_id = self.__class__.vault_cfg['virtual_vault']
+            ociutil.delete_vault_secret_by_name("VAULT", compartment_id, vault_id, keyring_name)
 
     def verify_variable(self, session, var_name, expected_value):
         var_row = session.query_sql(f"SHOW VARIABLES like '{var_name}'").fetch_one()
@@ -182,8 +182,8 @@ spec:
         with mutil.MySQLPodSession(self.ns, "mycluster-0", self.user, self.password) as s:
             self.__class__.keyring_name = self.generate_keyring_name()
             keyring_name = self.__class__.keyring_name
+            self.keyring_secret_remove(keyring_name)
 
-            self.keyring_key_remove(s, keyring_name)
             print(s.query_sql(f"SELECT keyring_key_store('{keyring_name}', 'AES', 'Secret string')").fetch_one())
             print(s.query_sql("SELECT space, name, space_Type, encryption FROM information_Schema.innodb_tablespaces").fetch_all())
             print(s.query_sql(f"SELECT keyring_key_fetch('{keyring_name}')").fetch_one())
@@ -220,9 +220,6 @@ spec:
             self.verify_variable(s, 'keyring_operations', 'ON')
 
     def test_9_destroy(self):
-        # if self.__class__.keyring_name:
-        #   with mutil.MySQLPodSession(self.ns, "mycluster-0", self.user, self.password) as s:
-        #       self.keyring_key_remove(s, self.__class__.keyring_name)
         kutil.delete_ic(self.ns, "mycluster")
 
         self.wait_pods_gone("mycluster-*")
@@ -230,3 +227,5 @@ spec:
         self.wait_ic_gone("mycluster")
 
         kutil.delete_secret(self.ns, "mypwds")
+
+        self.keyring_secret_remove(self.__class__.keyring_name)

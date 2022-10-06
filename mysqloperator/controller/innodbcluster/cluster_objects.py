@@ -527,7 +527,7 @@ roleRef:
     return rolebinding
 
 
-def prepare_config_configmaps(cluster: InnoDBCluster, logger: Logger) -> List[Dict]:
+def prepare_component_config_configmaps(cluster: InnoDBCluster, logger: Logger) -> List[Dict]:
     spec = cluster.parsed_spec
     configmaps = []
     if spec.keyring.is_component:
@@ -537,7 +537,7 @@ def prepare_config_configmaps(cluster: InnoDBCluster, logger: Logger) -> List[Di
     return configmaps
 
 
-def prepare_config_secrets(cluster: InnoDBCluster, logger: Logger) -> List[Dict]:
+def prepare_component_config_secrets(cluster: InnoDBCluster, logger: Logger) -> List[Dict]:
     spec = cluster.parsed_spec
     secrets = []
     if spec.keyring.is_component:

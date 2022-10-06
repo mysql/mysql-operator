@@ -96,13 +96,13 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
     if not cluster.ready:
         try:
             print("0.Configuration ConfigMaps")
-            for cm in cluster_objects.prepare_config_configmaps(cluster, logger):
+            for cm in cluster_objects.prepare_component_config_configmaps(cluster, logger):
                 if not cluster.get_configmap(cm['metadata']['name']):
                     print(f"\tCreating...{cm}")
                     kopf.adopt(cm)
                     api_core.create_namespaced_config_map(namespace, cm)
 
-            for secret in cluster_objects.prepare_config_secrets(cluster, logger):
+            for secret in cluster_objects.prepare_component_config_secrets(cluster, logger):
                 if not cluster.get_secret(secret['metadata']['name']):
                     print(f"\tCreating...{secret}")
                     kopf.adopt(secret)

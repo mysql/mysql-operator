@@ -494,7 +494,8 @@ class KeyringSpec:
         elif self.keyringOci:
             return self.keyringOci.is_component
         else:
-            raise Exception("NEEDS IMPLEMENTATION")
+            return False
+            #raise Exception("NEEDS IMPLEMENTATION")
 
     @property
     def component_config_configmap_name(self) -> str:

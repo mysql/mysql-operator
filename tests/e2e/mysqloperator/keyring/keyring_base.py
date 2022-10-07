@@ -133,6 +133,19 @@ metadata:
 """
         kutil.apply(self.ns, yaml)
 
+    def create_secret_for_encrypted_file(self):
+        secret_name = "encrypted-file-secret"
+        yaml = f"""
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {secret_name}
+stringData:
+  keyring_password: {self.password}
+"""
+        kutil.apply(self.ns, yaml)
+        return secret_name
+
     def create_config_map(self, cm_name):
         yaml = f"""
 apiVersion: v1

@@ -13,12 +13,14 @@ from e2e.mysqloperator.keyring.keyring_base import KeyRingBase
 class KeyRingEncryptedFileEmptyDir(KeyRingBase):
 
     def test_1_run(self):
+        encrypted_file_secret_name = self.create_secret_for_encrypted_file()
+
         keyring_spec = f"""
   keyring:
     encryptedFile:
       fileName: "/tmp/component_keyring_encrypted_file"
       readOnly: false
-      password: {self.password}
+      password: {encrypted_file_secret_name}
       storage:
         emptyDir: {{}}
 """

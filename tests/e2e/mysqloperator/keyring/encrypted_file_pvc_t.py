@@ -14,6 +14,7 @@ class KeyRingEncryptedFilePvc(KeyRingBase):
     volume_name = "keyring-encrypted-file-volume"
 
     def test_1_run(self):
+        encrypted_file_secret_name = self.create_secret_for_encrypted_file()
         self.create_volume(self.volume_name)
 
         keyring_spec = f"""
@@ -21,7 +22,7 @@ class KeyRingEncryptedFilePvc(KeyRingBase):
     encryptedFile:
       fileName: "/tmp/component_keyring_encrypted_file"
       readOnly: false
-      password: {self.password}
+      password: {encrypted_file_secret_name}
       storage:
         persistentVolumeClaim:
           claimName: {self.volume_name}

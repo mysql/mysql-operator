@@ -14,6 +14,7 @@ class KeyRingEncryptedFileSecret(KeyRingBase):
     secret_name = "keyring-encrypted-file-secret"
 
     def test_1_run(self):
+        encrypted_file_secret_name = self.create_secret_for_encrypted_file()
         self.create_secret(self.secret_name)
 
         keyring_spec = f"""
@@ -21,7 +22,7 @@ class KeyRingEncryptedFileSecret(KeyRingBase):
     encryptedFile:
       fileName: "/tmp/component_keyring_encrypted_file"
       readOnly: false
-      password: {self.password}
+      password: {encrypted_file_secret_name}
       storage:
         secret:
           secretName: {self.secret_name}

@@ -191,7 +191,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                     # This will create the deployment but 0 instances. When the cluster is created (first
                     # instance joins it) the instance count will be set to icspec.router.instances
                     router_deployment = router_objects.prepare_router_deployment(cluster, init_only=True)
-                    print("\tCreating...")
+                    print(f"\tCreating...{router_deployment}")
                     kopf.adopt(router_deployment)
                     api_apps.create_namespaced_deployment(namespace=namespace, body=router_deployment)
                 else:

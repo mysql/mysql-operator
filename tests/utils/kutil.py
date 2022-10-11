@@ -233,8 +233,10 @@ def ls_sts(ns):
     return __ls(ns, "sts")
 
 
-def ls_rs(ns):
-    return __ls(ns, "rs")
+def ls_rs(ns, *, pattern=".*"):
+    rss = __ls(ns, "rs")
+    r = re.compile(pattern)
+    return [rs for rs in rss if r.match(rs["NAME"])]
 
 
 def ls_deploy(ns):

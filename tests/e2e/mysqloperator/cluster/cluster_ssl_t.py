@@ -201,12 +201,28 @@ spec:
 
         kutil.apply(self.ns, yaml)
 
+        self.wait_pod("mycluster-0", "Pending")
+
+        # The deployment starts with one RS and zero routers, which are updated once the IC is up and running
+        router_rs_pre = kutil.ls_rs(self.ns, pattern="mycluster-router-.*")
+        self.assertEqual(len(router_rs_pre), 1)
+        self.assertEqual(router_rs_pre[0]['DESIRED'], '0')
+        self.assertEqual(router_rs_pre[0]['CURRENT'], '0')
+        self.assertEqual(router_rs_pre[0]['READY'], '0')
+
         self.wait_pod("mycluster-0", "Running")
         self.wait_pod("mycluster-1", "Running")
 
         self.wait_ic("mycluster", "ONLINE", 2)
 
         self.wait_routers("mycluster-router-.*", 1)
+
+        router_rs_post = kutil.ls_rs(self.ns, pattern="mycluster-router-.*")
+        self.assertEqual(len(router_rs_post), 1)
+        self.assertEqual(router_rs_post[0]['NAME'], router_rs_pre[0]['NAME'])
+        self.assertEqual(router_rs_post[0]['DESIRED'], '1')
+        self.assertEqual(router_rs_post[0]['CURRENT'], '1')
+        self.assertEqual(router_rs_post[0]['READY'], '1')
 
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
             s.exec_sql("set global max_connect_errors=10000")

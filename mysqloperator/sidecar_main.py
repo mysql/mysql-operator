@@ -539,7 +539,6 @@ def on_ca_secret_create_or_change(value: dict, useSelfSigned: bool, router_deplo
             if router_deployment:
                 # give time to all other sidecars to reload the TLS and then restart the router deployment from -0
                 time.sleep(delay)
-                logger.info("Updating router deployment with new TLS data. The deployment should restart")
                 router_objects.restart_deployment_for_tls(router_deployment, router_tls_crt = None, router_tls_key = None, ca_pem = ca_pem, crl_pem = crl_pem, logger=logger)
             break
         else:
@@ -582,7 +581,6 @@ def on_router_tls_secret_create_or_change(value: dict, useSelfSigned: bool, rout
     if router_deployment:
         router_tls_crt = utils.b64decode(value['data']['tls.crt']) if 'tls.crt' in value['data'] else None
         router_tls_key = utils.b64decode(value['data']['tls.key']) if 'tls.key' in value['data'] else None
-        logger.info("Updating router deployment with new TLS data. The deployment should restart")
         router_objects.restart_deployment_for_tls(router_deployment, router_tls_crt = router_tls_crt, router_tls_key = router_tls_key, ca_pem = None, crl_pem = None, logger=logger)
 
 
@@ -635,7 +633,7 @@ def on_secret_create_or_update(name: str, namespace: str, spec, new, logger: Log
         g_ca_tls_change_underway_lock.acquire()
         try:
             if g_tls_change_underway:
-                raise kopf.TemporaryError(f"TLS change underway. Wait to finish. {name}", delay=15)
+                raise kopf.TemporaryError(f"TLS change underway. Wait to finish. {name}", delay=12)
             g_ca_change_underway = True
             ca_changed = True
         finally:
@@ -648,7 +646,7 @@ def on_secret_create_or_update(name: str, namespace: str, spec, new, logger: Log
         g_ca_tls_change_underway_lock.acquire()
         try:
             if g_ca_change_underway:
-                raise kopf.TemporaryError(f"CA change underway. Wait to finish. {name}", delay=15)
+                raise kopf.TemporaryError(f"CA change underway. Wait to finish. {name}", delay=14)
             g_tls_change_underway = True
             tls_changed = True
         finally:
@@ -660,7 +658,7 @@ def on_secret_create_or_update(name: str, namespace: str, spec, new, logger: Log
         try:
             g_ca_tls_change_underway_lock.acquire()
             if g_ca_change_underway:
-                logger.info("CA/TLS change underway. The CA change handler will restart the router deployment, so we have to do nothing here")
+                raise kopf.TemporaryError(f"CA change underway. Wait to finish. {name}", delay=16)
             else:
                 handler = on_router_tls_secret_create_or_change
                 router_deployment = ic.get_router_deployment() if g_pod_index == 0 else None

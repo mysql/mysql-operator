@@ -1242,7 +1242,10 @@ class InnoDBCluster(K8sInterfaceObject):
                 return None
             raise
 
-    def get_server_ca_and_tls(self) -> Dict:
+    def get_ca_and_tls(self) -> Dict:
+        if self.parsed_spec.tlsUseSelfSigned:
+            return {}
+
         ca_secret = None
         server_tls_secret = None
         same_secret_for_ca_and_tls = False
@@ -1283,6 +1286,18 @@ class InnoDBCluster(K8sInterfaceObject):
         if ca_file_name:
             ret[ca_file_name] = utils.b64decode(ca_secret.data[ca_file_name])
             ret['same_secret_for_ca_and_tls'] = same_secret_for_ca_and_tls
+
+        # When using HELM a secret should exist, when using bare manifests the secret might
+        # not exist (not mentioned directly or using the default name) and so it is not mounted
+        # in the router pod, thus not passed to the router.
+        try:
+            router_tls_secret = cast(api_client.V1Secret, api_core.read_namespaced_secret(
+                                     self.parsed_spec.router.tlsSecretName, self.namespace))
+            ret["router_tls.crt"] = utils.b64decode(router_tls_secret.data["tls.crt"])
+            ret["router_tls.key"] = utils.b64decode(router_tls_secret.data["tls.key"])
+        except ApiException as e:
+            if e.status != 404:
+                raise
 
         return ret
 
@@ -1513,7 +1528,7 @@ class InnoDBCluster(K8sInterfaceObject):
         if not self.parsed_spec.tlsUseSelfSigned:
             logger.info(f"\tServer.TLS.tlsCASecretName:\t{self.parsed_spec.tlsCASecretName}")
             logger.info(f"\tServer.TLS.tlsSecretName:\t{self.parsed_spec.tlsSecretName}")
-            logger.info(f"\tServer.TLS.keys         :\t{list(self.get_server_ca_and_tls().keys())}")
+            logger.info(f"\tTLS.keys                :\t{list(self.get_ca_and_tls().keys())}")
             router_tls_exists = self.router_tls_exists()
             logger.info(f"\tRouter.TLS exists       :\t{router_tls_exists}")
             if router_tls_exists:

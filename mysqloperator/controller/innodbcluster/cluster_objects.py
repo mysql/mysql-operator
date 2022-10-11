@@ -613,8 +613,8 @@ fi
     has_crl = cluster.tls_has_crl()
 
     if not spec.tlsUseSelfSigned:
-        logger.info(f"CA={cluster.get_server_ca_and_tls().get('CA')}")
-        ca_file_name = cluster.get_server_ca_and_tls().get("CA", "ca.pem")
+        logger.info(f"CA={cluster.get_ca_and_tls().get('CA')}")
+        ca_file_name = cluster.get_ca_and_tls().get("CA", "ca.pem")
     else:
         ca_file_name = ""
 

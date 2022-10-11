@@ -18,7 +18,7 @@ class AuditLogClusterIncomplete(AuditLogBase):
     instance_primary = "mycluster-0"
 
     def test_0_create(self):
-        self.create_cluster(audit_log_strategy = 'SYNCHRONOUS')
+        self.create_cluster()
 
 
     def test_1_init(self):

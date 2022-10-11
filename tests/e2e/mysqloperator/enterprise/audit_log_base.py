@@ -50,7 +50,7 @@ class AuditLogBase(tutil.OperatorTest):
         super().tearDownClass()
 
 
-    def create_cluster(self):
+    def create_cluster(self, audit_log_strategy = 'ASYNCHRONOUS'):
         kutil.create_default_user_secrets(self.ns)
 
         # create cluster with mostly default configs
@@ -75,6 +75,7 @@ spec:
         [mysqld]
         loose_audit_log_file={self.audit_log_filename}
         loose_audit_log_format=JSON
+        loose_audit_log_strategy={audit_log_strategy}
 """
         # plugin-load-add=audit_log=audit_log.so
 

@@ -17,7 +17,7 @@ class AuditLogChangeFilter(AuditLogBase):
     instance_primary = "mycluster-0"
 
     def test_0_create(self):
-        self.create_cluster()
+        self.create_cluster(audit_log_strategy = 'SYNCHRONOUS')
 
 
     def test_1_init(self):

@@ -1,0 +1,219 @@
+// Copyright (c) 2022, Oracle and/or its affiliates.
+//
+// Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
+//
+
+// handle to util functions module
+def utils;
+
+// counters for each environment, to get how many version have been tested
+def minikubeRuns = 0
+def k3dRuns = 0
+
+pipeline {
+	agent {
+		node {
+			label 'operator-ci'
+		}
+	}
+	parameters {
+		string(name: 'OPERATOR_GIT_REVISION', description: 'a git revision or branch to run against')
+		string(name: 'OPERATOR_IMAGE', description: 'an image related to the aforementioned git revision')
+		string(name: 'OPERATOR_ENTERPRISE_IMAGE', description: '...and a related enterprise image, it can be empty, then it will be built locally')
+		booleanParam(name: 'OPERATOR_INTERNAL_BUILD', defaultValue: false, description: 'triggered by us (e.g. by a push to a dev branch) or externally (e.g. from the concourse)')
+	}
+ 	options {
+		timeout(time: 12, unit: 'HOURS')
+		timestamps()
+	}
+	stages {
+		stage('init') {
+			steps {
+				script {
+					utils = load "${WORKSPACE}/tests/ci/pipeline/utils.groovy"
+					utils.initEnv()
+					initMessage = utils.getInitMessage()
+
+					slackSend channel: "${env.SLACK_CHANNEL}",
+						color: "warning",
+						sendAsText: true,
+						message: initMessage
+
+					sh 'mkdir -p ${LOG_DIR}'
+
+					build job: "${env.WORKERS_FOLDER}/init", parameters: [
+						string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+						string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
+						string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
+						booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
+					]
+					env.INIT_STAGE_SUCCEEDED = true
+				}
+			}
+		}
+		stage('build') {
+			when {
+				expression { params.OPERATOR_INTERNAL_BUILD }
+			}
+			steps {
+				script {
+					build job: "${env.WORKERS_FOLDER}/build", parameters: [
+						string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+						string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
+						string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
+						booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
+					]
+					env.BUILD_STAGE_SUCCEEDED = true
+				}
+			}
+		}
+		stage('minikube') {
+            matrix {
+                axes {
+                    axis {
+                        name 'K8S_ENVIRONMENT'
+                        values 'minikube'
+                    }
+					// k8s versions to run against in weekly builds, source of inspiration:
+					// https://docs.oracle.com/en-us/iaas/Content/ContEng/Concepts/contengaboutk8sversions.htm#supportedk8sversions
+					// check also the list of old releases
+					// https://kubernetes.io/releases/patch-releases/#support-period
+                    axis {
+                        name 'K8S_VERSION'
+                        values 'v1.20.11', 'v1.21.5', 'v1.22.5', 'v1.23.4', 'v1.24.1'
+                    }
+                }
+                stages {
+					stage('test') {
+						steps {
+							script {
+								echo "${K8S_ENVIRONMENT}"
+								minikubeRuns++
+								catchError {
+									build job: "${env.WORKERS_FOLDER}/${K8S_ENVIRONMENT}", parameters: [
+										string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+										string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
+										string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
+										string(name: 'OPERATOR_K8S_VERSION', value: "${K8S_VERSION}"),
+										booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
+									]
+								}
+							}
+						}
+						post {
+							always {
+								echo "${K8S_ENVIRONMENT} results"
+								copyArtifacts fingerprintArtifacts: true,
+									projectName: "${env.WORKERS_FOLDER}/${K8S_ENVIRONMENT}",
+									selector: lastCompleted(),
+									target: "${LOG_SUBDIR}"
+							}
+						}
+					}
+				}
+			}
+			post {
+				always {
+					script {
+						if (utils.addTestResults("minikube", minikubeRuns)) {
+							env.MINIKUBE_RESULTS_AVAILABLE = true
+						} else {
+							env.SOME_MINIKUBE_RESULTS_UNAVAILABLE = true
+						}
+					}
+				}
+			}
+		}
+		stage('collect results') {
+			steps {
+				script {
+					if (utils.anyResultsAvailable()) {
+						build job: "${env.WORKERS_FOLDER}/prepare-test-suite-report", parameters: [
+							string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+							string(name: 'TEST_RESULT_BUILD_URL', value: env.BUILD_URL)
+						]
+
+						copyArtifacts fingerprintArtifacts: true,
+							projectName: "${env.WORKERS_FOLDER}/prepare-test-suite-report",
+							selector: lastCompleted(),
+							target: "${LOG_SUBDIR}"
+
+						env.TEST_SUITE_REPORT = utils.getTestSuiteReport()
+					} else {
+						env.TEST_SUITE_REPORT = ""
+					}
+				}
+			}
+			post {
+				cleanup {
+					script {
+						env.TESTS_STATUS_HEADER = utils.getTestsStatusHeader()
+					}
+				}
+			}
+		}
+	}
+	post {
+		always {
+			script {
+				env.BUILD_DURATION = utils.getBuildDuration()
+				env.CHANGE_LOG = utils.getChangeLog()
+
+				sh 'ls -lRF ${LOG_DIR}'
+				if (utils.anyResultsAvailable()) {
+					sh "cd ${LOG_DIR} && tar cvjf ${ARTIFACT_PATH} *"
+					archiveArtifacts artifacts: "${ARTIFACT_FILENAME}", fingerprint: true
+				}
+			}
+		}
+		changed {
+			script {
+				utils.modifyBuildStatus("changed")
+			}
+		}
+		fixed {
+			script {
+				utils.modifyBuildStatus("fixed")
+			}
+		}
+		unstable {
+			script {
+				utils.modifyBuildStatus("unstable")
+			}
+		}
+		regression {
+			script {
+				utils.modifyBuildStatus("regression")
+			}
+		}
+		failure {
+			script {
+				utils.modifyBuildStatus("failure")
+			}
+		}
+		aborted {
+			script {
+				utils.modifyBuildStatus("aborted")
+			}
+		}
+		unsuccessful {
+			script {
+				utils.modifyBuildStatus("unsuccessful")
+			}
+		}
+		success {
+			script {
+				utils.modifyBuildStatus("success")
+			}
+		}
+		cleanup {
+			script {
+				summaryMessage = utils.getSummaryMessage(true)
+				slackSend channel: "${env.SLACK_CHANNEL}",
+					sendAsText: true,
+					color: "good",
+					message: summaryMessage
+			}
+		}
+	}
+}

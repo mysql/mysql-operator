@@ -85,10 +85,10 @@ spec:
   {{- end }}
 {{- end }}
 
-{{- if (or ((.Values).keyring.file) ((.Values).keyring.encryptedFile) ((.Values).keyring.oci)) }}
+{{- if (or (((.Values).keyring).file) (((.Values).keyring).encryptedFile) (((.Values).keyring).oci) ) }}
   keyring:
 {{- $keyringAlreadySpecified := "" }}
-  {{- if ((.Values).keyring.file)}}
+  {{- if (((.Values).keyring).file) }}
     {{- if $keyringAlreadySpecified }}
       {{- $err := printf "Keyring '%s' already specified" $keyringAlreadySpecified }}
       {{- fail $err }}
@@ -104,7 +104,7 @@ spec:
     {{- end }}
   {{- end }}
 
-  {{- if ((.Values).keyring.encryptedFile)}}
+  {{- if (((.Values).keyring).encryptedFile) }}
     {{- if $keyringAlreadySpecified }}
       {{- $err := printf "Keyring '%s' already specified" $keyringAlreadySpecified | quote }}
       {{- fail $err }}
@@ -121,7 +121,7 @@ spec:
     {{- end }}
   {{- end }}
 
-  {{- if ((.Values).keyring.oci)}}
+  {{- if (((.Values).keyring).oci) }}
     {{- if $keyringAlreadySpecified }}
       {{- $err := printf "Keyring '%s' already specified" $keyringAlreadySpecified }}
       {{- fail $err }}

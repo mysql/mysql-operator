@@ -202,6 +202,10 @@ spec:
                         path:
                           type: string
                           description: "Path to the dump in the PVC. Use when specifying persistentVolumeClaim. Omit for ociObjectStorage or S3."
+                        options:
+                          type: object
+                          description: "A dictionary of key-value pairs passed directly to MySQL Shell's loadDump()"
+                          x-kubernetes-preserve-unknown-fields: true
                         storage:
                           type: object
                           properties:

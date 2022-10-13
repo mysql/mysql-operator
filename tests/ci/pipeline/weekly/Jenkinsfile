@@ -68,22 +68,22 @@ pipeline {
 			}
 		}
 		stage('minikube') {
-            matrix {
-                axes {
-                    axis {
-                        name 'K8S_ENVIRONMENT'
-                        values 'minikube'
-                    }
+			matrix {
+				axes {
+					axis {
+						name 'K8S_ENVIRONMENT'
+						values 'minikube'
+					}
 					// k8s versions to run against in weekly builds, source of inspiration:
 					// https://docs.oracle.com/en-us/iaas/Content/ContEng/Concepts/contengaboutk8sversions.htm#supportedk8sversions
 					// check also the list of old releases
 					// https://kubernetes.io/releases/patch-releases/#support-period
-                    axis {
-                        name 'K8S_VERSION'
-                        values 'v1.20.11', 'v1.21.5', 'v1.22.5', 'v1.23.4', 'v1.24.1'
-                    }
-                }
-                stages {
+					axis {
+						name 'K8S_VERSION'
+						values 'v1.20.11', 'v1.21.5', 'v1.22.5', 'v1.23.4', 'v1.24.1'
+					}
+				}
+				stages {
 					stage('test') {
 						steps {
 							script {
@@ -119,6 +119,61 @@ pipeline {
 							env.MINIKUBE_RESULTS_AVAILABLE = true
 						} else {
 							env.SOME_MINIKUBE_RESULTS_UNAVAILABLE = true
+						}
+					}
+				}
+			}
+		}
+		stage('k3d') {
+			matrix {
+				axes {
+					axis {
+						name 'K8S_ENVIRONMENT'
+						values 'k3d'
+					}
+					// use versions similar to k3d, but a little different
+					// https://hub.docker.com/r/rancher/k3s/tags
+					axis {
+						name 'K8S_VERSION'
+						values 'rancher/k3s:v1.20.15-k3s1', 'rancher/k3s:v1.21.11-k3s1', 'rancher/k3s:v1.22.7-k3s1', 'rancher/k3s:v1.23.5-k3s1', 'rancher/k3s:v1.24.2-k3s1'
+					}
+				}
+				stages {
+					stage('test') {
+						steps {
+							script {
+								echo "${K8S_ENVIRONMENT}"
+								k3dRuns++
+								catchError {
+									build job: "${env.WORKERS_FOLDER}/${K8S_ENVIRONMENT}", parameters: [
+										string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+										string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
+										string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
+										string(name: 'OPERATOR_K8S_VERSION', value: "${K8S_VERSION}"),
+										booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
+									]
+								}
+							}
+						}
+						post {
+							always {
+								echo "${K8S_ENVIRONMENT} results"
+								copyArtifacts fingerprintArtifacts: true,
+									projectName: "${env.WORKERS_FOLDER}/${K8S_ENVIRONMENT}",
+									selector: lastCompleted(),
+									target: "${LOG_SUBDIR}"
+							}
+						}
+					}
+				}
+			}
+			post {
+				always {
+					script {
+						if (utils.addTestResults("k3d", k3dRuns)) {
+							env.K3D_RESULTS_AVAILABLE = true
+						} else {
+							env.SOME_K3D_RESULTS_UNAVAILABLE = true
 						}
 					}
 				}

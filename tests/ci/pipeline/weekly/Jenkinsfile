@@ -80,7 +80,7 @@ pipeline {
 					// https://kubernetes.io/releases/patch-releases/#support-period
 					axis {
 						name 'K8S_VERSION'
-						values 'v1.20.11', 'v1.21.5', 'v1.22.5', 'v1.23.4', 'v1.24.1'
+						values 'v1.21.5', 'v1.22.5', 'v1.23.4', 'v1.24.1'
 					}
 				}
 				stages {
@@ -135,7 +135,7 @@ pipeline {
 					// https://hub.docker.com/r/rancher/k3s/tags
 					axis {
 						name 'K8S_VERSION'
-						values 'rancher/k3s:v1.20.15-k3s1', 'rancher/k3s:v1.21.11-k3s1', 'rancher/k3s:v1.22.7-k3s1', 'rancher/k3s:v1.23.5-k3s1', 'rancher/k3s:v1.24.2-k3s1'
+						values 'rancher/k3s:v1.21.11-k3s1', 'rancher/k3s:v1.22.7-k3s1', 'rancher/k3s:v1.23.5-k3s1', 'rancher/k3s:v1.24.2-k3s1'
 					}
 				}
 				stages {

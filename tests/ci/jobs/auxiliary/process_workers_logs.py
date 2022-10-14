@@ -204,8 +204,11 @@ class ResultAggregator:
 		self.total_summary.unexpected_failures.sort()
 		self.total_summary.skipped.sort()
 
-		if self.total_summary.unexpected_failures:
-			self.total_summary.success = False
+		# report the build as failed only in case of broken worker(s), but not test cases which
+		# ran with some errors
+		# junit xml reporter will count failed tests and report the build as unstable
+		# if self.total_summary.unexpected_failures:
+		# 	self.total_summary.success = False
 
 	def run(self, expected_failures_path, log_paths, execution_time):
 		self.read_expected_failures(expected_failures_path)

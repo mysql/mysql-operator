@@ -15,20 +15,20 @@ if TYPE_CHECKING:
 
 SQL_INSTALL_MASKING_UDF = [
     "INSTALL PLUGIN data_masking SONAME 'data_masking.so'",
-    "CREATE FUNCTION gen_blocklist RETURNS STRING  SONAME 'data_masking.so'",
-    "CREATE FUNCTION gen_dictionary RETURNS STRING  SONAME 'data_masking.so'",
-    "CREATE FUNCTION gen_dictionary_drop RETURNS STRING  SONAME 'data_masking.so'",
-    "CREATE FUNCTION gen_dictionary_load RETURNS STRING  SONAME 'data_masking.so'",
-    "CREATE FUNCTION gen_range RETURNS INTEGER  SONAME 'data_masking.so'",
-    "CREATE FUNCTION gen_rnd_email RETURNS STRING  SONAME 'data_masking.so'",
-    "CREATE FUNCTION gen_rnd_pan RETURNS STRING  SONAME 'data_masking.so'",
-    "CREATE FUNCTION gen_rnd_ssn RETURNS STRING  SONAME 'data_masking.so'",
-    "CREATE FUNCTION gen_rnd_us_phone RETURNS STRING  SONAME 'data_masking.so'",
-    "CREATE FUNCTION mask_inner RETURNS STRING  SONAME 'data_masking.so'",
-    "CREATE FUNCTION mask_outer RETURNS STRING  SONAME 'data_masking.so'",
-    "CREATE FUNCTION mask_pan RETURNS STRING  SONAME 'data_masking.so'",
-    "CREATE FUNCTION mask_pan_relaxed RETURNS STRING  SONAME 'data_masking.so'",
-    "CREATE FUNCTION mask_ssn RETURNS STRING  SONAME 'data_masking.so'",
+    "CREATE FUNCTION IF NOT EXISTS gen_blocklist RETURNS STRING  SONAME 'data_masking.so'",
+    "CREATE FUNCTION IF NOT EXISTS gen_dictionary RETURNS STRING  SONAME 'data_masking.so'",
+    "CREATE FUNCTION IF NOT EXISTS gen_dictionary_drop RETURNS STRING  SONAME 'data_masking.so'",
+    "CREATE FUNCTION IF NOT EXISTS gen_dictionary_load RETURNS STRING  SONAME 'data_masking.so'",
+    "CREATE FUNCTION IF NOT EXISTS gen_range RETURNS INTEGER  SONAME 'data_masking.so'",
+    "CREATE FUNCTION IF NOT EXISTS gen_rnd_email RETURNS STRING  SONAME 'data_masking.so'",
+    "CREATE FUNCTION IF NOT EXISTS gen_rnd_pan RETURNS STRING  SONAME 'data_masking.so'",
+    "CREATE FUNCTION IF NOT EXISTS gen_rnd_ssn RETURNS STRING  SONAME 'data_masking.so'",
+    "CREATE FUNCTION IF NOT EXISTS gen_rnd_us_phone RETURNS STRING  SONAME 'data_masking.so'",
+    "CREATE FUNCTION IF NOT EXISTS mask_inner RETURNS STRING  SONAME 'data_masking.so'",
+    "CREATE FUNCTION IF NOT EXISTS mask_outer RETURNS STRING  SONAME 'data_masking.so'",
+    "CREATE FUNCTION IF NOT EXISTS mask_pan RETURNS STRING  SONAME 'data_masking.so'",
+    "CREATE FUNCTION IF NOT EXISTS mask_pan_relaxed RETURNS STRING  SONAME 'data_masking.so'",
+    "CREATE FUNCTION IF NOT EXISTS mask_ssn RETURNS STRING  SONAME 'data_masking.so'",
 ]
 
 SQL_UNINSTALL_MASKING_UDF =[
@@ -47,6 +47,26 @@ SQL_UNINSTALL_MASKING_UDF =[
     "DROP FUNCTION mask_pan",
     "DROP FUNCTION mask_pan_relaxed",
     "DROP FUNCTION mask_ssn",
+]
+
+SQL_INSTALL_KEYRING_UDF = [
+    "INSTALL PLUGIN keyring_udf SONAME 'keyring_udf.so'",
+    "CREATE FUNCTION IF NOT EXISTS keyring_key_generate RETURNS INTEGER SONAME 'keyring_udf.so'",
+    "CREATE FUNCTION IF NOT EXISTS keyring_key_fetch RETURNS STRING SONAME 'keyring_udf.so'",
+    "CREATE FUNCTION IF NOT EXISTS keyring_key_length_fetch RETURNS INTEGER SONAME 'keyring_udf.so'",
+    "CREATE FUNCTION IF NOT EXISTS keyring_key_type_fetch RETURNS STRING SONAME 'keyring_udf.so'",
+    "CREATE FUNCTION IF NOT EXISTS keyring_key_store RETURNS INTEGER SONAME 'keyring_udf.so'",
+    "CREATE FUNCTION IF NOT EXISTS keyring_key_remove RETURNS INTEGER SONAME 'keyring_udf.so'"
+]
+
+SQL_UNINSTALL_KEYRING_UDF = [
+    "DROP FUNCTION IF EXISTS keyring_key_generate",
+    "DROP FUNCTION IF EXISTS keyring_key_fetch",
+    "DROP FUNCTION IF EXISTS keyring_key_length_fetch",
+    "DROP FUNCTION IF EXISTS keyring_key_type_fetch",
+    "DROP FUNCTION IF EXISTS keyring_key_store",
+    "DROP FUNCTION IF EXISTS keyring_key_remove",
+    "UNINSTALL PLUGIN keyring_udf"
 ]
 
 def run_plugin_sql(session: 'ClassicSession', stmts: list[str], logger) -> None:
@@ -95,8 +115,12 @@ def install_enterprise_plugins(server_version: str, session: 'ClassicSession', l
     run_plugin_sql(session, SQL_INSTALL_MASKING_UDF, logger)
     install_enterprise_encryption(server_version, session, logger)
 
-
 def uninstall_enterprise_plugins(server_version: str, session: 'ClassicSession', logger) -> None:
     run_plugin_sql(session, SQL_UNINSTALL_MASKING_UDF, logger)
     uninstall_enterprise_plugins(server_version, session)
 
+def install_keyring_udf(server_version: str, session: 'ClassicSession', logger) -> None:
+    run_plugin_sql(session, SQL_INSTALL_KEYRING_UDF, logger)
+
+def uninstall_keyring_udf(server_version: str, session: 'ClassicSession', logger) -> None:
+    run_plugin_sql(session, SQL_UNINSTALL_KEYRING_UDF, logger)

@@ -81,6 +81,96 @@ spec:
                 podSpec:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
+                keyring:
+                  type: object
+                  description: "Keyring specification"
+                  properties:
+                    file:
+                      type: object
+                      description: "Keyring 'File' specification"
+                      required: ["fileName", "storage"]
+                      properties:
+                        fileName:
+                          type: string
+                          description: "Full path to the keyring file name inside the storage volume"
+                        readOnly:
+                          type: boolean
+                          default: false
+                          description: "Whether to open the keyring file in read-only mode"
+                        storage:
+                          type: object
+                          description : "Specification of the volume to be mounted where the keyring file resides"
+                          x-kubernetes-preserve-unknown-fields: true
+                    encryptedFile:
+                      type: object
+                      description: "Keyring 'Encrypted File' specification"
+                      required: ["fileName", "storage", "password"]
+                      properties:
+                        fileName:
+                          type: string
+                          description: "Full path to the keyring file name inside the storage volume"
+                        readOnly:
+                          type: boolean
+                          default: false
+                          description: "Whether to open the keyring file in read-only mode"
+                        password:
+                          type: string
+                          description: "Name of a secret that contains password for the keyring in the key 'keyring_password'"
+                        storage:
+                          type: object
+                          description : "Specification of the volume to be mounted where the keyring file resides"
+                          x-kubernetes-preserve-unknown-fields: true
+                    oci:
+                      type: object
+                      description: "Keyring 'OCI' specification"
+                      required: ["user", "keySecret", "keyFingerprint", "tenancy"]
+                      properties:
+                        user:
+                          type: string
+                          description: "User identifier in the form of ocid1.user.oc1..."
+                          pattern: '^ocid1\.user\.'
+                        keySecret:
+                          type: string
+                          description: "A secret that contains the private key under the field 'privatekey'"
+                        keyFingerprint:
+                          type: string
+                          description: "Private key fingerprint"
+                          pattern: '([0-9a-f]{2}:){15}[0-9a-f]{2}$'
+                        tenancy:
+                          type: string
+                          description: "Tenancy identifier in the form ocid1.tenancy.oc1..."
+                          pattern:  '^ocid1\.tenancy\.'
+                        compartment:
+                          type: string
+                          description: "Compartment identifier in the form ocid1.compartment.oc1..."
+                          pattern:  '^ocid1\.compartment\.'
+                        virtualVault:
+                          type: string
+                          description: "Vault identifier in the form ocid1.vault.oc1..."
+                          pattern:  '^ocid1\.vault\.'
+                        masterKey:
+                          type: string
+                          description: "Master key identified in the form ocid1.key.oc1..."
+                          pattern:  '^ocid1\.key\.'
+                        endpoints:
+                          type: object
+                          description: ""
+                          properties:
+                            encryption:
+                              type: string
+                              description: "Encryption endpoint URI like <identifier>-crypto.kms.<region>.oraclecloud.com"
+                            management:
+                              type: string
+                              description: "Management endpoint URI like <identifier>-management.kms.<region>.oraclecloud.com"
+                            vaults:
+                              type: string
+                              description: "Vaults endpoint URI like vaults.<region>.oci.oraclecloud.com"
+                            secrets:
+                              type: string
+                              description: "Secrets endpoint URI like secrets.vaults.<region>.oci.oraclecloud.com"
+                        caCertificate:
+                          type: string
+                          description: "Secret that contains ca.crt field with CA certificate bundle file that the keyring_oci plugin uses for Oracle Cloud Infrastructure certificate verification"
                 initDB:
                   type: object
                   properties:
@@ -112,6 +202,10 @@ spec:
                         path:
                           type: string
                           description: "Path to the dump in the PVC. Use when specifying persistentVolumeClaim. Omit for ociObjectStorage or S3."
+                        options:
+                          type: object
+                          description: "A dictionary of key-value pairs passed directly to MySQL Shell's loadDump()"
+                          x-kubernetes-preserve-unknown-fields: true
                         storage:
                           type: object
                           properties:

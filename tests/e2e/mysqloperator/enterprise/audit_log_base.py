@@ -50,7 +50,7 @@ class AuditLogBase(tutil.OperatorTest):
         super().tearDownClass()
 
 
-    def create_cluster(self):
+    def create_cluster(self, audit_log_strategy = 'SYNCHRONOUS'):
         kutil.create_default_user_secrets(self.ns)
 
         # create cluster with mostly default configs
@@ -75,6 +75,7 @@ spec:
         [mysqld]
         loose_audit_log_file={self.audit_log_filename}
         loose_audit_log_format=JSON
+        loose_audit_log_strategy={audit_log_strategy}
 """
         # plugin-load-add=audit_log=audit_log.so
 
@@ -115,6 +116,7 @@ spec:
             self.assertEqual(res, ('OK',))
             res = s.query_sql(f"SELECT audit_log_filter_set_user('{user}', '{filter_name}')").fetch_one()
             self.assertEqual(res, ('OK',))
+            s.exec_sql("FLUSH TABLES")
 
     def set_default_filter(self, instance):
         self.set_filter(instance, self.default_filter_user, self.default_filter_label, self.default_filter)
@@ -129,6 +131,7 @@ spec:
             self.assertEqual(res, ('OK',))
             res = s.query_sql(f"SELECT audit_log_filter_remove_user('{user}')").fetch_one()
             self.assertEqual(res, ('OK',))
+            s.exec_sql("FLUSH TABLES")
 
     def remove_default_filter(self, instance):
         self.remove_filter(instance, self.default_filter_user, self.default_filter_label)

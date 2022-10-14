@@ -85,6 +85,85 @@ spec:
   {{- end }}
 {{- end }}
 
+{{- if (or (((.Values).keyring).file) (((.Values).keyring).encryptedFile) (((.Values).keyring).oci) ) }}
+  keyring:
+{{- $keyringAlreadySpecified := "" }}
+  {{- if (((.Values).keyring).file) }}
+    {{- if $keyringAlreadySpecified }}
+      {{- $err := printf "Keyring '%s' already specified" $keyringAlreadySpecified }}
+      {{- fail $err }}
+    {{- end }}
+    {{- $keyringAlreadySpecified = "file" }}
+    {{- with .Values.keyring.file }}
+    file:
+      fileName: {{ required "keyring.file.fileName is required" .fileName | quote }}
+      {{- if .readOnly }}
+      readOnly: {{ .readOnly }}
+      {{- end }}
+      storage: {{ toYaml .storage | nindent 8 }}
+    {{- end }}
+  {{- end }}
+
+  {{- if (((.Values).keyring).encryptedFile) }}
+    {{- if $keyringAlreadySpecified }}
+      {{- $err := printf "Keyring '%s' already specified" $keyringAlreadySpecified | quote }}
+      {{- fail $err }}
+    {{- end }}
+    {{- $keyringAlreadySpecified = "encryptedFile" }}
+    {{- with .Values.keyring.encryptedFile }}
+    encryptedFile:
+      fileName: {{ required "keyring.encryptedFile.fileName is required" .fileName | quote }}
+      {{- if .readOnly }}
+      readOnly: {{ .readOnly }}
+      {{- end }}
+      password: {{ required "keyring.encryptedFile.password is required" .password | quote }}
+      storage: {{ toYaml .storage | nindent 8 }}
+    {{- end }}
+  {{- end }}
+
+  {{- if (((.Values).keyring).oci) }}
+    {{- if $keyringAlreadySpecified }}
+      {{- $err := printf "Keyring '%s' already specified" $keyringAlreadySpecified }}
+      {{- fail $err }}
+    {{- end }}
+    {{- $keyringAlreadySpecified = "oci" }}
+    {{- with .Values.keyring.oci }}
+    oci:
+      user: {{ required "keyring.oci.user is required" .user | quote}}
+      keySecret: {{ required "keyring.oci.keySecret is required" .keySecret | quote}}
+      keyFingerprint: {{ required "keyring.oci.keyFingerprint is required" .keyFingerprint | quote }}
+      tenancy: {{ required "keyring.oci.tenancy is required" .tenancy | quote}}
+      {{- if .compartment}}
+      compartment: {{ .compartment | quote }}
+      {{- end }}
+      {{- if .virtualVault}}
+      virtualVault: {{ .virtualVault | quote}}
+      {{- end }}
+      {{- if .masterKey}}
+      masterKey: {{ .masterKey | quote}}
+      {{- end }}
+      {{- if .caCertificate}}
+      caCertificate: {{ .caCertificate | quote}}
+      {{- end }}
+      {{- if .endpoints}}
+      endpoints:
+        {{- if ((.endpoints).encryption) }}
+        encryption: {{ ((.endpoints).encryption) | quote}}
+        {{- end }}
+        {{- if ((.endpoints).management) }}
+        management: {{ ((.endpoints).management) | quote}}
+        {{- end }}
+        {{- if ((.endpoints).vaults) }}
+        vaults: {{ ((.endpoints).vaults) | quote}}
+        {{- end }}
+        {{- if ((.endpoints).secrets) }}
+        secrets: {{ ((.endpoints).secrets) | quote}}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
 {{- if .Values.initDB }}
   {{- if and (and .Values.initDB.dump .Values.initDB.dump.name) (and .Values.initDB.clone .Values.initDB.donorUrl) }}
     {{- fail "Dump and Clone are mutually exclusive" }}

@@ -22,6 +22,32 @@ serverInstances: 3
 routerInstances: 1
 baseServerId: 1000
 
+#keyring:
+#  file:
+#    fileName:
+#    readOnly:
+#    storage:
+#  encryptedFile:
+#    fileName:
+#    readOnly:
+#    storage:
+#    password:
+#  oci:
+#    user: "ocid1.user.oc1..."
+#    keySecret: "oci-credentials"
+#    keyFingerprint: ""
+#    tenancy: "ocid1.tenancy.oc1..."
+#    compartment: "ocid1.compartment.oc1..."
+#    virtualVault: "ocid1.vault.oc1.."
+#    masterKey: "ocid1.key.oc1..."
+#    caCertificate: ""
+#    endpoints:
+#      encryption: "<identifier>-crypto.kms.<region>.oraclecloud.com"
+#      management: "<identifier>-management.kms.<region>.oraclecloud.com"
+#      vaults: "vaults.<region>.oci.oraclecloud.com"
+#      secrets: "secrets.vaults.<region>.oci.oraclecloud.com"
+      
+    
 
 #podSpec:
 #  containers:

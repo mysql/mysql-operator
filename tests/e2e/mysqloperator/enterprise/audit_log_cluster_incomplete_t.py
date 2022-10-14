@@ -33,6 +33,7 @@ class AuditLogClusterIncomplete(AuditLogBase):
         with mutil.MySQLPodSession(self.ns, self.instance_primary, self.user, self.password) as s:
             s.exec_sql("CREATE SCHEMA audit_foo")
             s.exec_sql(f"CREATE TABLE audit_foo.{self.test_table} (id INT NOT NULL)")
+            s.exec_sql(f'FLUSH TABLES audit_foo.{self.test_table}')
 
         with mutil.MySQLPodSession(self.ns, "mycluster-1", self.user, self.password) as s:
             res = s.query_sql("SHOW TABLES").fetch_all()

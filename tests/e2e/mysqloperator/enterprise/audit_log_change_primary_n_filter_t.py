@@ -65,6 +65,7 @@ class AuditLogChangePrimaryAndFilter(AuditLogBase):
 
         with mutil.MySQLPodSession(self.ns, self.primary_instance, self.user, self.password) as s:
             s.exec_sql("CREATE DATABASE audit_foo")
+            s.exec_sql("FLUSH TABLES")
 
         self.__class__.secondary_instances = self.get_secondary_instances("mycluster-1", self.user, self.password)
         secondary_instances = self.secondary_instances

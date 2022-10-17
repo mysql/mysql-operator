@@ -67,9 +67,18 @@ class K3dEnvironment(BaseEnvironment):
         args = ["k3d", "cluster", "stop", g_ts_cfg.k8s_cluster]
         subprocess.check_call(args)
 
+        if g_ts_cfg.image_registry:
+            args = ["docker", "network", "disconnect", g_ts_cfg.k8s_context, g_ts_cfg.image_registry_host]
+            subprocess.call(args)
+
     def delete_cluster(self):
         args = ["k3d", "cluster", "delete", g_ts_cfg.k8s_cluster]
         subprocess.check_call(args)
+
+        if g_ts_cfg.image_registry:
+            args = ["docker", "network", "rm", g_ts_cfg.k8s_context]
+            subprocess.call(args)
+
 
     def prepare_registry_cfg(self):
         cfg_template = f"""mirrors:

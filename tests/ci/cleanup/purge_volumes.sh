@@ -16,5 +16,5 @@ FILTER=$1
 docker volume prune -f
 
 docker volume ls -q -f name=$FILTER | xargs -r -n 1 docker volume inspect -f '{{.Name}} {{json .CreatedAt}}' \
-  | awk -v cut_off_date=\""$(date -d 'yesterday' -Ins)"\" '$2 <= cut_off_date {print $1}' \
+  | awk -v cut_off_date=\""$(date -d '3 hours ago' -Ins)"\" '$2 <= cut_off_date {print $1}' \
   | xargs -r -n 1 docker volume rm

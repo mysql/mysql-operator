@@ -165,6 +165,40 @@ mirrors:
     under the hood, it may be the same profile or three different profiles with more fine-grained permissions
     by default the path is empty, then all OCI-related tests are skipped
 
+    the data below are fake and used as an illustration of what format is expected, all data and paths should be
+    customized according to a local environment:
+    <oci-config-sample>
+    [BACKUP]
+    user=ocid1.user.oc1..aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbba
+    fingerprint=aa:bb:cc:dd:ee:ff:gg:hh:ii:jj:kk:ll:mm:nn:oo:pp
+    tenancy=ocid1.tenancy.oc1..aaaaaaaaabbbbbbbbbbbbbbbbbbbbbbccccccccccccccccdddddddddddde
+    region=us-ashburn-1
+    passphrase=
+    key_file=/home/user/oci-stuff/backup/key.pem
+
+    [RESTORE]
+    user=ocid1.user.oc1..aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbba
+    fingerprint=aa:bb:cc:dd:ee:ff:gg:hh:ii:jj:kk:ll:mm:nn:oo:pp
+    tenancy=ocid1.tenancy.oc1..aaaaaaaaabbbbbbbbbbbbbbbbbbbbbbccccccccccccccccdddddddddddde
+    region=us-ashburn-1
+    passphrase=
+    key_file=/home/user/oci-stuff/restore/key.pem
+
+    [DELETE]
+    user=ocid1.user.oc1..aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbba
+    fingerprint=aa:bb:cc:dd:ee:ff:gg:hh:ii:jj:kk:ll:mm:nn:oo:pp
+    tenancy=ocid1.tenancy.oc1..aaaaaaaaabbbbbbbbbbbbbbbbbbbbbbccccccccccccccccdddddddddddde
+    region=us-ashburn-1
+    key_file=/home/user/oci-stuff/delete/key.pem
+
+    [VAULT]
+    user=ocid1.user.oc1..aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbba
+    fingerprint=aa:bb:cc:dd:ee:ff:gg:hh:ii:jj:kk:ll:mm:nn:oo:pp
+    tenancy=ocid1.tenancy.oc1..aaaaaaaaabbbbbbbbbbbbbbbbbbbbbbccccccccccccccccdddddddddddde
+    region=us-ashburn-1
+    key_file=/home/user/oci-stuff/vault/key.pem
+    </oci-config-sample>
+
 --oci-bucket=<name>
     name of an OCI bucket used to perform backup/restore tests
     by default it is empty, then all OCI-related tests are skipped
@@ -172,7 +206,7 @@ mirrors:
 --vault-cfg=<path>
     Used for OCI vault-related tests. See also profile VAULT in --oci-config. It contains a single section [OCI]
     with the following data in any order (the data below are fake and used as an illustration of what format is expected):
-    <vault-cfg>
+    <vault-cfg-sample>
     [OCI]
     user=ocid1.user.oc1..aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbba
     tenancy=ocid1.tenancy.oc1..aaaaaaaaabbbbbbbbbbbbbbbbbbbbbbccccccccccccccccdddddddddddde
@@ -185,7 +219,7 @@ mirrors:
     secrets_endpoint=secrets.vaults.us-ashburn-1.oci.oraclecloud.com
     key_file=/home/user/.oci/vault/key.pem
     key_fingerprint=aa:bb:cc:dd:ee:ff:gg:hh:ii:jj:kk:ll:mm:nn:oo:pp
-    </vault-cfg>
+    </vault-cfg-sample>
 
 --xml=<path>
     generate results in JUnit xml reports

@@ -6,6 +6,8 @@
 
 set -vx
 
+source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || return
+
 SCRIPT_DIR=$(dirname $(readlink -f "${BASH_SOURCE[0]}"))
 
 if [ "$#" -eq 1 ]; then
@@ -21,3 +23,5 @@ ${SCRIPT_DIR}/purge_volumes.sh $FILTER
 ${SCRIPT_DIR}/purge_networks.sh $FILTER
 
 ${SCRIPT_DIR}/purge_images.sh
+
+${SCRIPT_DIR}/purge_oci_vault_secrets.sh $OPERATOR_TEST_OCI_CONFIG_PATH $OPERATOR_TEST_VAULT_CONFIG_PATH

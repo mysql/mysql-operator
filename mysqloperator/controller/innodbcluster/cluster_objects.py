@@ -594,16 +594,16 @@ fi
 """
 
     readiness_probe = """#!/bin/bash
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
 
 # Once the container is ready, it's always ready.
-if [ -f /mysql-ready ]; then
+if [ -f /tmp/mysql-ready ]; then
   exit 0
 fi
 
 # Ping server to see if it is ready
 if mysqladmin -umysqlhealthchecker ping; then
-  touch /mysql-ready
+  touch /tmp/mysql-ready
   exit 0
 else
   exit 1

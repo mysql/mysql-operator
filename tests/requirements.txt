@@ -1,0 +1,4 @@
+kubernetes
+pyyaml
+mysql-connector-python
+unittest-xml-reporting

@@ -1,4 +1,5 @@
 kubernetes
+kubernetes-client
 pyyaml
 mysql-connector-python
 unittest-xml-reporting

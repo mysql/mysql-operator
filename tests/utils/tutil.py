@@ -27,7 +27,6 @@ import re
 from .aggrlog import LogAggregator
 from kubernetes.stream import stream
 from kubernetes import client
-from kubernetes.client.api import core_v1_api
 from kubernetes.stream.ws_client import ERROR_CHANNEL
 
 g_test_data_dir = "."

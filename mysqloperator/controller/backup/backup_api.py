@@ -56,6 +56,8 @@ class BackupProfile:
         self.name: str = ""
         self.dumpInstance: Optional[DumpInstance] = None
         self.snapshot: Optional[Snapshot] = None
+        self.podAnnotations: Optional[dict] = None
+        self.podLabels: Optional[dict] = None
 
     def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
         assert self.snapshot or self.dumpInstance
@@ -66,6 +68,12 @@ class BackupProfile:
 
     def parse(self, spec: dict, prefix: str, name_required: bool = True) -> None:
         self.name = dget_str(spec, "name", prefix, default_value= None if name_required else "")
+
+        if "podAnnotations" in spec:
+            self.podAnnotations = dget_dict(spec, "podAnnotations", prefix)
+        if "podLabels" in spec:
+            self.podLabels = dget_dict(spec, "podLabels", prefix)
+
         prefix += "." + self.name
         method_spec = dget_dict(spec, "dumpInstance", prefix, {})
         if method_spec:
@@ -159,7 +167,7 @@ class MySQLBackupSpec:
 
         self.clusterName: str = ""
         self.backupProfileName: str = ""
-        self.backupProfile = None
+        self.backupProfile: BackupProfile = None
         self.deleteBackupData: bool = False # unused
         self.addTimestampToBackupDirectory: bool = True
         self.operator_image: str = ""

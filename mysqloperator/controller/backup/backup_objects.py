@@ -141,6 +141,15 @@ spec:
 """
     job = yaml.safe_load(tmpl)
 
+    metadata = {}
+    if spec.backupProfile.podAnnotations:
+        metadata['annotations'] = spec.backupProfile.podAnnotations
+    if spec.backupProfile.podLabels:
+        metadata['labels'] = spec.backupProfile.podLabels
+
+    if len(metadata):
+        utils.merge_patch_object(job["spec"]["template"], {"metadata" : metadata })
+
     spec.add_to_pod_spec(job["spec"]["template"], "operator-backup-job")
 
     return job
@@ -169,7 +178,21 @@ spec:
 
 
 def prepare_mysql_backup_object_by_profile_object(name: str, cluster_name: str, backup_profile: dict) -> dict:
+
+    pod_labels = backup_profile.get("podLabels")
+    if pod_labels:
+      labels = f"""
+podLabels: {pod_labels}
+"""
+
+    pod_annotations = backup_profile.get("podAnnotations")
+    if pod_annotations:
+      annotations = f"""
+podAnnotations: {pod_annotations}
+"""
+
     # No need to namespace it. A namespaced job will be created by the caller
+
     tmpl = f"""
 apiVersion: {consts.GROUP}/{consts.VERSION}
 kind: {consts.MYSQLBACKUP_KIND}
@@ -186,6 +209,8 @@ spec:
   clusterName: {cluster_name}
   backupProfile:
     name: {name}
+{utils.indent(labels, 4) if pod_labels else ""}
+{utils.indent(annotations, 4) if pod_annotations else ""}
   addTimestampToBackupDirectory: false
 """
 

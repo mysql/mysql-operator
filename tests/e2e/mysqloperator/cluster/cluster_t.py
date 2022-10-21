@@ -137,6 +137,12 @@ spec:
   instances: 1
   router:
     instances: 0
+    podLabels:
+      router-label13: "router-label13-val"
+      router-label42: "router-label42-val"
+    podAnnotations:
+      router.mycluster.example.com/ann13: "ann13-value"
+      router.mycluster.example.com/ann42: "ann42-value"
   secretName: mypwds
   edition: community
   tlsUseSelfSigned: true
@@ -173,12 +179,23 @@ spec:
             reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
 
     def test_01_check_labels_and_annotations(self):
-        for pod_name in ["mycluster-0"]:
+        server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
+        pod_names = [server["NAME"] for server in server_pods]
+        for pod_name in pod_names:
             pod = kutil.get_po(self.ns, pod_name)
             self.assertEqual(pod['metadata']['labels']['mycluster-label1'], 'mycluster-label1-value')
             self.assertEqual(pod['metadata']['labels']['mycluster-label2'], 'mycluster-label2-value')
             self.assertEqual(pod['metadata']['annotations']['mycluster.example.com/ann1'], 'ann1-value')
             self.assertEqual(pod['metadata']['annotations']['mycluster.example.com/ann2'], 'ann2-value')
+
+        router_pods = kutil.ls_po(self.ns, pattern=f"mycluster-router-.*")
+        pod_names = [router["NAME"] for router in router_pods]
+        for pod_name in pod_names:
+            pod = kutil.get_po(self.ns, pod_name)
+            self.assertEqual(pod['metadata']['labels']['router-label13'], 'router-label13-val')
+            self.assertEqual(pod['metadata']['labels']['router-label42'], 'router-label42-val')
+            self.assertEqual(pod['metadata']['annotations']['router.mycluster.example.com/ann13'], 'ann13-value')
+            self.assertEqual(pod['metadata']['annotations']['router.mycluster.example.com/ann42'], 'ann42-value')
 
     def test_03_check_accounts(self):
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
@@ -214,12 +231,7 @@ spec:
         check_all(self, self.ns, "mycluster", instances=2, routers=0, primary=0)
 
     def test_08_check_labels_and_annotations(self):
-        for pod_name in ["mycluster-0", "mycluster-1"]:
-            pod = kutil.get_po(self.ns, pod_name)
-            self.assertEqual(pod['metadata']['labels']['mycluster-label1'], 'mycluster-label1-value')
-            self.assertEqual(pod['metadata']['labels']['mycluster-label2'], 'mycluster-label2-value')
-            self.assertEqual(pod['metadata']['annotations']['mycluster.example.com/ann1'], 'ann1-value')
-            self.assertEqual(pod['metadata']['annotations']['mycluster.example.com/ann2'], 'ann2-value')
+        self.test_01_check_labels_and_annotations()
 
     def test_09_addrouters(self):
         kutil.patch_ic(self.ns, "mycluster", {
@@ -232,6 +244,8 @@ spec:
 
         # TODO add traffic, check routing
 
+    def test_10_check_labels_and_annotations(self):
+        self.test_01_check_labels_and_annotations()
 
     def test_11_check_security(self):
         """
@@ -279,12 +293,7 @@ spec:
         check_all(self, self.ns, "mycluster", instances=3, primary=0)
 
     def test_14_check_labels_and_annotations(self):
-        for pod_name in ["mycluster-0", "mycluster-1", "mycluster-2"]:
-            pod = kutil.get_po(self.ns, pod_name)
-            self.assertEqual(pod['metadata']['labels']['mycluster-label1'], 'mycluster-label1-value')
-            self.assertEqual(pod['metadata']['labels']['mycluster-label2'], 'mycluster-label2-value')
-            self.assertEqual(pod['metadata']['annotations']['mycluster.example.com/ann1'], 'ann1-value')
-            self.assertEqual(pod['metadata']['annotations']['mycluster.example.com/ann2'], 'ann2-value')
+        self.test_01_check_labels_and_annotations()
 
     def test_15_shrink1(self):
         kutil.patch_ic(self.ns, "mycluster", {

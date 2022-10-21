@@ -250,6 +250,12 @@ spec:
   {{- range $_, $profile := .Values.backupProfiles }}
     {{- if $profile.name }}
   - name: {{ $profile.name -}}
+      {{- if hasKey $profile "podAnnotations" }}
+    podAnnotations: {{ toYaml $profile.podAnnotations | nindent 6 }}
+      {{- end }}
+      {{- if hasKey $profile "podLabels" }}
+    podLabels: {{ toYaml $profile.podLabels | nindent 6 }}
+      {{- end }}
       {{- $isDumpInstance = hasKey $profile "dumpInstance" }}
       {{- $isSnapshot = hasKey $profile "snapshot" }}
       {{- if or $isDumpInstance $isSnapshot }}
@@ -315,6 +321,12 @@ spec:
       {{- if or $isDumpInstance $isSnapshot }}
         {{- $backupProfile := ternary $schedule.backupProfile.dumpInstance $schedule.backupProfile.snapshot $isDumpInstance }}
     backupProfile:
+        {{- if hasKey $schedule.backupProfile "podAnnotations" }}
+      podAnnotations: {{ toYaml $schedule.backupProfile.podAnnotations | nindent 8 }}
+        {{- end }}
+        {{- if hasKey $schedule.backupProfile "podLabels" }}
+      podLabels: {{ toYaml $schedule.backupProfile.podLabels | nindent 8 }}
+        {{- end }}
         {{- if $isDumpInstance }}
       dumpInstance:
         {{- else if $isSnapshot }}

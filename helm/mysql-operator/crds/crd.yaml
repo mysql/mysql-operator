@@ -289,6 +289,12 @@ spec:
                       name:
                         type: string
                         description: "Embedded backup profile, referenced as backupProfileName elsewhere"
+                      podAnnotations:
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+                      podLabels:
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
                       dumpInstance:
                         type: object
                         properties:
@@ -404,6 +410,12 @@ spec:
                         description: "backupProfile specification if backupProfileName is not specified"
                         x-kubernetes-preserve-unknown-fields: true
                         properties:
+                          podAnnotations:
+                            type: object
+                            x-kubernetes-preserve-unknown-fields: true
+                          podLabels:
+                            type: object
+                            x-kubernetes-preserve-unknown-fields: true
                           dumpInstance:
                             type: object
                             properties:
@@ -530,6 +542,12 @@ spec:
                   description: "backupProfile specification if backupProfileName is not specified"
                   x-kubernetes-preserve-unknown-fields: true
                   properties:
+                    podAnnotations:
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                    podLabels:
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
                     dumpInstance:
                       type: object
                       properties:

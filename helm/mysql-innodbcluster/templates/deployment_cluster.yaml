@@ -4,13 +4,20 @@
 {{- $minimalVersion := "8.0.27" }}
 {{- $forbiddenVersions := list "8.0.29" }}
 {{- $serverVersion := .Values.serverVersion | default .Chart.AppVersion }}
-{{- if lt $serverVersion $minimalVersion }}
-    {{- $err := printf "It is not possible to use MySQL version %s . Please, use %s or above" $serverVersion $minimalVersion }}
+{{- if and ((.Values).routerInstances) (((.Values).router).instances) }}
+  {{- if ne ((.Values).routerInstances) (((.Values).router).instances) }}
+    {{- $err := printf "routerInstances and router.instances both are specified and have different values %d and %d. Use only one" ((.Values).routerInstances) (((.Values).router).instances) }}
     {{- fail $err }}
+  {{- end }}
+{{- end }}
+{{- $routerInstances := coalesce ((.Values).routerInstances) (((.Values).router).instances) }}
+{{- if lt $serverVersion $minimalVersion }}
+  {{- $err := printf "It is not possible to use MySQL version %s . Please, use %s or above" $serverVersion $minimalVersion }}
+  {{- fail $err }}
 {{- end }}
 {{- if has $serverVersion $forbiddenVersions }}
-    {{- $err := printf "It is not possible to use MySQL version %s . Please, use %s or above except %v" $serverVersion $minimalVersion $forbiddenVersions }}
-    {{- fail $err }}
+  {{- $err := printf "It is not possible to use MySQL version %s . Please, use %s or above except %v" $serverVersion $minimalVersion $forbiddenVersions }}
+  {{- fail $err }}
 {{- end }}
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
@@ -21,15 +28,24 @@ spec:
   instances: {{ required "serverInstances is required" .Values.serverInstances }}
   tlsUseSelfSigned: {{ $use_self_signed }}
   router:
-    instances: {{ required "routerInstances is required" .Values.routerInstances }}
+    instances: {{ required "router.instances is required" $routerInstances }}
 {{- if not $use_self_signed }}
+  {{- if and (((.Values).tls).routerCertAndPKsecretName) (((.Values).router).certAndPKsecretName) }}
+    {{- if ne (((.Values).tls).routerCertAndPKsecretName) (((.Values).router).certAndPKsecretName) }}
+      {{- $err := printf "tls.routerCertAndPKsecretName and router.certAndPKsecretName are both specified and have different values %s and %s. Use only one" (((.Values).tls).routerCertAndPKsecretName) (((.Values).router).certAndPKsecretName) }}
+      {{- fail $err }}
+    {{- end }}
+  {{- end }}
   {{- $default_secret_name := printf "%s-router-tls" $cluster_name }}
-  {{- $secret_name := default $default_secret_name ((.Values.tls).routerCertAndPKsecretName) }}
+  {{- $secret_name := coalesce ((.Values.tls).routerCertAndPKsecretName) ((.Values.router).certAndPKsecretName) $default_secret_name}}
   {{- if and (not $disable_lookups) (not (lookup "v1" "Secret" .Release.Namespace $secret_name)) }}
     {{- $err := printf "tls.routerCertAndPKsecretName: secret '%s' not found in namespace '%s'" $secret_name .Release.Namespace }}
     {{- fail $err }}
   {{- end }}
     tlsSecretName: {{ $secret_name }}
+  {{- if (((.Values).router).podSpec) }}
+    podSpec:  {{ toYaml (((.Values).router).podSpec) | nindent 6 }}
+  {{- end }}
 {{- end }}
   secretName: {{ .Release.Name }}-cluster-secret
   imagePullPolicy : {{ required "image.pullPolicy is required" .Values.image.pullPolicy }}

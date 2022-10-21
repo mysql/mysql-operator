@@ -15,12 +15,17 @@ tls:
   useSelfSigned: false
 #  caSecretName:
 #  serverCertAndPKsecretName:
-#  routerCertAndPKsecretName:
+#  routerCertAndPKsecretName: # our use router.certAndPKsecretName
 
 #serverVersion: 8.0.31
 serverInstances: 3
-routerInstances: 1
+routerInstances: 1 # or use router.instances
 baseServerId: 1000
+
+#router:
+#  instances: 1
+#  certAndPKsecretName:
+#  podSpec:
 
 #keyring:
 #  file:

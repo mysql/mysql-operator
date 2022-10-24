@@ -14,8 +14,7 @@ if len(sys.argv) != 2:
 
 vault_secrets_path = sys.argv[1]
 
-secret_age_limit_in_hours = 24
-secret_age_limit_in_hours = 108
+secret_age_limit_in_hours = 4
 utc_now = datetime.utcnow().timestamp()
 
 f = open(vault_secrets_path)

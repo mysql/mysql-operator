@@ -250,6 +250,16 @@ spec:
 {utils.indent(spec.extra_router_volumes if router_tls_exists else spec.extra_router_volumes_no_cert, 6)}
 """
     deployment = yaml.safe_load(tmpl)
+
+    metadata = {}
+    if spec.router.podAnnotations:
+        metadata['annotations'] = spec.router.podAnnotations
+    if spec.router.podLabels:
+        metadata['labels'] = spec.router.podLabels
+
+    if len(metadata):
+        utils.merge_patch_object(deployment["spec"]["template"], {"metadata" : metadata })
+
     if spec.router.podSpec:
         utils.merge_patch_object(deployment["spec"]["template"]["spec"],
                                  spec.router.podSpec, "spec.router.podSpec")

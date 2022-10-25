@@ -615,6 +615,8 @@ class RouterSpec:
     version: str = None # config.DEFAULT_ROUTER_VERSION_TAG
 
     podSpec: dict = {}
+    podAnnotations: Optional[dict] = None
+    podLabels: Optional[dict] = None
 
     tlsSecretName: str = ""
 
@@ -630,6 +632,12 @@ class RouterSpec:
 
         if "podSpec" in spec:  # TODO - replace with something more specific
             self.podSpec = dget_dict(spec, "podSpec", prefix)
+
+        if "podAnnotations" in spec:
+            self.podAnnotations = dget_dict(spec, "podAnnotations", prefix)
+
+        if "podLabels" in spec:
+            self.podLabels = dget_dict(spec, "podLabels", prefix)
 
 
 class InnoDBClusterSpec:
@@ -666,6 +674,8 @@ class InnoDBClusterSpec:
     mycnf: str = ""
     # override pod template for MySQL (optional)
     podSpec: dict = {}
+    podAnnotations: Optional[dict] = None
+    podLabels: Optional[dict] = None
 
     # Initialize DB
     initDB: Optional[InitDB] = None
@@ -742,6 +752,12 @@ class InnoDBClusterSpec:
 
         if "podSpec" in spec:  # TODO - replace with something more specific
             self.podSpec = dget_dict(spec, "podSpec", "spec")
+
+        if "podAnnotations" in spec:
+            self.podAnnotations = dget_dict(spec, "podAnnotations", "spec")
+
+        if "podLabels" in spec:
+            self.podLabels = dget_dict(spec, "podLabels", "spec")
 
         if "datadirVolumeClaimTemplate" in spec:
             self.datadirVolumeClaimTemplate = spec.get("datadirVolumeClaimTemplate")

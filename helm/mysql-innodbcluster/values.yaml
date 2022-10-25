@@ -26,6 +26,8 @@ baseServerId: 1000
 #  instances: 1
 #  certAndPKsecretName:
 #  podSpec:
+#  podAnnotations:
+#  podLabels:
 
 #keyring:
 #  file:
@@ -64,7 +66,9 @@ baseServerId: 1000
 #      limits:
 #        memory: "8192Mi"  # adapt to your needs
 #        cpu: "3600m"      # adapt to your needs
-
+#
+#podAnnotations:
+#podLabels:
 
 #serverConfig:
 #  mycnf: |

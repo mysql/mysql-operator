@@ -477,6 +477,15 @@ spec:
 
     statefulset = yaml.safe_load(tmpl.replace("\n\n", "\n"))
 
+    metadata = {}
+    if spec.podAnnotations:
+        metadata['annotations'] = spec.podAnnotations
+    if spec.podLabels:
+        metadata['labels'] = spec.podLabels
+
+    if len(metadata):
+        utils.merge_patch_object(statefulset["spec"]["template"], {"metadata" : metadata })
+
     if spec.keyring:
         spec.keyring.add_to_sts_spec(statefulset)
 

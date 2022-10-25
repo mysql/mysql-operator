@@ -46,6 +46,12 @@ spec:
   {{- if (((.Values).router).podSpec) }}
     podSpec:  {{ toYaml (((.Values).router).podSpec) | nindent 6 }}
   {{- end }}
+  {{ if (((.Values).router).podLabels) }}
+    podLabels: {{ toYaml (((.Values).router).podLabels) | nindent 6 }}
+  {{ end }}
+  {{ if (((.Values).router).podAnnotations) }}
+    podAnnotations: {{ toYaml (((.Values).router).podAnnotations) | nindent 6 }}
+  {{ end }}
 {{- end }}
   secretName: {{ .Release.Name }}-cluster-secret
   imagePullPolicy : {{ required "image.pullPolicy is required" .Values.image.pullPolicy }}
@@ -357,3 +363,10 @@ spec:
 {{ if ((.Values).podSpec) }}
   podSpec: {{ toYaml ((.Values).podSpec) | nindent 4 }}
 {{ end }}
+{{- if ((.Values).podLabels) }}
+  podLabels: {{ toYaml ((.Values).podLabels) | nindent 4 }}
+{{- end }}
+{{- if ((.Values).podAnnotations) }}
+  podAnnotations: {{ toYaml ((.Values).podAnnotations) | nindent 4 }}
+{{- end }}
+

@@ -120,7 +120,7 @@ class Cluster1Defaults(tutil.OperatorTest):
 
         super().tearDownClass()
 
-    def test_0_create(self):
+    def test_00_create(self):
         """
         Create cluster, check posted events.
         """
@@ -140,6 +140,12 @@ spec:
   secretName: mypwds
   edition: community
   tlsUseSelfSigned: true
+  podLabels:
+    mycluster-label1: "mycluster-label1-value"
+    mycluster-label2: "mycluster-label2-value"
+  podAnnotations:
+    mycluster.example.com/ann1: "ann1-value"
+    mycluster.example.com/ann2: "ann2-value"
 """
 
         apply_time = isotime()
@@ -166,7 +172,15 @@ spec:
             "mycluster", after=apply_time, type="Normal",
             reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
 
-    def test_1_check_accounts(self):
+    def test_01_check_labels_and_annotations(self):
+        for pod_name in ["mycluster-0"]:
+            pod = kutil.get_po(self.ns, pod_name)
+            self.assertEqual(pod['metadata']['labels']['mycluster-label1'], 'mycluster-label1-value')
+            self.assertEqual(pod['metadata']['labels']['mycluster-label2'], 'mycluster-label2-value')
+            self.assertEqual(pod['metadata']['annotations']['mycluster.example.com/ann1'], 'ann1-value')
+            self.assertEqual(pod['metadata']['annotations']['mycluster.example.com/ann2'], 'ann2-value')
+
+    def test_03_check_accounts(self):
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
             accts = set([row[0] for row in s.query_sql(
                 "SELECT concat(user,'@',host) FROM mysql.user").fetch_all()])
@@ -174,7 +188,7 @@ spec:
                                             "localroot@localhost", "mysqladmin@%", "mysqlbackup@%", "mysqlrouter@%",
                                             "mysqlhealthchecker@localhost", "mysql_innodb_cluster_1000@%"] + DEFAULT_MYSQL_ACCOUNTS))
 
-    def test_1_bad_changes(self):
+    def test_05_bad_changes(self):
         return  # TODO
         # this should trigger an error and no changes
         # changes after this should continue working normally
@@ -187,7 +201,7 @@ spec:
         check_all(self, self.ns, "mycluster",
                   instances=1, routers=1, primary=0)
 
-    def test_1_grow_2(self):
+    def test_07_grow_2(self):
         kutil.patch_ic(self.ns, "mycluster", {
                        "spec": {"instances": 2}}, type="merge")
 
@@ -199,7 +213,15 @@ spec:
 
         check_all(self, self.ns, "mycluster", instances=2, routers=0, primary=0)
 
-    def test_2_addrouters(self):
+    def test_08_check_labels_and_annotations(self):
+        for pod_name in ["mycluster-0", "mycluster-1"]:
+            pod = kutil.get_po(self.ns, pod_name)
+            self.assertEqual(pod['metadata']['labels']['mycluster-label1'], 'mycluster-label1-value')
+            self.assertEqual(pod['metadata']['labels']['mycluster-label2'], 'mycluster-label2-value')
+            self.assertEqual(pod['metadata']['annotations']['mycluster.example.com/ann1'], 'ann1-value')
+            self.assertEqual(pod['metadata']['annotations']['mycluster.example.com/ann2'], 'ann2-value')
+
+    def test_09_addrouters(self):
         kutil.patch_ic(self.ns, "mycluster", {
                        "spec": {"router": {"instances": 3}}}, type="merge")
 
@@ -211,7 +233,7 @@ spec:
         # TODO add traffic, check routing
 
 
-    def test_3_check_security(self):
+    def test_11_check_security(self):
         """
         Ensure PodSecurityContext has required restrictions.
         """
@@ -244,7 +266,7 @@ spec:
         check_pod(p, 999, "mysqlrouter", "mysqlrouter")
 
 
-    def test_4_grow_3(self):
+    def test_13_grow_3(self):
         kutil.patch_ic(self.ns, "mycluster", {
                        "spec": {"instances": 3}}, type="merge")
 
@@ -256,7 +278,15 @@ spec:
 
         check_all(self, self.ns, "mycluster", instances=3, primary=0)
 
-    def test_5_shrink1(self):
+    def test_14_check_labels_and_annotations(self):
+        for pod_name in ["mycluster-0", "mycluster-1", "mycluster-2"]:
+            pod = kutil.get_po(self.ns, pod_name)
+            self.assertEqual(pod['metadata']['labels']['mycluster-label1'], 'mycluster-label1-value')
+            self.assertEqual(pod['metadata']['labels']['mycluster-label2'], 'mycluster-label2-value')
+            self.assertEqual(pod['metadata']['annotations']['mycluster.example.com/ann1'], 'ann1-value')
+            self.assertEqual(pod['metadata']['annotations']['mycluster.example.com/ann2'], 'ann2-value')
+
+    def test_15_shrink1(self):
         kutil.patch_ic(self.ns, "mycluster", {
                        "spec": {"instances": 1}}, type="merge")
 
@@ -269,7 +299,7 @@ spec:
 
         check_all(self, self.ns, "mycluster", instances=1, primary=0)
 
-    def test_6_recover_crash_1(self):
+    def test_17_recover_crash_1(self):
         """
         Force a mysqld process crash.
         The only thing expected to happen is that mysql restarts and the
@@ -315,7 +345,7 @@ spec:
 
         check_all(self, self.ns, "mycluster", instances=1, primary=0)
 
-    def test_6_recover_sidecar_crash_1(self):
+    def test_19_recover_sidecar_crash_1(self):
         """
         Force a sidecar process crash.
         Nothing is expected to happen other than sidecar restarting and
@@ -362,7 +392,7 @@ spec:
         # check that all containers are OK
         check_all(self, self.ns, "mycluster", instances=1, primary=0)
 
-    def test_6_recover_restart_1(self):
+    def test_21_recover_restart_1(self):
         pod = kutil.get_po(self.ns, "mycluster-0")
         mysql_cont = check_apiobjects.get_pod_container(pod, "mysql")
         sidecar_cont = check_apiobjects.get_pod_container(pod, "sidecar")
@@ -393,7 +423,7 @@ spec:
 
         check_all(self, self.ns, "mycluster", instances=1, primary=0)
 
-    def test_6_recover_shutdown_1(self):
+    def test_23_recover_shutdown_1(self):
         pod = kutil.get_po(self.ns, "mycluster-0")
         mysql_cont = check_apiobjects.get_pod_container(pod, "mysql")
         sidecar_cont = check_apiobjects.get_pod_container(pod, "sidecar")
@@ -429,7 +459,7 @@ spec:
     # TODO also test that deleting the only pod + pvc is detected as a
     # complete data wipe/replacement
 
-    def test_6_recover_delete_1(self):
+    def test_25_recover_delete_1(self):
         kutil.delete_po(self.ns, "mycluster-0", timeout=200)
 
         apply_time = isotime()
@@ -451,7 +481,7 @@ spec:
 
         check_all(self, self.ns, "mycluster", instances=1, primary=0)
 
-    def test_6_recover_stop_1(self):
+    def test_27_recover_stop_1(self):
         return
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0:
             s0.exec_sql("stop group_replication")
@@ -467,7 +497,7 @@ spec:
 
         check_all(self, self.ns, "mycluster", instances=1, primary=0)
 
-    def test_9_destroy(self):
+    def test_99_destroy(self):
         kutil.delete_ic(self.ns, "mycluster")
 
         self.wait_pod_gone("mycluster-0")

@@ -81,6 +81,12 @@ spec:
                 podSpec:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
+                podAnnotations:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                podLabels:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
                 keyring:
                   type: object
                   description: "Keyring specification"
@@ -265,6 +271,12 @@ spec:
                       pattern: '^\d+\.\d+\.\d+(-.+)?'
                       description: "Override MySQL Router version"
                     podSpec:
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                    podAnnotations:
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                    podLabels:
                       type: object
                       x-kubernetes-preserve-unknown-fields: true
                 backupProfiles:

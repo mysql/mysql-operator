@@ -5,7 +5,7 @@
 * python3
 * modules:
     * kubernetes
-    * kubernetes.client.api
+    * kubernetes-client
     * pyyaml
     * mysql-connector-python (**CAUTION!** NOT mysql-connector)
     * unittest-xml-reporting (optional, to generate JUnit xml reports)

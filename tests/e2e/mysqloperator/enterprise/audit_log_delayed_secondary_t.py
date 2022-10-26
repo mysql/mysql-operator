@@ -65,13 +65,17 @@ class AuditLogDelayedSecondary(AuditLogBase):
         self.assertTrue(self.does_log_exist("mycluster-1"))
         self.assertTrue(self.does_log_exist("mycluster-2"))
 
-        log_data_1 = self.get_log_data("mycluster-1", self.add_data_timestamp)
-        self.assertIn("SHOW PLUGINS", log_data_1)
-        self.assertNotIn("SHOW PROFILES", log_data_1)
+        samples = [
+            ("SHOW PLUGINS", True),
+            ("SHOW PROFILES", False)
+            ]
+        self.assertIsNone(self.verify_log_data("mycluster-1", self.add_data_timestamp, samples))
 
-        log_data_2 = self.get_log_data("mycluster-2", self.add_data_timestamp)
-        self.assertIn("SHOW PROFILES", log_data_2)
-        self.assertNotIn("SHOW PLUGINS", log_data_2)
+        samples = [
+            ("SHOW PLUGINS", False),
+            ("SHOW PROFILES", True)
+            ]
+        self.assertIsNone(self.verify_log_data("mycluster-2", self.add_data_timestamp, samples))
 
 
     def test_9_destroy(self):

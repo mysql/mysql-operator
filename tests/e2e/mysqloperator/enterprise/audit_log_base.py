@@ -5,6 +5,7 @@
 
 import logging
 import os
+import time
 from e2e.mysqloperator.cluster.cluster_t import check_all
 from utils import kutil
 from utils import mutil
@@ -200,6 +201,36 @@ spec:
                 return None
             self.assertEqual(len(rows), 1)
             return str(rows[0])
+
+    def filter_log_data(self, instance, timestamp, samples):
+        log_data = self.get_log_data(instance, timestamp)
+        issues = []
+        for sample in samples:
+            sequence = sample[0]
+            is_expected = sample[1]
+            if is_expected:
+                if sequence not in log_data:
+                    issues.append(f"expected sequence '{sequence}' not found")
+            else:
+                if sequence in log_data:
+                    issues.append(f"unexpected sequence '{sequence}' found")
+
+        if issues:
+            return f"Following issues: '[{'; '.join(issues)}] met in log {log_data}"
+
+        return None
+
+
+    def verify_log_data(self, instance, timestamp, samples):
+        MAX_TRIALS = 5
+        issues = None
+        for i in range(MAX_TRIALS):
+            issues = self.filter_log_data(instance, timestamp, samples)
+            if not issues:
+                break
+            time.sleep(2)
+
+        return issues
 
 
     def destroy_cluster(self):

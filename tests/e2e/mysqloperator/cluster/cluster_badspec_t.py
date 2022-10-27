@@ -87,7 +87,8 @@ spec:
   tlsUseSelfSigned: true
 """
         self.assertApplyFails(
-            yaml, r'metadata.name in body should be at most 40 chars long')
+            yaml, r'metadata.name in body should be at most 40 chars long' if kutil.server_version() < '1.25' else
+                 'The InnoDBCluster "veryveryveryveryveryveryveryverylongnamex" is invalid: metadata.name: Too long: may not be longer than 40')
 
     def test_1_no_name(self):
         """

@@ -16,6 +16,7 @@ import re
 import yaml
 import base64
 import pathlib
+import json
 from setup.config import g_ts_cfg
 
 logger = logging.getLogger("kutil")
@@ -214,7 +215,17 @@ def feed_kubectl(input, cmd, rsrc=None, args=None, check=True):
         logger.debug("rc = %s", r)
     return r
 
-#
+
+def server_version() -> str:
+    output = kubectl("version", args=["-o", "json"])
+    sv = json.loads(output.stdout.decode("utf8"))['serverVersion']
+    return f"{sv['major']}.{sv['minor']}"
+
+
+def client_version() -> str:
+    output = kubectl("version", args=["-o", "json"])
+    cv = json.loads(output.stdout.decode("utf8"))['clientVersion']
+    return f"{cv['major']}.{cv['minor']}"
 
 
 def __ls(ns, rsrc, ignore=[]):

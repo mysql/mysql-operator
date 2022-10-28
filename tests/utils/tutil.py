@@ -18,11 +18,8 @@ from utils.auxutil import isotime
 from . import fmt
 from . import kutil
 from . import mutil
-import yaml
 import time
-import datetime
 import sys
-import traceback
 import re
 from .aggrlog import LogAggregator
 from kubernetes.stream import stream
@@ -158,7 +155,7 @@ def run_from_operator_pod(uri, script):
                         stdout=True, tty=False,
                         _preload_content=True)
 
-    return r.split("##########", 1)[-1].strip()
+    return auxutil.purge_warnings(r.split("##########", 1)[-1].strip())
 
 #
 

@@ -34,6 +34,10 @@ export OPERATOR_TEST_OCI_CONFIG_PATH=${CREDENTIALS_DIR}/config
 export OPERATOR_TEST_OCI_BUCKET=dumps
 export OPERATOR_TEST_VAULT_CONFIG_PATH=${CREDENTIALS_DIR}/vault.cfg
 
+# extract operator version from the defaults
+export OPERATOR_BASE_VERSION_TAG=$(grep -m 1 OPERATOR_TEST_VERSION_TAG $WORKSPACE/tests/setup/defaults.py \
+	| sed 's/[[:blank:]]*"OPERATOR_TEST_VERSION_TAG", default="\([0-9.-]*\)")/\1/')
+
 # log some infos
 pwd
 python3 --version

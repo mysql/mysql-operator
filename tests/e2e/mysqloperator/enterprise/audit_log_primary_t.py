@@ -32,7 +32,7 @@ class AuditLogPrimary(audit_log_base.AuditLogBase):
             s.exec_sql(f"CREATE TABLE audit_foo.{self.test_table} (id INT NOT NULL, name VARCHAR(20), PRIMARY KEY(id))")
             s.exec_sql(f'INSERT INTO audit_foo.{self.test_table} VALUES (123456, "first_audit")')
             s.exec_sql(f'INSERT INTO audit_foo.{self.test_table} VALUES (654321, "second_audit")')
-            s.exec_sql(f'FLUSH TABLES audit_foo.{self.test_table}')
+            s.exec_sql(f'FLUSH TABLES')
 
 
     def test_3_verify_log(self):

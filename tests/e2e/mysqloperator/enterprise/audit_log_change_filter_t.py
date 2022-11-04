@@ -49,7 +49,6 @@ class AuditLogChangeFilter(AuditLogBase):
 
         with mutil.MySQLPodSession(self.ns, self.instance_primary, self.user, self.password) as s:
             s.exec_sql("CREATE DATABASE audit_foo")
-            s.exec_sql("FLUSH TABLES")
 
         with mutil.MySQLPodSession(self.ns, "mycluster-1", self.user, self.password) as s:
             res = s.query_sql("SHOW PROFILES").fetch_all()
@@ -58,6 +57,7 @@ class AuditLogChangeFilter(AuditLogBase):
         with mutil.MySQLPodSession(self.ns, "mycluster-2", self.user, self.password) as s:
             res = s.query_sql("SHOW SCHEMAS").fetch_all()
             self.assertIsNotNone(res)
+            s.exec_sql("FLUSH TABLES")
 
 
     def test_6_verify_logs(self):

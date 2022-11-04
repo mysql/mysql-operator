@@ -55,7 +55,6 @@ class AuditLogChangePrimary(AuditLogBase):
 
         with mutil.MySQLPodSession(self.ns, self.primary_instance, self.user, self.password) as s:
             s.exec_sql("CREATE DATABASE audit_foo")
-            s.exec_sql("FLUSH TABLES")
 
         self.__class__.secondary_instances = self.get_secondary_instances("mycluster-1", self.user, self.password)
         secondary_instances = self.secondary_instances
@@ -68,6 +67,7 @@ class AuditLogChangePrimary(AuditLogBase):
         with mutil.MySQLPodSession(self.ns, secondary_instances[1], self.user, self.password) as s:
             res = s.query_sql("SHOW SCHEMAS").fetch_all()
             self.assertIsNotNone(res)
+            s.exec_sql("FLUSH TABLES")
 
 
     def test_4_verify_logs(self):

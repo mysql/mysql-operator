@@ -101,26 +101,10 @@ spec:
         # create a test volume to store backups
         yaml = f"""
 apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: {self.backup_volume_name}
-  labels:
-    type: local
-spec:
-  storageClassName: manual
-  capacity:
-    storage: 2Gi
-  accessModes:
-    - ReadWriteOnce
-  hostPath:
-    path: "{backupdir}"
----
-apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: {self.backup_volume_name}
 spec:
-  storageClassName: manual
   accessModes:
     - ReadWriteOnce
   resources:

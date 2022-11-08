@@ -3,6 +3,7 @@
 {{- $use_self_signed := default false ((.Values.tls).useSelfSigned) }}
 {{- $minimalVersion := "8.0.27" }}
 {{- $forbiddenVersions := list "8.0.29" }}
+{{- $imagePullPolicies := list "ifnotpresent" "always" "never" }}
 {{- $serverVersion := .Values.serverVersion | default .Chart.AppVersion }}
 {{- if and ((.Values).routerInstances) (((.Values).router).instances) }}
   {{- if ne ((.Values).routerInstances) (((.Values).router).instances) }}
@@ -18,6 +19,14 @@
 {{- if has $serverVersion $forbiddenVersions }}
   {{- $err := printf "It is not possible to use MySQL version %s . Please, use %s or above except %v" $serverVersion $minimalVersion $forbiddenVersions }}
   {{- fail $err }}
+{{- end }}
+{{- if (((.Values).image).pullPolicy) }}
+  {{- if not (has (lower (((.Values).image).pullPolicy)) ($imagePullPolicies)) }}
+    {{- $err := printf "Unknown image pull policy %s. Must be one of %v" (((.Values).image).pullPolicy) $imagePullPolicies }}
+    {{- fail $err }}
+  {{- end }}
+{{- else }}
+  {{ fail "image.pullPolicy is required" }}
 {{- end }}
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
@@ -54,7 +63,7 @@ spec:
   {{ end }}
 {{- end }}
   secretName: {{ .Release.Name }}-cluster-secret
-  imagePullPolicy : {{ required "image.pullPolicy is required" .Values.image.pullPolicy }}
+  imagePullPolicy : {{ .Values.image.pullPolicy }}
   baseServerId: {{ required "baseServerId is required" .Values.baseServerId }}
   version: {{ .Values.serverVersion | default .Chart.AppVersion }}
   {{- if ((.Values).edition) }}

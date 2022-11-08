@@ -45,10 +45,10 @@ DEFAULT_OPERATOR_VERSION_TAG = "8.0.32-2.0.8"
 
 # TODO - unify those two settings (if we use OCR for community as well we can use the same thing)
 DEFAULT_IMAGE_REPOSITORY = os.getenv(
-    "MYSQL_OPERATOR_DEFAULT_REPOSITORY", default="mysql")
+    "MYSQL_OPERATOR_DEFAULT_REPOSITORY", default="mysql").rstrip('/')
 
 DEFAULT_IMAGE_REPOSITORY_EE = os.getenv(
-    "MYSQL_OPERATOR_DEFAULT_REPOSITORY", default="container-registry.oracle.com/mysql")
+    "MYSQL_OPERATOR_DEFAULT_REPOSITORY", default="container-registry.oracle.com/mysql").rstrip('/')
 
 MYSQL_SERVER_IMAGE = "mysql-server"
 MYSQL_ROUTER_IMAGE = "mysql-router"

@@ -1,3 +1,10 @@
+{{- $imagePullPolicies := list "ifnotpresent" "always" "never" }}
+{{- if (((.Values).image).pullPolicy) }}
+  {{- if not (has (lower (((.Values).image).pullPolicy)) ($imagePullPolicies)) }}
+    {{- $err := printf "Unknown image pull policy %s. Must be one of %v" (((.Values).image).pullPolicy) $imagePullPolicies }}
+    {{- fail $err }}
+  {{- end }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -23,23 +30,27 @@ spec:
     spec:
       containers:
         - name: mysql-operator
-          image: {{ if .Values.image.registry }}{{ .Values.image.registry }}/{{- end }}{{- if .Values.image.repository }}{{ .Values.image.repository }}/{{ end }}{{ .Values.image.name }}:{{ .Values.image.tag | default .Chart.AppVersion }}
-          imagePullPolicy: {{ required "image.pullPolicy is required" .Values.image.pullPolicy }}
+          image: {{ if (((.Values).image).registry) }}{{ trimSuffix "/" .Values.image.registry }}/{{- end }}{{- if (((.Values).image).repository) }}{{ trimSuffix "/" .Values.image.repository }}/{{ end }}{{ (required "image.name is required" ((.Values).image).name) }}:{{ default .Chart.AppVersion (((.Values).image).tag) }}
+          imagePullPolicy: {{ required "image.pullPolicy is required" (((.Values).image).pullPolicy) }}
           args: ["mysqlsh", "--log-level=@INFO", "--pym", "mysqloperator", "operator"]
           env:
           - name: MYSQLSH_USER_CONFIG_HOME
             value: /mysqlsh
-          {{ if .Values.envs.imagesDefaultRegistry }}
+          {{ if (((.Values).envs).imagesDefaultRegistry) }}
           - name: MYSQL_OPERATOR_DEFAULT_REPOSITORY
-            value: {{ .Values.envs.imagesDefaultRegistry }}{{ if .Values.envs.imagesDefaultRepository}}/{{ .Values.envs.imagesDefaultRepository }}{{ end }}
-          {{ else if .Values.envs.imagesDefaultRepository }}
+            value: {{ trimSuffix "/" .Values.envs.imagesDefaultRegistry }}{{ if .Values.envs.imagesDefaultRepository }}/{{ trimSuffix "/" .Values.envs.imagesDefaultRepository }}{{ end }}
+          {{ else if (((.Values).envs).imagesDefaultRepository) }}
           - name: MYSQL_OPERATOR_DEFAULT_REPOSITORY
-            value: {{ .Values.envs.imagesDefaultRepository }}
+            value: {{ trimSuffix "/" .Values.envs.imagesDefaultRepository }}
           {{ end }}
-          {{ if .Values.envs.imagesPullPolicy }}
+          {{- if (((.Values).envs).imagesPullPolicy) }}
+            {{- if not (has (lower .Values.envs.imagesPullPolicy) ($imagePullPolicies)) }}
+              {{- $err := printf "Unknown envs.imagesPullPolicy %s. Must be one of %v" .Values.envs.imagesPullPolicy $imagePullPolicies}}
+              {{- fail $err }}
+            {{- end }}
           - name: MYSQL_OPERATOR_IMAGE_PULL_POLICY
             value: {{ .Values.envs.imagesPullPolicy }}
-          {{ end }}
+          {{- end }}
           volumeMounts:
             - name: mysqlsh-home
               mountPath: /mysqlsh

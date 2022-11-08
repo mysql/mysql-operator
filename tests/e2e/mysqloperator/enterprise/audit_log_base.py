@@ -144,14 +144,14 @@ spec:
     def has_filter(self, instance, user, host, filter_name, filter):
         with mutil.MySQLPodSession(self.ns, instance, self.user, self.password) as s:
             res = s.query_sql("SELECT * FROM audit_log_filter").fetch_all()
-            print(res)
+            self.logger.debug(res)
             if not res:
                 return False
             if res != [(filter_name, filter)]:
                 return False
 
             res = s.query_sql("SELECT * FROM audit_log_user").fetch_all()
-            print(res)
+            self.logger.debug(res)
             if not res:
                 return False
             if res != [(user, host, filter_name)]:
@@ -182,11 +182,11 @@ spec:
             return False
         cmd = ['ls', '-l', audit_log_path]
         ls_res = kutil.execp(self.ns, (instance, "mysql"), cmd)
-        print(str(ls_res))
+        self.logger.info(str(ls_res))
 
         # cmd = ['cat', audit_log_path]
         # cat_res = kutil.execp(self.ns, (instance, "mysql"), cmd)
-        # print(str(cat_res))
+        # self.logger.debug(str(cat_res))
 
         return self.audit_log_filename in str(ls_res)
 

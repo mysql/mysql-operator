@@ -66,10 +66,10 @@ class MySQLPodSession:
                                 **kwargs)
                 break
             except mysql.connector.errors.OperationalError as e:
-                print(ns, "/", podname, "port=", self.port, "pass=", password, e)
+                logger.error(f"{ns}/{podname}, port={self.port}, pass={password}, {e}")
                 if e.errno == 2013 and i < 5: # error reading initial packet (server restarting?)
                     time.sleep(1)
-                    print("retrying...")
+                    logger.debug("retrying...")
                     continue
                 raise
 
@@ -240,11 +240,11 @@ class MySQLInteractivePodSession:
 if __name__ == "__main__":
     session = MySQLInteractivePodSession("testns", "mycluster-0")
 
-    print("RAW")
-    print(session.query_raw("show processlist;"))
-    print("NORMAL")
-    print(session.query("show processlist;"))
-    print("DICT")
-    print(session.query_dict("show processlist;"))
+    logger.info("RAW")
+    logger.info(session.query_raw("show processlist;"))
+    logger.info("NORMAL")
+    logger.info(session.query("show processlist;"))
+    logger.info("DICT")
+    logger.info(session.query_dict("show processlist;"))
 
     del session

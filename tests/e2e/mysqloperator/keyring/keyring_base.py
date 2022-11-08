@@ -41,7 +41,7 @@ class KeyRingBase(tutil.OperatorTest):
     def generate_keyring_name(self):
         random_suffix = auxutil.random_string(8)
         keyring_name = f"{g_ts_cfg.k8s_context}_keyring_{random_suffix}"
-        print(f"keyring name: {keyring_name}")
+        self.logger.debug(f"keyring name: {keyring_name}")
         return keyring_name
 
     def verify_table_encrypted(self, session, schema_name, table_name, encryption_expected):
@@ -160,9 +160,9 @@ metadata:
             self.__class__.keyring_name = self.generate_keyring_name()
             keyring_name = self.__class__.keyring_name
 
-            print(s.query_sql(f"SELECT keyring_key_store('{keyring_name}', 'AES', 'Secret string')").fetch_one())
-            print(s.query_sql("SELECT space, name, space_Type, encryption FROM information_Schema.innodb_tablespaces").fetch_all())
-            print(s.query_sql(f"SELECT keyring_key_fetch('{keyring_name}')").fetch_one())
+            self.logger.debug(s.query_sql(f"SELECT keyring_key_store('{keyring_name}', 'AES', 'Secret string')").fetch_one())
+            self.logger.debug(s.query_sql("SELECT space, name, space_Type, encryption FROM information_Schema.innodb_tablespaces").fetch_all())
+            self.logger.debug(s.query_sql(f"SELECT keyring_key_fetch('{keyring_name}')").fetch_one())
 
     def check_variables(self):
         with mutil.MySQLPodSession(self.ns, "mycluster-0", self.user, self.password) as s:

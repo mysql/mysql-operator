@@ -380,7 +380,7 @@ spec:
 
         def ready():
             pod = kutil.get_po(self.ns, "mycluster-0")
-            print(check_apiobjects.get_pod_container(
+            self.logger.debug(check_apiobjects.get_pod_container(
                 pod, "sidecar")["restartCount"])
             return check_apiobjects.get_pod_container(pod, "sidecar")["restartCount"] == sidecar_cont["restartCount"]+1
 
@@ -650,10 +650,10 @@ spec:
         query_result = shell.query_dict("select concat(@@report_host, ':', @@port) as r;")
         if not query_result:
             return False
-        print(query_result)
+        self.logger.debug(query_result)
 
         result = query_result[0]
-        print(result)
+        self.logger.debug(result)
 
         if type(expected_routing_settings) is str:
             self.assertEqual(result['r'], expected_routing_settings)
@@ -671,7 +671,7 @@ spec:
                     communicated = True
                     break
             except BaseException as err:
-                print(f"Unexpected {err=}, {type(err)=}")
+                self.logger.error(f"Unexpected {err=}, {type(err)=}")
 
         self.assertTrue(communicated, f"couldn't communicate with the host {address}")
 

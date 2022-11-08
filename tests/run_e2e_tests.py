@@ -80,6 +80,7 @@ def list_tests(suites):
 def setup_logging(verbose: bool):
     gray = ""
     logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO,
+                        stream=sys.stdout,
                         format="\033[1;34m%(asctime)s  %(name)-10s  [%(levelname)-8s]\033[0m   %(message)s")
 
 
@@ -284,12 +285,12 @@ if __name__ == '__main__':
                         import xmlrunner
                         from xmlrunner.extra.xunit_plugin import transform
                         xml_report_output = io.BytesIO()
-                        runner = xmlrunner.XMLTestRunner(output=xml_report_output)
+                        runner = xmlrunner.XMLTestRunner(stream=sys.stdout,output=xml_report_output)
                         runner.run(suites)
                         with open(opt_xml_report_path, 'wb') as xml_report:
                            xml_report.write(transform(xml_report_output.getvalue()))
                     else:
-                        runner = unittest.TextTestRunner(verbosity=opt_verbosity)
+                        runner = unittest.TextTestRunner(stream=sys.stdout,verbosity=opt_verbosity)
                         runner.run(suites)
             except:
                 tutil.g_full_log.shutdown()

@@ -8,7 +8,7 @@
 # check state of group
 
 
-from utils import kutil
+from utils import tutil
 from utils import mutil
 import json
 from setup.config import g_ts_cfg
@@ -25,7 +25,7 @@ def check_group(test, icobj, all_pods, user="root", password="sakila"):
         test.assertEqual(icobj["status"]["cluster"]
                          ["onlineInstances"], len(members))
 
-        print(members)
+        tutil.logger.debug(members)
 
         primaries = []
         for mid, mhost, mport, mstate, mrole in members:

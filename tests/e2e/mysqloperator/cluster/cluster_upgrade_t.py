@@ -102,7 +102,7 @@ spec:
 
         def check_done(pod):
             po = kutil.get_po(self.ns, pod)
-            # print(json.loads(po["metadata"].get("annotations", {}).get("mysql.oracle.com/membership-info", "{}")))
+            # self.logger.debug(json.loads(po["metadata"].get("annotations", {}).get("mysql.oracle.com/membership-info", "{}")))
             return json.loads(po["metadata"].get("annotations", {}).get("mysql.oracle.com/membership-info", "{}")).get("version", "")
 
         self.wait(check_done, args=("mycluster-2", ),

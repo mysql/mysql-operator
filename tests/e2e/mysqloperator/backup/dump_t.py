@@ -184,7 +184,6 @@ spec:
         dumpdir = mbk['status']['output']
         command = ["stat", "-c", "%U:%G", f"/pvc/{dumpdir}"]
         res = kutil.exec(self.ns, ("pvc-inspector", "shell"), command)
-#        print(res)
         self.assertIn("mysql:mysql", res.stdout.decode("utf-8"), "mysql:mysql not found")
         self.assertNotIn("root:root", res.stdout.decode("utf-8"), "root:root found")
         kutil.delete_po(self.ns, "pvc-inspector")

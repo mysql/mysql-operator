@@ -78,7 +78,7 @@ spec:
             # checks that we connect to both secondaries at least once
             h = tutil.run_from_operator_pod(f"mysql://root:sakila@mycluster.testns.svc.cluster.local:{port}",
                 "print(session.run_sql('select @@hostname').fetch_one()[0])")
-            print(h)
+            self.logger.debug(h)
             hosts_expected.remove(h)
             return len(hosts_expected) == 0
 

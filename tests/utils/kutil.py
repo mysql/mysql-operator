@@ -210,7 +210,7 @@ def feed_kubectl(input, cmd, rsrc=None, args=None, check=True):
     r = subprocess.run(argv, input=input.encode("utf8"),
                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                        check=check)
-    print(r.stdout.decode("utf8"))
+    logger.info(r.stdout.decode("utf8"))
     if debug_kubectl:
         logger.debug("rc = %s", r)
     return r
@@ -642,7 +642,7 @@ def wait_pod(ns, name, status="Running", timeout=120, checkabort=lambda: None):
         logger.debug("%s", line)
         if line["STATUS"] in ("Error", "ImagePullBackOff", "ErrImageNeverPull", "CrashLoopBackOff") and line["STATUS"] not in status:
             raise Exception(f"Pod error: {line['STATUS']}")
-        print(line)
+        logger.debug(line)
         return line["STATUS"] in status
 
     wait_pod_exists(ns, name, timeout, checkabort)
@@ -881,5 +881,5 @@ mysql-operator   mysql-operator-5bfb6dfdb7-mj5tx          1/1     Running      0
     splitter = TableSplitter(lines[0])
     for l in lines[1:]:
         p = splitter.split(l)
-        print(p)
+        logger.debug(p)
         assert len(p) == len(splitter.columns)

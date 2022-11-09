@@ -12,7 +12,7 @@ import unittest
 import subprocess
 import logging
 import os
-from utils import auxutil
+from utils import auxutil, ociutil
 
 from utils.auxutil import isotime
 from . import fmt
@@ -313,6 +313,7 @@ class PodHelper:
 
 class OperatorTest(unittest.TestCase):
     logger = logging
+    stream_handler = None
     ns = "testns"
     op_stdout = []
     op_check_stdout = None
@@ -320,6 +321,14 @@ class OperatorTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        # set up loggers
+        cls.stream_handler = logging.StreamHandler(sys.stdout)
+        cls.logger.addHandler(cls.stream_handler)
+        logger.addHandler(cls.stream_handler) # tutil.logger
+        kutil.logger.addHandler(cls.stream_handler)
+        mutil.logger.addHandler(cls.stream_handler)
+        ociutil.logger.addHandler(cls.stream_handler)
+
         cls.logger.info(f"Starting {cls.__name__}")
 
         leftovers = kutil.ls_all_raw(cls.ns)
@@ -360,14 +369,22 @@ class OperatorTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        kutil.delete_pvc(cls.ns, None)
+        try:
+            kutil.delete_pvc(cls.ns, None)
 
-        leftovers = kutil.ls_all_raw(cls.ns)
-        if leftovers:
-            cls.logger.error(
-                "Namespace %s not empty at the end of the test case!", cls.ns)
-            cls.logger.info("%s", leftovers)
-            wipe_ns(cls.ns)
+            leftovers = kutil.ls_all_raw(cls.ns)
+            if leftovers:
+                cls.logger.error(
+                    "Namespace %s not empty at the end of the test case!", cls.ns)
+                cls.logger.info("%s", leftovers)
+                wipe_ns(cls.ns)
+        finally:
+            if cls.stream_handler:
+                logger.removeHandler(cls.stream_handler) # tutil.logger
+                kutil.logger.removeHandler(cls.stream_handler)
+                mutil.logger.removeHandler(cls.stream_handler)
+                ociutil.logger.removeHandler(cls.stream_handler)
+                cls.logger.removeHandler(cls.stream_handler)
 
     def setUp(self):
         self.allowed_op_logged_errors = self.default_allowed_op_errors[:]
@@ -398,7 +415,7 @@ class OperatorTest(unittest.TestCase):
             if t == type and r == reason and msgpat.match(m):
                 return True
         else:
-            print(f"Events for {cluster}", "\n".join([str(x) for x in events]))
+            logger.info(f"Events for {cluster}" + "\n".join([str(x) for x in events]))
             return False
 
     def assertGotClusterEvent(self, cluster, after=None, *, type, reason, msg):

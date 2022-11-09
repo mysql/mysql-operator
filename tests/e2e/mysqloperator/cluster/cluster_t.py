@@ -1485,6 +1485,18 @@ spec:
 class Cluster1CloneWorksWhenTransactionMissingFromBinlog(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
 
+    @classmethod
+    def setUpClass(cls):
+        cls.logger = logging.getLogger(__name__+":"+cls.__name__)
+        super().setUpClass()
+        g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
+
+    @classmethod
+    def tearDownClass(cls):
+        g_full_log.stop_watch(cls.ns, "mycluster-0")
+
+        super().tearDownClass()
+
     def test_0_scaling_after_removing_some_binlogs_works(self):
         """
         Checks:

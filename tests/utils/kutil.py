@@ -104,7 +104,7 @@ def get_current_context():
     if ret.returncode == 0:
         return output.strip()
 
-    raise Exception(f"Could not get current context {err}")
+    raise Exception(f"Could not get current context {ret}")
 
 def kubectl(cmd, rsrc=None, args=None, timeout=None, check=True, ignore=[]):
     argv = ["kubectl", f"--context={g_ts_cfg.k8s_context}", cmd]

@@ -43,6 +43,8 @@ class AuditLogClusterIncomplete(AuditLogBase):
             self.assertIsNotNone(res)
             s.exec_sql(f'FLUSH TABLES')
 
+        self.rotate_log(self.instance_primary)
+
 
     def test_3_verify_log(self):
         self.assertTrue(self.does_log_exist(self.instance_primary))

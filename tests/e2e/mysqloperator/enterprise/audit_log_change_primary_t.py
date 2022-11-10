@@ -69,6 +69,8 @@ class AuditLogChangePrimary(AuditLogBase):
             self.assertIsNotNone(res)
             s.exec_sql("FLUSH TABLES")
 
+        self.rotate_log(self.primary_instance)
+
 
     def test_4_verify_logs(self):
         self.assertTrue(self.does_log_exist(self.primary_instance))

@@ -58,6 +58,8 @@ class AuditLogRemoveFilter(AuditLogBase):
             self.assertIsNotNone(res)
             s.exec_sql("FLUSH TABLES")
 
+        self.rotate_log(self.instance_primary)
+
 
     def test_6_verify_logs(self):
         self.assertTrue(self.does_log_exist("mycluster-0"))

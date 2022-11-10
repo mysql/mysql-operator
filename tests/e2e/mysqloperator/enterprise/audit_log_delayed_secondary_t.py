@@ -60,6 +60,8 @@ class AuditLogDelayedSecondary(AuditLogBase):
             res = s.query_sql("SHOW PROFILES").fetch_all()
             self.assertIsNotNone(res)
 
+        self.rotate_log(self.instance_primary)
+
 
     def test_6_verify_secondary_empty(self):
         self.assertTrue(self.does_log_exist("mycluster-1"))

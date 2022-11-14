@@ -21,6 +21,7 @@ class AuditLogBase(tutil.OperatorTest):
     routers_count = 2
 
     audit_log_filename = 'audit.json'
+    rotated_audit_log_path = None
 
     default_filter_user = '%'
     default_filter_host = ''
@@ -166,6 +167,20 @@ spec:
         return self.has_filter(instance, self.custom_filter_user, self.custom_filter_host, self.custom_filter_label, self.custom_filter)
 
 
+    def rotate_log(self, instance):
+        with mutil.MySQLPodSession(self.ns, instance, self.user, self.password) as s:
+            res = s.query_sql("SELECT audit_log_rotate()").fetch_one()
+            self.logger.debug(res)
+            rotated_log_filename = res[0]
+            datadir = s.query_sql("SHOW VARIABLES LIKE 'datadir'").fetch_one()[1]
+            self.__class__.rotated_audit_log_path = os.path.join(datadir, rotated_log_filename)
+            self.logger.debug(self.__class__.rotated_audit_log_path)
+
+    def get_rotated_log_data(self, instance):
+        cmd = ['cat', self.__class__.rotated_audit_log_path]
+        return str(kutil.execp(self.ns, (instance, "mysql"), cmd))
+
+
     def get_log_path(self, instance):
         with mutil.MySQLPodSession(self.ns, instance, self.user, self.password) as s:
             datadir = s.query_sql("SHOW VARIABLES LIKE 'datadir'").fetch_one()[1]
@@ -174,7 +189,6 @@ spec:
                 return None
             audit_log_fname = res[1]
             return os.path.join(datadir, audit_log_fname)
-
 
     def does_log_exist(self, instance):
         audit_log_path = self.get_log_path(instance)
@@ -202,8 +216,7 @@ spec:
             self.assertEqual(len(rows), 1)
             return str(rows[0])
 
-    def filter_log_data(self, instance, timestamp, samples):
-        log_data = self.get_log_data(instance, timestamp)
+    def filter_log_data(self, log_data, samples):
         issues = []
         for sample in samples:
             sequence = sample[0]
@@ -220,17 +233,35 @@ spec:
 
         return None
 
+    def verify_rotated_log_data(self, instance, samples):
+        log_data = self.get_rotated_log_data(instance)
+        issues = self.filter_log_data(log_data, samples)
+        if issues:
+            return f"Rotated log {self.__class__.rotated_audit_log_path}: {issues}"
+        return None
 
-    def verify_log_data(self, instance, timestamp, samples):
-        MAX_TRIALS = 5
+    def verify_current_log_data(self, instance, timestamp, samples):
+        MAX_TRIALS = 10
         issues = None
         for i in range(MAX_TRIALS):
-            issues = self.filter_log_data(instance, timestamp, samples)
+            log_data = self.get_log_data(instance, timestamp)
+            issues = self.filter_log_data(log_data, samples)
             if not issues:
                 break
-            time.sleep(2)
+            time.sleep(3)
 
         return issues
+
+    def verify_log_data(self, instance, timestamp, samples):
+        rotated_log_issues = self.verify_rotated_log_data(instance, samples)
+        if not rotated_log_issues:
+            return None
+
+        current_log_issues = self.verify_current_log_data(instance, timestamp, samples)
+        if not current_log_issues:
+            return None
+
+        return current_log_issues + rotated_log_issues
 
 
     def destroy_cluster(self):

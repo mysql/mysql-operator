@@ -118,13 +118,13 @@ spec:
 
     def verify_update_rejected(self, update_time, from_version, to_version):
         # e.g.
-        # 16m  Normal  Logging   innodbcluster/mycluster  Propagating spec.version=8.0.29 for testns/mycluster (was 8.0.28)
+        # 16m  Normal  Logging   innodbcluster/mycluster  Propagating spec.version=8.0.29 for namespace/mycluster (was 8.0.28)
         # 16m  Error   Logging   innodbcluster/mycluster  Handler 'on_innodbcluster_field_version/spec.version' failed permanently: Support for MySQL 8.0.29 is disabled. Please see http://....
         # 16m  Normal  Logging   innodbcluster/mycluster  Updating is processed: 0 succeeded; 1 failed.
         self.wait_got_cluster_event(
             "mycluster", after=update_time, type="Normal",
             reason="Logging",
-            msg=rf"Propagating spec.version={to_version} for testns/mycluster \(was {from_version}\)")
+            msg=rf"Propagating spec.version={to_version} for {self.ns}/mycluster \(was {from_version}\)")
         self.wait_got_cluster_event(
             "mycluster", after=update_time, type="Error",
             reason="Logging",

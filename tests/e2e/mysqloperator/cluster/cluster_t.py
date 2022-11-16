@@ -702,35 +702,35 @@ spec:
 
         # check classic session to R/W port
         self.verify_routing(
-            "mycluster.testns.svc.cluster.local:3306",
-            "mycluster-0.mycluster-instances.testns.svc.cluster.local:3306")
+            f"mycluster.{self.ns}.svc.cluster.local:3306",
+            f"mycluster-0.mycluster-instances.{self.ns}.svc.cluster.local:3306")
 
         # check classic session to alternate R/W port
         self.verify_routing(
-            "mycluster.testns.svc.cluster.local:6446",
-            "mycluster-0.mycluster-instances.testns.svc.cluster.local:3306")
+            f"mycluster.{self.ns}.svc.cluster.local:6446",
+            f"mycluster-0.mycluster-instances.{self.ns}.svc.cluster.local:3306")
 
         # check classic session to R/O port
         self.verify_routing(
-            "mycluster.testns.svc.cluster.local:6447",
-            ["mycluster-1.mycluster-instances.testns.svc.cluster.local:3306",
-                "mycluster-2.mycluster-instances.testns.svc.cluster.local:3306"])
+            f"mycluster.{self.ns}.svc.cluster.local:6447",
+            [f"mycluster-1.mycluster-instances.{self.ns}.svc.cluster.local:3306",
+                f"mycluster-2.mycluster-instances.{self.ns}.svc.cluster.local:3306"])
 
         # check X session to R/W port
         self.verify_routing(
-            "mycluster.testns.svc.cluster.local:33060",
-            "mycluster-0.mycluster-instances.testns.svc.cluster.local:3306")
+            f"mycluster.{self.ns}.svc.cluster.local:33060",
+            f"mycluster-0.mycluster-instances.{self.ns}.svc.cluster.local:3306")
 
         # check X session to alternate R/W port
         self.verify_routing(
-            "mycluster.testns.svc.cluster.local:6448",
-            "mycluster-0.mycluster-instances.testns.svc.cluster.local:3306")
+            f"mycluster.{self.ns}.svc.cluster.local:6448",
+            f"mycluster-0.mycluster-instances.{self.ns}.svc.cluster.local:3306")
 
         # check X session to R/O port
         self.verify_routing(
-            "mycluster.testns.svc.cluster.local:6449",
-            ["mycluster-1.mycluster-instances.testns.svc.cluster.local:3306",
-                "mycluster-2.mycluster-instances.testns.svc.cluster.local:3306"])
+            f"mycluster.{self.ns}.svc.cluster.local:6449",
+            [f"mycluster-1.mycluster-instances.{self.ns}.svc.cluster.local:3306",
+                f"mycluster-2.mycluster-instances.{self.ns}.svc.cluster.local:3306"])
 
         kutil.delete_po("appns", "testpod")
         kutil.delete_ns("appns")
@@ -891,7 +891,7 @@ spec:
         kutil.exec(self.ns, ("mycluster-0", "sidecar"),
                    ["mysqlsh", "root:sakila@localhost", "--",
                     "cluster", "set-primary-instance",
-                    "mycluster-0.mycluster-instances.testns.svc.cluster.local:3306"])
+                    f"mycluster-0.mycluster-instances.{self.ns}.svc.cluster.local:3306"])
 
         cross_sync_gtids(
             self.ns, ["mycluster-0", "mycluster-1", "mycluster-2"],
@@ -966,7 +966,7 @@ spec:
         check_group.check_data(self, all_pods)
 
         kutil.exec(self.ns, ("mycluster-0", "sidecar"), ["mysqlsh", "root:sakila@localhost", "--", "cluster",
-                                                         "set-primary-instance", "mycluster-0.mycluster-instances.testns.svc.cluster.local:3306"])
+                                                         "set-primary-instance", f"mycluster-0.mycluster-instances.{self.ns}.svc.cluster.local:3306"])
 
     def test_4_recover_delete_and_wipe_1_of_3(self):
         # delete the pv and pvc first, which will block because until the pod

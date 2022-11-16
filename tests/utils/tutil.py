@@ -311,16 +311,30 @@ class PodHelper:
                         checkabort=self.owner.check_operator_exceptions)
 
 
+def mangle_name(base_name):
+    ns = []
+    prev_chr_was_upper = False
+    for chr in base_name:
+        if chr.isupper():
+            if len(ns) > 0 and not prev_chr_was_upper:
+                ns.append('-')
+            ns.append(chr.lower())
+            prev_chr_was_upper = True
+        else:
+            ns.append(chr)
+            prev_chr_was_upper = False
+    return ''.join(ns)
+
 class OperatorTest(unittest.TestCase):
     logger = logging
     stream_handler = None
-    ns = "testns"
+    ns = None
     op_stdout = []
     op_check_stdout = None
     default_allowed_op_errors: List[str]
 
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls, ns=None):
         # set up loggers
         cls.stream_handler = logging.StreamHandler(sys.stdout)
         cls.logger.addHandler(cls.stream_handler)
@@ -330,6 +344,10 @@ class OperatorTest(unittest.TestCase):
         ociutil.logger.addHandler(cls.stream_handler)
 
         cls.logger.info(f"Starting {cls.__name__}")
+        if ns:
+            __class__.ns = ns
+        else:
+            __class__.ns = mangle_name(cls.__name__)
 
         leftovers = kutil.ls_all_raw(cls.ns)
         if leftovers:

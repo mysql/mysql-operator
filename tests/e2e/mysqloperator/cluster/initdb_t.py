@@ -84,7 +84,7 @@ spec:
             "clone", "donorpwds", root_user="root", root_host="%", root_pass="sakila")
 
         # create cluster with mostly default configs
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
@@ -98,7 +98,7 @@ spec:
   baseServerId: 2000
   initDB:
     clone:
-      donorUrl: root@mycluster-0.mycluster-instances.testns.svc.cluster.local:3306
+      donorUrl: root@mycluster-0.mycluster-instances.{self.ns}.svc.cluster.local:3306
       secretKeyRef:
         name: donorpwds
 """

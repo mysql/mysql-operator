@@ -8,17 +8,14 @@ from utils import tutil
 from utils import kutil
 from utils import mutil
 import logging
-from e2e.mysqloperator.cluster import check_apiobjects
-from e2e.mysqloperator.cluster import check_group
-from e2e.mysqloperator.cluster import check_adminapi
-from e2e.mysqloperator.cluster import check_routing
 from utils.tutil import g_full_log
-from setup.config import g_ts_cfg
 from utils.optesting import COMMON_OPERATOR_ERRORS
 from .cluster_t import check_all
 import os
 import configparser
 
+# force the same namespace which is hardcoded in certificates generated with tests/data/ssl/make_certs.sh
+CLUSTER_SSL_NAMESPACE = 'cluster-ssl'
 
 def check_verify_ca(self, ns, pod, port, ca, expected_host):
     try:
@@ -155,7 +152,7 @@ class ClusterSSL(tutil.OperatorTest):
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
-        super().setUpClass()
+        super().setUpClass(CLUSTER_SSL_NAMESPACE)
 
         g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
         g_full_log.watch_mysql_pod(cls.ns, "mycluster-1")
@@ -365,7 +362,7 @@ class ClusterNoSSL(tutil.OperatorTest):
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
-        super().setUpClass()
+        super().setUpClass(CLUSTER_SSL_NAMESPACE)
 
         g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
 
@@ -464,7 +461,7 @@ class ClusterAddSSL(tutil.OperatorTest):
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
-        super().setUpClass()
+        super().setUpClass(CLUSTER_SSL_NAMESPACE)
 
         g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
         g_full_log.watch_mysql_pod(cls.ns, "mycluster-1")
@@ -559,7 +556,7 @@ class ClusterRouterSSL(tutil.OperatorTest):
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
-        super().setUpClass()
+        super().setUpClass(CLUSTER_SSL_NAMESPACE)
 
         g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
 

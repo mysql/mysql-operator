@@ -189,6 +189,7 @@ def watch(ns, rsrc, name, fn, timeout, format=None):
     if not found:
         logger.error(
             f"Timeout waiting for condition in {rsrc} {ns}/{name}. output={output}")
+        store_diagnostics(ns, rsrc, name)
 
     if debug_kubectl:
         logger.debug("rc = %s, stdout = %s", p.returncode, output)
@@ -590,6 +591,121 @@ def drain_node(node):
 
 #
 
+class StoreDiagnostics:
+    def __init__(self, ns, cluster_name):
+        self.ns = ns
+        self.cluster_name = cluster_name
+        self.work_dir = None
+
+
+    def get_work_dir(self):
+        work_dir = os.path.join(g_ts_cfg.work_dir, g_ts_cfg.k8s_context, self.ns)
+        if not os.path.exists(work_dir):
+            return work_dir
+
+        index = 0
+        while True:
+            diag_dir_index = work_dir + str(index)
+            if not os.path.exists(diag_dir_index):
+                return diag_dir_index
+            index += 1
+
+    def create_work_dir(self):
+        self.work_dir = self.get_work_dir()
+        os.makedirs(self.work_dir)
+
+
+    def store_log(self, item_name, kind_of_log, generate_contents):
+        log_fname = f"{item_name}-{kind_of_log}.log"
+        log_path = os.path.join(self.work_dir, log_fname)
+        try:
+            contents = generate_contents()
+            with open(log_path, 'w') as f:
+                f.write(contents)
+        except BaseException as err:
+            logger.error(f"error while storing '{kind_of_log}' diagnostics for {self.ns}/{item_name}: {err}")
+
+    def describe_ic(self, ic):
+        self.store_log(ic, "describe", lambda: describe_ic(self.ns, ic))
+
+    def describe_pod(self, pod):
+        self.store_log(pod, "describe", lambda: describe_po(self.ns, pod))
+
+    def logs_pod(self, pod, container):
+        self.store_log(f"{pod}-{container}", "logs", lambda: logs(self.ns, [pod, container]))
+
+
+    def process_ic(self):
+        self.describe_ic(self.cluster_name)
+
+
+    def process_pod(self, pod):
+        self.describe_pod(pod)
+        self.logs_pod(pod, "initconf")
+        self.logs_pod(pod, "initmysql")
+        self.logs_pod(pod, "sidecar")
+        self.logs_pod(pod, "mysql")
+
+    def process_pods(self):
+        pods = ls_pod(self.ns, "mycluster-.*")
+        for pod in pods:
+            self.process_pod(pod["NAME"])
+
+
+    def process_router(self, router):
+        self.describe_pod(router)
+        self.logs_pod(router, "router")
+
+    def process_routers(self):
+        routers = ls_pod(self.ns, "mycluster-router-.*")
+        for router in routers:
+            self.process_router(router["NAME"])
+
+
+    def run(self):
+        self.create_work_dir()
+        logger.info(f"storing diagnostics for {self.ns}/{self.cluster_name} into {self.work_dir}...")
+        self.process_ic()
+        self.process_pods()
+        self.process_routers()
+        logger.info(f"storing diagnostics for {self.ns}/{self.cluster_name} completed")
+
+def store_cluster_diagnostics(ns, name):
+    sd = StoreDiagnostics(ns, name)
+    sd.run()
+
+def extract_cluster_name_from_pod(base_name):
+    separator = base_name.rfind('-')
+    if separator == -1:
+        return base_name
+    return base_name[:separator]
+
+def store_pod_diagnostics(ns, name):
+    cluster_name = extract_cluster_name_from_pod(name)
+    store_cluster_diagnostics(ns, cluster_name)
+
+def extract_cluster_name_from_router(base_name):
+    separator = base_name.rfind('-router-')
+    if separator == -1:
+        return base_name
+    return base_name[:separator]
+
+def store_routers_diagnostics(ns, name_pattern):
+    cluster_name = extract_cluster_name_from_router(name_pattern)
+    store_cluster_diagnostics(ns, cluster_name)
+
+def store_ic_diagnostics(ns, name):
+    store_cluster_diagnostics(ns, name)
+
+def store_diagnostics(ns, rsrc, name):
+    if rsrc == "ic":
+        store_ic_diagnostics(ns, name)
+    elif rsrc == "pod":
+        store_pod_diagnostics(ns, name)
+    else:
+        raise Exception(f"unsupported resource {rsrc} to store diagnostics")
+
+#
 
 def wait_pod_exists(ns, name, timeout=120, checkabort=lambda: None):
     logger.info(f"Waiting for pod {ns}/{name} to come up")
@@ -604,6 +720,7 @@ def wait_pod_exists(ns, name, timeout=120, checkabort=lambda: None):
     logger.info("%s", kubectl("get", "pod", args=[
                 "-n", ns]).stdout.decode("utf8"))
 
+    store_pod_diagnostics(ns, name)
     raise Exception(f"Timeout waiting for pod {ns}/{name}")
 
 
@@ -630,6 +747,7 @@ def wait_pod_gone(ns, name, timeout=120, checkabort=lambda: None):
     logger.info("%s", kubectl("get", "pod", args=[
                 "-n", ns]).stdout.decode("utf8"))
 
+    store_pod_diagnostics(ns, name)
     raise Exception(f"Timeout waiting for pod {ns}/{name}")
 
 
@@ -641,6 +759,7 @@ def wait_pod(ns, name, status="Running", timeout=120, checkabort=lambda: None):
         checkabort()
         logger.debug("%s", line)
         if line["STATUS"] in ("Error", "ImagePullBackOff", "ErrImageNeverPull", "CrashLoopBackOff") and line["STATUS"] not in status:
+            store_pod_diagnostics(ns, name)
             raise Exception(f"Pod error: {line['STATUS']}")
         logger.debug(line)
         return line["STATUS"] in status
@@ -672,6 +791,7 @@ def wait_ic_exists(ns, name, timeout=60, checkabort=lambda: None):
     logger.info("%s", kubectl("get", "ic", args=[
                 "-n", ns]).stdout.decode("utf8"))
 
+    store_ic_diagnostics(ns, name)
     raise Exception(f"Timeout waiting for ic {ns}/{name}")
 
 
@@ -699,6 +819,7 @@ def wait_ic_gone(ns, name, timeout=120, checkabort=lambda: None):
     logger.info("%s", kubectl("get", "ic", args=[
                 "-n", ns]).stdout.decode("utf8"))
 
+    store_ic_diagnostics(ns, name)
     raise Exception(f"Timeout waiting for ic {ns}/{name}")
 
 

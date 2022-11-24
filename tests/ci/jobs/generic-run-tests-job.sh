@@ -55,16 +55,18 @@ if test -d "${LOG_DIR}"; then
 	rm -rfd $LOG_DIR
 fi
 mkdir -p $LOG_DIR
+TEST_OPTIONS="$TEST_OPTIONS --workdir=$LOG_DIR"
 
 TESTS_LOG=$LOG_DIR/$OTE_LOG_PREFIX-all.log
 
 XML_DIR=$LOG_DIR/xml
 
 TESTS_XML=$XML_DIR/$OTE_LOG_PREFIX-tests.xml
-SINGLE_WORKER_OPTIONS="--xml=${TESTS_XML} --cluster=$OTE_BUILD_TAG"
+SINGLE_WORKER_OPTIONS="--xml=${TESTS_XML} --cluster=$OTE_BUILD_TAG ${TEST_OPTIONS}"
 
 
-DIST_RUN_OPTIONS="--workers=$WORKERS --workdir=$LOG_DIR --defer=$WORKERS_DEFER --tag=$OTE_BUILD_TAG --xml --expected-failures=$EXPECTED_FAILURES_PATH"
+DIST_RUN_OPTIONS="--workers=$WORKERS --defer=$WORKERS_DEFER --tag=$OTE_BUILD_TAG --xml --expected-failures=$EXPECTED_FAILURES_PATH"
+DIST_RUN_OPTIONS="${DIST_RUN_OPTIONS} ${TEST_OPTIONS}"
 
 touch $TESTS_LOG
 tail -f "$TESTS_LOG" &
@@ -75,7 +77,7 @@ tail -f "$TESTS_LOG" &
 # by default TEST_SUITE is not defined, it means to run all tests
 if test $WORKERS == 1; then
 	mkdir -p $XML_DIR
-	./run --env=$K8S_DRIVER $SINGLE_WORKER_OPTIONS $TEST_OPTIONS ${TEST_SUITE} > "$TESTS_LOG" 2>&1
+	./run --env=$K8S_DRIVER $SINGLE_WORKER_OPTIONS ${TEST_SUITE} > "$TESTS_LOG" 2>&1
 	TMP_SUMMARY_PATH=$(mktemp)
 	# process the tests results
 	python3 $CI_DIR/jobs/auxiliary/process_single_worker_log.py $EXPECTED_FAILURES_PATH "$TESTS_LOG" > $TMP_SUMMARY_PATH 2>&1
@@ -83,7 +85,7 @@ if test $WORKERS == 1; then
 	cat $TMP_SUMMARY_PATH >> "$TESTS_LOG"
 	rm $TMP_SUMMARY_PATH
 else
-	python3 ./dist_run_e2e_tests.py --env=$K8S_DRIVER $DIST_RUN_OPTIONS $TEST_OPTIONS ${TEST_SUITE} > "$TESTS_LOG" 2>&1
+	python3 ./dist_run_e2e_tests.py --env=$K8S_DRIVER $DIST_RUN_OPTIONS ${TEST_SUITE} > "$TESTS_LOG" 2>&1
 	TESTS_RESULT=$?
 	$CI_DIR/cleanup/remove_networks.sh $OTE_BUILD_TAG
 fi

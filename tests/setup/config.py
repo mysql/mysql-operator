@@ -5,6 +5,7 @@
 
 from utils import auxutil
 from setup import defaults
+import tempfile
 
 class Config:
     # environment
@@ -54,6 +55,9 @@ class Config:
     k8s_cluster = defaults.K8S_CLUSTER_NAME
     k8s_context = None
 
+    # diagnostics
+    work_dir = None
+
     @property
     def operator_shell_version_num(self):
         a,b,c = self.operator_version_tag.split("-")[0].split(".")
@@ -67,6 +71,9 @@ class Config:
     def commit(self):
         if self.image_registry:
             self.image_registry_host, self.image_registry_port, self.image_registry_is_loopback = auxutil.resolve_registry_url(self.image_registry)
+
+        if not self.work_dir:
+            self.work_dir = tempfile.mkdtemp()
 
     def get_worker_label(self):
         if self.k8s_cluster:

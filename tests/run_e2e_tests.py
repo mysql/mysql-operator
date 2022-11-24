@@ -209,6 +209,8 @@ if __name__ == '__main__':
             opt_suite_path = arg.partition("=")[-1]
         elif arg.startswith("--xml="):
             opt_xml_report_path = arg.partition("=")[-1]
+        elif arg.startswith("--work-dir=") or arg.startswith("--workdir="):
+            g_ts_cfg.work_dir = arg.split("=")[-1]
         elif arg.startswith("-"):
             print(f"Invalid option {arg}")
             sys.exit(1)

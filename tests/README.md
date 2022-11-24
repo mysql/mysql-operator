@@ -238,6 +238,11 @@ e2e.mysqloperator.cluster.cluster_badspec_t.ClusterSpecRuntimeChecksModification
 </suite.txt>
 ```
 
+--work-dir|workdir={path}\
+    it points out to a directory where to store all data and logs\
+    if not provided, then a tmp dir will be used
+
+
 filters can be used, see the description of 'arguments'
 
 ```text

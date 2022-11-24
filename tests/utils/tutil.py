@@ -442,10 +442,13 @@ class OperatorTest(unittest.TestCase):
                 f"Event ({type}, {reason}, {msg}) not found for {cluster}")
 
     def wait_got_cluster_event(self, cluster, after=None, timeout=90, delay=2, *, type, reason, msg):
+        def timeout_diagnostics():
+            kutil.store_ic_diagnostics(self.ns, cluster)
+
         def check_has_got_cluster_event():
             return self.has_got_cluster_event(cluster, after, type=type, reason=reason, msg=msg)
 
-        self.wait(check_has_got_cluster_event, timeout=timeout, delay=delay)
+        self.wait(check_has_got_cluster_event, timeout=timeout, delay=delay, timeout_diagnostics=timeout_diagnostics)
 
     def check_operator_exceptions(self):
         # Raise an exception if there's no hope that the operator will make progress
@@ -474,7 +477,7 @@ class OperatorTest(unittest.TestCase):
         # Raise an exception if pods enter an error state they're not expected to
         pass  # TODO
 
-    def wait(self, fn, args=tuple(), check=None, timeout=60, delay=2):
+    def wait(self, fn, args=tuple(), check=None, timeout=60, delay=2, timeout_diagnostics=None):
         # TODO abort watchers when nothing new gets printed by operator for a while too
         self.check_operator_exceptions()
 
@@ -501,6 +504,8 @@ class OperatorTest(unittest.TestCase):
         else:
             self.logger.error("Waited condition never became true")
 
+        if timeout_diagnostics:
+            timeout_diagnostics()
         raise Exception("Timeout waiting for condition")
 
     def get_pod(self, name, ns=None):
@@ -554,7 +559,10 @@ class OperatorTest(unittest.TestCase):
 
             return num_online == len(router_names)
 
-        self.wait(routers_ready, timeout=timeout)
+        def timeout_diagnostics():
+            kutil.store_routers_diagnostics(self.ns, name_pattern)
+
+        self.wait(routers_ready, timeout=timeout, timeout_diagnostics=timeout_diagnostics)
 
         return router_names
 

@@ -169,6 +169,8 @@ class DistTestSuiteRunner:
 		log_path = self.get_worker_log_path(worker_index)
 
 		argv = ["./run", f"--cluster={cluster}", f"--suite={portion_path}"]
+		if self.work_dir:
+			argv.append(f"--work-dir={self.work_dir}")
 		argv.extend(self.worker_argv)
 		if self.generate_xml:
 			xml_path = self.get_worker_xml_path(worker_index)

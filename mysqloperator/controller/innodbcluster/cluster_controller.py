@@ -500,6 +500,17 @@ class ClusterController:
         self.probe_member_status(pod, pod_session, False, logger)
 
     def remove_instance(self, pod: MySQLPod, pod_body: Body, logger, force: bool = False) -> None:
+        try:
+            self.__remove_instance_aux(pod, logger, force)
+        except Exception as e:
+            logger.info(f"Exception {e} caught")
+            pass
+        finally:
+            # Remove the membership finalizer to allow the pod to be removed
+            pod.remove_member_finalizer(pod_body)
+            logger.info(f"Removed finalizer for pod {pod_body['metadata']['name']}")
+
+    def __remove_instance_aux(self, pod: MySQLPod, logger, force: bool = False) -> None:
         logger.info(f"Removing {pod.endpoint} from cluster")
 
         # TODO improve this check
@@ -547,7 +558,7 @@ class ClusterController:
                         self.dba_cluster.remove_instance(
                             pod.endpoint, remove_options)
 
-                        logger.info("remove_instance OK")
+                        logger.info("FORCED remove_instance OK")
                     except mysqlsh.Error as e:
                         logger.warning(f"remove_instance failed: error={e}")
                         if e.code == errors.SHERR_DBA_MEMBER_METADATA_MISSING:
@@ -561,13 +572,16 @@ class ClusterController:
                                 logger.error(
                                     f"force remove_instance failed. error={e} deleting_cluster={deleting}  peer={peer_pod.name}")
                                 raise
+                    except RuntimeError as e:
+                        logger.info(f"force remove_instance failed. RuntimeError {e}")
+                        if str(e).find("The cluster object is disconnected") == -1:
+                            logger.info(f"Can't do anything to remove {pod.name} cleanly")
+                            raise
             else:
                 logger.error(
                     f"Cluster is not available, skipping clean removal of {pod.name}")
 
-        # Remove the membership finalizer to allow the pod to be removed
-        pod.remove_member_finalizer(pod_body)
-        logger.info(f"Removed finalizer for pod {pod_body['metadata']}")
+
 
     def repair_cluster(self, pod: MySQLPod, diagnostic: diagnose.ClusterStatus, logger) -> None:
         # TODO check statuses where router has to be put down

@@ -727,7 +727,7 @@ def store_ic_diagnostics(ns, name):
 
 #
 
-def wait_pod_exists(ns, name, timeout=120, checkabort=lambda: None):
+def wait_pod_exists(ns, name, timeout=150, checkabort=lambda: None):
     logger.info(f"Waiting for pod {ns}/{name} to come up")
     for i in range(timeout):
         pods = ls_po(ns)
@@ -771,7 +771,7 @@ def wait_pod_gone(ns, name, timeout=120, checkabort=lambda: None):
     raise Exception(f"Timeout waiting for pod {ns}/{name}")
 
 
-def wait_pod(ns, name, status="Running", timeout=120, checkabort=lambda: None):
+def wait_pod(ns, name, status="Running", timeout=150, checkabort=lambda: None):
     if type(status) not in (tuple, list):
         status = [status]
 
@@ -815,7 +815,7 @@ def wait_ic_exists(ns, name, timeout=60, checkabort=lambda: None):
     raise Exception(f"Timeout waiting for ic {ns}/{name}")
 
 
-def wait_ic_gone(ns, name, timeout=120, checkabort=lambda: None):
+def wait_ic_gone(ns, name, timeout=150, checkabort=lambda: None):
     logger.info(f"Waiting for ic {ns}/{name} to disappear")
     last_state = None
     i = 0

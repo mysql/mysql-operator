@@ -127,7 +127,7 @@ def check_pod_spec_compliant(test, icobj, pod):
     # hardcoded/expected values
     spec = pod["spec"]
 
-    test.assertEqual(spec["terminationGracePeriodSeconds"], 30)
+    test.assertEqual(spec["terminationGracePeriodSeconds"], 120)
     test.assertEqual(spec["restartPolicy"], "Always")
     test.assertEqual(spec["subdomain"], icobj["metadata"]["name"]+"-instances")
 

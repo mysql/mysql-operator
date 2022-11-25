@@ -188,6 +188,7 @@ spec:
         runAsUser: 27
         runAsGroup: 27
         fsGroup: 27
+      terminationGracePeriodSeconds: 120
       initContainers:
       - name: fixdatadir
         image: {spec.operator_image}
@@ -400,8 +401,9 @@ spec:
         lifecycle:
           preStop:
             exec:
-              command: ["sh", "-c", "sleep 20 && mysqladmin -ulocalroot shutdown"]
-        terminationGracePeriodSeconds: 110
+              # 60 is the default value for dba.gtidWaitTimeout
+              # see https://dev.mysql.com/doc/mysql-shell/8.0/en/mysql-innodb-cluster-working-with-cluster.html
+              command: ["sh", "-c", "sleep 60 && mysqladmin -ulocalroot shutdown"]
         startupProbe:
           exec:
             command: ["/livenessprobe.sh", "8"]

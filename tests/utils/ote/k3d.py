@@ -34,6 +34,9 @@ class K3dEnvironment(BaseEnvironment):
     def start_cluster(self, nodes, version, registry_cfg_path):
         args = ["k3d", "cluster", "create", g_ts_cfg.k8s_cluster, "--timeout", "5m"]
 
+        if nodes:
+            args.append(f"--agents={nodes}")
+
         if version:
             args.append(f"--image={version}")
 

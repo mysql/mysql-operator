@@ -86,10 +86,12 @@ class MinikubeEnvironment(BaseEnvironment):
 
     def start_cluster(self, nodes, version, registry_cfg_path):
         assert registry_cfg_path is None
-        args = ["minikube", "start", f"--nodes={nodes}", f"--profile={g_ts_cfg.k8s_cluster}"]
+        args = ["minikube", "start", f"--profile={g_ts_cfg.k8s_cluster}"]
         opts = os.getenv("TEST_MINIKUBE_OPTIONS")
         if opts:
             args += opts.split(" ")
+        if nodes:
+            args.append(f"--nodes={nodes}")
         if version:
             args.append(f"--kubernetes-version={version}")
         if self.operator_mount_path:

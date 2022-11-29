@@ -116,7 +116,7 @@ if __name__ == '__main__':
     opt_verbose = False
     opt_debug = False
     opt_verbosity = 2
-    opt_nodes = 1
+    opt_nodes = None
     opt_kube_version = None
     opt_setup = True
     opt_load_images = False

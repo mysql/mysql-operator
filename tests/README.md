@@ -54,8 +54,8 @@ set the kubernetes version to use, if not set, the default depends on the instal
     - k3d cluster create --image=rancher/k3s:v1.21.7-k3s1
     - k3d cluster create --image=rancher/k3s:v1.23.6-k3s1
 
---nodes\
-    points out the nodes to use, supported for minikube only; if not set, any available will be used
+--nodes={number}\
+    sets the number of nodes to use
 
 --verbose|-v\
     verbose logs

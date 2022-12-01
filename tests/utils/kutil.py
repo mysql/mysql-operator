@@ -106,7 +106,7 @@ def get_current_context():
 
     raise Exception(f"Could not get current context {ret}")
 
-def kubectl(cmd, rsrc=None, args=None, timeout=None, check=True, ignore=[]):
+def kubectl(cmd, rsrc=None, args=None, timeout=None, check=True, ignore=[], timeout_diagnostics=None):
     argv = ["kubectl", f"--context={g_ts_cfg.k8s_context}", cmd]
     if rsrc:
         argv.append(rsrc)
@@ -117,6 +117,13 @@ def kubectl(cmd, rsrc=None, args=None, timeout=None, check=True, ignore=[]):
     try:
         r = subprocess.run(argv, timeout=timeout,
                            check=check, capture_output=True)
+    except subprocess.TimeoutExpired as e:
+        logger.error("kubectl %s failed (rc=%s):\n    stderr=%s\n    stdout=%s",
+                        e.cmd, e.returncode,
+                        decode_stream(e.stderr), decode_stream(e.stdout))
+        if timeout_diagnostics:
+            timeout_diagnostics()
+        raise
     except subprocess.CalledProcessError as e:
         for ig in ignore:
             if "(%s)" % ig in e.stderr.decode("utf8"):
@@ -390,22 +397,21 @@ def get_po_ev(ns, name, *, after=None, fields=None):
 
 #
 
-
-def describe_po(ns, name, jpath=None):
-    r = kubectl("describe", "po", [name, "-n", ns])
+def describe_rsrc(ns, rsrc, name, jpath=None):
+    r = kubectl("describe", rsrc, [name, "-n", ns])
     if r.stdout:
         return r.stdout.decode("utf8")
     raise Exception(f"Error for describe {ns}/{name}")
+
+
+def describe_po(ns, name, jpath=None):
+    return describe_rsrc(ns, "po", name, jpath)
 
 
 def describe_ic(ns, name):
-    r = kubectl("describe", "ic", [name, "-n", ns])
-    if r.stdout:
-        return r.stdout.decode("utf8")
-    raise Exception(f"Error for describe {ns}/{name}")
+    return describe_rsrc(ns, "ic", name)
 
 #
-
 
 def delete(ns, rsrc, name, timeout, wait=True):
     if not name:
@@ -415,7 +421,8 @@ def delete(ns, rsrc, name, timeout, wait=True):
         args += ["-n", ns]
     if not wait:
         args += ["--wait=false"]
-    kubectl("delete", rsrc, [name] + args, timeout=timeout, ignore=["NotFound"])
+
+    kubectl("delete", rsrc, [name] + args, timeout=timeout, ignore=["NotFound"], timeout_diagnostics=lambda: store_diagnostics(ns, rsrc, name))
 
 
 def delete_ic(ns, name, timeout=300):
@@ -592,9 +599,8 @@ def drain_node(node):
 #
 
 class StoreDiagnostics:
-    def __init__(self, ns, cluster_name):
+    def __init__(self, ns):
         self.ns = ns
-        self.cluster_name = cluster_name
         self.work_dir = None
 
 
@@ -615,29 +621,37 @@ class StoreDiagnostics:
         os.makedirs(self.work_dir)
 
 
-    def store_log(self, item_name, kind_of_log, generate_contents):
-        log_fname = f"{item_name}-{kind_of_log}.log"
+    def store_log(self, rsrc, item_name, kind_of_log, generate_contents):
+        log_fname = f"{item_name}-{kind_of_log}-{rsrc}.log"
         log_path = os.path.join(self.work_dir, log_fname)
         try:
             contents = generate_contents()
             with open(log_path, 'w') as f:
                 f.write(contents)
         except BaseException as err:
-            logger.error(f"error while storing '{kind_of_log}' diagnostics for {self.ns}/{item_name}: {err}")
+            logger.error(f"error while storing '{kind_of_log}' diagnostics for {rsrc} {self.ns}/{item_name}: {err}")
+
+    def describe_rsrc(self, rsrc, name):
+        self.store_log(rsrc, name, "describe", lambda: describe_rsrc(self.ns, rsrc, name))
 
     def describe_ic(self, ic):
-        self.store_log(ic, "describe", lambda: describe_ic(self.ns, ic))
+        self.store_log("ic", ic, "describe", lambda: describe_ic(self.ns, ic))
 
     def describe_pod(self, pod):
-        self.store_log(pod, "describe", lambda: describe_po(self.ns, pod))
+        self.store_log("pod", pod, "describe", lambda: describe_po(self.ns, pod))
 
     def logs_pod(self, pod, container):
-        self.store_log(f"{pod}-{container}", "logs", lambda: logs(self.ns, [pod, container]))
+        self.store_log("pod", f"{pod}-{container}", "logs", lambda: logs(self.ns, [pod, container]))
 
 
-    def process_ic(self):
-        self.describe_ic(self.cluster_name)
+    def process_cluster(self, cluster_name):
+        self.process_ic(cluster_name)
+        self.process_pods(cluster_name)
+        self.process_routers(cluster_name)
+        self.describe_ic(cluster_name)
 
+    def process_ic(self, cluster_name):
+        self.describe_ic(cluster_name)
 
     def process_pod(self, pod):
         self.describe_pod(pod)
@@ -646,64 +660,67 @@ class StoreDiagnostics:
         self.logs_pod(pod, "sidecar")
         self.logs_pod(pod, "mysql")
 
-    def process_pods(self):
-        pods = ls_pod(self.ns, "mycluster-.*")
+    def process_pods(self, cluster_name):
+        pods = ls_pod(self.ns, f"{cluster_name}-.*")
         for pod in pods:
             self.process_pod(pod["NAME"])
-
 
     def process_router(self, router):
         self.describe_pod(router)
         self.logs_pod(router, "router")
 
-    def process_routers(self):
-        routers = ls_pod(self.ns, "mycluster-router-.*")
+    def process_routers(self, cluster_name):
+        routers = ls_pod(self.ns, f"{cluster_name}-router-.*")
         for router in routers:
             self.process_router(router["NAME"])
 
 
-    def run(self):
+    def process_generic_rsrc(self, rsrc, name):
+        self.describe_rsrc(rsrc, name)
+
+
+    def extract_cluster_name_from_pod(self, base_name):
+        separator = base_name.rfind('-')
+        if separator == -1:
+            return base_name
+        return base_name[:separator]
+
+    def extract_cluster_name_from_routers_pattern(self, routers_name_pattern):
+        separator = routers_name_pattern.rfind('-router-')
+        if separator == -1:
+            return routers_name_pattern
+        return routers_name_pattern[:separator]
+
+    def run(self, rsrc, name):
         self.create_work_dir()
-        logger.info(f"storing diagnostics for {self.ns}/{self.cluster_name} into {self.work_dir}...")
-        self.process_ic()
-        self.process_pods()
-        self.process_routers()
-        logger.info(f"storing diagnostics for {self.ns}/{self.cluster_name} completed")
+        logger.info(f"storing diagnostics for {rsrc} {self.ns}/{name} into {self.work_dir} ...")
 
-def store_cluster_diagnostics(ns, name):
-    sd = StoreDiagnostics(ns, name)
-    sd.run()
+        if rsrc == "ic":
+            self.process_cluster(name)
+        elif rsrc == "po" or rsrc == "pod":
+            cluster_name = self.extract_cluster_name_from_pod(name)
+            self.process_cluster(cluster_name)
+        elif rsrc == "router":
+            cluster_name = self.extract_cluster_name_from_routers_pattern(name)
+            self.process_cluster(cluster_name)
+        else:
+            self.process_generic_rsrc(rsrc, name)
 
-def extract_cluster_name_from_pod(base_name):
-    separator = base_name.rfind('-')
-    if separator == -1:
-        return base_name
-    return base_name[:separator]
+        logger.info(f"storing diagnostics for {rsrc} {self.ns}/{name} completed")
 
-def store_pod_diagnostics(ns, name):
-    cluster_name = extract_cluster_name_from_pod(name)
-    store_cluster_diagnostics(ns, cluster_name)
-
-def extract_cluster_name_from_router(base_name):
-    separator = base_name.rfind('-router-')
-    if separator == -1:
-        return base_name
-    return base_name[:separator]
-
-def store_routers_diagnostics(ns, name_pattern):
-    cluster_name = extract_cluster_name_from_router(name_pattern)
-    store_cluster_diagnostics(ns, cluster_name)
-
-def store_ic_diagnostics(ns, name):
-    store_cluster_diagnostics(ns, name)
 
 def store_diagnostics(ns, rsrc, name):
-    if rsrc == "ic":
-        store_ic_diagnostics(ns, name)
-    elif rsrc == "pod":
-        store_pod_diagnostics(ns, name)
-    else:
-        raise Exception(f"unsupported resource {rsrc} to store diagnostics")
+    sd = StoreDiagnostics(ns)
+    sd.run(rsrc, name)
+
+def store_pod_diagnostics(ns, name):
+    store_diagnostics(ns, "pod", name)
+
+def store_routers_diagnostics(ns, name_pattern):
+    store_diagnostics(ns, "router", name_pattern)
+
+def store_ic_diagnostics(ns, name):
+    store_diagnostics(ns, "ic", name)
 
 #
 

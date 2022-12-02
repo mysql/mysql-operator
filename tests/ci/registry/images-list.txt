@@ -18,6 +18,10 @@ mysql-server:8.0.31
 mysql-server:8.0.31
 1
 ---
+mysql-server:8.0.32
+mysql-server:8.0.32
+1
+---
 mysql-router:8.0.27
 mysql-router:8.0.27
 1
@@ -36,6 +40,10 @@ mysql-router:8.0.30
 ---
 mysql-router:8.0.31
 mysql-router:8.0.31
+1
+---
+mysql-router:8.0.32
+mysql-router:8.0.32
 1
 ---
 mysql-operator:8.0.28-2.0.3
@@ -82,6 +90,10 @@ enterprise-router:8.0.31
 mysql-enterprise-router:8.0.31
 1
 ---
+enterprise-router:8.0.32
+mysql-enterprise-router:8.0.32
+1
+---
 enterprise-server:8.0.28
 mysql-enterprise-server:8.0.28
 1
@@ -96,4 +108,8 @@ mysql-enterprise-server:8.0.30
 ---
 enterprise-server:8.0.31
 mysql-enterprise-server:8.0.31
+1
+---
+enterprise-server:8.0.32
+mysql-enterprise-server:8.0.32
 1

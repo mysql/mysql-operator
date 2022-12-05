@@ -10,7 +10,7 @@ Introduction
    third-party software which may be included in this distribution of
    MySQL Operator for Kubernetes.
 
-   Last updated: August 2022
+   Last updated: November 2022
 
 Licensing Information
 
@@ -104,7 +104,7 @@ From METADATA file:
    Maintainer-email: aio-libs@googlegroups.com
    License: Apache 2
 
-A copy of the Apache License Version 2.0, January 2004 license can be found in
+A copy of the Apache License v2.0, January 2004 license can be found in
 the 'Standard Licenses' section.
 --------------------------------------------------------------------------------
 ------------------
@@ -146,7 +146,7 @@ ce
    Maintainer-email: team@aiohttp.org
    License: Apache 2
 
-A copy of the Apache License Version 2.0, January 2004 license can be found in
+A copy of the Apache License v2.0, January 2004 license can be found in
 the 'Standard Licenses' section.
 --------------------------------------------------------------------------------
 ------------------
@@ -167,7 +167,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-A copy of the Apache License Version 2.0, January 2004 license can be found in
+A copy of the Apache License v2.0, January 2004 license can be found in
 the 'Standard Licenses' section.
 --------------------------------------------------------------------------------
 ------------------
@@ -240,7 +240,7 @@ yarl
    See the License for the specific language governing permissions and
    limitations under the License.
 
-A copy of the Apache License Version 2.0, January 2004 license can be found in
+A copy of the Apache License v2.0, January 2004 license can be found in
 the 'Standard Licenses' section.
 --------------------------------------------------------------------------------
 ------------------
@@ -408,7 +408,7 @@ Kubernetes Python Client
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-A copy of the Apache License Version 2.0, January 2004 license can be found in
+A copy of the Apache License v2.0, January 2004 license can be found in
 the 'Standard Licenses' section.
 
 
@@ -459,7 +459,7 @@ google-auth
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-A copy of the Apache License Version 2.0, January 2004 license can be found in
+A copy of the Apache License v2.0, January 2004 license can be found in
 the 'Standard Licenses' section.
 ---------------------------------------------------------------------------
 
@@ -579,7 +579,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-A copy of the Apache License Version 2.0, January 2004 license can be found in
+A copy of the Apache License v2.0, January 2004 license can be found in
 the 'Standard Licenses' section.
 ---------------------------------------------------------------------------
 
@@ -624,7 +624,7 @@ Copyright 2017- dateutil contributors (see AUTHORS file)
    See the License for the specific language governing permissions and
    limitations under the License.
 
-A copy of the Apache License Version 2.0, January 2004 license can be found in
+A copy of the Apache License v2.0, January 2004 license can be found in
 the 'Standard Licenses' section.
 
 The above license applies to all contributions after 2017-12-01, as well as
@@ -701,7 +701,7 @@ From METADATA file
   Author-email: me@kennethreitz.org
   License: Apache 2.0
 
-A copy of the Apache License Version 2.0, January 2004 license can be found in
+A copy of the Apache License v2.0, January 2004 license can be found in
 the 'Standard Licenses' section.
 ---------------------------------------------------------------------------
 
@@ -859,7 +859,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-A copy of the Apache License Version 2.0, January 2004 license can be found in
+A copy of the Apache License v2.0, January 2004 license can be found in
 the 'Standard Licenses' section.
 
    ======================================================================
@@ -893,7 +893,7 @@ SOFTWARE.
 
 Standard Licenses
 
-Apache License Version 2.0, January 2004
+Apache License v2.0, January 2004
 
 The following applies to all products licensed under the Apache 2.0
 License: You may not use the identified files except in compliance

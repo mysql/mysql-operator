@@ -118,9 +118,8 @@ def kubectl(cmd, rsrc=None, args=None, timeout=None, check=True, ignore=[], time
         r = subprocess.run(argv, timeout=timeout,
                            check=check, capture_output=True)
     except subprocess.TimeoutExpired as e:
-        logger.error("kubectl %s failed (rc=%s):\n    stderr=%s\n    stdout=%s",
-                        e.cmd, e.returncode,
-                        decode_stream(e.stderr), decode_stream(e.stdout))
+        logger.error("kubectl failed: %s:\n    stderr=%s\n    stdout=%s",
+                        e, decode_stream(e.stderr), decode_stream(e.stdout))
         if timeout_diagnostics:
             timeout_diagnostics()
         raise
@@ -677,6 +676,9 @@ class StoreDiagnostics:
 
     def process_generic_rsrc(self, rsrc, name):
         self.describe_rsrc(rsrc, name)
+        ics = ls_ic(self.ns)
+        for ic in ics:
+            self.process_cluster(ic["NAME"])
 
 
     def extract_cluster_name_from_pod(self, base_name):
@@ -710,8 +712,9 @@ class StoreDiagnostics:
 
 
 def store_diagnostics(ns, rsrc, name):
-    sd = StoreDiagnostics(ns)
-    sd.run(rsrc, name)
+    if name and name[0].isalpha():
+        sd = StoreDiagnostics(ns)
+        sd.run(rsrc, name)
 
 def store_pod_diagnostics(ns, name):
     store_diagnostics(ns, "pod", name)

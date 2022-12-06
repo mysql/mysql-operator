@@ -92,19 +92,50 @@ fi
 
 cd $LOG_DIR
 # badge results to discern the environment in the overall result
-BADGE=$K8S_DRIVER
+JOB_BADGE=$K8S_DRIVER
 if [[ -n ${OPERATOR_K8S_VERSION} ]]; then
-	BADGE="${BADGE}_${OPERATOR_K8S_VERSION}"
-	BADGE=$(sed -e 's/[.:\/]/_/g' <<< $BADGE)
+	JOB_BADGE="${JOB_BADGE}_${OPERATOR_K8S_VERSION}"
+	JOB_BADGE=$(sed -e 's/[.:\/]/_/g' <<< $JOB_BADGE)
 fi
-sed -i "s/=\"e2e.mysqloperator./=\"$BADGE.e2e.mysqloperator./g" ./xml/*.xml
-sed -i "s/<testcase classname=\"\" name=\"\(\w*\) (e2e.mysqloperator./<testcase classname=\"\" name=\"$BADGE.\1 ($BADGE.e2e.mysqloperator./g" ./xml/*.xml
+sed -i "s/=\"e2e.mysqloperator./=\"$JOB_BADGE.e2e.mysqloperator./g" ./xml/*.xml
+sed -i "s/<testcase classname=\"\" name=\"\(\w*\) (e2e.mysqloperator./<testcase classname=\"\" name=\"$JOB_BADGE.\1 ($JOB_BADGE.e2e.mysqloperator./g" ./xml/*.xml
+
+# store test suite stats, search the log for the following numbers:
+# tests   : 214
+# failures: 3
+# errors  : 0
+# skipped : 0
+
+function extract_test_suite_stat() {
+	STAT_LABEL=$1
+	echo $(tac ${TESTS_LOG} | egrep -m 1 "^${STAT_LABEL}\s*: [0-9]+$" | awk -F':' '{print $2}')
+}
+
+function extract_execution_time() {
+	STAT_LABEL=$1
+	echo $(tac ${TESTS_LOG} | egrep -m 1 '^execution time\s+: [0-9:.]+ \([0-9.]+s\)$' | awk '{print $4 " " $5}')
+}
+
+TESTS_COUNT=$(extract_test_suite_stat 'tests')
+FAILURES_COUNT=$(extract_test_suite_stat 'failures')
+ERRORS_COUNT=$(extract_test_suite_stat 'errors')
+SKIPPED_COUNT=$(extract_test_suite_stat 'skipped')
+EXECUTION_TIME=$(extract_execution_time)
+
+if [[ -n $TESTS_COUNT && $TESTS_COUNT -gt 0 && -n $FAILURES_COUNT && -n $ERRORS_COUNT && -n $SKIPPED_COUNT && -n $EXECUTION_TIME ]]; then
+	FAILED_TESTS=$(expr $FAILURES_COUNT + $ERRORS_COUNT)
+	PASSED_TESTS=$(expr $TESTS_COUNT - $FAILED_TESTS - $SKIPPED_COUNT)
+	STATS_MSG="${JOB_BADGE}: $TESTS_COUNT tests, $PASSED_TESTS passed, $FAILED_TESTS failed, $SKIPPED_COUNT skipped [$EXECUTION_TIME]"
+	STATS_LOG=$LOG_DIR/${OTE_LOG_PREFIX}-stats.log
+	echo ${STATS_MSG} > ${STATS_LOG}
+	cat ${STATS_LOG}
+fi
 
 # store extraordinary issues
-BROKEN_WORKERS=$(egrep '^broken\s+: [0-9]+$' ${TESTS_LOG} | awk '{print $3}')
+BROKEN_WORKERS=$(tac ${TESTS_LOG} | egrep -m 1 '^broken\s+: [0-9]+$' | awk '{print $3}')
 if [[ -n $BROKEN_WORKERS && $BROKEN_WORKERS -gt 0 ]]; then
-	ALL_WORKERS=$(egrep '^all\s+: [0-9]+$' ${TESTS_LOG} | awk '{print $3}')
-	BROKEN_WORKERS_MSG="${K8S_DRIVER}: ${BROKEN_WORKERS} out of ${ALL_WORKERS} worker(s) have broken, some test results are missing!"
+	ALL_WORKERS=$(tac ${TESTS_LOG} | egrep -m 1 '^all\s+: [0-9]+$' | awk '{print $3}')
+	BROKEN_WORKERS_MSG="${JOB_BADGE}: ${BROKEN_WORKERS} out of ${ALL_WORKERS} worker(s) have broken, some test results are missing!"
 	ISSUES_LOG=$LOG_DIR/${OTE_LOG_PREFIX}-issues.log
 	echo ${BROKEN_WORKERS_MSG} > ${ISSUES_LOG}
 	cat ${ISSUES_LOG}

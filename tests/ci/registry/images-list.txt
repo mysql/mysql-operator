@@ -70,6 +70,10 @@ mysql-operator:8.0.32-2.0.8
 mysql-operator:8.0.32-2.0.8
 1
 ---
+mysql-operator:8.0.33-2.0.9
+mysql-operator:8.0.33-2.0.9
+1
+---
 mysql-operator:latest
 mysql-operator:latest
 1

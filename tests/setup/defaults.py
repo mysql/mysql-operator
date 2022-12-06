@@ -9,7 +9,7 @@ import os
 VERSION_TAG = "8.0.32"
 
 MIN_SUPPORTED_VERSION = "8.0.27"
-MAX_SUPPORTED_VERSION = "8.0.32"
+MAX_SUPPORTED_VERSION = "8.0.33"
 
 
 # image
@@ -28,7 +28,7 @@ OPERATOR_EE_IMAGE_NAME = os.getenv(
     "OPERATOR_TEST_EE_IMAGE_NAME", default="enterprise-operator")
 
 OPERATOR_VERSION_TAG = os.getenv(
-    "OPERATOR_TEST_VERSION_TAG", default="8.0.32-2.0.8")
+    "OPERATOR_TEST_VERSION_TAG", default="8.0.33-2.0.9")
 
 OPERATOR_PULL_POLICY = os.getenv(
     "OPERATOR_TEST_PULL_POLICY", default="IfNotPresent")

@@ -31,8 +31,7 @@ pipeline {
 					initMessage = utils.getInitMessage()
 
 					slackSend channel: "${env.SLACK_CHANNEL}",
-						color: "warning",
-						sendAsText: true,
+						color: env.COLOR_INFO,
 						message: initMessage
 
 					sh 'mkdir -p ${LOG_DIR}'
@@ -68,20 +67,24 @@ pipeline {
 				stage('minikube') {
 					steps {
 						echo "minikube"
-						build job: "${env.WORKERS_FOLDER}/minikube", parameters: [
-							string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
-							string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
-							string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
-							booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
-						]
+						catchError {
+							build job: "${env.WORKERS_FOLDER}/minikube", parameters: [
+								string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+								string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
+								string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
+								booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
+							]
+						}
 					}
 					post {
 						always {
-							echo "minikube results"
-							copyArtifacts fingerprintArtifacts: true,
-								projectName: "${env.WORKERS_FOLDER}/minikube",
-								selector: lastCompleted(),
-								target: "${LOG_SUBDIR}"
+							echo "copy minikube results"
+							catchError {
+								copyArtifacts fingerprintArtifacts: true,
+									projectName: "${env.WORKERS_FOLDER}/minikube",
+									selector: lastCompleted(),
+									target: "${LOG_SUBDIR}"
+							}
 						}
 						cleanup {
 							script {
@@ -105,20 +108,24 @@ pipeline {
 						// run k3d clusters with some delay (in seconds), after all minikube clusters already
 						// have started when clusters start at the same moment, they may fail randomly
 						sleep 300
-						build job: "${env.WORKERS_FOLDER}/k3d", parameters: [
-							string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
-							string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
-							string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
-							booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
-						]
+						catchError {
+							build job: "${env.WORKERS_FOLDER}/k3d", parameters: [
+								string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+								string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
+								string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
+								booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
+							]
+						}
 					}
 					post {
 						always {
-							echo "k3d post"
-							copyArtifacts fingerprintArtifacts: true,
-								projectName: "${env.WORKERS_FOLDER}/k3d",
-								selector: lastCompleted(),
-								target: "${LOG_SUBDIR}"
+							echo "copy k3d results"
+							catchError {
+								copyArtifacts fingerprintArtifacts: true,
+									projectName: "${env.WORKERS_FOLDER}/k3d",
+									selector: lastCompleted(),
+									target: "${LOG_SUBDIR}"
+							}
 						}
 						cleanup {
 							script {
@@ -154,7 +161,7 @@ pipeline {
 				}
 				cleanup {
 					script {
-						env.TESTS_STATUS_HEADER = utils.getTestsStatusHeader()
+						env.TESTS_SUITE_ISSUES = utils.getTestsSuiteIssues()
 					}
 				}
 			}
@@ -215,10 +222,9 @@ pipeline {
 		}
 		cleanup {
 			script {
-				summaryMessage = utils.getSummaryMessage(true)
+				summaryMessage = utils.getBuildSummaryMessage()
 				slackSend channel: "${env.SLACK_CHANNEL}",
-					sendAsText: true,
-					color: "good",
+					color: utils.getBuildSummaryColor(),
 					message: summaryMessage
 			}
 		}

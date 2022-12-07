@@ -17,13 +17,13 @@ pipeline {
 		}
 	}
 	parameters {
-		string(name: 'OPERATOR_GIT_REVISION', description: 'a git revision or branch to run against')
+		string(name: 'OPERATOR_GIT_REVISION', defaultValue: 'trunk', description: 'a git revision or branch to run against')
 		string(name: 'OPERATOR_IMAGE', description: 'an image related to the aforementioned git revision')
 		string(name: 'OPERATOR_ENTERPRISE_IMAGE', description: '...and a related enterprise image, it can be empty, then it will be built locally')
 		booleanParam(name: 'OPERATOR_INTERNAL_BUILD', defaultValue: false, description: 'triggered by us (e.g. by a push to a dev branch) or externally (e.g. from the concourse)')
 	}
  	options {
-		timeout(time: 12, unit: 'HOURS')
+		timeout(time: 16, unit: 'HOURS')
 		timestamps()
 	}
 	stages {
@@ -35,8 +35,7 @@ pipeline {
 					initMessage = utils.getInitMessage()
 
 					slackSend channel: "${env.SLACK_CHANNEL}",
-						color: "warning",
-						sendAsText: true,
+						color: env.COLOR_INFO,
 						message: initMessage
 
 					sh 'mkdir -p ${LOG_DIR}'
@@ -84,10 +83,10 @@ pipeline {
 					}
 				}
 				stages {
-					stage('test') {
+					stage('minikube run tests') {
 						steps {
 							script {
-								echo "${K8S_ENVIRONMENT}"
+								echo "${K8S_ENVIRONMENT}-${K8S_VERSION}"
 								minikubeRuns++
 								catchError {
 									build job: "${env.WORKERS_FOLDER}/${K8S_ENVIRONMENT}", parameters: [
@@ -102,11 +101,13 @@ pipeline {
 						}
 						post {
 							always {
-								echo "${K8S_ENVIRONMENT} results"
-								copyArtifacts fingerprintArtifacts: true,
-									projectName: "${env.WORKERS_FOLDER}/${K8S_ENVIRONMENT}",
-									selector: lastCompleted(),
-									target: "${LOG_SUBDIR}"
+								echo "copy ${K8S_ENVIRONMENT}-${K8S_VERSION} results"
+								catchError {
+									copyArtifacts fingerprintArtifacts: true,
+										projectName: "${env.WORKERS_FOLDER}/${K8S_ENVIRONMENT}",
+										selector: lastCompleted(),
+										target: "${LOG_SUBDIR}"
+								}
 							}
 						}
 					}
@@ -139,10 +140,10 @@ pipeline {
 					}
 				}
 				stages {
-					stage('test') {
+					stage('k3d run tests') {
 						steps {
 							script {
-								echo "${K8S_ENVIRONMENT}"
+								echo "${K8S_ENVIRONMENT}-${K8S_VERSION}"
 								k3dRuns++
 								catchError {
 									build job: "${env.WORKERS_FOLDER}/${K8S_ENVIRONMENT}", parameters: [
@@ -157,11 +158,13 @@ pipeline {
 						}
 						post {
 							always {
-								echo "${K8S_ENVIRONMENT} results"
-								copyArtifacts fingerprintArtifacts: true,
-									projectName: "${env.WORKERS_FOLDER}/${K8S_ENVIRONMENT}",
-									selector: lastCompleted(),
-									target: "${LOG_SUBDIR}"
+								echo "copy ${K8S_ENVIRONMENT}-${K8S_VERSION} results"
+								catchError {
+									copyArtifacts fingerprintArtifacts: true,
+										projectName: "${env.WORKERS_FOLDER}/${K8S_ENVIRONMENT}",
+										selector: lastCompleted(),
+										target: "${LOG_SUBDIR}"
+								}
 							}
 						}
 					}
@@ -202,7 +205,7 @@ pipeline {
 			post {
 				cleanup {
 					script {
-						env.TESTS_STATUS_HEADER = utils.getTestsStatusHeader()
+						env.TESTS_SUITE_ISSUES = utils.getTestsSuiteIssues()
 					}
 				}
 			}
@@ -263,10 +266,9 @@ pipeline {
 		}
 		cleanup {
 			script {
-				summaryMessage = utils.getSummaryMessage(true)
+				summaryMessage = utils.getBuildSummaryMessage()
 				slackSend channel: "${env.SLACK_CHANNEL}",
-					sendAsText: true,
-					color: "good",
+					color: utils.getBuildSummaryColor(),
 					message: summaryMessage
 			}
 		}

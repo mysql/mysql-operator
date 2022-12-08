@@ -81,7 +81,7 @@ class PrintTestSuiteReport:
 			items.sort()
 			print(f"{len(items)} {kind} test(s):")
 			for item in items:
-				print(f"    {item}")
+				print(f"{item}")
 
 	def run(self, test_suite_result):
 		if not test_suite_result.empty:

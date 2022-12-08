@@ -7,7 +7,7 @@ def getEnterpriseImageInfo(String operatorEnterpriseImage) {
 	if (operatorEnterpriseImage) {
 		return operatorEnterpriseImage
 	}
-	return "not specified, it will be built internally"
+	return "not specified, it will be built locally"
 }
 
 def isCIExperimentalBuild() {
@@ -25,6 +25,7 @@ def initEnv() {
 
 	env.SLACK_CHANNEL = "${isCIExperimentalBuild() ? '#mysql-operator-ci' : '#mysql-operator-dev'}"
 	env.BUILD_NOTIFICATION_HEADER = "${currentBuild.fullDisplayName} (<${env.BUILD_URL}|Open>)"
+	env.COLOR_INFO = '#808080'
 
 	env.GIT_AUTHOR_DATE = sh (script: "git log -1 --pretty='%an <%ae>, %ad' ${GIT_COMMIT}", returnStdout: true).trim()
 	env.GIT_BRANCH_NAME = sh (script: "git name-rev --name-only ${GIT_COMMIT}", returnStdout: true).trim()
@@ -64,20 +65,20 @@ def addTestResults(String k8s_env, int expectedResultsCount) {
 	return (summary.totalCount > 0) && (testResults.length == expectedResultsCount)
 }
 
-def anyResultsAvailable() {
-	return env.MINIKUBE_RESULTS_AVAILABLE || env.K3D_RESULTS_AVAILABLE;
-}
-
-def getIssuesReport(String k8s_env) {
-	def issuesReportPattern = "${k8s_env}-*-issues.log"
-	def issuesReports = findFiles glob: "**/${env.LOG_SUBDIR}/$issuesReportPattern"
-	if (issuesReports.length == 0) {
+def getMergedReports(String reportPattern) {
+	def reports = findFiles glob: "**/${env.LOG_SUBDIR}/$reportPattern"
+	if (reports.length == 0) {
 		return ""
 	}
 
-	issuesReportSummary = sh (script: "cat ${env.LOG_DIR}/$issuesReportPattern", returnStdout: true).trim()
-	echo issuesReportSummary
-	return issuesReportSummary
+	reportSummary = sh (script: "cat ${env.LOG_DIR}/$reportPattern | sort", returnStdout: true)
+	echo reportSummary
+	return reportSummary
+}
+
+def getMergedStatsReports() {
+	statsPattern = "*-build-*-stats.log"
+	return getMergedReports(statsPattern)
 }
 
 def getTestSuiteReport() {
@@ -91,42 +92,63 @@ def getTestSuiteReport() {
 	def reportPattern = "${env.LOG_DIR}/$testSuiteReportPattern"
 	sh "cat $reportPattern | tar jxvf - -i -C ${env.LOG_DIR} && rm $reportPattern"
 
-	def testSuiteReport = getIssuesReport('k3d') + getIssuesReport('minikube')
-
 	def reportPath = "${env.LOG_DIR}/test_suite_report.txt"
 	def reportExists = fileExists reportPath
 	if (!reportExists) {
-		return testSuiteReport
+		return ""
 	}
 
-	def briefReportPath = "${env.LOG_DIR}/test_suite_brief_report.txt"
-	def ReportedIssuesMaxCount = 10
-	sh "cat $reportPath | sed -ne '1,$ReportedIssuesMaxCount p' -e '${ReportedIssuesMaxCount+1} iand more...' > $briefReportPath"
+	testSuiteReport = "Test suite:\n"
 
+	def briefReportPath = "${env.LOG_DIR}/test_suite_brief_report.txt"
+	def ReportedErrorsMaxCount = 10
+	sh "cat $reportPath | sed -ne '1,$ReportedErrorsMaxCount p' -e '${ReportedErrorsMaxCount+1} iand more...' > $briefReportPath"
 	testSuiteReport += readFile(file: briefReportPath)
+
+	stats = getMergedStatsReports()
+	if (stats) {
+		testSuiteReport += "\nStats:\n${stats}"
+	}
+
 	echo testSuiteReport
 	return testSuiteReport
 }
 
-def getTestsStatusHeader() {
+def anyResultsAvailable() {
+	return env.MINIKUBE_RESULTS_AVAILABLE || env.K3D_RESULTS_AVAILABLE;
+}
+
+def getMergedIssuesReports() {
+	statsPattern = "*-build-*-issues.log"
+	return getMergedReports(statsPattern)
+}
+
+def getTestsSuiteIssues() {
 	sh 'ls -lRF ${LOG_DIR}'
-	testStatusHeader = "Test suite:"
+	def testSuiteIssues = ""
 	if (anyResultsAvailable()) {
 		if (!env.MINIKUBE_RESULTS_AVAILABLE) {
-			testStatusHeader += "\nNo test results for minikube!"
+			testSuiteIssues += "No test results for minikube!\n"
 		} else if (env.SOME_MINIKUBE_RESULTS_UNAVAILABLE) {
-			testStatusHeader += "\nSome test results for minikube unavailable!"
+			testSuiteIssues += "Some test results for minikube unavailable!\n"
 		}
 
 		if (!env.K3D_RESULTS_AVAILABLE) {
-			testStatusHeader += "\nNo test results for k3d!"
+			testSuiteIssues += "No test results for k3d!\n"
 		} else if (env.SOME_K3D_RESULTS_UNAVAILABLE) {
-			testStatusHeader += "\nSome test results for k3d unavailable!"
+			testSuiteIssues += "Some test results for k3d unavailable!\n"
 		}
 	} else {
-		testStatusHeader = "\nNo test results available!"
+		testSuiteIssues = "No test results available!\n"
 	}
-	return testStatusHeader
+
+	testSuiteIssues += getMergedIssuesReports()
+
+	if (testSuiteIssues) {
+		testSuiteIssues = "Issues:\n$testSuiteIssues"
+	}
+
+	return testSuiteIssues
 }
 
 def getBuildDuration() {
@@ -140,7 +162,16 @@ def getChangeLog() {
 	}
 
 	def changeLog = "Changes:\n"
-	for (int i = 0; i < changeSets.size(); ++i) {
+
+	def ChangesMaxCount = 7
+	def changesCount = changeSets.size()
+	def firstChangeIndex = 0
+	if (changesCount > ChangesMaxCount) {
+		changeLog += "[...]\n"
+		firstChangeIndex = changesCount - ChangesMaxCount
+	}
+
+	for (int i = firstChangeIndex; i < changesCount; ++i) {
 		def entries = changeSets[i].items
 		for (int j = 0; j < entries.length; ++j) {
 			def entry = entries[j]
@@ -159,7 +190,7 @@ def modifyBuildStatus(String status) {
 	}
 }
 
-def getSummaryResult() {
+def getBuildSummaryResult() {
 	if (!env.INIT_STAGE_SUCCEEDED) {
 		return "Init (local registry) stage failed!"
 	}
@@ -168,19 +199,39 @@ def getSummaryResult() {
 		return "Build dev-images stage failed!"
 	}
 
-	if (env.TESTS_STATUS_HEADER && env.TEST_SUITE_REPORT) {
-		return "${env.TESTS_STATUS_HEADER}\n${env.TEST_SUITE_REPORT}"
+	def testsSuiteIssues = "${env.TESTS_SUITE_ISSUES ? env.TESTS_SUITE_ISSUES + '\n' : ''}"
+
+	if (env.TEST_SUITE_REPORT) {
+		return testsSuiteIssues + env.TEST_SUITE_REPORT
 	}
 
-	return "Test stage failed!"
+	return testsSuiteIssues + "Test stage failed!"
 }
 
-def getSummaryMessage(Boolean includeChangeLog) {
-	changeLog = includeChangeLog ? "${env.CHANGE_LOG}\n" : ""
+def getBuildSummaryColor() {
+	buildStatus = env.BUILD_STATUS
+	if (buildStatus.contains("failure") || buildStatus.contains("aborted")) {
+		return "danger"
+	}
+
+	if (buildStatus.contains("unstable") || buildStatus.contains("regression") || buildStatus.contains("unsuccessful")) {
+		return "warning"
+	}
+
+	if (buildStatus.contains("fixed") || buildStatus.contains("success")) {
+		return "good"
+	}
+
+	// theoretically, that point of code shouldn't be reached, but just in case return 'good' by default
+	return "good"
+}
+
+def getBuildSummaryMessage() {
 	return """${env.BUILD_NOTIFICATION_HEADER}
 Status: ${env.BUILD_STATUS}
 Duration: ${env.BUILD_DURATION}
-$changeLog${getSummaryResult()}"""
+${env.CHANGE_LOG}
+${getBuildSummaryResult()}"""
 }
 
 return this

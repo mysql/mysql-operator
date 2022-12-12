@@ -125,7 +125,6 @@ if __name__ == '__main__':
     opt_mounts = []
     opt_custom_dns = None
     opt_cleanup = True
-    opt_env_name = "minikube"
     opt_registry_cfg_path = None
     opt_xml_report_path = None
 
@@ -138,10 +137,13 @@ if __name__ == '__main__':
 
     for arg in sys.argv[2:]:
         if arg.startswith("--env="):
-            opt_env_name = arg.partition("=")[-1]
-            g_ts_cfg.env = opt_env_name
+            g_ts_cfg.env = arg.partition("=")[-1]
+        elif arg.startswith("--env-binary-path="):
+            g_ts_cfg.env_binary_path = arg.partition("=")[-1]
         elif arg.startswith("--kube-version="):
             opt_kube_version = arg.split("=")[-1]
+        elif arg.startswith("--kubectl-path="):
+            g_ts_cfg.kubectl_path = arg.partition("=")[-1]
         elif arg.startswith("--nodes="):
             opt_nodes = int(arg.split("=")[-1])
         elif arg.startswith("--cluster="):
@@ -244,7 +246,7 @@ if __name__ == '__main__':
     setup_logging(opt_verbose)
 
     print(
-        f"Using environment {opt_env_name} with kubernetes version {opt_kube_version or 'latest'}...")
+        f"Using environment {g_ts_cfg.env} with kubernetes version {opt_kube_version or 'latest'}...")
 
     deploy_dir = os.path.join(basedir, "../deploy")
     deploy_files = [os.path.join(deploy_dir, f) for f in deploy_files]
@@ -255,7 +257,7 @@ if __name__ == '__main__':
     assert len(deploy_files) == len(
         [f for f in deploy_files if os.path.isfile(f)]), "deploy files check"
 
-    with get_driver(opt_env_name) as driver:
+    with get_driver(g_ts_cfg.env) as driver:
         if cmd in ("run", "setup"):
             if opt_mount_operator_path:
                 driver.mount_operator_path(opt_mount_operator_path)

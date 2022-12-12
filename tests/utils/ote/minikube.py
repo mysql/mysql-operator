@@ -51,7 +51,7 @@ class MinikubeEnvironment(BaseEnvironment):
             print(f"{name}/{version}:{image}")
 
     def get_images(self, filter="", node="minikube"):
-        cmd = f"minikube --profile={g_ts_cfg.k8s_context} ssh -n{node} docker image ls {filter}"
+        cmd = f"{g_ts_cfg.env_binary_path} --profile={g_ts_cfg.k8s_context} ssh -n{node} docker image ls {filter}"
         p = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE)
         return p.stdout.decode("utf8").strip().split("\n")
 
@@ -60,8 +60,8 @@ class MinikubeEnvironment(BaseEnvironment):
 
         if self.image_exists_by_name(image_name, node):
             # delete the old image from minikube
-            self.run_command(f"minikube --profile={g_ts_cfg.k8s_context} ssh -n{node} docker image rm {image_name}")
-            self.run_command(f"minikube --profile={g_ts_cfg.k8s_context} cache delete {image_name}")
+            self.run_command(f"{g_ts_cfg.env_binary_path} --profile={g_ts_cfg.k8s_context} ssh -n{node} docker image rm {image_name}")
+            self.run_command(f"{g_ts_cfg.env_binary_path} --profile={g_ts_cfg.k8s_context} cache delete {image_name}")
 
         # load from local docker env into minikube
         # we've noticed that 'minikube image load' may work weirdly when another image with
@@ -72,9 +72,9 @@ class MinikubeEnvironment(BaseEnvironment):
         timestamp = datetime.now().strftime("%Y.%m.%d-%H.%M.%S")
         tmp_image_name = f"{image_name}-{timestamp}"
         self.run_command(f"docker tag {image_name} {tmp_image_name}")
-        self.run_command(f"minikube --profile={g_ts_cfg.k8s_context} image load {tmp_image_name}")
-        self.run_command(f"minikube --profile={g_ts_cfg.k8s_context} ssh docker image tag {tmp_image_name} {image_name}")
-        self.run_command(f"minikube --profile={g_ts_cfg.k8s_context} ssh docker rmi {tmp_image_name}")
+        self.run_command(f"{g_ts_cfg.env_binary_path} --profile={g_ts_cfg.k8s_context} image load {tmp_image_name}")
+        self.run_command(f"{g_ts_cfg.env_binary_path} --profile={g_ts_cfg.k8s_context} ssh docker image tag {tmp_image_name} {image_name}")
+        self.run_command(f"{g_ts_cfg.env_binary_path} --profile={g_ts_cfg.k8s_context} ssh docker rmi {tmp_image_name}")
         self.run_command(f"docker rmi {tmp_image_name}")
 
     def run_command(self, command, verbose = True):
@@ -86,7 +86,7 @@ class MinikubeEnvironment(BaseEnvironment):
 
     def start_cluster(self, nodes, version, registry_cfg_path):
         assert registry_cfg_path is None
-        args = ["minikube", "start", f"--profile={g_ts_cfg.k8s_cluster}"]
+        args = [g_ts_cfg.env_binary_path, "start", f"--profile={g_ts_cfg.k8s_cluster}"]
         opts = os.getenv("TEST_MINIKUBE_OPTIONS")
         if opts:
             args += opts.split(" ")
@@ -104,11 +104,11 @@ class MinikubeEnvironment(BaseEnvironment):
         subprocess.check_call(args)
 
     def stop_cluster(self):
-        args = ["minikube", f"--profile={g_ts_cfg.k8s_context}", "stop"]
+        args = [g_ts_cfg.env_binary_path, f"--profile={g_ts_cfg.k8s_context}", "stop"]
         subprocess.check_call(args)
 
     def delete_cluster(self):
-        args = ["minikube", f"--profile={g_ts_cfg.k8s_context}", "delete"]
+        args = [g_ts_cfg.env_binary_path, f"--profile={g_ts_cfg.k8s_context}", "delete"]
         subprocess.check_call(args)
 
     def resolve_registry(self):

@@ -45,6 +45,14 @@ The following envars are supported:
 --env=[k3d|minikube]\
     set the k8s environment
 
+--env-binary-path={path}\
+    set the path to a custom k8s environment binary e.g. k3d-linux-amd64-5.4.4 or minikube-v1.26.1,\
+    if not set then a default binary is inferred from --env value (e.g. k3d or minikube)
+
+--kubectl-path={path}\
+    set the path to a custom kubectl binary e.g. kubectl-v1.25.0, if not set then a default kubectl binary\
+    will be used
+
 --kube-version\
 set the kubernetes version to use, if not set, the default depends on the installed minikube or k3d
 * for minikube it is used to pass an argument to the --kubernetes-version={value} option, e.g.:

@@ -24,7 +24,7 @@ class K3dEnvironment(BaseEnvironment):
 
     def load_image(self, repo_tag, id):
         print(f"Loading image {repo_tag} ({id})")
-        cmd = f"k3d image import {repo_tag} -c {g_ts_cfg.k8s_cluster}"
+        cmd = f"{g_ts_cfg.env_binary_path} image import {repo_tag} -c {g_ts_cfg.k8s_cluster}"
         print(cmd)
         subprocess.check_call(cmd, shell=True)
 
@@ -32,7 +32,7 @@ class K3dEnvironment(BaseEnvironment):
         return f"k3d-{cluster_name}"
 
     def start_cluster(self, nodes, version, registry_cfg_path):
-        args = ["k3d", "cluster", "create", g_ts_cfg.k8s_cluster, "--timeout", "5m"]
+        args = [g_ts_cfg.env_binary_path, "cluster", "create", g_ts_cfg.k8s_cluster, "--timeout", "5m"]
 
         if nodes:
             args.append(f"--agents={nodes}")
@@ -67,7 +67,7 @@ class K3dEnvironment(BaseEnvironment):
         return []
 
     def stop_cluster(self):
-        args = ["k3d", "cluster", "stop", g_ts_cfg.k8s_cluster]
+        args = [g_ts_cfg.env_binary_path, "cluster", "stop", g_ts_cfg.k8s_cluster]
         subprocess.check_call(args)
 
         if g_ts_cfg.image_registry:
@@ -75,7 +75,7 @@ class K3dEnvironment(BaseEnvironment):
             subprocess.call(args)
 
     def delete_cluster(self):
-        args = ["k3d", "cluster", "delete", g_ts_cfg.k8s_cluster]
+        args = [g_ts_cfg.env_binary_path, "cluster", "delete", g_ts_cfg.k8s_cluster]
         subprocess.check_call(args)
 
         if g_ts_cfg.image_registry:

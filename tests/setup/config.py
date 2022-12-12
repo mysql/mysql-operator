@@ -8,8 +8,13 @@ from setup import defaults
 import tempfile
 
 class Config:
-    # environment
+    # k8s environment
     env = None
+    env_binary_path = None
+    kubectl_path = None
+
+    k8s_cluster = defaults.K8S_CLUSTER_NAME
+    k8s_context = None
 
     # versions
     version_tag = defaults.VERSION_TAG
@@ -51,10 +56,6 @@ class Config:
     # vault
     vault_cfg_path = defaults.OCI_VAULT_CONFIG_PATH
 
-    # k8s
-    k8s_cluster = defaults.K8S_CLUSTER_NAME
-    k8s_context = None
-
     # diagnostics
     work_dir = None
 
@@ -69,6 +70,15 @@ class Config:
         return int(a)*10000 + int(b)*100 + int(c)
 
     def commit(self):
+        if not self.env:
+            self.env = "minikube"
+
+        if not self.env_binary_path:
+            self.env_binary_path = self.env
+
+        if not self.kubectl_path:
+            self.kubectl_path = "kubectl"
+
         if self.image_registry:
             self.image_registry_host, self.image_registry_port, self.image_registry_is_loopback = auxutil.resolve_registry_url(self.image_registry)
 

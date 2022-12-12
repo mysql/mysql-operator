@@ -66,7 +66,7 @@ class BaseEnvironment:
           if custom_dns:
             self.add_custom_dns(custom_dns)
 
-        ret = subprocess.call(["kubectl", f"--context={g_ts_cfg.k8s_context}", "cluster-info"])
+        ret = subprocess.call([g_ts_cfg.kubectl_path, f"--context={g_ts_cfg.k8s_context}", "cluster-info"])
         if ret:
           raise Exception(f"cannot get cluster-info for context '{g_ts_cfg.k8s_context}'")
 
@@ -132,7 +132,7 @@ class BaseEnvironment:
     def deploy_operator(self, deploy_files, override_deployment=True):
         print("Deploying operator...")
         for f in deploy_files:
-            args = ["kubectl", f"--context={g_ts_cfg.k8s_context}", "apply", "-f", "-"]
+            args = [g_ts_cfg.kubectl_path, f"--context={g_ts_cfg.k8s_context}", "apply", "-f", "-"]
             print(" ".join(args), "<", f)
             y = open(f).read()
 
@@ -189,7 +189,7 @@ spec:
             auxutil.merge_patch_object(operator, next(yaml.safe_load_all(patch)))
             y = yaml.safe_dump(operator)
             print(y)
-            subprocess.run(["kubectl", f"--context={g_ts_cfg.k8s_context}", "apply", "-f", "-"],
+            subprocess.run([g_ts_cfg.kubectl_path, f"--context={g_ts_cfg.k8s_context}", "apply", "-f", "-"],
                           input=y.encode("utf8"), check=True)
 
         wait_operator("mysql-operator")

@@ -9,8 +9,6 @@ image:
     enabled: false
     secretName:
 
-# 'lookup' functions need to be disabled while using 
-# `kubernetes kustomize` or `helm template`.
 disableLookups: false
 
 envs:

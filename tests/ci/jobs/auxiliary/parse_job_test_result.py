@@ -9,8 +9,10 @@
 # to get cases only e.g.:
 # curl -X GET -u $JENKINS_USER_CRED '${TEST_JOB}/191/testReport/api/json?pretty=true&tree=suites\[cases\[className,name,age,status,duration\]\]'
 
+from datetime import timedelta
 import json
 import sys
+from utils import auxutil
 
 class TestSuiteResult:
 	def __init__(self):
@@ -74,7 +76,14 @@ class PrintTestSuiteReport:
 			f"{ts_result.passed_count} passed, " +
 			f"{ts_result.failed_count} failed, " +
 			f"{ts_result.skipped_count} skipped"))
-		print(f"Total execution time (all tests): {ts_result.duration}s")
+		print(f"Total execution time (all tests): {self.prepare_duration(ts_result.duration)}")
+
+	def prepare_duration(self, duration_sec):
+		if not duration_sec:
+			return "no time"
+
+		td = timedelta(seconds = duration_sec)
+		return auxutil.get_formatted_duration(td)
 
 	def print_items(self, kind, items):
 		if items:

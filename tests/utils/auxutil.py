@@ -17,6 +17,17 @@ def isotime() -> str:
 def utctime() -> str:
     return datetime.datetime.utcnow().replace(microsecond=0).isoformat(sep=' ')
 
+def format_duration_as_hh_mm_ss(time_delta):
+    td_str = str(time_delta)
+    td_elems = td_str.split(':')
+    return f'{td_elems[0]}h {td_elems[1]}m {td_elems[2]}s'
+
+def get_formatted_duration(td):
+    if td:
+        return f"{format_duration_as_hh_mm_ss(td)} ({td.total_seconds()}s)"
+    else:
+        return "no time"
+
 def b64encode(s: str) -> str:
     return base64.b64encode(bytes(s, "utf8")).decode("ascii")
 

@@ -13,10 +13,7 @@ export no_proxy=$NO_PROXY
 source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || return
 
 # set our temporary kubeconfig, because the default one may contain unrelated data that could fail the build
-TMP_KUBE_CONFIG="$WORKSPACE/tmpkubeconfig.$K8S_DRIVER"
-cat "$TMP_KUBE_CONFIG"
-: > "$TMP_KUBE_CONFIG"
-export KUBECONFIG=$TMP_KUBE_CONFIG
+export KUBECONFIG=$(mktemp /tmp/kubeconfig.$K8S_DRIVER-XXXXXX)
 
 trap 'kill $(jobs -p)' EXIT
 cd "$TESTS_DIR"
@@ -25,8 +22,22 @@ if test -z ${TEST_OPTIONS+x}; then
 	TEST_OPTIONS='-t -vvv --doperator --dkube --doci'
 fi
 
+ENV_BINARY_PATH=${OPERATOR_ENV_BINARY_PATH}
+if [[ -n ${ENV_BINARY_PATH} ]]; then
+	TEST_OPTIONS="$TEST_OPTIONS --env-binary-path=$ENV_BINARY_PATH"
+else
+	ENV_BINARY_PATH=$K8S_DRIVER
+fi
+
 if [[ -n ${OPERATOR_K8S_VERSION} ]]; then
 	TEST_OPTIONS="$TEST_OPTIONS --kube-version=$OPERATOR_K8S_VERSION"
+fi
+
+KUBECTL_PATH=${OPERATOR_KUBECTL_PATH}
+if [[ -n ${KUBECTL_PATH} ]]; then
+	TEST_OPTIONS="$TEST_OPTIONS --kubectl-path=$KUBECTL_PATH"
+else
+	KUBECTL_PATH="kubectl"
 fi
 
 if test -z ${WORKERS+x}; then
@@ -113,7 +124,7 @@ function extract_test_suite_stat() {
 
 function extract_execution_time() {
 	STAT_LABEL=$1
-	echo $(tac ${TESTS_LOG} | egrep -m 1 '^execution time\s+: [0-9:.]+ \([0-9.]+s\)$' | awk '{print $4 " " $5}')
+	echo $(tac ${TESTS_LOG} | egrep -m 1 '^execution time\s*: .+ \([0-9.]+s\)$' | sed 's/.*:\s*//')
 }
 
 TESTS_COUNT=$(extract_test_suite_stat 'tests')
@@ -143,12 +154,18 @@ fi
 
 # store runtime environment
 RUNTIME_ENV_LOG=${OTE_LOG_PREFIX}-runtime-env.log
-${K8S_DRIVER} version > $RUNTIME_ENV_LOG
-KUBECTL_VERSION=$(kubectl version --client -o json | jq '.clientVersion.gitVersion')
-echo "kubectl: ${KUBECTL_VERSION}" >> $RUNTIME_ENV_LOG
+# env
+${ENV_BINARY_PATH} version > $RUNTIME_ENV_LOG
+ENV_BINARY_PATH=$(which ${ENV_BINARY_PATH})
+echo "path: ${ENV_BINARY_PATH}" >> $RUNTIME_ENV_LOG
 if [[ -n ${OPERATOR_K8S_VERSION} ]]; then
 	echo "custom k8s version: ${OPERATOR_K8S_VERSION}" >> $RUNTIME_ENV_LOG
 fi
+# kubectl
+KUBECTL_VERSION=$(${KUBECTL_PATH} version --client -o json | jq '.clientVersion.gitVersion')
+echo "kubectl: ${KUBECTL_VERSION}" >> $RUNTIME_ENV_LOG
+KUBECTL_FULL_PATH=$(which ${KUBECTL_PATH})
+echo "path: ${KUBECTL_FULL_PATH}" >> $RUNTIME_ENV_LOG
 cat ${RUNTIME_ENV_LOG}
 
 # archive all logs and auxiliary files

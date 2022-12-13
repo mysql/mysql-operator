@@ -75,25 +75,35 @@ pipeline {
 					}
 					// k8s versions to run against in weekly builds, source of inspiration:
 					// https://docs.oracle.com/en-us/iaas/Content/ContEng/Concepts/contengaboutk8sversions.htm#supportedk8sversions
+					// https://github.com/kubernetes/minikube/releases/
 					// check also the list of old releases
 					// https://kubernetes.io/releases/patch-releases/#support-period
+					// https://github.com/kubernetes/kubernetes/releases
+					// curl -LO https://dl.k8s.io/release/v1.23.14/bin/linux/amd64/kubectl
+					// curl -LO https://github.com/kubernetes/minikube/releases/download/v1.27.1/minikube-linux-amd64
 					axis {
 						name 'K8S_VERSION'
-						values 'v1.21.5', 'v1.22.5', 'v1.23.4', 'v1.24.1'
+						values 'minikube-v1.22.0;v1.21.5;kubectl-v1.21.14',
+							'minikube-v1.24.0;v1.22.5;kubectl-v1.22.17',
+							'minikube-v1.25.2;v1.23.4;kubectl-v1.23.4',
+							'minikube-v1.26.1;v1.24.1;kubectl-v1.24.8'
 					}
 				}
 				stages {
 					stage('minikube run tests') {
 						steps {
 							script {
-								echo "${K8S_ENVIRONMENT}-${K8S_VERSION}"
+								def (env_binary_path, k8s_version, kubectl_path) =  "${K8S_VERSION}".split(';')
+								echo "${K8S_ENVIRONMENT} ${K8S_VERSION} ($env_binary_path, $k8s_version, $kubectl_path)"
 								minikubeRuns++
 								catchError {
 									build job: "${env.WORKERS_FOLDER}/${K8S_ENVIRONMENT}", parameters: [
 										string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
 										string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
 										string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
-										string(name: 'OPERATOR_K8S_VERSION', value: "${K8S_VERSION}"),
+										string(name: 'OPERATOR_ENV_BINARY_PATH', value: env_binary_path),
+										string(name: 'OPERATOR_K8S_VERSION', value: k8s_version),
+										string(name: 'OPERATOR_KUBECTL_PATH', value: kubectl_path),
 										booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
 									]
 								}
@@ -133,24 +143,32 @@ pipeline {
 						values 'k3d'
 					}
 					// use versions similar to k3d, but a little different
+					// https://github.com/k3d-io/k3d/releases
 					// https://hub.docker.com/r/rancher/k3s/tags
+					// curl -LO https://github.com/k3d-io/k3d/releases/download/v5.4.6/k3d-linux-amd64
 					axis {
 						name 'K8S_VERSION'
-						values 'rancher/k3s:v1.21.11-k3s1', 'rancher/k3s:v1.22.7-k3s1', 'rancher/k3s:v1.23.5-k3s1', 'rancher/k3s:v1.24.2-k3s1'
+						values 'k3d-v5.2.2;rancher/k3s:v1.21.11-k3s1;kubectl-v1.21.14',
+						'k3d-v5.4.1;rancher/k3s:v1.22.7-k3s1;kubectl-v1.22.17',
+						'k3d-v5.4.4;rancher/k3s:v1.23.5-k3s1;kubectl-v1.23.14',
+						'k3d-v5.4.6;rancher/k3s:v1.24.2-k3s1;kubectl-v1.24.4'
 					}
 				}
 				stages {
 					stage('k3d run tests') {
 						steps {
 							script {
-								echo "${K8S_ENVIRONMENT}-${K8S_VERSION}"
+								def (env_binary_path, k8s_version, kubectl_path) =  "${K8S_VERSION}".split(';')
+								echo "${K8S_ENVIRONMENT} ${K8S_VERSION} ($env_binary_path, $k8s_version, $kubectl_path)"
 								k3dRuns++
 								catchError {
 									build job: "${env.WORKERS_FOLDER}/${K8S_ENVIRONMENT}", parameters: [
 										string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
 										string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
 										string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
-										string(name: 'OPERATOR_K8S_VERSION', value: "${K8S_VERSION}"),
+										string(name: 'OPERATOR_ENV_BINARY_PATH', value: env_binary_path),
+										string(name: 'OPERATOR_K8S_VERSION', value: k8s_version),
+										string(name: 'OPERATOR_KUBECTL_PATH', value: kubectl_path),
 										booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
 									]
 								}

@@ -7,6 +7,7 @@
 set -vx
 
 TESTS_DIR=$WORKSPACE/tests
+export PYTHONPATH=$PYTHONPATH:$TESTS_DIR
 CI_DIR=$TESTS_DIR/ci
 EXPECTED_FAILURES_PATH="$CI_DIR/expected-failures.txt"
 

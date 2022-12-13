@@ -94,7 +94,7 @@ def decode_stream(stream):
     return ""
 
 def get_current_context():
-    argv = ["kubectl", "config", "current-context"]
+    argv = [g_ts_cfg.kubectl_path, "config", "current-context"]
     if debug_kubectl:
         logger.debug("run %s", " ".join(argv))
     ret = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -107,7 +107,7 @@ def get_current_context():
     raise Exception(f"Could not get current context {ret}")
 
 def kubectl(cmd, rsrc=None, args=None, timeout=None, check=True, ignore=[], timeout_diagnostics=None):
-    argv = ["kubectl", f"--context={g_ts_cfg.k8s_context}", cmd]
+    argv = [g_ts_cfg.kubectl_path, f"--context={g_ts_cfg.k8s_context}", cmd]
     if rsrc:
         argv.append(rsrc)
     if args:
@@ -142,7 +142,7 @@ def kubectl(cmd, rsrc=None, args=None, timeout=None, check=True, ignore=[], time
 
 
 def kubectl_popen(cmd, args=[]):
-    argv = ["kubectl", f"--context={g_ts_cfg.k8s_context}", cmd] + args
+    argv = [g_ts_cfg.kubectl_path, f"--context={g_ts_cfg.k8s_context}", cmd] + args
 
     if debug_kubectl:
         logger.debug("popen %s", " ".join(argv))
@@ -151,7 +151,7 @@ def kubectl_popen(cmd, args=[]):
 
 
 def watch(ns, rsrc, name, fn, timeout, format=None):
-    argv = ["kubectl", f"--context={g_ts_cfg.k8s_context}", "get", rsrc, "-n", ns, "--watch", "-o%s" % format]
+    argv = [g_ts_cfg.kubectl_path, f"--context={g_ts_cfg.k8s_context}", "get", rsrc, "-n", ns, "--watch", "-o%s" % format]
     if name:
         argv.append(name)
 
@@ -204,7 +204,7 @@ def watch(ns, rsrc, name, fn, timeout, format=None):
 
 
 def feed_kubectl(input, cmd, rsrc=None, args=None, check=True):
-    argv = ["kubectl", f"--context={g_ts_cfg.k8s_context}", cmd]
+    argv = [g_ts_cfg.kubectl_path, f"--context={g_ts_cfg.k8s_context}", cmd]
     if rsrc:
         argv.append(rsrc)
     if args:

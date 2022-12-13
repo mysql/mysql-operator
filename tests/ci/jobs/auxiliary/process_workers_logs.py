@@ -4,10 +4,10 @@
 #
 
 from datetime import timedelta
-import os
 from pathlib import Path
 import re
-import time
+
+from utils import auxutil
 
 class LogResult:
 	def __init__(self):
@@ -263,16 +263,10 @@ class ResultPrinter:
 			self.print_worker_summary(index, worker_result)
 			index += 1
 
-	def prepare_time_brief(self, tm):
-		if tm:
-			return f"{tm} ({tm.total_seconds()}s)"
-		else:
-			return "no time"
-
 	def print_summary(self, summary):
 		print("------------------------------ summary -----------------------------")
-		print(f"execution time    : {self.prepare_time_brief(summary.execution_time)}")
-		print(f"total workers time: {self.prepare_time_brief(summary.total_workers_time)}")
+		print(f"execution time    : {auxutil.get_formatted_duration(summary.execution_time)}")
+		print(f"total workers time: {auxutil.get_formatted_duration(summary.total_workers_time)}")
 		print("-------------------")
 		print(f"tests   : {summary.test_count}")
 		print(f"failures: {summary.failure_count}")

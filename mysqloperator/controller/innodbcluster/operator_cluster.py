@@ -542,8 +542,7 @@ def on_pod_create(body: Body, logger: Logger, **kwargs):
         cluster_ctl.on_pod_created(pod, logger)
 
         # Remember how many restarts happened as of now
-        g_ephemeral_pod_state.set(
-            pod, "mysql-restarts", pod.get_container_restarts("mysql"))
+        g_ephemeral_pod_state.set(pod, "mysql-restarts", pod.get_container_restarts("mysql"), context="on_pod_create")
 
 
 @kopf.on.event("", "v1", "pods",
@@ -590,8 +589,7 @@ def on_pod_event(event, body: Body, logger: Logger, **kwargs):
                 if ready and event == "mysql-restarted":
                     cluster_ctl.on_pod_restarted(pod, logger)
 
-                    g_ephemeral_pod_state.set(
-                        pod, "mysql-restarts", mysql_restarts)
+                    g_ephemeral_pod_state.set(pod, "mysql-restarts", mysql_restarts, context="on_pod_event")
 
                 # Check if we should refresh the cluster status
                 status = cluster_ctl.probe_status_if_needed(pod, logger)

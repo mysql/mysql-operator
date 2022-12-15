@@ -36,19 +36,21 @@ def select_pod_with_most_gtids(gtids: Dict[int, str]) -> int:
     return pod_indexes[-1]
 
 class ClusterMutex:
-    def __init__(self, cluster: InnoDBCluster, pod: Optional[MySQLPod] = None):
+    def __init__(self, cluster: InnoDBCluster, pod: Optional[MySQLPod] = None, context: str = "n/a"):
         self.cluster = cluster
         self.pod = pod
+        self.context = context
 
     def __enter__(self, *args):
-        owner = utils.g_ephemeral_pod_state.testset(
-            self.cluster, "cluster-mutex", self.pod.name if self.pod else self.cluster.name)
+        owner_lock_creation_time: datetime.datetime
+        (owner, owner_context, owner_lock_creation_time) = utils.g_ephemeral_pod_state.testset(
+            self.cluster, "cluster-mutex", self.pod.name if self.pod else self.cluster.name, context=self.context)
         if owner:
             raise kopf.TemporaryError(
-                f"{self.cluster.name} busy.  lock_owner={owner}", delay=10)
+                f"{self.cluster.name} busy. lock_owner={owner} owner_context={owner_context} lock_created_at={owner_lock_creation_time.isoformat()}", delay=10)
 
     def __exit__(self, *args):
-        utils.g_ephemeral_pod_state.set(self.cluster, "cluster-mutex", None)
+        utils.g_ephemeral_pod_state.set(self.cluster, "cluster-mutex", None, context=self.context)
 
 
 class ClusterController:
@@ -549,9 +551,6 @@ class ClusterController:
                             removed = True
 
                 if not removed:
-                    # Try with force
-                    remove_options = {"force": True}
-
                     logger.info(
                         f"remove_instance: {pod.name}  peer={peer_pod.name}  options={remove_options}")
                     try:

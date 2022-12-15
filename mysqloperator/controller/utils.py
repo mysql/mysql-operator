@@ -30,6 +30,8 @@ class EphemeralState:
     # Use only if get() returning None is interpreted as "skip optimization"
     def __init__(self):
         self.data = {}
+        self.context = {}
+        self.time = {}
         self.lock = threading.Lock()
 
     def get(self, obj, key: str):
@@ -37,18 +39,24 @@ class EphemeralState:
         with self.lock:
             return self.data.get(key)
 
-    def testset(self, obj, key: str, value):
+    def testset(self, obj, key: str, value, context: str):
         key = obj.namespace+"/"+obj.name+"/"+key
         with self.lock:
-            old = self.data.get(key)
-            if old is None:
+            old_data = self.data.get(key)
+            old_context = self.context.get(key)
+            old_time = self.time.get(key)
+            if old_data is None:
                 self.data[key] = value
-        return old
+                self.context[key] = context
+                self.time[key] = datetime.datetime.now()
+        return (old_data, old_context, old_time)
 
-    def set(self, obj, key: str, value) -> None:
+    def set(self, obj, key: str, value, context: str) -> None:
         key = obj.namespace+"/"+obj.name+"/"+key
         with self.lock:
             self.data[key] = value
+            self.context[key] = context
+            self.time[key] = datetime.datetime.now()
 
 
 g_ephemeral_pod_state = EphemeralState()

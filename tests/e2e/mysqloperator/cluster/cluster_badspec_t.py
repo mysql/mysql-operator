@@ -70,7 +70,8 @@ spec:
   tlsUseSelfSigned: true
 """
         self.assertApplyFails(
-            yaml, r'ValidationError\(InnoDBCluster.spec\): unknown field "bogus" in com.oracle.mysql.v2.InnoDBCluster.spec')
+            yaml, r'ValidationError\(InnoDBCluster.spec\): unknown field "bogus" in com.oracle.mysql.v2.InnoDBCluster.spec' if kutil.server_version() < '1.25' else
+                  r'InnoDBCluster in version "v2" cannot be handled as a InnoDBCluster: strict decoding error: unknown field "spec.bogus"')
 
     def test_1_name_too_long(self):
         """
@@ -117,7 +118,8 @@ metadata:
   name: mycluster
 """
         self.assertApplyFails(
-            yaml, r'ValidationError\(InnoDBCluster\): missing required field "spec" in com.oracle.mysql.v2.InnoDBCluster')
+            yaml, r'ValidationError\(InnoDBCluster\): missing required field "spec" in com.oracle.mysql.v2.InnoDBCluster' if kutil.server_version() < '1.25' else
+                  r'The InnoDBCluster "mycluster" is invalid: spec: Required value')
 
         yaml = """
 apiVersion: mysql.oracle.com/v2
@@ -129,7 +131,8 @@ spec:
   tlsUseSelfSigned: true
 """
         self.assertApplyFails(
-            yaml, r'error validating data: ValidationError\(InnoDBCluster.spec\): missing required field "secretName"')
+            yaml, r'error validating data: ValidationError\(InnoDBCluster.spec\): missing required field "secretName"' if kutil.server_version() < '1.25' else
+                  r'The InnoDBCluster "mycluster" is invalid: spec.secretName: Required value')
 
     def test_1_instances(self):
         """
@@ -174,7 +177,8 @@ spec:
   tlsUseSelfSigned: true
 """
         self.assertApplyFails(
-            yaml, r'ValidationError\(InnoDBCluster.spec.instances\): invalid type for com.oracle.mysql.v2.InnoDBCluster.spec.instances: got "string", expected "integer"')
+            yaml, r'ValidationError\(InnoDBCluster.spec.instances\): invalid type for com.oracle.mysql.v2.InnoDBCluster.spec.instances: got "string", expected "integer"' if kutil.server_version() < '1.25' else
+                  r'The InnoDBCluster "mycluster" is invalid: spec.instances: Invalid value: "string": spec.instances in body must be of type integer: "string"')
 
         yaml = """
 apiVersion: mysql.oracle.com/v2

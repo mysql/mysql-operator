@@ -581,6 +581,10 @@ def patch_pod(ns, name, changes, type=None):
 def patch_ic(ns, name, changes, type=None):
     patch(ns, "ic", name, changes, type)
 
+
+def patch_dp(ns, name, change, type=None):
+    patch(ns, "deployment", name, change, type)
+
 #
 
 

@@ -11,7 +11,6 @@ VERSION_TAG = "8.0.32"
 MIN_SUPPORTED_VERSION = "8.0.27"
 MAX_SUPPORTED_VERSION = "8.0.33"
 
-
 # image
 IMAGE_REGISTRY = os.getenv(
     "OPERATOR_TEST_REGISTRY", default=None)
@@ -29,6 +28,9 @@ OPERATOR_EE_IMAGE_NAME = os.getenv(
 
 OPERATOR_VERSION_TAG = os.getenv(
     "OPERATOR_TEST_VERSION_TAG", default="8.0.33-2.0.9")
+
+OPERATOR_OLD_VERSION_TAG = os.getenv(
+    "OPERATOR_TEST_OLD_VERSION_TAG", default="8.0.31-2.0.7")
 
 OPERATOR_PULL_POLICY = os.getenv(
     "OPERATOR_TEST_PULL_POLICY", default="IfNotPresent")

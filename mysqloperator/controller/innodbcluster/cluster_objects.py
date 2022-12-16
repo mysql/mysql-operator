@@ -742,12 +742,22 @@ def update_stateful_set_spec(sts : api_client.V1StatefulSet, patch: dict) -> Non
 
 
 def update_mysql_image(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec) -> None:
+    """Update MySQL Server image
+
+    This will also update the sidecar container to the current operator version,
+    so that a single rolling upgrade covers both and we don't require a restart
+    for upgrading sidecar.
+    """
     patch = {"spec": {"template":
                       {"spec": {
                           "containers": [
-                               {"name": "mysql", "image": spec.mysql_image}
+                               {"name": "sidecar", "image": spec.operator_image},
+                               {"name": "mysql", "image": spec.mysql_image},
+
                           ],
                           "initContainers": [
+                              {"name": "fixdatadir", "image": spec.operator_image},
+                              {"name": "initconf", "image": spec.operator_image},
                               {"name": "initmysql", "image": spec.mysql_image}
                           ]}
                        }}}
@@ -761,6 +771,7 @@ def update_operator_image(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec
                                {"name": "sidecar", "image": spec.operator_image}
                           ],
                           "initContainers": [
+                              {"name": "fixdatadir", "image": spec.operator_image},
                               {"name": "initconf", "image": spec.operator_image}
                           ]}
                        }}}

@@ -33,6 +33,7 @@ class Config:
     operator_image_name = defaults.OPERATOR_IMAGE_NAME
     operator_ee_image_name = defaults.OPERATOR_EE_IMAGE_NAME
     operator_version_tag = defaults.OPERATOR_VERSION_TAG
+    operator_old_version_tag = defaults.OPERATOR_OLD_VERSION_TAG
     operator_pull_policy = defaults.OPERATOR_PULL_POLICY
 
     # server
@@ -103,8 +104,8 @@ class Config:
         else:
             return self.image_repository
 
-    def get_operator_image(self):
-        return f"{self.get_image_registry_repository()}/{self.operator_image_name}:{self.operator_version_tag}"
+    def get_operator_image(self, version=None):
+        return f"{self.get_image_registry_repository()}/{self.operator_image_name}:{version if version else self.operator_version_tag}"
 
     def get_server_image(self, version=None):
         return f"{self.get_image_registry_repository()}/{self.server_image_name}:{version if version else self.version_tag}"

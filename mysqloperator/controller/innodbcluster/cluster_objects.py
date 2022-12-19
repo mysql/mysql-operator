@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -9,7 +9,7 @@ from ..kubeutils import client as api_client, ApiException
 from .. import utils, config, consts
 from .cluster_api import InnoDBCluster, InnoDBClusterSpec
 import yaml
-from ..kubeutils import api_core, api_apps
+from ..kubeutils import api_core, api_apps, k8s_cluster_domain
 import base64
 
 # TODO replace app field with component (mysqld,router) and tier (mysql)
@@ -128,12 +128,16 @@ spec:
 # this checks that the server is still healthy. If it fails above the threshold
 # (e.g. because of a deadlock), the container is restarted.
 #
-def prepare_cluster_stateful_set(spec: InnoDBClusterSpec) -> dict:
+def prepare_cluster_stateful_set(spec: InnoDBClusterSpec, logger: Logger) -> dict:
     init_mysql_argv = ["mysqld", "--user=mysql"]
     if config.enable_mysqld_general_log:
         init_mysql_argv.append("--general-log=1")
 
     mysql_argv = init_mysql_argv
+
+    # we only need this in initconf, we pass it to all operator images to be
+    # on the safe side
+    cluster_domain = k8s_cluster_domain(logger)
 
     # TODO re-add "--log-file=",
     tmpl = f"""
@@ -199,6 +203,11 @@ spec:
         volumeMounts:
         - name: datadir
           mountPath: /var/lib/mysql
+        env:
+        - name: MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN
+          value: {cluster_domain}
+        - name: MYSQLSH_CREDENTIAL_STORE_SAVE_PASSWORDS
+          value: never
       - name: initconf
         image: {spec.operator_image}
         imagePullPolicy: {spec.sidecar_image_pull_policy}
@@ -219,8 +228,12 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        - name: MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN
+          value: {cluster_domain}
         - name: MYSQLSH_USER_CONFIG_HOME
           value: /tmp
+        - name: MYSQLSH_CREDENTIAL_STORE_SAVE_PASSWORDS
+          value: never
         volumeMounts:
         - name: initconfdir
           mountPath: /mnt/initconf
@@ -332,6 +345,10 @@ spec:
           value: /var/run/mysqld/mysql.sock
         - name: MYSQLSH_USER_CONFIG_HOME
           value: /mysqlsh
+        - name: MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN
+          value: {cluster_domain}
+        - name: MYSQLSH_CREDENTIAL_STORE_SAVE_PASSWORDS
+          value: never
         volumeMounts:
         - name: rundir
           mountPath: /var/run/mysqld
@@ -429,6 +446,8 @@ spec:
         env:
         - name: MYSQL_UNIX_PORT
           value: /var/run/mysqld/mysql.sock
+        - name: MYSQLSH_CREDENTIAL_STORE_SAVE_PASSWORDS
+          value: never
 {utils.indent(spec.extra_env, 8)}
         ports:
         - containerPort: {spec.mysql_port}
@@ -729,7 +748,7 @@ data:
 
 def reconcile_stateful_set(cluster: InnoDBCluster, logger: Logger) -> None:
     logger.info("reconcile_stateful_set")
-    patch = prepare_cluster_stateful_set(cluster.parsed_spec)
+    patch = prepare_cluster_stateful_set(cluster.parsed_spec, logger)
 
     logger.info(f"reconcile_stateful_set: patch={patch}")
     api_apps.patch_namespaced_stateful_set(

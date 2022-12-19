@@ -7,7 +7,7 @@ from .cluster_api import InnoDBCluster, InnoDBClusterSpec
 from ..kubeutils import client as api_client, ApiException
 from .. import config, utils
 import yaml
-from ..kubeutils import api_apps
+from ..kubeutils import api_apps, k8s_cluster_domain
 import kopf
 from logging import Logger
 from typing import Optional
@@ -76,7 +76,7 @@ data:
     return yaml.safe_load(tmpl)
 
 
-def prepare_router_deployment(cluster: InnoDBCluster, *,
+def prepare_router_deployment(cluster: InnoDBCluster, logger, *,
                               init_only: bool = False) -> dict:
     # Start the router deployment with 0 replicas and only set it to the desired
     # value once the cluster is ONLINE, otherwise the router bootstraps could
@@ -201,7 +201,7 @@ spec:
         imagePullPolicy: {spec.router_image_pull_policy}
         env:
         - name: MYSQL_HOST
-          value: {spec.name}-instances.{spec.namespace}.svc.cluster.local
+          value: {spec.name}-instances.{spec.namespace}.svc.{k8s_cluster_domain(logger)}
         - name: MYSQL_PORT
           value: "3306"
         - name: MYSQL_USER
@@ -317,7 +317,7 @@ def update_size(cluster: InnoDBCluster, size: int, logger: Logger) -> None:
         if size:
             logger.info(f"Creating Router Deployment with replicas={size}")
 
-            router_deployment = prepare_router_deployment(cluster)
+            router_deployment = prepare_router_deployment(cluster, logger)
             kopf.adopt(router_deployment)
             api_apps.create_namespaced_deployment(
                 namespace=cluster.namespace, body=router_deployment)

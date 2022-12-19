@@ -20,7 +20,7 @@ rules:
     verbs: ["get", "create", "list", "watch", "patch"]
   - apiGroups: [""]
     resources: ["services"]
-    verbs: ["get", "create"]
+    verbs: ["get", "create", "list"]
   - apiGroups: [""]
     resources: ["serviceaccounts"]
     verbs: ["get", "create"]
@@ -77,7 +77,7 @@ rules:
     verbs: ["get", "create", "list", "watch", "patch"]
   - apiGroups: [""]
     resources: ["services"]
-    verbs: ["get", "create"]
+    verbs: ["get", "create", "list"]
   - apiGroups: [""]
     resources: ["serviceaccounts"]
     verbs: ["get", "create"]
@@ -169,6 +169,15 @@ spec:
           env:
             - name: MYSQLSH_USER_CONFIG_HOME
               value: /mysqlsh
+            - name: MYSQLSH_CREDENTIAL_STORE_SAVE_PASSWORDS
+              value: never
+          readinessProbe:
+            exec:
+              command:
+              - cat
+              - /tmp/mysql-operator-ready
+            initialDelaySeconds: 1
+            periodSeconds: 3
           volumeMounts:
             - name: mysqlsh-home
               mountPath: /mysqlsh

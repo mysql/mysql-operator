@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -13,6 +13,7 @@ from typing import cast
 import mysqlsh
 from .controller import utils, k8sobject
 from .controller.innodbcluster.cluster_api import MySQLPod
+from .controller.kubeutils import k8s_cluster_domain
 
 k8sobject.g_component = "initconf"
 k8sobject.g_host = os.getenv("HOSTNAME")
@@ -31,7 +32,7 @@ def init_conf(datadir, pod, cluster, logger):
     initializing for the 1st time.
     """
     server_id = pod.index + cluster.parsed_spec.baseServerId
-    report_host = f"{pod.name}.{cluster.name}-instances.{cluster.namespace}.svc.cluster.local"
+    report_host = f"{pod.name}.{cluster.name}-instances.{cluster.namespace}.svc.{k8s_cluster_domain(logger, ns = cluster.namespace)}"
     logger.info(
         f"Setting up configurations for {pod.name}  server_id={server_id}  report_host={report_host}")
 

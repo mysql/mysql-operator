@@ -36,6 +36,8 @@ spec:
           env:
           - name: MYSQLSH_USER_CONFIG_HOME
             value: /mysqlsh
+          - name: MYSQLSH_CREDENTIAL_STORE_SAVE_PASSWORDS
+            value: never
           {{ if (((.Values).envs).imagesDefaultRegistry) }}
           - name: MYSQL_OPERATOR_DEFAULT_REPOSITORY
             value: {{ trimSuffix "/" .Values.envs.imagesDefaultRegistry }}{{ if .Values.envs.imagesDefaultRepository }}/{{ trimSuffix "/" .Values.envs.imagesDefaultRepository }}{{ end }}
@@ -51,6 +53,17 @@ spec:
           - name: MYSQL_OPERATOR_IMAGE_PULL_POLICY
             value: {{ .Values.envs.imagesPullPolicy }}
           {{- end }}
+          {{ if (((.Values).envs).k8sClusterDomain) }}
+          - name: MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN
+            value: {{ .Values.envs.k8sClusterDomain }}
+          {{ end }}
+          readinessProbe:
+            exec:
+              command:
+              - cat
+              - /tmp/mysql-operator-ready
+              initialDelaySeconds: 1
+              periodSeconds: 3
           volumeMounts:
             - name: mysqlsh-home
               mountPath: /mysqlsh

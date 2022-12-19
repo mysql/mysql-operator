@@ -70,3 +70,6 @@ OCI_VAULT_CONFIG_PATH = os.getenv(
 # k8s
 K8S_CLUSTER_NAME = os.getenv(
     "OPERATOR_TEST_K8S_CLUSTER_NAME", default="ote-mysql")
+
+K8S_CLUSTER_DOMAIN_ALIAS = os.getenv(
+    "OPERATOR_TEST_K8S_CLUSTER_DOMAIN_ALIAS")

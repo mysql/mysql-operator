@@ -17,6 +17,8 @@ from .controller import operator
 
 from .controller import k8sobject
 
+from .controller.kubeutils import k8s_cluster_domain
+
 
 k8sobject.g_component = "operator"
 k8sobject.g_host = os.getenv("HOSTNAME")
@@ -32,6 +34,9 @@ def main(argv):
     logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s - [%(levelname)s] [%(name)s] %(message)s',
                         datefmt="%Y-%m-%dT%H:%M:%S")
+
+    # populate cached value
+    k8s_cluster_domain(logging)
 
     loop = asyncio.get_event_loop()
 

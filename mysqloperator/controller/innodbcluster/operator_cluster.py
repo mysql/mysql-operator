@@ -162,7 +162,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             print("7. Cluster StatefulSet")
             if not ignore_404(cluster.get_stateful_set):
                 print("\tPreparing...")
-                statefulset = cluster_objects.prepare_cluster_stateful_set(icspec)
+                statefulset = cluster_objects.prepare_cluster_stateful_set(icspec, logger)
                 print(f"\tCreating...{statefulset}")
                 kopf.adopt(statefulset)
 
@@ -190,7 +190,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                     print("\tPreparing...")
                     # This will create the deployment but 0 instances. When the cluster is created (first
                     # instance joins it) the instance count will be set to icspec.router.instances
-                    router_deployment = router_objects.prepare_router_deployment(cluster, init_only=True)
+                    router_deployment = router_objects.prepare_router_deployment(cluster, logger, init_only=True)
                     print(f"\tCreating...{router_deployment}")
                     kopf.adopt(router_deployment)
                     api_apps.create_namespaced_deployment(namespace=namespace, body=router_deployment)

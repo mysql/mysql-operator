@@ -234,7 +234,15 @@ class MySQLInteractivePodSession:
         return [dict(zip(names, row)) for row in rows]
 
 
-
+def router_rest_api_create_user(session: MySQLDbSession, username: str, host="%"):
+    """Take the password hash from a MySQL user and make it a Router REST API user"""
+    session.query_sql(
+        """INSERT INTO mysql_innodb_cluster_metadata.router_rest_accounts
+                    (cluster_id, user, authentication_string)
+            VALUES ((SELECT cluster_id FROM mysql_innodb_cluster_metadata.v2_clusters LIMIT 1),
+                    "%s",
+                    (select authentication_string from mysql.user where user = "%s" and host = "%s"))""" % (username, username, host))
+    session.query_sql("commit")
 
 
 if __name__ == "__main__":

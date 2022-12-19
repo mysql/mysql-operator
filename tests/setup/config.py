@@ -60,6 +60,9 @@ class Config:
     # diagnostics
     work_dir = None
 
+    # Optional K8s cluster domain alias
+    k8s_cluster_domain_alias = defaults.K8S_CLUSTER_DOMAIN_ALIAS
+
     @property
     def operator_shell_version_num(self):
         a,b,c = self.operator_version_tag.split("-")[0].split(".")

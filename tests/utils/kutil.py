@@ -884,12 +884,34 @@ def wait_ic(ns, name, status=["ONLINE"], num_online=None, timeout=200, probe_tim
 #
 
 
-def portfw(ns, name, in_port):
-    p = kubectl_popen("port-forward", ["pod/%s" % name, ":%s" %
+def portfw(ns, name, in_port, target_type="pod"):
+    p = kubectl_popen("port-forward", [f"{target_type}/{name}", ":%s" %
                                        in_port, "--address", "127.0.0.1", "-n", ns])
     line = p.stdout.readline().decode("utf8")
     logger.info(f"portfw: {line}")
     return p, int(line.split("->")[0].split(":")[-1].strip())
+
+#
+
+
+class PortForward:
+    def __init__(self, ns, podname, port, target_type="pod", **kwargs):
+        self.proc = None
+        self.proc, self.port = portfw(ns, podname, port, target_type=target_type)
+
+    def __del__(self):
+        self.close()
+
+    def __enter__(self, *args):
+        return self.port
+
+    def __exit__(self, *args):
+        self.close()
+
+    def close(self):
+        if self.proc:
+            self.proc.terminate()
+            self.proc = None
 
 #
 

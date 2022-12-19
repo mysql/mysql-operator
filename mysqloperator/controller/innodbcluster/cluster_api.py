@@ -16,6 +16,7 @@ from ..storage_api import StorageSpec
 from ..api_utils import Edition, dget_bool, dget_dict, dget_enum, dget_str, dget_int, dget_list, ApiSpecError, ImagePullPolicy
 from ..kubeutils import api_core, api_apps, api_customobj, api_policy, api_rbac, api_batch, api_cron_job
 from ..kubeutils import client as api_client, ApiException
+from ..kubeutils import k8s_cluster_domain
 from logging import Logger
 import json
 import yaml
@@ -1662,7 +1663,7 @@ class MySQLPod(K8sInterfaceObject):
 
     @property
     def address_fqdn(self) -> str:
-        return self.name+"."+cast(str, self.spec.subdomain)+"."+self.namespace+".svc.cluster.local"
+        return self.name+"."+cast(str, self.spec.subdomain)+"."+self.namespace+".svc."+k8s_cluster_domain(self.logger)
 
     @property
     def pod_ip_address(self) -> str:

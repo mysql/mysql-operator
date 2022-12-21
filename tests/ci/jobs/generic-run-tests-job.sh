@@ -40,14 +40,18 @@ else
 	KUBECTL_PATH="kubectl"
 fi
 
-if test -z ${WORKERS+x}; then
+if ! [[ -n ${OPERATOR_WORKERS_COUNT} && ${OPERATOR_WORKERS_COUNT} -gt 0 ]]; then
 	if [[ $K8S_DRIVER == "minikube" ]]; then
-		WORKERS=3
+		OPERATOR_WORKERS_COUNT=3
 	elif [[ $K8S_DRIVER == "k3d" ]]; then
-		WORKERS=4
+		OPERATOR_WORKERS_COUNT=4
 	else
-		WORKERS=1
+		OPERATOR_WORKERS_COUNT=1
 	fi
+fi
+
+if [[ -n ${OPERATOR_NODES_COUNT} && ${OPERATOR_NODES_COUNT} -gt 0 ]]; then
+	TEST_OPTIONS="$TEST_OPTIONS --nodes=$OPERATOR_NODES_COUNT"
 fi
 
 OTE_LOG_PREFIX=$K8S_DRIVER-build-$BUILD_NUMBER
@@ -76,8 +80,8 @@ TESTS_XML=$XML_DIR/$OTE_LOG_PREFIX-tests.xml
 SINGLE_WORKER_OPTIONS="--xml=${TESTS_XML} --cluster=$OTE_BUILD_TAG ${TEST_OPTIONS}"
 
 
-DIST_RUN_OPTIONS="--workers=$WORKERS --defer=$WORKERS_DEFER --tag=$OTE_BUILD_TAG --xml --expected-failures=$EXPECTED_FAILURES_PATH"
-DIST_RUN_OPTIONS="${DIST_RUN_OPTIONS} ${TEST_OPTIONS}"
+DIST_RUN_OPTIONS="--workers=$OPERATOR_WORKERS_COUNT --defer=$WORKERS_DEFER --tag=$OTE_BUILD_TAG --xml"
+DIST_RUN_OPTIONS="--expected-failures=$EXPECTED_FAILURES_PATH ${DIST_RUN_OPTIONS} ${TEST_OPTIONS}"
 
 touch $TESTS_LOG
 tail -f "$TESTS_LOG" &
@@ -86,7 +90,7 @@ tail -f "$TESTS_LOG" &
 "$CI_DIR/jobs/auxiliary/show-progress.sh" 240 30 &
 
 # by default TEST_SUITE is not defined, it means to run all tests
-if test $WORKERS == 1; then
+if test $OPERATOR_WORKERS_COUNT == 1; then
 	mkdir -p $XML_DIR
 	./run --env=$K8S_DRIVER $SINGLE_WORKER_OPTIONS ${TEST_SUITE} > "$TESTS_LOG" 2>&1
 	TMP_SUMMARY_PATH=$(mktemp)

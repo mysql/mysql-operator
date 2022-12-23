@@ -3,6 +3,8 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
+import requests
+
 from utils import tutil
 from utils import kutil
 from utils import mutil
@@ -124,6 +126,12 @@ spec:
         secondaries_seen = set()
         self.wait(check, (secondaries_seen,), timeout=300)
 
+
+    def test_3_rest_api(self):
+        with kutil.PortForward(self.ns, "mycluster", "router-rest", target_type="service") as port:
+            res = requests.get(f'https://127.0.0.1:{port}/api/20190715/swagger.json',
+                               verify=False)
+            self.assertEqual(res.status_code, 200)
 
 
     def test_9_destroy(self):

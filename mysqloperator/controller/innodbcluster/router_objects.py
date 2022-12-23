@@ -49,6 +49,10 @@ spec:
     port: {spec.router_roxport}
     protocol: TCP
     targetPort: {spec.router_roxport}
+  - name: router-rest
+    port: {spec.router_httpport}
+    protocol: TCP
+    targetPort: {spec.router_httpport}
   selector:
     component: mysqlrouter
     tier: mysql

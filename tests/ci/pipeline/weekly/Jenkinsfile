@@ -23,7 +23,7 @@ pipeline {
 		booleanParam(name: 'OPERATOR_INTERNAL_BUILD', defaultValue: false, description: 'triggered by us (e.g. by a push to a dev branch) or externally (e.g. from the concourse)')
 	}
  	options {
-		timeout(time: 16, unit: 'HOURS')
+		timeout(time: 24, unit: 'HOURS')
 		timestamps()
 	}
 	stages {
@@ -79,24 +79,30 @@ pipeline {
 					// check also the list of old releases
 					// https://kubernetes.io/releases/patch-releases/#support-period
 					// https://github.com/kubernetes/kubernetes/releases
-					// curl -LO https://dl.k8s.io/release/v1.23.14/bin/linux/amd64/kubectl
-					// curl -LO https://github.com/kubernetes/minikube/releases/download/v1.27.1/minikube-linux-amd64
+					// curl -L https://dl.k8s.io/release/v1.23.14/bin/linux/amd64/kubectl -o kubectl-v1.23.14
+					// curl -L https://github.com/kubernetes/minikube/releases/download/v1.27.1/minikube-linux-amd64 -o minikube-v1.27.1
+					// format of values: 'minikube-version;k8s-version;kubectl-version;workers-count;nodes-count-per-worker',
+					//				e.g. 'minikube-v1.22.0;v1.21.5;kubectl-v1.21.14;5;1' - 5 workers with 1 node each
+					// 					 'minikube-v1.25.2;v1.23.4;kubectl-v1.23.4;3;2' - 3 workers with 2 nodes each
 					axis {
 						name 'K8S_VERSION'
-						values 'minikube-v1.22.0;v1.21.5;kubectl-v1.21.14',
-							'minikube-v1.24.0;v1.22.5;kubectl-v1.22.17',
-							'minikube-v1.25.2;v1.23.4;kubectl-v1.23.4',
-							'minikube-v1.26.1;v1.24.1;kubectl-v1.24.8',
-							'minikube-v1.27.1;v1.25.2;kubectl-v1.25.5'
+						values 'minikube-v1.22.0;v1.21.5;kubectl-v1.21.14;3;1',
+							'minikube-v1.24.0;v1.22.5;kubectl-v1.22.17;3;1',
+							'minikube-v1.25.2;v1.23.4;kubectl-v1.23.4;3;1',
+							'minikube-v1.26.1;v1.24.1;kubectl-v1.24.8;3;1',
+							'minikube-v1.27.1;v1.25.2;kubectl-v1.25.5;3;1',
+							'minikube-v1.27.1;v1.25.2;kubectl-v1.25.5;1;2'
+							// 'minikube-v1.28.0;v1.26.0;kubectl-v1.26.0;3;1',
+							// 'minikube-v1.28.0;v1.26.0;kubectl-v1.26.0;1;2'
 					}
 				}
 				stages {
 					stage('minikube run tests') {
 						steps {
 							script {
-								def (env_binary_path, k8s_version, kubectl_path) =  "${K8S_VERSION}".split(';')
-								echo "${K8S_ENVIRONMENT} ${K8S_VERSION} ($env_binary_path, $k8s_version, $kubectl_path)"
 								minikubeRuns++
+								def (env_binary_path, k8s_version, kubectl_path, workers_count, nodes_count) =  "${K8S_VERSION}".split(';')
+								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [$env_binary_path, $k8s_version, $kubectl_path, $workers_count, $nodes_count]"
 								catchError {
 									build job: "${env.WORKERS_FOLDER}/${K8S_ENVIRONMENT}", parameters: [
 										string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
@@ -105,14 +111,17 @@ pipeline {
 										string(name: 'OPERATOR_ENV_BINARY_PATH', value: env_binary_path),
 										string(name: 'OPERATOR_K8S_VERSION', value: k8s_version),
 										string(name: 'OPERATOR_KUBECTL_PATH', value: kubectl_path),
+										string(name: 'OPERATOR_WORKERS_COUNT', value: workers_count),
+										string(name: 'OPERATOR_NODES_COUNT', value: nodes_count),
 										booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
 									]
 								}
+								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) completed"
 							}
 						}
 						post {
 							always {
-								echo "copy ${K8S_ENVIRONMENT}-${K8S_VERSION} results"
+								echo "copy ${K8S_ENVIRONMENT}(${K8S_VERSION}) results"
 								catchError {
 									copyArtifacts fingerprintArtifacts: true,
 										projectName: "${env.WORKERS_FOLDER}/${K8S_ENVIRONMENT}",
@@ -146,24 +155,28 @@ pipeline {
 					// use versions similar to k3d, but a little different
 					// https://github.com/k3d-io/k3d/releases
 					// https://hub.docker.com/r/rancher/k3s/tags
-					// curl -LO https://github.com/k3d-io/k3d/releases/download/v5.4.6/k3d-linux-amd64
+					// curl -L https://github.com/k3d-io/k3d/releases/download/v5.4.6/k3d-linux-amd64 -o k3d-v5.4.6
+					// format of values: 'k3d-version;k8s-version-image;kubectl-version;workers-count;nodes-count-per-worker',
+					//				e.g. 'k3d-v5.2.2;rancher/k3s:v1.21.11-k3s1;kubectl-v1.21.14;3;3' - 3 workers with 3 nodes each
+					// 					 'k3d-v5.4.4;rancher/k3s:v1.23.5-k3s1;kubectl-v1.23.14;5;1' - 5 workers with 1 node each
 					axis {
 						name 'K8S_VERSION'
-						values 'k3d-v5.2.2;rancher/k3s:v1.21.11-k3s1;kubectl-v1.21.14',
-							'k3d-v5.4.1;rancher/k3s:v1.22.7-k3s1;kubectl-v1.22.17',
-							'k3d-v5.4.4;rancher/k3s:v1.23.5-k3s1;kubectl-v1.23.14',
-							'k3d-v5.4.6;rancher/k3s:v1.24.2-k3s1;kubectl-v1.24.4',
-							'k3d-v5.4.6;rancher/k3s:v1.25.3-k3s1;kubectl-v1.25.4',
-							'k3d-v5.4.6;rancher/k3s:v1.26.0-k3s1;kubectl-v1.25.5'
+						values 'k3d-v5.2.2;rancher/k3s:v1.21.11-k3s1;kubectl-v1.21.14;4;1',
+							'k3d-v5.4.1;rancher/k3s:v1.22.7-k3s1;kubectl-v1.22.17;4;1',
+							'k3d-v5.4.4;rancher/k3s:v1.23.5-k3s1;kubectl-v1.23.14;4;1',
+							'k3d-v5.4.6;rancher/k3s:v1.24.7-k3s1;kubectl-v1.24.4;4;1',
+							'k3d-v5.4.6;rancher/k3s:v1.25.3-k3s1;kubectl-v1.25.4;4;1',
+							'k3d-v5.4.6;rancher/k3s:v1.26.0-k3s1;kubectl-v1.25.5;4;1',
+							'k3d-v5.4.6;rancher/k3s:v1.26.0-k3s1;kubectl-v1.25.5;1;3'
 					}
 				}
 				stages {
 					stage('k3d run tests') {
 						steps {
 							script {
-								def (env_binary_path, k8s_version, kubectl_path) =  "${K8S_VERSION}".split(';')
-								echo "${K8S_ENVIRONMENT} ${K8S_VERSION} ($env_binary_path, $k8s_version, $kubectl_path)"
 								k3dRuns++
+								def (env_binary_path, k8s_version, kubectl_path, workers_count, nodes_count) =  "${K8S_VERSION}".split(';')
+								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [$env_binary_path, $k8s_version, $kubectl_path, $workers_count, $nodes_count]"
 								catchError {
 									build job: "${env.WORKERS_FOLDER}/${K8S_ENVIRONMENT}", parameters: [
 										string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
@@ -172,14 +185,17 @@ pipeline {
 										string(name: 'OPERATOR_ENV_BINARY_PATH', value: env_binary_path),
 										string(name: 'OPERATOR_K8S_VERSION', value: k8s_version),
 										string(name: 'OPERATOR_KUBECTL_PATH', value: kubectl_path),
+										string(name: 'OPERATOR_WORKERS_COUNT', value: workers_count),
+										string(name: 'OPERATOR_NODES_COUNT', value: nodes_count),
 										booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
 									]
 								}
+								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) completed"
 							}
 						}
 						post {
 							always {
-								echo "copy ${K8S_ENVIRONMENT}-${K8S_VERSION} results"
+								echo "copy ${K8S_ENVIRONMENT}(${K8S_VERSION}) results"
 								catchError {
 									copyArtifacts fingerprintArtifacts: true,
 										projectName: "${env.WORKERS_FOLDER}/${K8S_ENVIRONMENT}",

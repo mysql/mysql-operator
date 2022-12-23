@@ -110,8 +110,11 @@ cd $LOG_DIR
 JOB_BADGE=$K8S_DRIVER
 if [[ -n ${OPERATOR_K8S_VERSION} ]]; then
 	JOB_BADGE="${JOB_BADGE}_${OPERATOR_K8S_VERSION}"
-	JOB_BADGE=$(sed -e 's/[.:\/]/_/g' <<< $JOB_BADGE)
 fi
+if [[ -n ${OPERATOR_NODES_COUNT} && ${OPERATOR_NODES_COUNT} -gt 0 ]]; then
+	JOB_BADGE="${JOB_BADGE}_${OPERATOR_NODES_COUNT}-nodes"
+fi
+JOB_BADGE=$(sed -e 's/[.:\/]/_/g' <<< $JOB_BADGE)
 sed -i "s/=\"e2e.mysqloperator./=\"$JOB_BADGE.e2e.mysqloperator./g" ./xml/*.xml
 sed -i "s/<testcase classname=\"\" name=\"\(\w*\) (e2e.mysqloperator./<testcase classname=\"\" name=\"$JOB_BADGE.\1 ($JOB_BADGE.e2e.mysqloperator./g" ./xml/*.xml
 

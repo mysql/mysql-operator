@@ -50,7 +50,11 @@ if ! [[ -n ${OPERATOR_WORKERS_COUNT} && ${OPERATOR_WORKERS_COUNT} -gt 0 ]]; then
 	fi
 fi
 
-if [[ -n ${OPERATOR_NODES_COUNT} && ${OPERATOR_NODES_COUNT} -gt 0 ]]; then
+if [[ -n ${OPERATOR_NODES_COUNT} && ${OPERATOR_NODES_COUNT} -gt 1 ]]; then
+	OTE_MULTIPLE_NODES=true
+fi
+
+if [[ -n ${OTE_MULTIPLE_NODES} ]]; then
 	TEST_OPTIONS="$TEST_OPTIONS --nodes=$OPERATOR_NODES_COUNT"
 fi
 
@@ -111,7 +115,7 @@ JOB_BADGE=$K8S_DRIVER
 if [[ -n ${OPERATOR_K8S_VERSION} ]]; then
 	JOB_BADGE="${JOB_BADGE}_${OPERATOR_K8S_VERSION}"
 fi
-if [[ -n ${OPERATOR_NODES_COUNT} && ${OPERATOR_NODES_COUNT} -gt 0 ]]; then
+if [[ -n ${OTE_MULTIPLE_NODES} ]]; then
 	JOB_BADGE="${JOB_BADGE}_${OPERATOR_NODES_COUNT}-nodes"
 fi
 JOB_BADGE=$(sed -e 's/[.:\/]/_/g' <<< $JOB_BADGE)
@@ -167,6 +171,9 @@ ENV_BINARY_PATH=$(which ${ENV_BINARY_PATH})
 echo "path: ${ENV_BINARY_PATH}" >> $RUNTIME_ENV_LOG
 if [[ -n ${OPERATOR_K8S_VERSION} ]]; then
 	echo "custom k8s version: ${OPERATOR_K8S_VERSION}" >> $RUNTIME_ENV_LOG
+fi
+if [[ -n ${OTE_MULTIPLE_NODES} ]]; then
+	echo "nodes: ${OPERATOR_NODES_COUNT}" >> $RUNTIME_ENV_LOG
 fi
 # kubectl
 KUBECTL_VERSION=$(${KUBECTL_PATH} version --client -o json | jq '.clientVersion.gitVersion')

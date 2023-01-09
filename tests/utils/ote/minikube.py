@@ -90,7 +90,7 @@ class MinikubeEnvironment(BaseEnvironment):
         opts = os.getenv("TEST_MINIKUBE_OPTIONS")
         if opts:
             args += opts.split(" ")
-        if nodes:
+        if nodes and nodes > 1:
             args.append(f"--nodes={nodes}")
         if version:
             args.append(f"--kubernetes-version={version}")

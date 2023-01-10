@@ -101,7 +101,7 @@ def getTestSuiteReport() {
 	testSuiteReport = "Test suite:\n"
 
 	def briefReportPath = "${env.LOG_DIR}/test_suite_brief_report.txt"
-	def ReportedErrorsMaxCount = 10
+	def ReportedErrorsMaxCount = 7
 	sh "cat $reportPath | sed -ne '1,$ReportedErrorsMaxCount p' -e '${ReportedErrorsMaxCount+1} iand more...' > $briefReportPath"
 	testSuiteReport += readFile(file: briefReportPath)
 
@@ -157,28 +157,37 @@ def getBuildDuration() {
 
 def getChangeLog() {
 	def changeSets = currentBuild.changeSets
-	if (!changeSets.size()) {
+	def changeSetsCount = changeSets.size()
+	if (!changeSetsCount) {
 		return "No changes\n"
 	}
 
-	def changeLog = "Changes:\n"
+	def changesLog = "Changes:\n"
 
-	def ChangesMaxCount = 7
-	def changesCount = changeSets.size()
-	def firstChangeIndex = 0
-	if (changesCount > ChangesMaxCount) {
-		changeLog += "[...]\n"
-		firstChangeIndex = changesCount - ChangesMaxCount
+	def allChangesCount = 0
+	for (int i = 0; i < changeSetsCount; ++i) {
+		allChangesCount += changeSets[i].items.length
 	}
 
-	for (int i = firstChangeIndex; i < changesCount; ++i) {
+	def ChangesMaxCount = 5
+	def firstChangeIndex = 0
+	if (allChangesCount > ChangesMaxCount) {
+		changesLog += "[...previous...]\n"
+		firstChangeIndex = allChangesCount - ChangesMaxCount
+	}
+
+	def changeIndex = 0
+	for (int i = 0; i < changeSetsCount; ++i) {
 		def entries = changeSets[i].items
 		for (int j = 0; j < entries.length; ++j) {
-			def entry = entries[j]
-			changeLog += "${entry.msg} [${entry.author}, ${new Date(entry.timestamp)}]\n"
+			if (changeIndex >= firstChangeIndex) {
+				def entry = entries[j]
+				changesLog += "${entry.msg} [${entry.author}, ${new Date(entry.timestamp)}]\n"
+			}
+			++changeIndex
 		}
 	}
-	return changeLog
+	return changesLog
 }
 
 @NonCPS

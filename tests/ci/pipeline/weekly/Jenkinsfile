@@ -90,7 +90,7 @@ pipeline {
 							'minikube-v1.24.0;v1.22.5;kubectl-v1.22.17;3;1',
 							'minikube-v1.25.2;v1.23.4;kubectl-v1.23.4;3;1',
 							'minikube-v1.26.1;v1.24.1;kubectl-v1.24.8;3;1',
-							'minikube-v1.27.1;v1.25.2;kubectl-v1.25.5;3;1',
+							'minikube-v1.28.0;v1.25.5;kubectl-v1.26.0;3;1',
 							'minikube-v1.27.1;v1.25.2;kubectl-v1.25.5;1;2'
 							// 'minikube-v1.28.0;v1.26.0;kubectl-v1.26.0;3;1',
 							// 'minikube-v1.28.0;v1.26.0;kubectl-v1.26.0;1;2'
@@ -166,7 +166,7 @@ pipeline {
 							'k3d-v5.4.4;rancher/k3s:v1.23.5-k3s1;kubectl-v1.23.14;4;1',
 							'k3d-v5.4.6;rancher/k3s:v1.24.7-k3s1;kubectl-v1.24.4;4;1',
 							'k3d-v5.4.6;rancher/k3s:v1.25.3-k3s1;kubectl-v1.25.4;4;1',
-							'k3d-v5.4.6;rancher/k3s:v1.26.0-k3s1;kubectl-v1.25.5;4;1',
+							'k3d-v5.4.6;rancher/k3s:v1.26.0-k3s2;kubectl-v1.25.5;4;1',
 							'k3d-v5.4.6;rancher/k3s:v1.26.0-k3s1;kubectl-v1.25.5;1;3'
 					}
 				}

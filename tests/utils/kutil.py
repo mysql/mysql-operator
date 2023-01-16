@@ -647,6 +647,10 @@ class StoreDiagnostics:
         self.store_log("pod", f"{pod}-{container}", "logs", lambda: logs(self.ns, [pod, container]))
 
 
+    def process_operator(self, pod):
+        self.describe_pod(pod)
+        self.logs_pod(pod, "mysql-operator")
+
     def process_cluster(self, cluster_name):
         self.process_ic(cluster_name)
         self.process_pods(cluster_name)
@@ -709,6 +713,8 @@ class StoreDiagnostics:
         elif rsrc == "router":
             cluster_name = self.extract_cluster_name_from_routers_pattern(name)
             self.process_cluster(cluster_name)
+        elif rsrc == "operator":
+            self.process_operator(name)
         else:
             self.process_generic_rsrc(rsrc, name)
 
@@ -719,6 +725,9 @@ def store_diagnostics(ns, rsrc, name):
     if name and name[0].isalpha():
         sd = StoreDiagnostics(ns)
         sd.run(rsrc, name)
+
+def store_operator_diagnostics(ns, name):
+    store_diagnostics(ns, "operator", name)
 
 def store_pod_diagnostics(ns, name):
     store_diagnostics(ns, "pod", name)

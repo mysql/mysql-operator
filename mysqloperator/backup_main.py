@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -36,7 +36,7 @@ def get_dir_size(d):
     return size
 
 
-def execute_dump_instance(backup_source, profile, backupdir, backup_name, logger : logging.Logger):
+def execute_dump_instance(backup_source, profile, backupdir, backup_name, logger: logging.Logger):
     shell = mysqlsh.globals.shell
     util = mysqlsh.globals.util
 
@@ -67,6 +67,14 @@ def execute_dump_instance(backup_source, profile, backupdir, backup_name, logger
                 profile.storage.s3.prefix, backup_name)
         else:
             output = backup_name
+    elif profile.storage.azure:
+        options["azureContainerName"] = profile.storage.azure.containerName
+        if profile.storage.azure.prefix:
+            output = os.path.join(
+                profile.storage.azure.prefix, backup_name)
+        else:
+            output = backup_name
+
     else:
         output = os.path.join(backupdir, backup_name)
 
@@ -103,6 +111,12 @@ def execute_dump_instance(backup_source, profile, backupdir, backup_name, logger
             "method": "dump-instance/s3",
             "source": f"{backup_source['user']}@{backup_source['host']}:{backup_source['port']}",
             "bucket": profile.storage.s3.bucketName,
+        }
+    elif profile.storage.azure:
+        info = {
+            "method": "dump-instance/azure-blob-storage",
+            "source": f"{backup_source['user']}@{backup_source['host']}:{backup_source['port']}",
+            "container": profile.storage.azure.containerName,
         }
     elif profile.storage.persistentVolumeClaim:
         fsinfo = os.statvfs(backupdir)

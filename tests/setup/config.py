@@ -49,10 +49,15 @@ class Config:
     # enterprise
     enterprise_skip = defaults.ENTERPRISE_SKIP
 
-    # oci
+    # OCI Object Store backup
     oci_skip = defaults.OCI_SKIP
     oci_config_path = defaults.OCI_CONFIG_PATH
     oci_bucket_name = defaults.OCI_BUCKET_NAME
+
+    # Azure BLOB Storage Backup
+    azure_skip = defaults.AZURE_SKIP
+    azure_config_file = defaults.AZURE_CONFIG_FILE
+    azure_container_name = defaults.AZURE_CONTAINER_NAME
 
     # vault
     vault_cfg_path = defaults.OCI_VAULT_CONFIG_PATH

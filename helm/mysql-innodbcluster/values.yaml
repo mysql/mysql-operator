@@ -93,6 +93,16 @@ baseServerId: 1000
 #      prefix:
 #      bucketName:
 #      credentials:
+#    s3:
+#      prefix:
+#      config:
+#      bucketName:
+#      profile:
+#      endpoint
+#    azure:
+#      prefix:
+#      config:
+#      containerName:
 #    persistentVolumeClaim:
 #  clone:
 #    donorUrl:
@@ -125,7 +135,17 @@ baseServerId: 1000
 #        prefix : /
 #        bucketName: idbcluster_backup
 #        credentials: oci-credentials
-
+#      s3:
+#        prefix:
+#        config:
+#        bucketName:
+#        profile:
+#        endpoint
+#      azure:
+#        prefix:
+#        config:
+#        containerName:
+#
 #backupSchedules:
 #- name: schedule-ref
 #  schedule: "*/1 * * * *"

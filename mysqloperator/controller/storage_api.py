@@ -65,7 +65,7 @@ class OCIOSStorageSpec:
     ociCredentials: str = ""
 
     def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
-        # The value for OCI_MOUNT_PATH should be the mountPath of the secrets-volume 
+        # The value for OCI_MOUNT_PATH should be the mountPath of the secrets-volume
         # OCI_API_KEY_NAME is the only key in the secret which holds the API key
         # The secrets volume is not readOnly because we need to write the config file into it
         patch = f"""
@@ -182,10 +182,51 @@ spec:
               self.profile == other.profile and \
               self.endpoint == other.endpoint)
 
+class AzureBlobStorageSpec:
+    containerName: str = ""
+    prefix: str = ""
+    config: str = ""
+
+    def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
+        patch = f"""
+spec:
+    securityContext:
+      allowPrivilegeEscalation: false
+      privileged: false
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      runAsUser: 27
+      fsGroup: 27
+    containers:
+    - name: {container_name}
+      volumeMounts:
+      - name: azure-config-volume
+        readOnly: true
+        # /mysqlsh is the container's $HOME
+        mountPath: "/mysqlsh/.azure"
+    volumes:
+    - name: azure-config-volume
+      secret:
+        secretName: {self.config}
+"""
+        merge_patch_object(pod_spec, yaml.safe_load(patch))
+
+    def parse(self, spec: dict, prefix: str) -> None:
+        self.prefix = dget_str(spec, "prefix", prefix, default_value = "")
+        self.containerName = dget_str(spec, "containerName", prefix)
+        self.config = dget_str(spec, "config", prefix)
+
+    def __eq__(self, other) -> bool:
+        return (isinstance(other, S3StorageSpec) and \
+              self.containerName == other.containerName and \
+              self.prefix == other.prefix and \
+              self.config == other.config)
+
 ALL_STORAGE_SPEC_TYPES = {
     "ociObjectStorage": OCIOSStorageSpec,
     "persistentVolumeClaim": PVCStorageSpec,
-    "s3": S3StorageSpec
+    "s3": S3StorageSpec,
+    "azure": AzureBlobStorageSpec
 }
 
 
@@ -193,6 +234,7 @@ class StorageSpec:
     ociObjectStorage: Optional[OCIOSStorageSpec] = None
     persistentVolumeClaim: Optional[PVCStorageSpec] = None
     s3: Optional[S3StorageSpec] = None
+    azure: Optional[AzureBlobStorageSpec] = None
 
     def __init__(self, allowed_types: list = list(ALL_STORAGE_SPEC_TYPES.keys())):
         self._allowed_types = {}
@@ -206,6 +248,8 @@ class StorageSpec:
             self.persistentVolumeClaim.add_to_pod_spec(pod_spec, container_name)
         if self.s3:
             self.s3.add_to_pod_spec(pod_spec, container_name)
+        if self.azure:
+            self.azure.add_to_pod_spec(pod_spec, container_name)
 
     def parse(self, spec: dict, prefix: str) -> None:
         storage_spec = None
@@ -233,4 +277,5 @@ class StorageSpec:
         return (isinstance(other, StorageSpec) and \
               self.ociObjectStorage == other.ociObjectStorage and \
               self.persistentVolumeClaim == other.persistentVolumeClaim and \
-              self.s3 == other.s3)
+              self.s3 == other.s3 and \
+              self.azure== other.azure)

@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -9,6 +9,7 @@ from ..shellutils import SessionWrap
 from .. import mysqlutils, utils
 from ..kubeutils import api_core, api_apps, api_customobj
 from ..kubeutils import client as api_client, ApiException
+from abc import ABC, abstractmethod
 import mysqlsh
 import time
 import os
@@ -91,60 +92,105 @@ def finish_clone_seed_pod(session: 'ClassicSession', cluster: InnoDBCluster, log
     logger.info(f"Clone finished successfully")
 
 
-def load_dump(session: 'ClassicSession', cluster: InnoDBCluster, pod: MySQLPod, init_spec: DumpInitDBSpec, logger: Logger) -> None:
-    def get_secret(secret_name: str, namespace: str, loger: Logger) -> dict:
-        logger.info(f"load_dump::get_secret")
+def get_secret(secret_name: str, namespace: str, logger: Logger) -> dict:
+    logger.info(f"load_dump::get_secret")
 
-        if not secret_name:
-            raise Exception(f"No secret provided")
+    if not secret_name:
+        raise Exception(f"No secret provided")
 
-        ret = {}
+    ret = {}
+    try:
+        secret = cast(api_client.V1Secret, api_core.read_namespaced_secret(secret_name, namespace))
+        for k, v in secret.data.items():
+            ret[k] = utils.b64decode(v)
+    except Exception:
+        raise Exception(f"Secret {secret_name} in namespace {namespace} cannot be found")
+
+    return ret
+
+class RestoreDump(ABC):
+    def __init__(self, init_spec: DumpInitDBSpec, namespace: str, logger: Logger) -> None:
+        super().__init__()
+        self.init_spec = init_spec
+        self.storage = init_spec.storage
+        self.namespace = namespace
+        self.logger = logger
+
+        self.create_config()
+
+    def __del__(self):
         try:
-            secret = cast(api_client.V1Secret, api_core.read_namespaced_secret(secret_name, namespace))
-            for k, v in secret.data.items():
-                ret[k] = utils.b64decode(v)
-        except Exception:
-            raise Exception(f"Secret {secret_name} in namespace {namespace} cannot be found")
+            self.clean_config()
+        except:
+            # We ignore cleanup errors, which is fine
+            pass
 
-        return ret
+    @abstractmethod
+    def create_config(self):
+        ...
 
-    def create_oci_config(oci_credentials: dict) -> dict:
+    @abstractmethod
+    def add_options(self, options: dict):
+        ...
+
+    @property
+    def path(self):
+        ...
+
+    @abstractmethod
+    def clean_config(self):
+        ...
+
+
+class RestoreOciObjectStoreDump(RestoreDump):
+    def __init__(self, init_spec: DumpInitDBSpec, namespace: str, logger: Logger) -> None:
+        self.oci_config_file = f"{os.getenv('MYSQLSH_USER_CONFIG_HOME')}/oci_config"
+        self.oci_privatekey_file = f"{os.getenv('MYSQLSH_USER_CONFIG_HOME')}/privatekey.pem"
+        super().__init__(init_spec, namespace, logger)
+
+    def create_config(self):
         import configparser
-        # MYSQLSH_USER_CONFIG_HOME is the only writable place
-        oci_config_file     = f"{os.getenv('MYSQLSH_USER_CONFIG_HOME')}/oci_config"
-        oci_privatekey_file = f"{os.getenv('MYSQLSH_USER_CONFIG_HOME')}/privatekey.pem"
         privatekey = None
         config_profile = "DEFAULT"
         config = configparser.ConfigParser()
+        oci_credentials = get_secret(self.storage.ociObjectStorage.ociCredentials, self.namespace, self.logger)
+        if not isinstance(oci_credentials, dict):
+            raise Exception(f"Failed to process credentials secret {self.storage.ociObjectStorage.ociCredentials}")
+
         for k, v in oci_credentials.items():
             if k != "privatekey":
                 config[config_profile][k] = v
             else:
                 privatekey = v
-                config[config_profile]["key_file"] = oci_privatekey_file
+                config[config_profile]["key_file"] = self.oci_privatekey_file
 
-        with open(oci_config_file, 'w') as f:
+        with open(self.oci_config_file, 'w') as f:
             config.write(f)
 
-        with open(oci_privatekey_file, 'w') as f:
+        with open(self.oci_privatekey_file, 'w') as f:
             f.write(privatekey)
 
-        return {
-            "ociConfigFile" : oci_config_file,
-            "ociProfile" : config_profile,
-        }
+    def add_options(self, options: dict):
+       options["ociConfigFile"] = self.oci_config_file
+       options["ociProfile"] = "DEFAULT"
+       options["osBucketName"] = self.storage.ociObjectStorage.bucketName
 
-    def clear_oci_config() -> dict:
-        oci_config_file     = f"{os.getenv('MYSQLSH_USER_CONFIG_HOME')}/oci_config"
-        oci_privatekey_file = f"{os.getenv('MYSQLSH_USER_CONFIG_HOME')}/privatekey.pem"
+    @property
+    def path(self):
+        return self.storage.ociObjectStorage.prefix
 
+    def clean_config(self):
         try:
-            os.remove(oci_config_file)
-            os.remove(oci_privatekey_file)
+            os.remove(self.oci_config_file)
+            os.remove(self.oci_privatekey_file)
         except:
             pass
 
-    def create_s3_config(s3_credentials: dict) -> dict:
+class RestoreS3Dump(RestoreDump):
+    def create_config(self):
+        s3_credentials = get_secret(self.storage.s3.config, self.namespace, self.logger)
+        if not isinstance(s3_credentials, dict):
+            raise Exception(f"Failed to process S3 config secret {self.storage.s3.config}")
         configdir = f"{os.getenv('HOME')}/.aws"
         try:
             os.mkdir(configdir)
@@ -156,7 +202,17 @@ def load_dump(session: 'ClassicSession', cluster: InnoDBCluster, pod: MySQLPod, 
             with open(f"{configdir}/{filename}", "w") as file:
                 file.write(s3_credentials[filename])
 
-    def clear_s3_config() -> dict:
+    def add_options(self, options: dict):
+        options["s3BucketName"] = self.storage.s3.bucketName
+        options["s3Profile"] = self.storage.s3.profile
+        if self.storage.s3.endpoint:
+            options["s3EndpointOverride"] = self.storage.s3.endpoint
+
+    @property
+    def path(self):
+        return self.storage.s3.prefix
+
+    def clean_config(self):
         configdir = f"{os.getenv('HOME')}/.aws"
         try:
             os.remove(f"{configdir}/credentials")
@@ -165,29 +221,68 @@ def load_dump(session: 'ClassicSession', cluster: InnoDBCluster, pod: MySQLPod, 
         except:
             pass
 
+class RestoreAzureBlobStorageDump(RestoreDump):
+    def create_config(self):
+        configdir = f"{os.getenv('HOME')}/.azure"
+        azure_config = get_secret(self.storage.azure.config, self.namespace, self.logger)
+        if not isinstance(azure_config, dict):
+            raise Exception(f"Failed to process Azure config secret {self.storage.azure.config}")
+
+        try:
+            os.mkdir(configdir)
+        except FileExistsError:
+            # ok if directory exists
+            pass
+
+        with open(f"{configdir}/config", "w") as file:
+            file.write(azure_config["config"])
+
+    def add_options(self, options: dict):
+        options["azureContainerName"] = self.storage.azure.containerName
+
+    @property
+    def path(self):
+        return self.storage.azure.prefix
+
+    def clean_config(self):
+        configdir = f"{os.getenv('HOME')}/.azure"
+        try:
+            os.remove(f"{configdir}/config")
+            os.rmdir(configdir)
+        except:
+            pass
+
+class RestorePath(RestoreDump):
+    def create_config(self):
+        pass
+
+    def add_options(self, options: dict):
+        pass
+
+    @property
+    def path(self):
+        path = self.init_spec.path
+
+    def clean_config(self):
+        pass
+
+def load_dump(session: 'ClassicSession', cluster: InnoDBCluster, pod: MySQLPod, init_spec: DumpInitDBSpec, logger: Logger) -> None:
     logger.info("::load_dump")
     options = init_spec.loadOptions.copy()
-    options["progressFile"] = "";
+    options["progressFile"] = ""
 
-    oci_credentials = None
+    restore = None
     if init_spec.storage.ociObjectStorage:
-        oci_credentials = get_secret(init_spec.storage.ociObjectStorage.ociCredentials, cluster.namespace, logger)
-        if isinstance(oci_credentials, dict):
-            path = init_spec.storage.ociObjectStorage.prefix
-            options["osBucketName"] = init_spec.storage.ociObjectStorage.bucketName
-            options.update(create_oci_config(oci_credentials))
+        restore = RestoreOciObjectStoreDump(init_spec, cluster.namespace, logger)
     elif init_spec.storage.s3:
-        s3_credentials = get_secret(init_spec.storage.s3.config, cluster.namespace, logger)
-        if isinstance(s3_credentials, dict):
-            create_s3_config(s3_credentials)
-            path = init_spec.storage.s3.prefix
-            options["s3BucketName"] = init_spec.storage.s3.bucketName
-            options["s3Profile"] = init_spec.storage.s3.profile
-            if init_spec.storage.s3.endpoint:
-                options["s3EndpointOverride"] = init_spec.storage.s3.endpoint
-
+        restore = RestoreS3Dump(init_spec, cluster.namespace, logger)
+    elif init_spec.storage.azure:
+        restore = RestoreAzureBlobStorageDump(init_spec, cluster.namespace, logger)
     else:
-        path = init_spec.path
+        restore = RestorePath(init_spec, cluster.namespace, logger)
+
+    restore.add_options(options)
+    path = restore.path
 
     logger.info(f"Executing load_dump({path}, {options})")
 
@@ -198,11 +293,5 @@ def load_dump(session: 'ClassicSession', cluster: InnoDBCluster, pod: MySQLPod, 
     except mysqlsh.Error as e:
         logger.error(f"Error loading dump: {e}")
         raise
-
-    try:
-        if init_spec.storage.ociObjectStorage:
-            clear_oci_config()
-        elif init_spec.storage.s3:
-            clear_s3_config()
-    except:
-        pass
+    finally:
+        del restore

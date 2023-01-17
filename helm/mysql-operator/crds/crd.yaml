@@ -207,7 +207,7 @@ spec:
                           description: "Name of the dump. Not used by the operator, but a descriptive hint for the cluster administrator"
                         path:
                           type: string
-                          description: "Path to the dump in the PVC. Use when specifying persistentVolumeClaim. Omit for ociObjectStorage or S3."
+                          description: "Path to the dump in the PVC. Use when specifying persistentVolumeClaim. Omit for ociObjectStorage, S3, or azure."
                         options:
                           type: object
                           description: "A dictionary of key-value pairs passed directly to MySQL Shell's loadDump()"
@@ -221,26 +221,26 @@ spec:
                               properties:
                                 bucketName:
                                   type: string
-                                  description: "Name of the bucket where the dump is stored"
+                                  description: "Name of the OCI bucket where the dump is stored"
                                 prefix:
                                   type: string
                                   description: "Path in the bucket where the dump files are stored"
                                 credentials:
                                   type: string
-                                  description: "Secret name with data for accessing the bucket"
+                                  description: "Name of a Secret with data for accessing the bucket"
                             s3:
                               type: object
                               required: ["bucketName", "prefix", "config"]
                               properties:
                                 bucketName:
                                   type: string
-                                  description: "Name of the bucket where the dump is stored"
+                                  description: "Name of the S3 bucket where the dump is stored"
                                 prefix:
                                   type: string
                                   description: "Path in the bucket where the dump files are stored"
                                 config:
                                   type: string
-                                  description: "Secret name with S3 configuration and credentials"
+                                  description: "Name of a Secret with S3 configuration and credentials"
                                 profile:
                                   type: string
                                   default: ""
@@ -248,6 +248,19 @@ spec:
                                 endpoint:
                                   type: string
                                   description: "Override endpoint URL"
+                            azure:
+                              type: object
+                              required: ["containerName", "prefix", "config"]
+                              properties:
+                                containerName:
+                                  type: string
+                                  description: "Name of the Azure  BLOB Storage container where the dump is stored"
+                                prefix:
+                                  type: string
+                                  description: "Path in the container where the dump files are stored"
+                                config:
+                                  type: string
+                                  description: "Name of a Secret with Azure BLOB Storage configuration and credentials"
                             persistentVolumeClaim:
                               type: object
                               description : "Specification of the PVC to be used. Used 'as is' in the cloning pod."
@@ -311,26 +324,26 @@ spec:
                                 properties:
                                   bucketName:
                                     type: string
-                                    description: "Bucket name where backup is stored"
+                                    description: "Name of the OCI bucket where backup is stored"
                                   prefix:
                                     type: string
                                     description: "Path in bucket where backup is stored"
                                   credentials:
                                     type: string
-                                    description: "Secret name with data for accessing the bucket"
+                                    description: "Name of a Secret with data for accessing the bucket"
                               s3:
                                 type: object
                                 required: ["bucketName", "config"]
                                 properties:
                                   bucketName:
                                     type: string
-                                    description: "Name of the bucket where the dump is stored"
+                                    description: "Name of the S3 bucket where the dump is stored"
                                   prefix:
                                     type: string
                                     description: "Path in the bucket where the dump files are stored"
                                   config:
                                     type: string
-                                    description: "Secret name with S3 configuration and credentials"
+                                    description: "Name of a Secret with S3 configuration and credentials"
                                   profile:
                                     type: string
                                     default: ""
@@ -338,6 +351,19 @@ spec:
                                   endpoint:
                                     type: string
                                     description: "Override endpoint URL"
+                              azure:
+                                type: object
+                                required: ["containerName", "config"]
+                                properties:
+                                  containerName:
+                                    type: string
+                                    description: "Name of the Azure  BLOB Storage container where the dump is stored"
+                                  prefix:
+                                    type: string
+                                    description: "Path in the container where the dump files are stored"
+                                  config:
+                                    type: string
+                                    description: "Name of a Secret with Azure BLOB Storage configuration and credentials"
                               persistentVolumeClaim:
                                 type: object
                                 description : "Specification of the PVC to be used. Used 'as is' in pod executing the backup."
@@ -361,20 +387,20 @@ spec:
                                     description: "Path in bucket where backup is stored"
                                   credentials:
                                     type: string
-                                    description: "Secret name with data for accessing the bucket"
+                                    description: "Name of a Secret with data for accessing the bucket"
                               s3:
                                 type: object
                                 required: ["bucketName", "config"]
                                 properties:
                                   bucketName:
                                     type: string
-                                    description: "Name of the bucket where the dump is stored"
+                                    description: "Name of the S3 bucket where the dump is stored"
                                   prefix:
                                     type: string
                                     description: "Path in the bucket where the dump files are stored"
                                   config:
                                     type: string
-                                    description: "Secret name with S3 configuration and credentials"
+                                    description: "Name of a Secret with S3 configuration and credentials"
                                   profile:
                                     type: string
                                     default: ""
@@ -382,6 +408,19 @@ spec:
                                   endpoint:
                                     type: string
                                     description: "Override endpoint URL"
+                              azure:
+                                type: object
+                                required: ["containerName", "config"]
+                                properties:
+                                  containerName:
+                                    type: string
+                                    description: "Name of the Azure  BLOB Storage container where the dump is stored"
+                                  prefix:
+                                    type: string
+                                    description: "Path in the container where the dump files are stored"
+                                  config:
+                                    type: string
+                                    description: "Name of a Secret with Azure BLOB Storage configuration and credentials"
                               persistentVolumeClaim:
                                 type: object
                                 description : "Specification of the PVC to be used. Used 'as is' in pod executing the backup."
@@ -432,26 +471,26 @@ spec:
                                     properties:
                                       bucketName:
                                         type: string
-                                        description: "Bucket name where backup is stored"
+                                        description: "Name of the OCI Bucket where backup is stored"
                                       prefix:
                                         type: string
                                         description: "Path in bucket where backup is stored"
                                       credentials:
                                         type: string
-                                        description: "Secret name with data for accessing the bucket"
+                                        description: "Name of a Secret with data for accessing the bucket"
                                   s3:
                                     type: object
                                     required: ["bucketName", "config"]
                                     properties:
                                       bucketName:
                                         type: string
-                                        description: "Name of the bucket where the dump is stored"
+                                        description: "Name of the S3 bucket where the dump is stored"
                                       prefix:
                                         type: string
                                         description: "Path in the bucket where the dump files are stored"
                                       config:
                                         type: string
-                                        description: "Secret name with S3 configuration and credentials"
+                                        description: "Name of a Secret with S3 configuration and credentials"
                                       profile:
                                         type: string
                                         default: ""
@@ -459,6 +498,19 @@ spec:
                                       endpoint:
                                         type: string
                                         description: "Override endpoint URL"
+                                  azure:
+                                    type: object
+                                    required: ["containerName", "config"]
+                                    properties:
+                                      containerName:
+                                        type: string
+                                        description: "Name of the Azure  BLOB Storage container where the dump is stored"
+                                      prefix:
+                                        type: string
+                                        description: "Path in the container where the dump files are stored"
+                                      config:
+                                        type: string
+                                        description: "Name of a Secret with Azure BLOB Storage configuration and credentials"
                                   persistentVolumeClaim:
                                     type: object
                                     description : "Specification of the PVC to be used. Used 'as is' in pod executing the backup."
@@ -564,26 +616,26 @@ spec:
                               properties:
                                 bucketName:
                                   type: string
-                                  description: "Bucket name where backup is stored"
+                                  description: "Name of the OCI bucket where backup is stored"
                                 prefix:
                                   type: string
                                   description: "Path in bucket where backup is stored"
                                 credentials:
                                   type: string
-                                  description: "Secret name with data for accessing the bucket"
+                                  description: "Name of a Secret with data for accessing the bucket"
                             s3:
                               type: object
                               required: ["bucketName", "config"]
                               properties:
                                 bucketName:
                                   type: string
-                                  description: "Name of the bucket where the dump is stored"
+                                  description: "Name of the S3 bucket where the dump is stored"
                                 prefix:
                                   type: string
                                   description: "Path in the bucket where the dump files are stored"
                                 config:
                                   type: string
-                                  description: "Secret name with S3 configuration and credentials"
+                                  description: "Name of a Secret with S3 configuration and credentials"
                                 profile:
                                   type: string
                                   default: ""
@@ -591,6 +643,19 @@ spec:
                                 endpoint:
                                   type: string
                                   description: "Override endpoint URL"
+                            azure:
+                              type: object
+                              required: ["containerName", "config"]
+                              properties:
+                                containerName:
+                                  type: string
+                                  description: "Name of the Azure  BLOB Storage container where the dump is stored"
+                                prefix:
+                                  type: string
+                                  description: "Path in the container where the dump files are stored"
+                                config:
+                                  type: string
+                                  description: "Name of a Secret with Azure BLOB Storage configuration and credentials"
                             persistentVolumeClaim:
                               type: object
                               description : "Specification of the PVC to be used. Used 'as is' in pod executing the backup."
@@ -623,9 +688,13 @@ spec:
                   type: string
                 ociTenancy:
                   type: string
+                container:
+                  type: string
                 spaceAvailable:
                   type: string
                 size:
+                  type: string
+                message:
                   type: string
       subresources:
         status: {}

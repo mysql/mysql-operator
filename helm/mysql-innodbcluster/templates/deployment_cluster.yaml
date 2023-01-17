@@ -213,7 +213,7 @@ spec:
 
   {{- if (((.Values).initDB).dump) }}
     {{- with .Values.initDB.dump }}
-      {{- if and .name (or .ociObjectStorage .s3 .persistentVolumeClaim .options) }}
+      {{- if and .name (or .ociObjectStorage .s3 .azure .persistentVolumeClaim .options) }}
   initDB:
     dump:
         {{- if .name }}
@@ -243,6 +243,12 @@ spec:
           {{- if .s3.endpoint }}
           endpoint: {{ .s3.endpoint }}
           {{- end }}
+        {{- end }}
+        {{- if .azure }}
+        azure:
+          prefix: {{ required "initDB.dump.azure.prefix is required" .azure.prefix }}
+          containerName: {{ required "initDB.dump.azure.containerName is required" .azure.containerName }}
+          config: {{ required "initDB.dump.azure.config is required" .azure.config }}
         {{- end }}
         {{- if .persistentVolumeClaim }}
         persistentVolumeClaim: {{ toYaml .persistentVolumeClaim | nindent 10}}
@@ -300,6 +306,14 @@ spec:
           {{- if $backupProfile.storage.s3.endpoint }}
           endpoint: {{ $backupProfile.storage.s3.endpoint }}
           {{- end }}
+        {{- else if hasKey $backupProfile.storage "azure" }}
+      storage:
+        azure:
+        {{- if $backupProfile.storage.azure.prefix }}
+          prefix: {{ $backupProfile.storage.azure.prefix }}
+        {{- end }}
+          containerName: {{ required "containerName is required" $backupProfile.storage.azure.containerName }}
+          config: {{ required "config is required" $backupProfile.storage.azure.config }}
         {{- else if hasKey $backupProfile.storage "persistentVolumeClaim" }}
       storage:
         persistentVolumeClaim: {{ toYaml $backupProfile.storage.persistentVolumeClaim | nindent 12}}
@@ -365,6 +379,14 @@ spec:
           {{- if $backupProfile.storage.s3.endpoint }}
             endpoint: {{ $backupProfile.storage.s3.endpoint }}
           {{- end }}
+        {{- else if hasKey $backupProfile.storage "azure" }}
+        storage:
+          azure:
+          {{- if $backupProfile.storage.azure.prefix }}
+            prefix: {{ $backupProfile.storage.azure.prefix }}
+          {{- end }}
+            containerName: {{ required "containerName is required" $backupProfile.storage.azure.containerName }}
+            config: {{ required "config is required" $backupProfile.storage.azure.config }}
         {{- else if hasKey $backupProfile.storage "persistentVolumeClaim" }}
         storage:
           persistentVolumeClaim: {{ toYaml $backupProfile.storage.persistentVolumeClaim | nindent 12}}

@@ -441,6 +441,265 @@ spec:
             ociutil.bulk_delete("DELETE", g_ts_cfg.oci_bucket_name, self.__class__.oci_storage_output)
 
 
+@unittest.skipIf(g_ts_cfg.azure_skip or not g_ts_cfg.azure_config_file or not g_ts_cfg.azure_container_name,
+  "Azure config file and/or container name not set")
+class ClusterFromDumpAzure(tutil.OperatorTest):
+    """
+    Create cluster and initialize from a shell dump stored in an Azure container.
+    """
+    default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    dump_name = "cluster-from-dump-test-azure1"
+    azure_storage_prefix = f"/e2etest/{g_ts_cfg.get_worker_label()}"
+    azure_storage_output = None
+
+    @classmethod
+    def setUpClass(cls):
+        cls.logger = logging.getLogger(__name__+":"+cls.__name__)
+        super().setUpClass()
+
+        g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
+        g_full_log.watch_mysql_pod(cls.ns, "mycluster-1")
+        g_full_log.watch_mysql_pod(cls.ns, "mycluster-2")
+
+    @classmethod
+    def tearDownClass(cls):
+        g_full_log.stop_watch(cls.ns, "mycluster-2")
+        g_full_log.stop_watch(cls.ns, "mycluster-1")
+        g_full_log.stop_watch(cls.ns, "mycluster-0")
+
+        super().tearDownClass()
+
+    def test_0_prepare(self):
+        kutil.create_user_secrets(
+            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+
+        container = g_ts_cfg.azure_container_name
+        config_file = g_ts_cfg.azure_config_file
+
+        # create a secret with the api key to access the container
+        kutil.create_secret_from_files(self.ns, "azure-backup", [["config", config_file]])
+
+        # create cluster with mostly default configs
+        yaml = f"""
+apiVersion: mysql.oracle.com/v2
+kind: InnoDBCluster
+metadata:
+  name: mycluster
+spec:
+  instances: 1
+  secretName: mypwds
+  tlsUseSelfSigned: true
+  backupProfiles:
+  - name: fulldump-azure
+    dumpInstance:
+      storage:
+        azure:
+          prefix: {self.azure_storage_prefix}
+          containerName: {container}
+          config: azure-backup
+"""
+
+        kutil.apply(self.ns, yaml)
+
+        self.wait_pod("mycluster-0", "Running")
+        self.wait_ic("mycluster", "ONLINE", 1)
+
+        script = open(tutil.g_test_data_dir+"/sql/sakila-schema.sql").read()
+        script += open(tutil.g_test_data_dir+"/sql/sakila-data.sql").read()
+
+        mutil.load_script(self.ns, "mycluster-0", script)
+
+        self.__class__.orig_tables = []
+        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
+            self.__class__.orig_tables = [r[0]
+                                for r in s.query_sql("show tables in sakila").fetch_all()]
+
+        # create a dump in a Azure BLOB container
+        yaml = f"""
+apiVersion: mysql.oracle.com/v2
+kind: MySQLBackup
+metadata:
+  name: {self.dump_name}
+spec:
+  clusterName: mycluster
+  backupProfileName: fulldump-azure
+"""
+        kutil.apply(self.ns, yaml)
+
+        # wait for backup to be done
+        def check_mbk(l):
+            for item in l:
+                if item["NAME"] == self.dump_name and item["STATUS"] == "Completed":
+                    # can't keep it in self.oci_storage_output because unittest run each function
+                    # with a fresh instance
+                    # after dump it shall be sth like 'cluster-from-dump-test-oci1-20211027-113626'
+                    self.__class__.azure_storage_output = os.path.join(self.azure_storage_prefix, item["OUTPUT"])
+                    return item
+            return None
+
+        r = self.wait(kutil.ls_mbk, args=(self.ns,),
+                      check=check_mbk, timeout=300)
+
+        # destroy the test cluster
+        kutil.delete_ic(self.ns, "mycluster")
+        self.wait_pod_gone("mycluster-0")
+        self.wait_ic_gone("mycluster")
+
+        # delete the pv and pvc for mycluster-0
+        kutil.delete_pvc(self.ns, None)
+        # TODO ensure the pv was deleted
+
+        kutil.delete_secret(self.ns, "mypwds")
+
+    def test_1_0_create_from_dump(self):
+        """
+        Create cluster using a shell dump stored in an Azure BLOB container.
+        """
+        kutil.create_user_secrets(
+            self.ns, "newpwds", root_user="root", root_host="%", root_pass="sakila")
+
+        container = g_ts_cfg.azure_container_name
+
+        # create cluster with mostly default configs
+        yaml = f"""
+apiVersion: mysql.oracle.com/v2
+kind: InnoDBCluster
+metadata:
+  name: newcluster
+spec:
+  instances: 1
+  router:
+    instances: 1
+  secretName: newpwds
+  tlsUseSelfSigned: true
+  baseServerId: 2000
+  initDB:
+    dump:
+      name: {self.dump_name}
+      storage:
+        azure:
+          prefix: {self.__class__.azure_storage_output}
+          containerName: {container}
+          config: azure-backup
+"""
+
+        kutil.apply(self.ns, yaml)
+
+        self.wait_pod("newcluster-0", "Running")
+
+        self.wait_ic("newcluster", "ONLINE", 1, timeout=600)
+
+        with mutil.MySQLPodSession(self.ns, "newcluster-0", "root", "sakila") as s:
+            tables = [r[0]
+                      for r in s.query_sql("show tables in sakila").fetch_all()]
+
+            self.assertEqual(set(self.__class__.orig_tables), set(tables))
+
+            # TODO: fails with the following error:
+            # _mysql_connector.MySQLInterfaceError: Cannot modify @@session.sql_log_bin inside a transaction
+            # add some data with binlog disabled to allow testing that new
+            # members added to this cluster use clone for provisioning
+            # s.exec_sql("set session sql_log_bin=0")
+            # s.exec_sql("create schema unlogged_db")
+            # s.exec_sql("create table unlogged_db.tbl (a int primary key)")
+            # s.exec_sql("insert into unlogged_db.tbl values (42)")
+            # s.exec_sql("set session sql_log_bin=1")
+
+        check_routing.check_pods(self, self.ns, "newcluster", 1)
+
+        # TODO also make sure the source field in the ic says clone and not blank
+
+    def test_1_1_grow(self):
+        """
+        Ensures that a cluster created from a dump can be scaled up properly
+        """
+        kutil.patch_ic(self.ns, "newcluster", {
+                       "spec": {"instances": 2}}, type="merge")
+
+        self.wait_pod("newcluster-1", "Running")
+
+        self.wait_ic("newcluster", "ONLINE", 2)
+
+        # TODO: see comment at line 334 where unlogged_db should be created
+        # check that the new instance was provisioned through clone and not incremental
+        # with mutil.MySQLPodSession(self.ns, "newcluster-1", "root", "sakila") as s:
+        #     self.assertEqual(
+        #         str(s.query_sql("select * from unlogged_db.tbl").fetch_all()), str([[42]]))
+
+    def test_1_2_destroy(self):
+        kutil.delete_ic(self.ns, "newcluster")
+
+        self.wait_pod_gone("newcluster-0")
+        self.wait_ic_gone("newcluster")
+
+        kutil.delete_pvc(self.ns, None)
+
+    def test_2_create_from_dump_options(self):
+        """
+        Create cluster using a shell dump with additional options passed to the
+        load command.
+        """
+
+        container = g_ts_cfg.azure_container_name
+
+        # create cluster with mostly default configs
+        yaml = f"""
+apiVersion: mysql.oracle.com/v2
+kind: InnoDBCluster
+metadata:
+  name: newcluster
+spec:
+  instances: 1
+  router:
+    instances: 1
+  secretName: newpwds
+  baseServerId: 3000
+  tlsUseSelfSigned: true
+  initDB:
+    dump:
+      name: {self.dump_name}
+      options:
+        includeSchemas:
+        - sakila
+      storage:
+        azure:
+          prefix: {self.__class__.azure_storage_output}
+          containerName: {container}
+          config: azure-backup
+"""
+
+        kutil.apply(self.ns, yaml)
+
+        self.wait_pod("newcluster-0", "Running")
+
+        self.wait_ic("newcluster", "ONLINE", 1, timeout=600)
+
+        with mutil.MySQLPodSession(self.ns, "newcluster-0", "root", "sakila") as s:
+            tables = [r[0]
+                      for r in s.query_sql("show tables in sakila").fetch_all()]
+
+            self.assertEqual(set(self.__class__.orig_tables), set(tables))
+
+        check_routing.check_pods(self, self.ns, "newcluster", 1)
+
+    def test_9_destroy(self):
+        kutil.delete_ic(self.ns, "mycluster")
+
+        self.wait_pod_gone("mycluster-2")
+        self.wait_pod_gone("mycluster-1")
+        self.wait_pod_gone("mycluster-0")
+        self.wait_ic_gone("mycluster")
+
+        kutil.delete_ic(self.ns, "newcluster")
+
+        self.wait_pod_gone("newcluster-0")
+        self.wait_ic_gone("newcluster")
+
+        kutil.delete_secret(self.ns, "azure-backup")
+
+        kutil.delete_pvc(self.ns, None)
+
+
 # class ClusterFromDumpLocal(tutil.OperatorTest):
 #    pass
 

@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -217,6 +217,10 @@ class ClusterController:
                 elif self.cluster.parsed_spec.initDB.dump.storage.s3:
                     self.cluster.update_cluster_info({
                         "initialDataSource": f"dump={self.cluster.parsed_spec.initDB.dump.storage.s3.bucketName}",
+                    })
+                elif self.cluster.parsed_spec.initDB.dump.storage.azure:
+                    self.cluster.update_cluster_info({
+                        "initialDataSource": f"dump={self.cluster.parsed_spec.initDB.dump.storage.azure.containerName}",
                     })
                 elif self.cluster.parsed_spec.initDB.dump.storage.persistentVolumeClaim:
                     self.cluster.update_cluster_info({

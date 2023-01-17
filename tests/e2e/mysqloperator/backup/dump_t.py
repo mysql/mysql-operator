@@ -22,6 +22,8 @@ class DumpInstance(tutil.OperatorTest):
     backup_volume_name = "test-backup-storage"
     oci_storage_prefix = f"/e2etest/{g_ts_cfg.get_worker_label()}"
     oci_storage_output = None
+    azure_dump_name = "dump-test-azure"
+    azure_storage_prefix = f"/e2etest/{g_ts_cfg.get_worker_label()}"
 
     @classmethod
     def setUpClass(cls):
@@ -45,6 +47,8 @@ class DumpInstance(tutil.OperatorTest):
         backupdir = "/tmp/backups"
 
         bucket = g_ts_cfg.oci_bucket_name
+
+        container = g_ts_cfg.azure_container_name
 
         # create cluster with mostly default configs
         yaml = f"""
@@ -71,6 +75,15 @@ spec:
           prefix: {self.oci_storage_prefix}
           bucketName: {bucket or "not-set"}
           credentials: backup-apikey
+      dumpOptions:
+        excludeSchemas: ["excludeme"]
+  - name: test-azure
+    dumpInstance:
+      storage:
+        azure:
+          prefix: {self.azure_storage_prefix}
+          containerName: {container or "not-set"}
+          config: azure-backup
       dumpOptions:
         excludeSchemas: ["excludeme"]
   - name: snapshot
@@ -248,6 +261,53 @@ spec:
         excludedfile = ociutil.list_objects("RESTORE", g_ts_cfg.oci_bucket_name, f"{self.__class__.oci_storage_output}/excludeme")
         self.assertListEqual([], excludedfile)
 
+    @unittest.skipIf(g_ts_cfg.azure_skip or not g_ts_cfg.azure_config_file or not g_ts_cfg.azure_container_name,
+      "Azure BLOB Storage backup config path and/or container name not set")
+    def test_1_backup_to_azure_container(self):
+        kutil.create_secret_from_files(self.ns, "azure-backup", [["config", g_ts_cfg.azure_config_file]])
+
+        yaml = f"""
+apiVersion: mysql.oracle.com/v2
+kind: MySQLBackup
+metadata:
+  name: {self.azure_dump_name}
+spec:
+  clusterName: mycluster
+  backupProfileName: test-azure
+"""
+        kutil.apply(self.ns, yaml)
+
+        # wait for backup to be done
+        def check_mbk(l):
+            for item in l:
+                if item["NAME"] == self.azure_dump_name and item["STATUS"] == "Completed":
+                    return item
+            return None
+
+        r = self.wait(kutil.ls_mbk, args=(self.ns,),
+                      check=check_mbk, timeout=300)
+        output = r["OUTPUT"]
+        self.assertEqual(r["CLUSTER"], "mycluster")
+        self.assertEqual(r["STATUS"], "Completed")
+        self.assertTrue(output.startswith(f"{self.azure_dump_name}-"))
+
+        if output:
+            self.__class__.oci_storage_output = os.path.join(self.oci_storage_prefix, output)
+
+        # check status in backup object
+        mbk = kutil.get_mbk(self.ns, self.azure_dump_name)
+        self.assertTrue(mbk["status"]["startTime"])
+        self.assertTrue(mbk["status"]["completionTime"])
+        self.assertGreater(mbk["status"]["completionTime"],
+                           mbk["status"]["startTime"])
+        self.assertEqual(mbk["status"]["status"], "Completed")
+        self.assertTrue(mbk["status"]["elapsedTime"])
+        self.assertEqual(mbk["status"]["method"], "dump-instance/azure-blob-storage")
+        self.assertEqual(mbk["status"]["container"], g_ts_cfg.azure_container_name)
+        # secondary
+        self.assertTrue(mbk["status"]["source"].startswith(""))
+
+        # TODO check that the container contains all expected files
 
     def test_2_backup_custom_profile(self):
         pass
@@ -283,10 +343,13 @@ spec:
         kutil.delete_pv(self.backup_volume_name)
 
         kutil.delete_secret(self.ns, "backup-apikey")
+        kutil.delete_secret(self.ns, "azure-backup")
         kutil.delete_secret(self.ns, "mypwds")
 
         if self.__class__.oci_storage_output:
             ociutil.bulk_delete("DELETE", g_ts_cfg.oci_bucket_name, self.__class__.oci_storage_output)
+
+        # TODO delete backup from Azure, currently we assume we run in an emulator which is torn down
 
 
 

@@ -66,6 +66,16 @@ OCI_BUCKET_NAME = os.getenv(
 OCI_VAULT_CONFIG_PATH = os.getenv(
     "OPERATOR_TEST_VAULT_CONFIG_PATH", default=None)
 
+# azure backup
+AZURE_SKIP = os.getenv(
+    "OPERATOR_TEST_SKIP_AZURE", default=False)
+
+AZURE_CONFIG_FILE = os.getenv(
+    "OPERATOR_TEST_AZURE_CONFIG_FILE", default=None)
+
+AZURE_CONTAINER_NAME = os.getenv(
+    "OPERATOR_TEST_AZURE_CONTAINER_NAME", default=None)
+
 
 # k8s
 K8S_CLUSTER_NAME = os.getenv(

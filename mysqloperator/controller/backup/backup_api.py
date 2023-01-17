@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -21,7 +21,7 @@ class Snapshot:
     def parse(self, spec: dict, prefix: str) -> None:
         storage = dget_dict(spec, "storage", prefix)
         self.storage = StorageSpec(
-            ["ociObjectStorage", "persistentVolumeClaim", "s3"])
+            ["ociObjectStorage", "s3", "azure", "persistentVolumeClaim"])
         self.storage.parse(storage, prefix+".storage")
 
     def __eq__(self, other : 'Snapshot') -> bool:

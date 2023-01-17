@@ -22,6 +22,15 @@ def wait_operator(ns):
                 return True
         return False
 
+    def store_timeout_diagnostics():
+        reason = ""
+        for po in kutil.ls_po(ns, pattern="mysql-operator-.*"):
+            operator_pod = po["NAME"]
+            kutil.store_operator_diagnostics(ns, operator_pod)
+            reason += f"Timeout waiting for operator {ns}/{operator_pod}"
+        return reason
+
+    Timeout = 600
     i = 0
     while 1:
         if check_ready():
@@ -29,6 +38,9 @@ def wait_operator(ns):
         i += 1
         if i == 1:
             print("Waiting for operator to come up...")
+        if i == Timeout:
+            reason = store_timeout_diagnostics()
+            raise Exception(reason)
         time.sleep(1)
 
 

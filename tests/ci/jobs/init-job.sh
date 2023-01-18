@@ -22,14 +22,24 @@ $CI_DIR/registry/charge-local-registry.sh $REMOTE_REGISTRY_ADDRESS $REMOTE_REPOS
 
 # push images only for a build triggered from concourse (for dev branches we build images on our own)
 if [[ $OPERATOR_INTERNAL_BUILD == 'false' ]]; then
-	# push the operator image to the local registry
-	docker pull ${OPERATOR_IMAGE}
-	if [ $? -ne 0 ]; then
-		echo "cannot pull operator image ${OPERATOR_IMAGE}"
-		exit 2
+
+	# prepare community image (needed only for SysQA flow for enterprise edition)
+	if [[ -n $OPERATOR_IMAGE ]]; then
+		# if the community image was provided as param, then just pull it...
+		docker pull ${OPERATOR_IMAGE}
+		if [ $? -ne 0 ]; then
+			echo "cannot pull community operator image ${OPERATOR_IMAGE}"
+			exit 2
+		fi
+		# ... and tag before push...
+		docker tag ${OPERATOR_IMAGE} ${LOCAL_REGISTRY_OPERATOR_IMAGE}
+	else
+		# ...else build a "stub" community image
+		$CI_DIR/registry/build-community-image.sh $OPERATOR_ENTERPRISE_IMAGE $LOCAL_REGISTRY_OPERATOR_IMAGE
 	fi
-	docker tag ${OPERATOR_IMAGE} ${LOCAL_REGISTRY_OPERATOR_IMAGE}
+	# push the community operator image to the local registry
 	docker push ${LOCAL_REGISTRY_OPERATOR_IMAGE}
+
 
 	# prepare enterprise image (temporary patch until we will have it in our hub)
 	if [[ -n $OPERATOR_ENTERPRISE_IMAGE ]]; then
@@ -39,12 +49,13 @@ if [[ $OPERATOR_INTERNAL_BUILD == 'false' ]]; then
 			echo "cannot pull enterprise operator image ${OPERATOR_ENTERPRISE_IMAGE}"
 			exit 2
 		fi
-		# ... and tag to push it...
+		# ... and tag before push...
 		docker tag ${OPERATOR_ENTERPRISE_IMAGE} ${LOCAL_REGISTRY_ENTERPRISE_OPERATOR_IMAGE}
 	else
 		# ...else build a "stub" enterprise image
 		$CI_DIR/registry/build-enterprise-image.sh $OPERATOR_IMAGE $LOCAL_REGISTRY_ENTERPRISE_OPERATOR_IMAGE
 	fi
+	# push the enterprise operator image to the local registry
 	docker push ${LOCAL_REGISTRY_ENTERPRISE_OPERATOR_IMAGE}
 fi
 

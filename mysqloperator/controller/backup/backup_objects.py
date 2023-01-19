@@ -11,8 +11,7 @@ from copy import deepcopy
 from .backup_api import BackupProfile, BackupSchedule, MySQLBackupSpec
 from .. import utils, config, consts
 from .. innodbcluster.cluster_api import InnoDBClusterSpec
-from .. kubeutils import api_cron_job
-
+from .. kubeutils import api_cron_job, k8s_cluster_domain
 
 def prepare_backup_secrets(spec: InnoDBClusterSpec) -> dict:
     """
@@ -44,6 +43,8 @@ data:
 
 
 def prepare_backup_job(jobname: str, spec: MySQLBackupSpec) -> dict:
+    cluster_domain = k8s_cluster_domain(None)
+
     # No need to namespace it. A namespaced job will be created by the caller
     tmpl = f"""
 apiVersion: batch/v1
@@ -128,6 +129,8 @@ spec:
         env:
         - name: MYSQLSH_USER_CONFIG_HOME
           value: /mysqlsh
+        - name: MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN
+          value: {cluster_domain}
         volumeMounts:
         - name: shellhome
           mountPath: /mysqlsh

@@ -62,8 +62,8 @@ spec:
               command:
               - cat
               - /tmp/mysql-operator-ready
-              initialDelaySeconds: 1
-              periodSeconds: 3
+            initialDelaySeconds: 1
+            periodSeconds: 3
           volumeMounts:
             - name: mysqlsh-home
               mountPath: /mysqlsh

@@ -67,11 +67,16 @@ spec:
           volumeMounts:
             - name: mysqlsh-home
               mountPath: /mysqlsh
+            - name: tmpdir
+              mountPath: /tmp
           securityContext:
+            runAsUser: 2
             allowPrivilegeEscalation: false
             privileged: false
             readOnlyRootFilesystem: true
       volumes:
         - name: mysqlsh-home
+          emptyDir: {}
+        - name: tmpdir
           emptyDir: {}
       serviceAccountName: mysql-operator-sa

@@ -84,23 +84,31 @@ class MinikubeEnvironment(BaseEnvironment):
         if verbose:
             print('done')
 
-    def start_cluster(self, nodes, version, registry_cfg_path):
+    def start_cluster(self, nodes, node_memory, version, registry_cfg_path):
         assert registry_cfg_path is None
         args = [g_ts_cfg.env_binary_path, "start", f"--profile={g_ts_cfg.k8s_cluster}"]
         opts = os.getenv("TEST_MINIKUBE_OPTIONS")
         if opts:
             args += opts.split(" ")
+
         if nodes and nodes > 1:
             args.append(f"--nodes={nodes}")
+
+        if node_memory:
+            args.append(f"--memory={node_memory}m")
+
         if version:
             args.append(f"--kubernetes-version={version}")
+
         if self.operator_mount_path:
             args += ["--mount", f"--mount-string={self.operator_mount_path}:{self.operator_host_path}"]
         if self._mounts:
             for mount in self._mounts:
                 args += ["--mount", f"--mount-string={mount}"]
+
         if g_ts_cfg.image_registry:
             args.append(f"--insecure-registry={self.resolve_registry()}")
+        print(f"starting cluster: {args}")
         subprocess.check_call(args)
 
     def stop_cluster(self):

@@ -31,13 +31,17 @@ class K3dEnvironment(BaseEnvironment):
     def resolve_context(self, cluster_name):
         return f"k3d-{cluster_name}"
 
-    def start_cluster(self, nodes, version, registry_cfg_path):
+    def start_cluster(self, nodes, node_memory, version, registry_cfg_path):
         args = [g_ts_cfg.env_binary_path, "cluster", "create", g_ts_cfg.k8s_cluster, "--timeout", "5m"]
 
         if nodes and nodes > 1:
             # agents are additional nodes, by default there is single server node (see also k3d option
             # --servers for more details)
             args.append(f"--agents={nodes - 1}")
+
+        if node_memory:
+            args.append(f"--servers-memory={node_memory}m")
+            args.append(f"--agents-memory={node_memory}m")
 
         if version:
             args.append(f"--image={version}")
@@ -57,6 +61,7 @@ class K3dEnvironment(BaseEnvironment):
         args += self.add_proxy_env("HTTPS_PROXY")
         args += self.add_proxy_env("NO_PROXY")
 
+        print(f"starting cluster: {args}")
         subprocess.check_call(args)
 
         # connect network of the cluster to the local image registry

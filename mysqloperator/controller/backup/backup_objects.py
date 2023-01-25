@@ -263,7 +263,7 @@ spec:
       backoffLimit: 0
       template:
         spec:
-          secutiryContext:
+          securityContext:
             allowPrivilegeEscalation: false
             privileged: false
             readOnlyRootFilesystem: true

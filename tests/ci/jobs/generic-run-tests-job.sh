@@ -58,6 +58,10 @@ if [[ -n ${OTE_MULTIPLE_NODES} ]]; then
 	TEST_OPTIONS="$TEST_OPTIONS --nodes=$OPERATOR_NODES_COUNT"
 fi
 
+if [[ -n ${OPERATOR_NODE_MEMORY} ]]; then
+	TEST_OPTIONS="$TEST_OPTIONS --node-memory=$OPERATOR_NODE_MEMORY"
+fi
+
 OTE_LOG_PREFIX=$K8S_DRIVER-build-$BUILD_NUMBER
 OTE_BUILD_TAG=ote-$OTE_LOG_PREFIX
 
@@ -116,7 +120,7 @@ if [[ -n ${OPERATOR_K8S_VERSION} ]]; then
 	JOB_BADGE="${JOB_BADGE}_${OPERATOR_K8S_VERSION}"
 fi
 if [[ -n ${OTE_MULTIPLE_NODES} ]]; then
-	JOB_BADGE="${JOB_BADGE}_${OPERATOR_NODES_COUNT}-nodes"
+	JOB_BADGE="${JOB_BADGE}-${OPERATOR_NODES_COUNT}_nodes"
 fi
 JOB_BADGE=$(sed -e 's/[.:\/]/_/g' <<< $JOB_BADGE)
 sed -i "s/=\"e2e.mysqloperator./=\"$JOB_BADGE.e2e.mysqloperator./g" ./xml/*.xml
@@ -172,8 +176,15 @@ echo "path: ${ENV_BINARY_PATH}" >> $RUNTIME_ENV_LOG
 if [[ -n ${OPERATOR_K8S_VERSION} ]]; then
 	echo "custom k8s version: ${OPERATOR_K8S_VERSION}" >> $RUNTIME_ENV_LOG
 fi
+# workers / nodes
+if [[ -n ${OPERATOR_WORKERS_COUNT} ]]; then
+	echo "workers: ${OPERATOR_WORKERS_COUNT}" >> $RUNTIME_ENV_LOG
+fi
 if [[ -n ${OTE_MULTIPLE_NODES} ]]; then
-	echo "nodes: ${OPERATOR_NODES_COUNT}" >> $RUNTIME_ENV_LOG
+	echo "nodes per worker: ${OPERATOR_NODES_COUNT}" >> $RUNTIME_ENV_LOG
+fi
+if [[ -n ${OPERATOR_NODE_MEMORY} ]]; then
+	echo "memory per node: ${OPERATOR_NODE_MEMORY}MB" >> $RUNTIME_ENV_LOG
 fi
 # kubectl
 KUBECTL_VERSION=$(${KUBECTL_PATH} version --client -o json | jq '.clientVersion.gitVersion')

@@ -117,6 +117,7 @@ if __name__ == '__main__':
     opt_debug = False
     opt_verbosity = 2
     opt_nodes = None
+    opt_node_memory = None
     opt_kube_version = None
     opt_setup = True
     opt_load_images = False
@@ -146,6 +147,8 @@ if __name__ == '__main__':
             g_ts_cfg.kubectl_path = arg.partition("=")[-1]
         elif arg.startswith("--nodes="):
             opt_nodes = int(arg.split("=")[-1])
+        elif arg.startswith("--node-memory="):
+            opt_node_memory = int(arg.split("=")[-1])
         elif arg.startswith("--cluster="):
             g_ts_cfg.k8s_cluster = arg.partition("=")[-1]
         elif arg == "--use-current-context":
@@ -263,7 +266,7 @@ if __name__ == '__main__':
                 driver.mount_operator_path(opt_mount_operator_path)
 
             driver.setup_cluster(
-                nodes=opt_nodes, version=opt_kube_version, registry_cfg_path=opt_registry_cfg_path,
+                nodes=opt_nodes, node_memory=opt_node_memory, version=opt_kube_version, registry_cfg_path=opt_registry_cfg_path,
                 perform_setup=opt_setup, mounts=opt_mounts, custom_dns=opt_custom_dns, cleanup=opt_cleanup)
 
             if opt_load_images:

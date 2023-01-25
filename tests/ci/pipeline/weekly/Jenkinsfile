@@ -81,17 +81,17 @@ pipeline {
 					// https://github.com/kubernetes/kubernetes/releases
 					// curl -L https://dl.k8s.io/release/v1.23.14/bin/linux/amd64/kubectl -o kubectl-v1.23.14
 					// curl -L https://github.com/kubernetes/minikube/releases/download/v1.27.1/minikube-linux-amd64 -o minikube-v1.27.1
-					// format of values: 'minikube-version;k8s-version;kubectl-version;workers-count;nodes-count-per-worker',
-					//				e.g. 'minikube-v1.22.0;v1.21.5;kubectl-v1.21.14;5;1' - 5 workers with 1 node each
-					// 					 'minikube-v1.25.2;v1.23.4;kubectl-v1.23.4;3;2' - 3 workers with 2 nodes each
+					// format of values: 'minikube-version;k8s-version;kubectl-version;workers-count;nodes-count-per-worker;node-memory-limit',
+					//				e.g. 'minikube-v1.22.0;v1.21.5;kubectl-v1.21.14;5;1;8192' - 5 workers with 1 node each, 8GB limit per node
+					// 					 'minikube-v1.25.2;v1.23.4;kubectl-v1.23.4;3;2;4096' - 3 workers with 2 nodes each, 4GB limit per node
 					axis {
 						name 'K8S_VERSION'
-						values 'minikube-v1.22.0;v1.21.5;kubectl-v1.21.14;3;1',
-							'minikube-v1.24.0;v1.22.5;kubectl-v1.22.17;3;1',
-							'minikube-v1.25.2;v1.23.4;kubectl-v1.23.4;3;1',
-							'minikube-v1.26.1;v1.24.1;kubectl-v1.24.8;3;1',
-							'minikube-v1.28.0;v1.25.5;kubectl-v1.26.0;3;1',
-							'minikube-v1.27.1;v1.25.2;kubectl-v1.25.5;1;3'
+						values 'minikube-v1.22.0;v1.21.5;kubectl-v1.21.14;3;1;8192',
+							'minikube-v1.24.0;v1.22.5;kubectl-v1.22.17;3;1;8192',
+							'minikube-v1.25.2;v1.23.4;kubectl-v1.23.4;3;1;8192',
+							'minikube-v1.26.1;v1.24.1;kubectl-v1.24.8;3;1;8192',
+							'minikube-v1.28.0;v1.25.5;kubectl-v1.26.0;3;1;8192',
+							'minikube-v1.27.1;v1.25.2;kubectl-v1.25.5;1;2;8192'
 							// 'minikube-v1.28.0;v1.26.0;kubectl-v1.26.0;3;1',
 							// 'minikube-v1.28.0;v1.26.0;kubectl-v1.26.0;1;2'
 					}
@@ -101,8 +101,8 @@ pipeline {
 						steps {
 							script {
 								minikubeRuns++
-								def (env_binary_path, k8s_version, kubectl_path, workers_count, nodes_count) =  "${K8S_VERSION}".split(';')
-								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [$env_binary_path, $k8s_version, $kubectl_path, $workers_count, $nodes_count]"
+								def (env_binary_path, k8s_version, kubectl_path, workers_count, nodes_count, node_memory) =  "${K8S_VERSION}".split(';')
+								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [$env_binary_path, $k8s_version, $kubectl_path, $workers_count, $nodes_count, $node_memory]"
 								catchError {
 									build job: "${env.WORKERS_FOLDER}/${K8S_ENVIRONMENT}", parameters: [
 										string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
@@ -113,6 +113,7 @@ pipeline {
 										string(name: 'OPERATOR_KUBECTL_PATH', value: kubectl_path),
 										string(name: 'OPERATOR_WORKERS_COUNT', value: workers_count),
 										string(name: 'OPERATOR_NODES_COUNT', value: nodes_count),
+										string(name: 'OPERATOR_NODE_MEMORY', value: node_memory),
 										booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
 									]
 								}
@@ -156,18 +157,20 @@ pipeline {
 					// https://github.com/k3d-io/k3d/releases
 					// https://hub.docker.com/r/rancher/k3s/tags
 					// curl -L https://github.com/k3d-io/k3d/releases/download/v5.4.6/k3d-linux-amd64 -o k3d-v5.4.6
-					// format of values: 'k3d-version;k8s-version-image;kubectl-version;workers-count;nodes-count-per-worker',
-					//				e.g. 'k3d-v5.2.2;rancher/k3s:v1.21.11-k3s1;kubectl-v1.21.14;3;3' - 3 workers with 3 nodes each
-					// 					 'k3d-v5.4.4;rancher/k3s:v1.23.5-k3s1;kubectl-v1.23.14;5;1' - 5 workers with 1 node each
+					// format of values: 'k3d-version;k8s-version-image;kubectl-version;workers-count;nodes-count-per-worker;node-memory-limit',
+					//				e.g. 'k3d-v5.2.2;rancher/k3s:v1.21.11-k3s1;kubectl-v1.21.14;3;3;4096' - 3 workers with 3 nodes each, 4GB limit per node
+					// 					 'k3d-v5.4.4;rancher/k3s:v1.23.5-k3s1;kubectl-v1.23.14;5;1;8192' - 5 workers with 1 node each, 8GB limit per node
 					axis {
 						name 'K8S_VERSION'
-						values 'k3d-v5.2.2;rancher/k3s:v1.21.11-k3s1;kubectl-v1.21.14;4;1',
-							'k3d-v5.4.1;rancher/k3s:v1.22.7-k3s1;kubectl-v1.22.17;4;1',
-							'k3d-v5.4.4;rancher/k3s:v1.23.5-k3s1;kubectl-v1.23.14;4;1',
-							'k3d-v5.4.6;rancher/k3s:v1.24.7-k3s1;kubectl-v1.24.4;4;1',
-							'k3d-v5.4.6;rancher/k3s:v1.25.3-k3s1;kubectl-v1.25.4;4;1',
-							'k3d-v5.4.6;rancher/k3s:v1.26.0-k3s2;kubectl-v1.25.5;4;1',
-							'k3d-v5.4.6;rancher/k3s:v1.26.0-k3s1;kubectl-v1.25.5;2;2'
+						values 'k3d-v5.2.2;rancher/k3s:v1.21.11-k3s1;kubectl-v1.21.14;4;1;8192',
+							'k3d-v5.4.1;rancher/k3s:v1.22.7-k3s1;kubectl-v1.22.17;4;1;8192',
+							// 'k3d-v5.4.1;rancher/k3s:v1.22.7-k3s1;kubectl-v1.22.17;12;1;8192',
+							'k3d-v5.4.4;rancher/k3s:v1.23.5-k3s1;kubectl-v1.23.14;4;1;8192',
+							'k3d-v5.4.6;rancher/k3s:v1.24.7-k3s1;kubectl-v1.24.4;4;1;8192',
+							'k3d-v5.4.6;rancher/k3s:v1.25.3-k3s1;kubectl-v1.25.4;4;1;8192',
+							'k3d-v5.4.6;rancher/k3s:v1.26.0-k3s2;kubectl-v1.25.5;4;1;8192',
+							'k3d-v5.4.6;rancher/k3s:v1.26.0-k3s1;kubectl-v1.25.5;1;3;8192'
+							// 'k3d-v5.4.1;rancher/k3s:v1.22.7-k3s1;kubectl-v1.22.17;4;3;8192',
 					}
 				}
 				stages {
@@ -175,8 +178,8 @@ pipeline {
 						steps {
 							script {
 								k3dRuns++
-								def (env_binary_path, k8s_version, kubectl_path, workers_count, nodes_count) =  "${K8S_VERSION}".split(';')
-								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [$env_binary_path, $k8s_version, $kubectl_path, $workers_count, $nodes_count]"
+								def (env_binary_path, k8s_version, kubectl_path, workers_count, nodes_count, node_memory) =  "${K8S_VERSION}".split(';')
+								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [$env_binary_path, $k8s_version, $kubectl_path, $workers_count, $nodes_count, $node_memory]"
 								catchError {
 									build job: "${env.WORKERS_FOLDER}/${K8S_ENVIRONMENT}", parameters: [
 										string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
@@ -187,6 +190,7 @@ pipeline {
 										string(name: 'OPERATOR_KUBECTL_PATH', value: kubectl_path),
 										string(name: 'OPERATOR_WORKERS_COUNT', value: workers_count),
 										string(name: 'OPERATOR_NODES_COUNT', value: nodes_count),
+										string(name: 'OPERATOR_NODE_MEMORY', value: node_memory),
 										booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
 									]
 								}

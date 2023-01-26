@@ -42,6 +42,9 @@ The following envars are supported:
 * OPERATOR_TEST_K8S_CLUSTER_NAME
 * OPERATOR_TEST_K8S_CLUSTER_DOMAIN_ALIAS
 * OPERATOR_TEST_OLD_VERSION_TAG
+* OPERATOR_TEST_SKIP_AZURE
+* OPERATOR_TEST_AZURE_CONFIG_FILE
+* OPERATOR_TEST_AZURE_CONTAINER_NAME
 
 ## Command-line options
 --env=[k3d|minikube]\
@@ -66,6 +69,10 @@ set the kubernetes version to use, if not set, the default depends on the instal
 
 --nodes={number}\
     sets the number of nodes to use
+
+--node-memory={limit-in-MB}\
+    sets the amount of memory per node, limit is expressed in mega-bytes\
+    e.g. --node-memory=8192 sets 8GB memory per node
 
 --verbose|-v\
     verbose logs

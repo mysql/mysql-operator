@@ -165,3 +165,9 @@ baseServerId: 1000
 #          prefix : /
 #          bucketName: idbcluster_backup
 #          credentials: oci-credentials
+
+
+# If you would like to debug the Helm output with `helm template`, you need
+# to turn disableLookups on as during `helm template` Helm won't contact the kube API
+# and all lookups will thus fail
+disableLookups: false

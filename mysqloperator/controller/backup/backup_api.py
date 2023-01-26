@@ -144,8 +144,8 @@ class BackupSchedule:
             self.backupProfile = self.cluster_spec.get_backup_profile(self.backupProfileName)
 
             if not self.backupProfile:
-                print(f"Invalid backupProfileName '{self.backupProfileName}' in cluster {self.cluster_spec.namespace}/{self.cluster_spec.clusterName}")
-                raise ApiSpecError(f"Invalid backupProfileName '{self.backupProfileName}' in cluster {self.cluster_spec.namespace}/{self.cluster_spec.clusterName}")
+                print(f"Invalid backupProfileName '{self.backupProfileName}' in cluster {self.cluster_spec.namespace}/{self.cluster_spec.name}")
+                raise ApiSpecError(f"Invalid backupProfileName '{self.backupProfileName}' in cluster {self.cluster_spec.namespace}/{self.cluster_spec.name}")
 
     def __eq__(self, other : 'BackupSchedule') -> bool:
         assert isinstance(other, BackupSchedule)

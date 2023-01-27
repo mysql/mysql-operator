@@ -33,6 +33,10 @@ def initEnv() {
 	env.GIT_COMMIT_SHORT = sh (script: "git rev-parse --short HEAD", returnStdout: true).trim()
 	env.COMMUNITY_IMAGE_INFO = getImageInfo("${params.OPERATOR_IMAGE}")
 	env.ENTERPRISE_IMAGE_INFO = getImageInfo("${params.OPERATOR_ENTERPRISE_IMAGE}")
+
+	env.TEST_RESULTS_UNAVAILABLE = 'UNAVAILABLE'
+	env.TEST_RESULTS_SOME_AVAILABLE = 'SOME_AVAILABLE'
+	env.TEST_RESULTS_ALL_AVAILABLE = 'ALL_AVAILABLE'
 }
 
 def getInitMessage() {
@@ -52,7 +56,7 @@ def addTestResults(String k8s_env, int expectedResultsCount) {
 	def testResultsPattern = "$k8s_env-*-result.tar.bz2"
 	def testResults = findFiles glob: "**/${env.LOG_SUBDIR}/$testResultsPattern"
 	if (testResults.length == 0) {
-		return false
+		return env.TEST_RESULTS_UNAVAILABLE
 	}
 
 	def resultPattern = "${env.LOG_DIR}/$testResultsPattern"
@@ -63,7 +67,14 @@ def addTestResults(String k8s_env, int expectedResultsCount) {
 
 	def summary = junit allowEmptyResults: true, testResults: "${env.LOG_SUBDIR}/xml/*$k8s_env-*.xml"
 	echo "${summary.totalCount} tests, ${summary.passCount} passed, ${summary.failCount} failed, ${summary.skipCount} skipped"
-	return (summary.totalCount > 0) && (testResults.length == expectedResultsCount)
+
+	if (summary.totalCount > 0) {
+		if (testResults.length == expectedResultsCount) {
+			return env.TEST_RESULTS_ALL_AVAILABLE
+		}
+		return env.TEST_RESULTS_SOME_AVAILABLE
+	}
+	return env.TEST_RESULTS_UNAVAILABLE
 }
 
 def getMergedReports(String reportPattern) {
@@ -102,21 +113,19 @@ def getTestSuiteReport() {
 	testSuiteReport = "Test suite:\n"
 
 	def briefReportPath = "${env.LOG_DIR}/test_suite_brief_report.txt"
-	def ReportedErrorsMaxCount = 7
+	def ReportedErrorsMaxCount = 30
 	sh "cat $reportPath | sed -ne '1,$ReportedErrorsMaxCount p' -e '${ReportedErrorsMaxCount+1} iand more...' > $briefReportPath"
 	testSuiteReport += readFile(file: briefReportPath)
-
-	stats = getMergedStatsReports()
-	if (stats) {
-		testSuiteReport += "\nStats:\n${stats}"
-	}
 
 	echo testSuiteReport
 	return testSuiteReport
 }
 
 def anyResultsAvailable() {
-	return env.MINIKUBE_RESULTS_AVAILABLE || env.K3D_RESULTS_AVAILABLE;
+	return env.MINIKUBE_RESULT_STATUS == env.TEST_RESULTS_SOME_AVAILABLE ||
+		env.MINIKUBE_RESULT_STATUS == env.TEST_RESULTS_ALL_AVAILABLE ||
+		env.K3D_RESULT_STATUS == env.TEST_RESULTS_SOME_AVAILABLE ||
+		env.K3D_RESULT_STATUS == env.TEST_RESULTS_ALL_AVAILABLE
 }
 
 def getMergedIssuesReports() {
@@ -124,21 +133,23 @@ def getMergedIssuesReports() {
 	return getMergedReports(statsPattern)
 }
 
+def getTestsSuiteIssuesByEnv(String k8s_env, String result) {
+	switch(result) {
+		case env.TEST_RESULTS_ALL_AVAILABLE:
+			return ""
+		case env.TEST_RESULTS_SOME_AVAILABLE:
+			return "Some test results for ${k8s_env} unavailable!\n"
+		default:
+			return "No test results for ${k8s_env}!\n"
+	}
+}
+
 def getTestsSuiteIssues() {
 	sh 'ls -lRF ${LOG_DIR}'
 	def testSuiteIssues = ""
 	if (anyResultsAvailable()) {
-		if (!env.MINIKUBE_RESULTS_AVAILABLE) {
-			testSuiteIssues += "No test results for minikube!\n"
-		} else if (env.SOME_MINIKUBE_RESULTS_UNAVAILABLE) {
-			testSuiteIssues += "Some test results for minikube unavailable!\n"
-		}
-
-		if (!env.K3D_RESULTS_AVAILABLE) {
-			testSuiteIssues += "No test results for k3d!\n"
-		} else if (env.SOME_K3D_RESULTS_UNAVAILABLE) {
-			testSuiteIssues += "Some test results for k3d unavailable!\n"
-		}
+		testSuiteIssues += getTestsSuiteIssuesByEnv("minikube", env.MINIKUBE_RESULT_STATUS)
+		testSuiteIssues += getTestsSuiteIssuesByEnv("k3d", env.K3D_RESULT_STATUS)
 	} else {
 		testSuiteIssues = "No test results available!\n"
 	}
@@ -170,10 +181,12 @@ def getChangeLog() {
 		allChangesCount += changeSets[i].items.length
 	}
 
-	def ChangesMaxCount = 5
+	def listOfChanges = []
+
+	def ChangesMaxCount = 10
 	def firstChangeIndex = 0
 	if (allChangesCount > ChangesMaxCount) {
-		changesLog += "[...previous...]\n"
+		listOfChanges.add("[...previous...]")
 		firstChangeIndex = allChangesCount - ChangesMaxCount
 	}
 
@@ -183,11 +196,13 @@ def getChangeLog() {
 		for (int j = 0; j < entries.length; ++j) {
 			if (changeIndex >= firstChangeIndex) {
 				def entry = entries[j]
-				changesLog += "${entry.msg} [${entry.author}, ${new Date(entry.timestamp)}]\n"
+				listOfChanges.add("${entry.msg} [${entry.author}, ${new Date(entry.timestamp)}]")
 			}
 			++changeIndex
 		}
 	}
+
+	changesLog += listOfChanges.reverse().join("\n")
 	return changesLog
 }
 
@@ -200,7 +215,7 @@ def modifyBuildStatus(String status) {
 	}
 }
 
-def getBuildSummaryResult() {
+def getTestResults() {
 	if (!env.INIT_STAGE_SUCCEEDED) {
 		return "Init (local registry) stage failed!"
 	}
@@ -218,7 +233,7 @@ def getBuildSummaryResult() {
 	return testsSuiteIssues + "Test stage failed!"
 }
 
-def getBuildSummaryColor() {
+def getBuildResultColor() {
 	buildStatus = env.BUILD_STATUS
 	if (buildStatus.contains("failure") || buildStatus.contains("aborted")) {
 		return "danger"
@@ -236,12 +251,41 @@ def getBuildSummaryColor() {
 	return "good"
 }
 
-def getBuildSummaryMessage() {
+def getBuildSummary() {
 	return """${env.BUILD_NOTIFICATION_HEADER}
 Status: ${env.BUILD_STATUS}
-Duration: ${env.BUILD_DURATION}
-${env.CHANGE_LOG}
-${getBuildSummaryResult()}"""
+Duration: ${env.BUILD_DURATION}"""
+}
+
+def getBuildStats() {
+	def stats = getMergedStatsReports()
+	if (!stats) {
+		stats = "Not found!"
+	}
+	return "Stats:\n${stats}"
+}
+
+def getBuildAttachments() {
+	def summaryColor = getBuildResultColor()
+	def attachments = [
+		[
+			text: getBuildSummary(),
+			color: summaryColor
+		],
+		[
+			text: "${env.CHANGE_LOG}",
+			color: summaryColor
+		],
+		[
+			text: getTestResults(),
+			color: summaryColor
+		],
+		[
+			text: getBuildStats(),
+			color: summaryColor
+		]
+	]
+	return attachments
 }
 
 return this

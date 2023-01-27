@@ -72,6 +72,8 @@ pipeline {
 								string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
 								string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
 								string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
+								string(name: 'OPERATOR_WORKERS_COUNT', value: '3'),
+								string(name: 'OPERATOR_NODE_MEMORY', value: '8192'),
 								booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
 							]
 						}
@@ -88,11 +90,7 @@ pipeline {
 						}
 						cleanup {
 							script {
-								if (utils.addTestResults("minikube", 1)) {
-									env.MINIKUBE_RESULTS_AVAILABLE = true
-								} else {
-									env.SOME_MINIKUBE_RESULTS_UNAVAILABLE = true
-								}
+								env.MINIKUBE_RESULT_STATUS = utils.addTestResults("minikube", 1)
 							}
 						}
 					}
@@ -113,6 +111,8 @@ pipeline {
 								string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
 								string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
 								string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
+								string(name: 'OPERATOR_WORKERS_COUNT', value: '4'),
+								string(name: 'OPERATOR_NODE_MEMORY', value: '8192'),
 								booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
 							]
 						}
@@ -129,11 +129,7 @@ pipeline {
 						}
 						cleanup {
 							script {
-								if (utils.addTestResults("k3d", 1)) {
-									env.K3D_RESULTS_AVAILABLE = true
-								} else {
-									env.SOME_K3D_RESULTS_UNAVAILABLE = true
-								}
+								env.K3D_RESULT_STATUS = utils.addTestResults("k3d", 1)
 							}
 						}
 					}
@@ -222,10 +218,9 @@ pipeline {
 		}
 		cleanup {
 			script {
-				summaryMessage = utils.getBuildSummaryMessage()
 				slackSend channel: "${env.SLACK_CHANNEL}",
-					color: utils.getBuildSummaryColor(),
-					message: summaryMessage
+					color: utils.getBuildResultColor(),
+					attachments: utils.getBuildAttachments()
 			}
 		}
 	}

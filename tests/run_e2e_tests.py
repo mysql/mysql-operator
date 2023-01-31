@@ -151,6 +151,8 @@ if __name__ == '__main__':
             opt_node_memory = int(arg.split("=")[-1])
         elif arg.startswith("--cluster="):
             g_ts_cfg.k8s_cluster = arg.partition("=")[-1]
+        elif arg.startswith("--cluster-domain-alias="):
+            g_ts_cfg.k8s_cluster_domain_alias = arg.partition("=")[-1]
         elif arg == "--use-current-context":
             g_ts_cfg.k8s_context = kutil.get_current_context()
             g_ts_cfg.k8s_cluster = g_ts_cfg.k8s_context
@@ -197,17 +199,25 @@ if __name__ == '__main__':
         elif arg.startswith("--repository="):
             g_ts_cfg.image_repository = arg.partition("=")[-1]
         elif arg.startswith("--operator-tag="):
-            g_ts_cfg.operator_version_tag=arg.partition("=")[-1]
+            g_ts_cfg.operator_version_tag = arg.partition("=")[-1]
+        elif arg.startswith("--old-operator-tag="):
+            g_ts_cfg.operator_old_version_tag = arg.partition("=")[-1]
         elif arg.startswith("--operator-pull-policy="):
-            g_ts_cfg.operator_pull_policy=arg.partition("=")[-1]
+            g_ts_cfg.operator_pull_policy = arg.partition("=")[-1]
         elif arg == "--skip-enterprise":
             g_ts_cfg.enterprise_skip = True
         elif arg == "--skip-oci":
             g_ts_cfg.oci_skip = True
         elif arg.startswith("--oci-config="):
-            g_ts_cfg.oci_config_path=arg.partition("=")[-1]
+            g_ts_cfg.oci_config_path = arg.partition("=")[-1]
         elif arg.startswith("--oci-bucket="):
-            g_ts_cfg.oci_bucket_name=arg.partition("=")[-1]
+            g_ts_cfg.oci_bucket_name = arg.partition("=")[-1]
+        elif arg == "--skip-azure":
+            g_ts_cfg.azure_skip = True
+        elif arg.startswith("--azure-config="):
+            g_ts_cfg.azure_config_file = arg.partition("=")[-1]
+        elif arg.startswith("--azure-container="):
+            g_ts_cfg.azure_container_name = arg.partition("=")[-1]
         elif arg.startswith("--vault-cfg="):
             g_ts_cfg.vault_cfg_path=arg.partition("=")[-1]
         elif arg.startswith("--suite="):

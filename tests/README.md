@@ -103,6 +103,10 @@ set the kubernetes version to use, if not set, the default depends on the instal
     at variable K8S_CLUSTER_NAME)\
     by default, the test suite runner creates a new cluster on its own
 
+--cluster-domain-alias={name}\
+    used in test case(s) to check support for custom cluster domain alias\
+    by default, it is empty and corresponding test case(s) are skipped
+
 --use-current-context\
     tests will run in the current context (returned with ```kubectl config current-context```);
     no setup will be performed (similarly as for --no-setup flag)
@@ -164,7 +168,11 @@ mirrors:
     the image repository, the default value is "mysql"
 
 --operator-tag={tag}\
-    set the operator tag, e.g. 8.0.29-2.0.4 or latest, by default it is the currently developed version
+    set the operator tag, e.g. `8.0.29-2.0.4` or latest, by default it is the currently developed version
+
+--old-operator-tag={tag}\
+    set the old operator tag used in the upgrade operator test case, e.g. `8.0.31-2.0.7`\
+    the default can be found in [defaults.py](setup/defaults.py) and it is at least one generation older than the current version
 
 --operator-pull-policy=[Never|IfNotPresent|Always]\
     set the pull policy, the default can be found in [defaults.py](setup/defaults.py)
@@ -222,6 +230,23 @@ customized according to a local environment:
 --oci-bucket={name}\
     name of an OCI bucket used to perform backup/restore tests\
     by default it is empty, then all OCI-related tests are skipped
+
+--skip-azure\
+    force to skip all Azure tests even if Azure is properly configured, by default it is false
+
+--azure-config={path}\
+    path to an Azure config file; by default the path is empty, then all Azure-related tests are skipped\
+    below is a sample config file with fake data used as an illustration of what format is expected:
+```ini
+    [storage]
+    account=account_name
+    key=abcdefghijklmnoprstuvwxyzABCDEFGHIJKLMNOPRSTUVWXYZ012345678901/ABCDEFGHI0/KBCDEfghijKL==
+    connection_string=BlobEndpoint=http://10.0.2.15:10000/account_name
+```
+
+--azure-container={name}\
+    Azure storage container name\
+    by default it is empty, then all Azure-related tests are skipped
 
 --vault-cfg={path}\
     Used for OCI vault-related tests. See also profile VAULT in --oci-config. It contains a single section [OCI]

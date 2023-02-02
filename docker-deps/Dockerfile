@@ -1,9 +1,9 @@
-# Copyright (c) 2021, Oracle and/or its affiliates.
+# Copyright (c) 2021, 2023 Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
-FROM oraclelinux:8 AS pip-stage
+FROM container-registry.oracle.com/os/oraclelinux:8 AS pip-stage
 
 ARG PYTHON_TARBALL
 ARG PYTHON_ROOT
@@ -19,7 +19,7 @@ COPY requirements.txt .
 
 RUN pip3 install --target=/tmp/site-packages -r requirements.txt
 
-FROM oraclelinux:8-slim
+FROM container-registry.oracle.com/os/oraclelinux:8-slim
 
 COPY --from=pip-stage /tmp/site-packages /usr/lib/mysqlsh/python-packages
 

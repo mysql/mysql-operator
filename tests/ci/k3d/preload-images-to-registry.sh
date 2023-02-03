@@ -27,13 +27,43 @@ set -vx
 
 REGISTRY=registry.localhost:5000
 
-IMAGES_v5_1_0="rancher/k3d-proxy:5.1.0 rancher/k3d-tools:5.1.0 rancher/pause:3.1 rancher/coredns-coredns:1.8.3 rancher/metrics-server:v0.3.6 rancher/klipper-helm:v0.6.4-build20210813 rancher/local-path-provisioner:v0.0.19 rancher/library-traefik:2.4.8 rancher/klipper-lb:v0.2.0 rancher/library-busybox:1.32.1"
-
-IMAGES_v5_3_0="rancher/k3d-proxy:5.3.0 rancher/k3d-tools:5.3.0 rancher/pause:3.1 rancher/mirrored-coredns-coredns:1.8.6 rancher/mirrored-metrics-server:v0.5.2 rancher/klipper-helm:v0.6.6-build20211022 rancher/local-path-provisioner:v0.0.21 rancher/mirrored-library-traefik:2.5.6 rancher/klipper-lb:v0.3.4 rancher/library-busybox:1.32.1"
-
-IMAGES_v5_4_0="ghcr.io/k3d-io/k3d-proxy:5.4.4 ghcr.io/k3d-io/k3d-tools:5.4.4 rancher/mirrored-pause:3.6 rancher/mirrored-coredns-coredns:1.9.1 rancher/mirrored-metrics-server:v0.5.2 rancher/klipper-helm:v0.7.3-build20220613 rancher/local-path-provisioner:v0.0.21 rancher/mirrored-library-traefik:2.6.2 rancher/klipper-lb:v0.3.5 rancher/library-busybox:1.32.1"
-
-IMAGES=$IMAGES_v5_1_0
+read -r -d '\t' IMAGES << EOM
+	ghcr.io/k3d-io/k3d-proxy:5.4.4
+	ghcr.io/k3d-io/k3d-proxy:5.4.6
+	ghcr.io/k3d-io/k3d-tools:5.4.4
+	ghcr.io/k3d-io/k3d-tools:5.4.6
+	rancher/coredns-coredns:1.8.3
+	rancher/k3d-proxy:5.1.0
+	rancher/k3d-proxy:5.3.0
+	rancher/k3d-tools:5.1.0
+	rancher/k3d-tools:5.3.0
+	rancher/klipper-helm:v0.6.4-build20210813
+	rancher/klipper-helm:v0.6.6-build20211022
+	rancher/klipper-helm:v0.7.3-build20220613
+	rancher/klipper-helm:v0.7.4-build20221121
+	rancher/klipper-lb:v0.2.0
+	rancher/klipper-lb:v0.3.4
+	rancher/klipper-lb:v0.3.5
+	rancher/klipper-lb:v0.4.0
+	rancher/library-busybox:1.32.1
+	rancher/library-traefik:2.4.8
+	rancher/local-path-provisioner:v0.0.19
+	rancher/local-path-provisioner:v0.0.21
+	rancher/local-path-provisioner:v0.0.23
+	rancher/metrics-server:v0.3.6
+	rancher/mirrored-coredns-coredns:1.8.6
+	rancher/mirrored-coredns-coredns:1.9.1
+	rancher/mirrored-coredns-coredns:1.9.4
+	rancher/mirrored-library-busybox:1.34.1
+	rancher/mirrored-library-traefik:2.5.6
+	rancher/mirrored-library-traefik:2.6.1
+	rancher/mirrored-library-traefik:2.6.2
+	rancher/mirrored-library-traefik:2.9.4
+	rancher/mirrored-metrics-server:v0.5.2
+	rancher/mirrored-metrics-server:v0.6.2
+	rancher/mirrored-pause:3.6
+	rancher/pause:3.1
+EOM
 
 HOST=ghcr.io/
 for IMAGE_PULL in $IMAGES; do

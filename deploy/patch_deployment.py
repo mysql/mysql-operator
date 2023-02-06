@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) 2021, Oracle and/or its affiliates.
+# Copyright (c) 2021, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -38,7 +38,7 @@ def process(config: object):
     container_spec = operator["spec"]["template"]["spec"]["containers"][0]
     container_spec["imagePullPolicy"] = config.pull_policy
     if config.prefix:
-        container_spec["image"] = container_spec["image"].replace("mysql", config.prefix, 1)
+        container_spec["image"] = container_spec["image"].replace("container-registry.oracle.com/mysql", config.prefix, 1)
         if config.prefix != "mysql":
             add_env(container_spec, "MYSQL_OPERATOR_DEFAULT_REPOSITORY", config.prefix)
 

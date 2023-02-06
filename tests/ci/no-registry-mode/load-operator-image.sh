@@ -1,16 +1,16 @@
 #!/bin/bash
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
 
 # load and tag operator from archive
-# usage: <k8s-shell-archive> <mysql-shell-image> <mysql-shell-enterprise-image> <deploy-operator-path>
-# e.g.: shell-k8s-shell.bz2 mysql/mysql-shell:8.0.24 mysql/mysql-shell-commercial:8.0.24 ./python/kubernetes/deploy/deploy-operator.yaml
+# usage: <k8s-operator-archive> <mysql-operator-image> <mysql-operator-enterprise-image> <deploy-operator-path>
+# e.g.: operator-k8s-operator.bz2 mysql/community-operator:8.0.24 mysql/enterprise-operator:8.0.24 ./python/kubernetes/deploy/deploy-operator.yaml
 
 if [ "$#" -ne 4 ]; then
-    echo "usage: <k8s-shell-archive> <mysql-shell-image> <mysql-shell-enterprise-image> <deploy-operator-path>"
+    echo "usage: <k8s-operator-archive> <mysql-operator-image> <mysql-operator-enterprise-image> <deploy-operator-path>"
 	exit 1
 fi
 

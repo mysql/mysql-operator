@@ -156,7 +156,7 @@ spec:
     spec:
       containers:
         - name: mysql-operator
-          image: mysql/mysql-operator:8.0.33-2.0.9
+          image: container-registry.oracle.com/mysql/community-operator:8.0.33-2.0.9
           imagePullPolicy: IfNotPresent
           args:
             [

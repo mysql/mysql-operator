@@ -153,11 +153,10 @@ Use `describe` or see the documentation for additional information.
 
 ### Using MySQL Shell
 
-This example creates a new container named `myshell` using the `mysql/mysql-operator` image (which is used because 
-it contains MySQL Shell; other images such as `mysql/mysql-server:8.0` work too), and immediately executes MySQL Shell:
+This example creates a new container named `myshell` using the `container-registry.oracle.com/mysql/community-operator` image, and immediately executes MySQL Shell:
         
 ```sh
-$> kubectl run --rm -it myshell --image=mysql/mysql-operator -- mysqlsh
+$> kubectl run --rm -it myshell --image=container-registry.oracle.com/mysql/community-operator -- mysqlsh
 If you don't see a command prompt, try pressing enter.
 
 MySQL JS>  \connect root@mycluster

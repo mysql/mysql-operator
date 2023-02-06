@@ -1,18 +1,18 @@
 #!/bin/bash
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
 
-# ensure minikube uses proper k8s-shell image
+# ensure minikube uses proper operator image
 # we've noticed that 'minikube image load' may work weirdly when another image with
 # the same name was already loaded in the past, i.e. it may be not updated
-# usage: <latest-k8s-shell-image> <mysql-shell-image> <mysql-shell-enterprise-image>
-# e.g. jenkins-shell/mysql-shell-k8s:35 mysql/mysql-shell:8.0.24 mysql/mysql-shell-commercial:8.0.24
+# usage: <latest-k8s-operator-image> <mysql-operator-image> <mysql-operator-enterprise-image>
+# e.g. jenkins-operator/mysql-operator-k8s:35 mysql/community-operator:8.0.24 mysql/enterprise-operator:8.0.24
 
 if [ "$#" -ne 3 ]; then
-    echo "usage: <latest-k8s-shell-image> <mysql-shell-image> <mysql-shell-enterprise-image>"
+    echo "usage: <latest-k8s-operator-image> <mysql-operator-image> <mysql-operator-enterprise-image>"
 	exit 1
 fi
 

@@ -87,7 +87,7 @@ def pod_spec_correct_input() -> dict:
             "containers":[
                 {
                     "name": "operator-backup-job",
-                    "image": "example.com/mysql/mysql-operator:8.0.26-2.0.2",
+                    "image": "example.com/mysql/community-operator:8.0.26-2.0.2",
                     "imagePullPolicy": "IfNotPresent",
                     "command":[
                         "mysqlsh",
@@ -115,7 +115,7 @@ def pod_spec_correct_output() -> dict:
             "containers":[
                 {
                     "name":"operator-backup-job",
-                    "image":"example.com/mysql/mysql-operator:8.0.26-2.0.2",
+                    "image":"example.com/mysql/community-operator:8.0.26-2.0.2",
                     "imagePullPolicy":"IfNotPresent",
                     "command":[
                     "mysqlsh",
@@ -225,7 +225,7 @@ def test_parse_correct(object_factory, storage_correct) -> None:
     for object_template in object_factory:
         test_obj = copy.deepcopy(object_template)
         test_obj.parse(storage_correct, "test")
-        
+
         assert isinstance(test_obj.storage, StorageSpec)
         assert test_obj.storage.persistentVolumeClaim is None
         assert test_obj.storage.ociObjectStorage is not None
@@ -239,7 +239,7 @@ def test_parse_no_prefix(object_factory, storage_no_prefix) -> None:
     for object_template in object_factory:
         test_obj = copy.deepcopy(object_template)
         test_obj.parse(storage_no_prefix, "test")
-        
+
         assert isinstance(test_obj.storage, StorageSpec)
         assert test_obj.storage.persistentVolumeClaim is None
         assert test_obj.storage.ociObjectStorage is not None
@@ -248,7 +248,7 @@ def test_parse_no_prefix(object_factory, storage_no_prefix) -> None:
         assert test_obj.storage.ociObjectStorage.ociCredentials == 'oci-credentials'
         assert test_obj.storage.ociObjectStorage.prefix == ''
 
-    
+
 def test_parse_no_bucket(object_factory, storage_no_bucket) -> None:
     for object_template in object_factory:
         test_obj = copy.deepcopy(object_template)

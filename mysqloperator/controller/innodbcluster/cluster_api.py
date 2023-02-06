@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -661,7 +661,7 @@ class InnoDBClusterSpec:
 
     imagePullPolicy: ImagePullPolicy = config.default_image_pull_policy
     imagePullSecrets: Optional[List[dict]] = None
-    imageRepository: str = config.DEFAULT_IMAGE_REPOSITORY if edition == Edition.community else config.DEFAULT_IMAGE_REPOSITORY_EE
+    imageRepository: str = config.DEFAULT_IMAGE_REPOSITORY
 
     serviceAccountName: Optional[str] = None
 
@@ -731,9 +731,8 @@ class InnoDBClusterSpec:
                 spec, "edition", "spec", default_value=config.OPERATOR_EDITION,
                 enum_type=Edition)
 
-            # The Repository depends on the edition, by default, but user can override
             if "imageRepository" not in spec:
-                self.imageRepository = config.DEFAULT_IMAGE_REPOSITORY if self.edition == Edition.community else config.DEFAULT_IMAGE_REPOSITORY_EE
+                self.imageRepository = config.DEFAULT_IMAGE_REPOSITORY
 
         if "imagePullPolicy" in spec:
             self.imagePullPolicy = dget_enum(

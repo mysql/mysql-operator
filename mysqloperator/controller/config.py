@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -43,18 +43,13 @@ DEFAULT_ROUTER_VERSION_TAG = DEFAULT_VERSION_TAG
 # This is used for the sidecar. The operator version is deploy-operator.yaml
 DEFAULT_OPERATOR_VERSION_TAG = "8.0.33-2.0.9"
 
-# TODO - unify those two settings (if we use OCR for community as well we can use the same thing)
 DEFAULT_IMAGE_REPOSITORY = os.getenv(
-    "MYSQL_OPERATOR_DEFAULT_REPOSITORY", default="mysql").rstrip('/')
-
-DEFAULT_IMAGE_REPOSITORY_EE = os.getenv(
     "MYSQL_OPERATOR_DEFAULT_REPOSITORY", default="container-registry.oracle.com/mysql").rstrip('/')
 
-MYSQL_SERVER_IMAGE = "mysql-server"
-MYSQL_ROUTER_IMAGE = "mysql-router"
-MYSQL_OPERATOR_IMAGE = "mysql-operator"
+MYSQL_SERVER_IMAGE = "community-server"
+MYSQL_ROUTER_IMAGE = "community-router"
+MYSQL_OPERATOR_IMAGE = "community-operator"
 
-# TODO
 MYSQL_SERVER_EE_IMAGE = "enterprise-server"
 MYSQL_ROUTER_EE_IMAGE = "enterprise-router"
 MYSQL_OPERATOR_EE_IMAGE = "enterprise-operator"
@@ -73,7 +68,6 @@ def log_config_banner(logger) -> None:
     logger.info(f"DEFAULT_VERSION_TAG={DEFAULT_VERSION_TAG}")
     logger.info(f"SIDECAR_VERSION_TAG={DEFAULT_OPERATOR_VERSION_TAG}")
     logger.info(f"DEFAULT_IMAGE_REPOSITORY   ={DEFAULT_IMAGE_REPOSITORY}")
-    logger.info(f"DEFAULT_IMAGE_REPOSITORY_EE={DEFAULT_IMAGE_REPOSITORY_EE}")
 
 
 def config_from_env() -> None:

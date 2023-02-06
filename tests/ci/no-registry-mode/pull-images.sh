@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -10,13 +10,13 @@
 # e.g.: ./images-list.txt
 # input sample (every three lines are in order LABEL, IMAGE_TO_PULL, IMAGE_TO_TEST, separator ---)
 # <images-list.txt>
-# mysql-server:8.0.24
-# mysql/mysql-server:8.0.24
-# mysql/mysql-server:8.0.24
+# community-server:8.0.24
+# mysql/community-server:8.0.24
+# mysql/community-server:8.0.24
 # ---
-# mysql-router:8.0.24
-# mysql/mysql-router:8.0.24
-# mysql/mysql-router:8.0.24
+# community-router:8.0.24
+# mysql/community-router:8.0.24
+# mysql/community-router:8.0.24
 # ---
 # [...]
 # </images-list.txt>

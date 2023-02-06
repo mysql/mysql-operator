@@ -134,7 +134,7 @@ class MinikubeEnvironment(BaseEnvironment):
         # - create local registry registry.localhost:5000 (added registry.localhost in /etc/hosts)
         # - get host ip, it may be e.g. 10.0.2.15
         # - minikube start --insecure-registry=10.0.2.15:5000
-        # - minikube ssh && docker pull 10.0.2.15:5000/mysql/mysql-operator:8.0.25, should work
+        # - minikube ssh && docker pull 10.0.2.15:5000/mysql/community-operator:8.0.25, should work
         # - btw on the host the above pull cmd will not work if 10.0.2.15 is not added as insecure
         #     registry, but it doesn't matter, because we will need it only inside minikube
 

@@ -32,7 +32,7 @@ class K3dEnvironment(BaseEnvironment):
         return f"k3d-{cluster_name}"
 
     def start_cluster(self, nodes, node_memory, version, registry_cfg_path):
-        args = [g_ts_cfg.env_binary_path, "cluster", "create", g_ts_cfg.k8s_cluster, "--timeout", "5m"]
+        args = [g_ts_cfg.env_binary_path, "cluster", "create", g_ts_cfg.k8s_cluster, "--timeout", "5m", "--no-lb"]
 
         if nodes and nodes > 1:
             # agents are additional nodes, by default there is single server node (see also k3d option

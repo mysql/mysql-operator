@@ -104,10 +104,10 @@ def check_ssl(self, ns, pod, ca=None, crl=None, ssl_cert_days=None):
         check_verify_ca(self, ns, pod, 3306, capath, expected_host=pod)
 
         # check connecting to server with VERIFY_IDENTITY and CA directly from operator pod
-        check_connect_via_operator_pod(self, f"{pod}.mycluster-instances.{ns}.svc.cluster.local:3306", capath, ssl_mode="VERIFY_CA")
-        check_connect_via_operator_pod(self, f"{pod}.mycluster-instances.{ns}.svc.cluster.local:3306", capath, ssl_mode="VERIFY_IDENTITY")
+        check_connect_via_operator_pod(self, f"{pod}.mycluster-instances.{ns}.svc:3306", capath, ssl_mode="VERIFY_CA")
+        check_connect_via_operator_pod(self, f"{pod}.mycluster-instances.{ns}.svc:3306", capath, ssl_mode="VERIFY_IDENTITY")
     else:
-        check_connect_via_operator_pod(self, f"{pod}.mycluster-instances.{ns}.svc.cluster.local:3306", None, ssl_mode="REQUIRED")
+        check_connect_via_operator_pod(self, f"{pod}.mycluster-instances.{ns}.svc:3306", None, ssl_mode="REQUIRED")
 
 
 def check_router_ssl(self, ns, pod, ca=None, has_cert=False, crl=None):
@@ -142,9 +142,9 @@ def check_router_ssl(self, ns, pod, ca=None, has_cert=False, crl=None):
         check_verify_ca(self, ns, pod, 6446, capath, expected_host="mycluster-0")
 
         # check connecting to router with VERIFY_CA directly from operator pod to the service
-        check_connect_via_operator_pod(self, f"mycluster.{ns}.svc.cluster.local:6446", capath, ssl_mode="VERIFY_CA")
+        check_connect_via_operator_pod(self, f"mycluster.{ns}.svc:6446", capath, ssl_mode="VERIFY_CA")
         # VERIFY_IDENTITY doesn't work because we're connecting to the service
-        #check_connect_via_operator_pod(self, f"mycluster.{ns}.svc.cluster.local:6446", capath, ssl_mode="VERIFY_IDENTITY")
+        #check_connect_via_operator_pod(self, f"mycluster.{ns}.svc:6446", capath, ssl_mode="VERIFY_IDENTITY")
 
 class ClusterSSL(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS

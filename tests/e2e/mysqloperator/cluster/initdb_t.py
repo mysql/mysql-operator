@@ -98,7 +98,7 @@ spec:
   baseServerId: 2000
   initDB:
     clone:
-      donorUrl: root@mycluster-0.mycluster-instances.{self.ns}.svc.cluster.local:3306
+      donorUrl: root@mycluster-0.mycluster-instances.{self.ns}.svc:3306
       secretKeyRef:
         name: donorpwds
 """

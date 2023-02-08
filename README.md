@@ -168,7 +168,7 @@ Please provide the password for 'root@mycluster': ******
 MySQL mycluster JS>
 ```
 
-Using `root@mycluster` connection assumes the default namespace is used; the long form is `{innodbclustername}.{namespace}.svc.cluster.local`. 
+Using `root@mycluster` connection assumes the default namespace is used; the long form is `{innodbclustername}.{namespace}.svc`. 
 Each MySQL instance has MySQL Shell installed that can be used when troubleshooting.
 
 ### Using Port Forwarding

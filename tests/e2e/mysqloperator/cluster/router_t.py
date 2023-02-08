@@ -76,7 +76,7 @@ spec:
     def test_1_load_distribution(self):
         def check(port, hosts_expected):
             # checks that we connect to both secondaries at least once
-            h = tutil.run_from_operator_pod(f"mysql://root:sakila@mycluster.{self.ns}.svc.cluster.local:{port}",
+            h = tutil.run_from_operator_pod(f"mysql://root:sakila@mycluster.{self.ns}.svc:{port}",
                 "print(session.run_sql('select @@hostname').fetch_one()[0])")
             self.logger.debug(h)
             hosts_expected.remove(h)
@@ -98,7 +98,7 @@ spec:
 
         def check(secondaries_seen):
             # checks that we connect to both secondaries at least once
-            h = tutil.run_from_operator_pod(f"mysql://root:sakila@mycluster.{self.ns}.svc.cluster.local:6447",
+            h = tutil.run_from_operator_pod(f"mysql://root:sakila@mycluster.{self.ns}.svc:6447",
                 "print(session.run_sql('select @@hostname').fetch_one()[0])")
             secondaries_seen.add(h)
             return len(secondaries_seen) == 2
@@ -108,12 +108,12 @@ spec:
             s.exec_sql("stop group_replication")
 
         # connect through the router
-        h = tutil.run_from_operator_pod(f"root:sakila@mycluster.{self.ns}.svc.cluster.local:6446",
+        h = tutil.run_from_operator_pod(f"root:sakila@mycluster.{self.ns}.svc:6446",
                 "print(session.run_sql('select @@hostname').fetch_one()[0])")
         self.assertEqual("mycluster-0", h)
 
         for _ in range(5):
-            h = tutil.run_from_operator_pod(f"root:sakila@mycluster.{self.ns}.svc.cluster.local:6447",
+            h = tutil.run_from_operator_pod(f"root:sakila@mycluster.{self.ns}.svc:6447",
                 "print(session.run_sql('select @@hostname').fetch_one()[0])")
             self.assertIn(h, ["mycluster-2"])
 

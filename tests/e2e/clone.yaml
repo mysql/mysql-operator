@@ -9,7 +9,7 @@ spec:
   image: mysql/mysql-server:8.0.25
   initDB:
     clone:
-      donorUrl: root@mycluster-0.mycluster-instances.testns.svc.cluster.local:3306
+      donorUrl: root@mycluster-0.mycluster-instances.testns.svc:3306
       secretKeyRef:
         name: mypwds
         rootPasswordKey: rootPassword

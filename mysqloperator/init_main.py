@@ -31,7 +31,7 @@ def init_conf(datadir, pod, cluster, logger):
     initializing for the 1st time.
     """
     server_id = pod.index + cluster.parsed_spec.baseServerId
-    report_host = f"{pod.name}.{cluster.name}-instances.{cluster.namespace}.svc.cluster.local"
+    report_host = f"{pod.name}.{cluster.name}-instances.{cluster.namespace}.svc"
     logger.info(
         f"Setting up configurations for {pod.name}  server_id={server_id}  report_host={report_host}")
 

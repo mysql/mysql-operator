@@ -186,9 +186,6 @@ spec:
       - conditionType: "mysql.oracle.com/ready"
 {utils.indent(spec.service_account_name, 6)}
       securityContext:
-        allowPrivilegeEscalation: false
-        privileged: false
-        readOnlyRootFilesystem: true
         runAsUser: 27
         runAsGroup: 27
         fsGroup: 27
@@ -200,6 +197,17 @@ spec:
         command: ["bash", "-c", "chown 27:27 /var/lib/mysql && chmod 0700 /var/lib/mysql"]
         securityContext:
           runAsUser: 0
+          # These can't go to spec.template.spec.securityContext
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodTemplateSpec / https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSpec
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSecurityContext - for pods (top level)
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#Container
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#SecurityContext - for containers
+          allowPrivilegeEscalation: false
+          privileged: false
+#          readOnlyRootFilesystem: true
+#          capabilities:
+#            drop:
+#            - ALL
         volumeMounts:
         - name: datadir
           mountPath: /var/lib/mysql
@@ -218,7 +226,17 @@ spec:
                   "--datadir", "/var/lib/mysql"
         ]
         securityContext:
-          runAsUser: 27
+          # These can't go to spec.template.spec.securityContext
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodTemplateSpec / https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSpec
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSecurityContext - for pods (top level)
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#Container
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#SecurityContext - for containers
+          allowPrivilegeEscalation: false
+          privileged: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         env:
         - name: POD_NAME
           valueFrom:
@@ -242,59 +260,24 @@ spec:
           mountPath: /var/lib/mysql
         - name: mycnfdata
           mountPath: /mnt/mycnfdata
+        - name: initconf-tmp
+          mountPath: /tmp
       - name: initmysql
         image: {spec.mysql_image}
         imagePullPolicy: {spec.mysql_image_pull_policy}
         args: {init_mysql_argv}
         securityContext:
+          # These can't go to spec.template.spec.securityContext
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodTemplateSpec / https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSpec
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSecurityContext - for pods (top level)
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#Container
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#SecurityContext - for containers
+          allowPrivilegeEscalation: false
+          privileged: false
+          readOnlyRootFilesystem: true
           capabilities:
-            # Check mysql/packaging/deb-in/extra/apparmor-profile for the caps needed
             drop:
-            - "AUDIT_CONTROL"
-# CAP_AUDIT_READ was introduced in Linux 3.16 which could be too new for some K8s installations RH7
-#            - "AUDIT_READ"
-            - "AUDIT_WRITE"
-            - "BLOCK_SUSPEND"
-# CAP_BPF was introduced in Linux 5.8 which could be too new for some K8s installations
-#            - "BPF"
-# CAP_CHECKPOINT_RESTORE was introduced in Linux 5.9 which could be too new for some K8s installations
-#            - "CHECKPOINT_RESTORE"
-            - "CHOWN"
-            - "DAC_OVERRIDE"
-            - "DAC_READ_SEARCH"
-            - "FOWNER"
-            - "FSETID"
-            - "IPC_LOCK"
-            - "IPC_OWNER"
-            - "KILL"
-            - "LEASE"
-            - "LINUX_IMMUTABLE"
-            - "MAC_ADMIN"
-            - "MAC_OVERRIDE"
-            - "MKNOD"
-            - "NET_ADMIN"
-            - "NET_BIND_SERVICE"
-            - "NET_BROADCAST"
-            - "NET_RAW"
-# CAP_PERFMON was introduced in Linux 5.8 which could be too new for some K8s installations
-#            - "PERFMON"
-            - "SETFCAP"
-            - "SETPCAP"
-            - "SETGID"
-            - "SETUID"
-            - "SYS_ADMIN"
-            - "SYS_BOOT"
-            - "SYS_CHROOT"
-            - "SYS_MODULE"
-            - "SYS_NICE"
-            - "SYS_PACCT"
-            - "SYS_PTRACE"
-            - "SYS_RAWIO"
-            - "SYS_RESOURCE"
-            - "SYS_TIME"
-            - "SYS_TTY_CONFIG"
-            - "SYSLOG"
-            - "WAKE_ALARM"
+            - ALL
         env:
         - name: MYSQL_INITIALIZE_ONLY
           value: "1"
@@ -319,6 +302,10 @@ spec:
         - name: mycnfdata
           mountPath: /etc/my.cnf
           subPath: my.cnf
+        - name: initmysql-tmp
+          mountPath: /tmp
+        - name: varlibmysqlfiles # The entrypoint of the container `touch`-es 2 files there
+          mountPath: /var/lib/mysql-files
       containers:
       - name: sidecar
         image: {spec.operator_image}
@@ -329,8 +316,17 @@ spec:
                   "--datadir", "/var/lib/mysql"
         ]
         securityContext:
-          runAsUser: 27
-          fsgroup: 27
+          # These can't go to spec.template.spec.securityContext
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodTemplateSpec / https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSpec
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSecurityContext - for pods (top level)
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#Container
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#SecurityContext - for containers
+          allowPrivilegeEscalation: false
+          privileged: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         env:
         - name: POD_NAME
           valueFrom:
@@ -359,60 +355,25 @@ spec:
           subPath: my.cnf
         - name: shellhome
           mountPath: /mysqlsh
+        - name: sidecar-tmp
+          mountPath: /tmp
 {utils.indent(spec.extra_sidecar_volume_mounts, 8)}
       - name: mysql
         image: {spec.mysql_image}
         imagePullPolicy: {spec.mysql_image_pull_policy}
         args: {mysql_argv}
         securityContext:
+          # These can't go to spec.template.spec.securityContext
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodTemplateSpec / https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSpec
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSecurityContext - for pods (top level)
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#Container
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#SecurityContext - for containers
+          allowPrivilegeEscalation: false
+          privileged: false
+          readOnlyRootFilesystem: true
           capabilities:
-            # Check mysql/packaging/deb-in/extra/apparmor-profile for the caps needed
             drop:
-            - "AUDIT_CONTROL"
-# CAP_AUDIT_READ was introduced in Linux 3.16 which could be too new for some K8s installations RH7
-#            - "AUDIT_READ"
-            - "AUDIT_WRITE"
-            - "BLOCK_SUSPEND"
-# CAP_BPF was introduced in Linux 5.8 which could be too new for some K8s installations
-#            - "BPF"
-# CAP_CHECKPOINT_RESTORE was introduced in Linux 5.9 which could be too new for some K8s installations
-#            - "CHECKPOINT_RESTORE"
-            - "CHOWN"
-            - "DAC_OVERRIDE"
-            - "DAC_READ_SEARCH"
-            - "FOWNER"
-            - "FSETID"
-            - "IPC_LOCK"
-            - "IPC_OWNER"
-            - "KILL"
-            - "LEASE"
-            - "LINUX_IMMUTABLE"
-            - "MAC_ADMIN"
-            - "MAC_OVERRIDE"
-            - "MKNOD"
-            - "NET_ADMIN"
-            - "NET_BIND_SERVICE"
-            - "NET_BROADCAST"
-            - "NET_RAW"
-# CAP_PERFMON was introduced in Linux 5.8 which could be too new for some K8s installations
-#            - "PERFMON"
-            - "SETFCAP"
-            - "SETPCAP"
-            - "SETGID"
-            - "SETUID"
-            - "SYS_ADMIN"
-            - "SYS_BOOT"
-            - "SYS_CHROOT"
-            - "SYS_MODULE"
-            - "SYS_NICE"
-            - "SYS_PACCT"
-            - "SYS_PTRACE"
-            - "SYS_RAWIO"
-            - "SYS_RESOURCE"
-            - "SYS_TIME"
-            - "SYS_TTY_CONFIG"
-            - "SYSLOG"
-            - "WAKE_ALARM"
+            - ALL
         lifecycle:
           preStop:
             exec:
@@ -471,17 +432,31 @@ spec:
         - name: initconfdir
           mountPath: /readinessprobe.sh
           subPath: readinessprobe.sh
+        - name: varlibmysqlfiles # The entrypoint of the container `touch`-es 2 files there
+          mountPath: /var/lib/mysql-files
+        - name: mysql-tmp
+          mountPath: /tmp
 {utils.indent(spec.extra_volume_mounts, 8)}
       volumes:
       - name: mycnfdata
         emptyDir: {{}}
       - name: rundir
         emptyDir: {{}}
+      - name: varlibmysqlfiles
+        emptyDir: {{}}
       - name: initconfdir
         configMap:
           name: {spec.name}-initconf
           defaultMode: 0755
       - name: shellhome
+        emptyDir: {{}}
+      - name: initconf-tmp
+        emptyDir: {{}}
+      - name: initmysql-tmp
+        emptyDir: {{}}
+      - name: mysql-tmp
+        emptyDir: {{}}
+      - name: sidecar-tmp
         emptyDir: {{}}
 {utils.indent(spec.extra_volumes, 6)}
   volumeClaimTemplates:

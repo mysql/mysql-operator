@@ -284,7 +284,11 @@ def compare_schedules(spec: InnoDBClusterSpec, old: dict, new: dict, logger: Log
     if not old is None:
         for old_object in old:
             schedule = BackupSchedule(spec)
-            schedule.parse(old_object, "")
+            # Don't try to load the profile as it might not exist anymore:
+            # If the profile name is changed together with the schedule that references it,
+            # then we can't load with the old name from k8s API, as won't exist. All what exists
+            # is in new.
+            schedule.parse(old_object, "", load_profile=False)
             old_schedules[schedule.name] = schedule
 
     if old == new:

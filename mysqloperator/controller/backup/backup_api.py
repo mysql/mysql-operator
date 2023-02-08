@@ -24,6 +24,9 @@ class Snapshot:
             ["ociObjectStorage", "s3", "azure", "persistentVolumeClaim"])
         self.storage.parse(storage, prefix+".storage")
 
+    def __str__(self) -> str:
+        return f"Object Snapshot: storage={self.storage}"
+
     def __eq__(self, other : 'Snapshot') -> bool:
         assert isinstance(other, Snapshot)
         return (self.storage == other.storage)
@@ -44,6 +47,9 @@ class DumpInstance:
         storage = dget_dict(spec, "storage", prefix)
         self.storage = StorageSpec()
         self.storage.parse(storage, prefix+".storage")
+
+    def __str__(self) -> str:
+        return f"Object DumpInstance: storage={self.storage}"
 
     def __eq__(self, other : 'DumpInstance') -> bool:
         assert isinstance(other, DumpInstance)
@@ -92,6 +98,9 @@ class BackupProfile:
             raise ApiSpecError(
                 f"One of dumpInstance or snapshot must be set in a {prefix}")
 
+    def __str__(self) -> str:
+        return f"Object BackupProfile name={self.name} dumpInstance={self.dumpInstance} snapshot={self.snapshot} podAnnotations={self.podAnnotations} podLabels={self.podLabels}"
+
     def __eq__(self, other: 'BackupProfile') -> bool:
         assert isinstance(other, BackupProfile)
         return (self.name == other.name and \
@@ -114,7 +123,7 @@ class BackupSchedule:
         if self.backupProfile:
             return self.backupProfile.add_to_pod_spec(pod_spec, container_name)
 
-    def parse(self, spec: dict, prefix: str) -> None:
+    def parse(self, spec: dict, prefix: str, load_profile: bool = True) -> None:
         self.name = dget_str(spec, "name", prefix, default_value= "")
 
         self.deleteBackupData = dget_bool(spec, "deleteBackupData", prefix, default_value=False)
@@ -128,6 +137,7 @@ class BackupSchedule:
             raise ApiSpecError(f"schedule not set in in a {prefix}")
 
         backup_profile = dget_dict(spec, "backupProfile", prefix, {})
+
         if self.backupProfileName and backup_profile:
             print(f"Only one of backupProfileName or backupProfile must be set in {prefix}")
             raise ApiSpecError(f"Only one of backupProfileName or backupProfile must be set in {prefix}")
@@ -139,12 +149,15 @@ class BackupSchedule:
         if backup_profile:
             self.backupProfile = BackupProfile()
             self.backupProfile.parse(backup_profile, prefix + ".backupProfile", name_required= False)
-        else:
+        elif load_profile:
             self.backupProfile = self.cluster_spec.get_backup_profile(self.backupProfileName)
 
             if not self.backupProfile:
                 print(f"Invalid backupProfileName '{self.backupProfileName}' in cluster {self.cluster_spec.namespace}/{self.cluster_spec.name}")
                 raise ApiSpecError(f"Invalid backupProfileName '{self.backupProfileName}' in cluster {self.cluster_spec.namespace}/{self.cluster_spec.name}")
+
+    def __str__(self) -> str:
+        return f"Object BackupSchedule scheduleName={self.name} deleteBackupData={self.deleteBackupData} enabled={self.enabled} backupProfileName={self.backupProfileName} schedule={self.schedule} profile={self.backupProfile}"
 
     def __eq__(self, other : 'BackupSchedule') -> bool:
         assert isinstance(other, BackupSchedule)

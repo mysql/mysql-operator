@@ -811,6 +811,10 @@ class InnoDBClusterSpec:
         schedule.parse(spec, "spec.backupSchedules")
         return schedule
 
+    def print_backup_schedules(self) -> None:
+        for schedule in self.backupSchedules:
+            print(f"schedule={schedule}")
+
     def load_initdb(self, spec: dict) -> None:
         self.initDB = InitDB()
         self.initDB.parse(spec, "spec.initDB")

@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -53,6 +53,9 @@ spec:
 
     def parse(self, spec: dict, prefix: str) -> None:
         self.raw_data = spec
+
+    def __str__(self) -> str:
+        return f"Object PVCStorageSpec self.raw_data={self.raw_data}"
 
     def __eq__(self, other) -> bool:
         # TODO: raw_data could easily break things - single whitespace and it's not the same
@@ -129,6 +132,9 @@ spec:
         self.bucketName = dget_str(spec, "bucketName", prefix)
         self.ociCredentials = dget_str(spec, "credentials", prefix)
 
+    def __str__(self) -> str:
+        return f"Object OCIOSStorageSpec self.bucketName={self.bucketName}"
+
     def __eq__(self, other) -> bool:
         return (isinstance(other, OCIOSStorageSpec) and \
               self.bucketName == other.bucketName and \
@@ -174,6 +180,9 @@ spec:
         self.profile = dget_str(spec, "profile", prefix, default_value="default")
         self.endpoint = dget_str(spec, "endpoint", prefix, default_value = "")
 
+    def __str__(self) -> str:
+        return f"Object S3StorageSpec self.bucketName={self.bucketName} self.profile={self.profile} self.endpoint={self.endpoint}"
+
     def __eq__(self, other) -> bool:
         return (isinstance(other, S3StorageSpec) and \
               self.bucketName == other.bucketName and \
@@ -215,6 +224,9 @@ spec:
         self.prefix = dget_str(spec, "prefix", prefix, default_value = "")
         self.containerName = dget_str(spec, "containerName", prefix)
         self.config = dget_str(spec, "config", prefix)
+
+    def __str__(self) -> str:
+        return f"Object AzureBlobStorageSpec self.containerName={self.containerName}"
 
     def __eq__(self, other) -> bool:
         return (isinstance(other, S3StorageSpec) and \
@@ -272,6 +284,9 @@ class StorageSpec:
         storage = storage_class()
         storage.parse(storage_spec, prefix + "." + storage_keys[0])
         setattr(self, storage_keys[0], storage)
+
+    def __str__(self) -> str:
+        return f"Object StorageSpec self.ociObjectStorage={self.ociObjectStorage} self.persistentVolumeClaim={self.persistentVolumeClaim} self.s3={self.s3} self.azure={self.azure}"
 
     def __eq__(self, other) -> bool:
         return (isinstance(other, StorageSpec) and \

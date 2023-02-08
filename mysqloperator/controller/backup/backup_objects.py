@@ -114,6 +114,7 @@ spec:
           - "SYS_TTY_CONFIG"
           - "SYSLOG"
           - "WAKE_ALARM"
+      affinity: {spec.podSpec.get("affinity", "")}
       containers:
       - name: operator-backup-job
         image: {spec.operator_image}
@@ -314,6 +315,7 @@ spec:
               - "SYS_TTY_CONFIG"
               - "SYSLOG"
               - "WAKE_ALARM"
+          affinity: {spec.podSpec.get("affinity", "")}
           containers:
           - name: operator-backup-job-cron
             image: {spec.operator_image}

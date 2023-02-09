@@ -30,8 +30,10 @@ REGISTRY=registry.localhost:5000
 read -r -d '\t' IMAGES << EOM
 	ghcr.io/k3d-io/k3d-proxy:5.4.4
 	ghcr.io/k3d-io/k3d-proxy:5.4.6
+	ghcr.io/k3d-io/k3d-proxy:5.4.7
 	ghcr.io/k3d-io/k3d-tools:5.4.4
 	ghcr.io/k3d-io/k3d-tools:5.4.6
+	ghcr.io/k3d-io/k3d-tools:5.4.7
 	rancher/coredns-coredns:1.8.3
 	rancher/k3d-proxy:5.1.0
 	rancher/k3d-proxy:5.3.0

@@ -23,7 +23,7 @@ pipeline {
 		booleanParam(name: 'OPERATOR_INTERNAL_BUILD', defaultValue: false, description: 'triggered by us (e.g. by a push to a dev branch) or externally (e.g. from the concourse)')
 	}
  	options {
-		timeout(time: 24, unit: 'HOURS')
+		timeout(time: 48, unit: 'HOURS')
 		timestamps()
 	}
 	stages {
@@ -90,8 +90,9 @@ pipeline {
 							'minikube-v1.24.0;v1.22.5;kubectl-v1.22.17;5;1;8192',
 							'minikube-v1.25.2;v1.23.4;kubectl-v1.23.4;5;1;8192',
 							'minikube-v1.26.1;v1.24.1;kubectl-v1.24.8;4;1;8192',
-							'minikube-v1.28.0;v1.25.5;kubectl-v1.26.0;4;1;8192',
-							'minikube-v1.27.1;v1.25.2;kubectl-v1.25.5;2;2;8192'
+							'minikube-v1.28.0;v1.25.5;kubectl-v1.25.6;4;1;8192',
+							'minikube-v1.29.0;v1.26.1;kubectl-v1.26.1;4;1;8192'
+							// 'minikube-v1.27.1;v1.25.2;kubectl-v1.25.5;2;2;8192'
 							// 'minikube-v1.28.0;v1.26.0;kubectl-v1.26.0;3;1',
 							// 'minikube-v1.28.0;v1.26.0;kubectl-v1.26.0;1;2'
 					}
@@ -163,8 +164,9 @@ pipeline {
 							'k3d-v5.4.4;rancher/k3s:v1.23.5-k3s1;kubectl-v1.23.14;6;1;8192',
 							'k3d-v5.4.6;rancher/k3s:v1.24.7-k3s1;kubectl-v1.24.4;6;1;8192',
 							'k3d-v5.4.6;rancher/k3s:v1.25.3-k3s1;kubectl-v1.25.4;6;1;8192',
-							'k3d-v5.4.6;rancher/k3s:v1.26.0-k3s2;kubectl-v1.25.5;6;1;8192',
-							'k3d-v5.4.6;rancher/k3s:v1.26.0-k3s1;kubectl-v1.25.5;2;3;8192'
+							'k3d-v5.4.6;rancher/k3s:v1.26.0-k3s2;kubectl-v1.25.6;6;1;8192',
+							'k3d-v5.4.6;rancher/k3s:v1.26.0-k3s1;kubectl-v1.26.0;2;3;8192',
+							'k3d-v5.4.7;rancher/k3s:v1.26.1-k3s1;kubectl-v1.26.1;6;1;8192'
 					}
 				}
 				stages {

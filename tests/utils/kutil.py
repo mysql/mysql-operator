@@ -705,7 +705,9 @@ class StoreDiagnostics:
         self.create_work_dir()
         logger.info(f"storing diagnostics for {rsrc} {self.ns}/{name} into {self.work_dir} ...")
 
-        if rsrc == "ic":
+        if rsrc == "operator" or self.ns == "mysql-operator":
+            self.process_operator(name)
+        elif rsrc == "ic":
             self.process_cluster(name)
         elif rsrc == "po" or rsrc == "pod":
             cluster_name = self.extract_cluster_name_from_pod(name)
@@ -713,8 +715,6 @@ class StoreDiagnostics:
         elif rsrc == "router":
             cluster_name = self.extract_cluster_name_from_routers_pattern(name)
             self.process_cluster(cluster_name)
-        elif rsrc == "operator":
-            self.process_operator(name)
         else:
             self.process_generic_rsrc(rsrc, name)
 

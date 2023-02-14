@@ -608,7 +608,9 @@ class StoreDiagnostics:
 
 
     def get_work_dir(self):
-        work_dir = os.path.join(g_ts_cfg.work_dir, 'diagnostics', g_ts_cfg.k8s_context, self.ns)
+        work_dir = os.path.join(g_ts_cfg.work_dir, 'diagnostics', g_ts_cfg.k8s_context)
+        if self.ns:
+            work_dir = os.path.join(work_dir, self.ns)
         if not os.path.exists(work_dir):
             return work_dir
 

@@ -98,7 +98,6 @@ class BackupProfile:
                 self.dumpInstance == other.dumpInstance and \
                 self.snapshot == other.snapshot)
 
-
 class BackupSchedule:
     def __init__(self, cluster_spec):
         self.cluster_spec: cluster_api.InnoDBClusterSpec = cluster_spec

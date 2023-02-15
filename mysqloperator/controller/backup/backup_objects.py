@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -202,6 +202,15 @@ def patch_cron_template_for_backup_schedule(base: dict, cluster_name: str, sched
     new_object["spec"]["suspend"] = not schedule_profile.enabled
     new_object["spec"]["schedule"] = schedule_profile.schedule
     new_object["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"][0]["command"].extend(["--schedule-name", schedule_profile.name])
+
+    metadata = {}
+    if schedule_profile.backupProfile.podAnnotations:
+        metadata['annotations'] = schedule_profile.backupProfile.podAnnotations
+    if schedule_profile.backupProfile.podLabels:
+        metadata['labels'] = schedule_profile.backupProfile.podLabels
+
+    if len(metadata):
+        utils.merge_patch_object(new_object["spec"]["jobTemplate"]["spec"]["template"], {"metadata" : metadata })
 
     return new_object
 

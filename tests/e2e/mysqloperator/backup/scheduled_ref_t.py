@@ -1,4 +1,4 @@
-# Copyright (c) 2022, Oracle and/or its affiliates.
+# Copyright (c) 2022, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -101,6 +101,12 @@ spec:
       storage:
         persistentVolumeClaim:
           claimName: {self.volume_name}
+    podAnnotations:
+      backupProfileAnn1: ann1-{self.profile_name}
+      backupProfileAnn2: ann2-{self.profile_name}
+    podLabels:
+      backupProfileLabel1: label1-{self.profile_name}
+      backupProfileLabel2: label2-{self.profile_name}
   backupSchedules:
     - name: {self.schedule_name}
       schedule: "*/1 0-23 * * *"
@@ -138,6 +144,19 @@ spec:
         self.assertEqual(dumpInstance["storage"]["persistentVolumeClaim"]["claimName"], self.volume_name)
         self.assertEqual(backupProfile["name"], self.profile_name)
 
+        self.assertTrue("podAnnotations" in backupProfile)
+        self.assertTrue("backupProfileAnn1" in backupProfile["podAnnotations"])
+        self.assertTrue("backupProfileAnn2" in backupProfile["podAnnotations"])
+        self.assertEqual(len(backupProfile["podAnnotations"]), 2)
+        self.assertEqual(backupProfile["podAnnotations"]["backupProfileAnn1"], f"ann1-{self.profile_name}")
+        self.assertEqual(backupProfile["podAnnotations"]["backupProfileAnn2"], f"ann2-{self.profile_name}")
+        self.assertTrue("podLabels" in backupProfile)
+        self.assertTrue("backupProfileLabel1" in backupProfile["podLabels"])
+        self.assertTrue("backupProfileLabel2" in backupProfile["podLabels"])
+        self.assertEqual(len(backupProfile["podLabels"]), 2)
+        self.assertEqual(backupProfile["podLabels"]["backupProfileLabel1"], f"label1-{self.profile_name}")
+        self.assertEqual(backupProfile["podLabels"]["backupProfileLabel2"], f"label2-{self.profile_name}")
+
         # backupSchedule
         backupSchedule = spec["backupSchedules"][0]
         self.assertEqual(backupSchedule["backupProfileName"], self.profile_name)
@@ -168,6 +187,27 @@ spec:
         self.assertTrue(status["output"].startswith(self.dump_name_prefix))
         self.assertGreater(len(status["output"]), len(self.dump_name_prefix))
 
+    def check_backup_pods(self):
+        pods = kutil.ls_po(self.ns, pattern=f"{self.dump_name_prefix}.*")
+        for pod_name in [pod["NAME"] for pod in pods]:
+            # keep this to quickly test "create backup pods"
+            if pod_name.startswith(f"{self.dump_name_prefix}-cb"):
+                # this is the create mysqlbackup object pod and not the actual backup pod itself
+                pass
+
+            pod = kutil.get_po(self.ns, pod_name)
+
+            self.assertTrue("annotations" in pod["metadata"])
+            self.assertTrue("backupProfileAnn1" in pod["metadata"]["annotations"])
+            self.assertTrue("backupProfileAnn2" in pod["metadata"]["annotations"])
+            self.assertEqual(pod["metadata"]["annotations"]["backupProfileAnn1"], f"ann1-{self.profile_name}")
+            self.assertEqual(pod["metadata"]["annotations"]["backupProfileAnn2"], f"ann2-{self.profile_name}")
+            self.assertTrue("labels" in pod["metadata"])
+            self.assertTrue("backupProfileLabel1" in pod["metadata"]["labels"])
+            self.assertTrue("backupProfileLabel2" in pod["metadata"]["labels"])
+            self.assertEqual(pod["metadata"]["labels"]["backupProfileLabel1"], f"label1-{self.profile_name}")
+            self.assertEqual(pod["metadata"]["labels"]["backupProfileLabel2"], f"label2-{self.profile_name}")
+
     def test_1_backup_to_volume(self):
         # wait until backup is completed
         def check_mbk(l):
@@ -185,7 +225,7 @@ spec:
 
         self.check_ic()
         self.check_mbk(r["NAME"])
-
+        self.check_backup_pods()
 
     def test_9_destroy(self):
         kutil.delete_ic(self.ns, self.cluster_name)

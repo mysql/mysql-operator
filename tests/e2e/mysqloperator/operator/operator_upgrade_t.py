@@ -27,8 +27,7 @@ def change_operator_version(version=None):
         return
 
     # Patch version
-    kutil.patch_dp("mysql-operator", "mysql-operator", {
-        "spec": {
+    patch = {"spec": {
             "template": {
                 "spec": {
                     "containers": [{
@@ -38,7 +37,25 @@ def change_operator_version(version=None):
                 }
             }
         }
-    })
+    }
+
+    # If we downgrade before 8.0.33 there is no readiness probe
+    # this can be removed once our base test version is upgraded
+    # This attempts to do the smallest change possible
+    if version:
+        patch["spec"]["template"]["spec"]["containers"][0]["readinessProbe"] = {
+            "exec": {
+                "command": ["cat", "/dev/null"]
+            }
+        }
+    else:
+        patch["spec"]["template"]["spec"]["containers"][0]["readinessProbe"] = {
+            "exec": {
+                "command": ["cat", "/tmp/mysql-operator-ready"]
+            }
+        }
+
+    kutil.patch_dp("mysql-operator", "mysql-operator", patch)
 
     # Wait till old operator is gone
     if pods:

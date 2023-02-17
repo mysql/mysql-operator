@@ -249,12 +249,6 @@ spec:
         securityContext:
           capabilities:
             # Check mysql/packaging/deb-in/extra/apparmor-profile for the caps needed
-            add:
-            - DAC_OVERRIDE
-            - SETGID
-            - SETUID
-            - SYS_NICE
-            - SYS_RESOURCE
             drop:
             - "AUDIT_CONTROL"
 # CAP_AUDIT_READ was introduced in Linux 3.16 which could be too new for some K8s installations RH7
@@ -266,6 +260,7 @@ spec:
 # CAP_CHECKPOINT_RESTORE was introduced in Linux 5.9 which could be too new for some K8s installations
 #            - "CHECKPOINT_RESTORE"
             - "CHOWN"
+            - "DAC_OVERRIDE"
             - "DAC_READ_SEARCH"
             - "FOWNER"
             - "FSETID"
@@ -285,13 +280,17 @@ spec:
 #            - "PERFMON"
             - "SETFCAP"
             - "SETPCAP"
+            - "SETGID"
+            - "SETUID"
             - "SYS_ADMIN"
             - "SYS_BOOT"
             - "SYS_CHROOT"
             - "SYS_MODULE"
+            - "SYS_NICE"
             - "SYS_PACCT"
             - "SYS_PTRACE"
             - "SYS_RAWIO"
+            - "SYS_RESOURCE"
             - "SYS_TIME"
             - "SYS_TTY_CONFIG"
             - "SYSLOG"
@@ -368,12 +367,6 @@ spec:
         securityContext:
           capabilities:
             # Check mysql/packaging/deb-in/extra/apparmor-profile for the caps needed
-            add:
-            - DAC_OVERRIDE
-            - SETGID
-            - SETUID
-            - SYS_NICE
-            - SYS_RESOURCE
             drop:
             - "AUDIT_CONTROL"
 # CAP_AUDIT_READ was introduced in Linux 3.16 which could be too new for some K8s installations RH7
@@ -385,6 +378,7 @@ spec:
 # CAP_CHECKPOINT_RESTORE was introduced in Linux 5.9 which could be too new for some K8s installations
 #            - "CHECKPOINT_RESTORE"
             - "CHOWN"
+            - "DAC_OVERRIDE"
             - "DAC_READ_SEARCH"
             - "FOWNER"
             - "FSETID"
@@ -404,13 +398,17 @@ spec:
 #            - "PERFMON"
             - "SETFCAP"
             - "SETPCAP"
+            - "SETGID"
+            - "SETUID"
             - "SYS_ADMIN"
             - "SYS_BOOT"
             - "SYS_CHROOT"
             - "SYS_MODULE"
+            - "SYS_NICE"
             - "SYS_PACCT"
             - "SYS_PTRACE"
             - "SYS_RAWIO"
+            - "SYS_RESOURCE"
             - "SYS_TIME"
             - "SYS_TTY_CONFIG"
             - "SYSLOG"

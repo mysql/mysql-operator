@@ -152,13 +152,6 @@ spec:
         fsGroup: 999
         capabilities:
           # Check mysql/packaging/deb-in/extra/apparmor-profile-router.in for the caps needed
-          add:
-          - "CHOWN"
-          - "DAC_OVERRIDE"
-          - "FOWNER"
-          - "SETGID"
-          - "SETUID"
-          - "SYS_RESOURCE"
           drop:
           - "AUDIT_CONTROL"
 # CAP_AUDIT_READ was introduced in Linux 3.16 which could be too new for some K8s installations RH7
@@ -169,8 +162,11 @@ spec:
 #          - "BPF"
 # CAP_CHECKPOINT_RESTORE was introduced in Linux 5.9 which could be too new for some K8s installations
 #          - "CHECKPOINT_RESTORE"
+          - "CHOWN"
+          - "DAC_OVERRIDE"
           - "DAC_READ_SEARCH"
           - "FSETID"
+          - "FOWNER"
           - "IPC_LOCK"
           - "IPC_OWNER"
           - "KILL"
@@ -187,6 +183,8 @@ spec:
 #          - "PERFMON"
           - "SETFCAP"
           - "SETPCAP"
+          - "SETGID"
+          - "SETUID"
           - "SYS_ADMIN"
           - "SYS_BOOT"
           - "SYS_CHROOT"
@@ -195,6 +193,7 @@ spec:
           - "SYS_PACCT"
           - "SYS_PTRACE"
           - "SYS_RAWIO"
+          - "SYS_RESOURCE"
           - "SYS_TIME"
           - "SYS_TTY_CONFIG"
           - "SYSLOG"

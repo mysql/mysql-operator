@@ -6,7 +6,7 @@
 
 # auxiliary script to build a community image from enterprise image, needed for SysQA flow for testing enterprise images
 # usage: base-enterprise-operator-image community-operator-image
-# e.g. our.internal.repo/qa/enterprise-operator:8.0.29-2.0.4 our.internal.repo/qa/mysql-operator:8.0.29-2.0.4
+# e.g. our.internal.repo/qa/enterprise-operator:8.0.29-2.0.4 our.internal.repo/qa/community-operator:8.0.29-2.0.4
 
 set -vx
 

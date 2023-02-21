@@ -758,26 +758,48 @@ def update_stateful_set_spec(sts : api_client.V1StatefulSet, patch: dict) -> Non
         sts.metadata.name, sts.metadata.namespace, body=patch)
 
 
-def update_mysql_image(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec) -> None:
+def update_mysql_image(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec, logger: Logger) -> None:
     """Update MySQL Server image
 
     This will also update the sidecar container to the current operator version,
     so that a single rolling upgrade covers both and we don't require a restart
     for upgrading sidecar.
     """
+
+    # Operators <= 8.0.32-2.0.8 don't set this environment variable, we have to make sure it is there
+    cluster_domain_env = [{
+        "name": "MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN",
+        "value": k8s_cluster_domain(logger)
+    }]
+
     patch = {"spec": {"template":
                       {"spec": {
                           "containers": [
-                               {"name": "sidecar", "image": spec.operator_image},
-                               {"name": "mysql", "image": spec.mysql_image},
-
+                               {"name": "sidecar",
+                                "image": spec.operator_image,
+                                "env": cluster_domain_env
+                               },
+                               {"name": "mysql",
+                                "image": spec.mysql_image,
+                                "env": cluster_domain_env
+                               },
                           ],
                           "initContainers": [
-                              {"name": "fixdatadir", "image": spec.operator_image},
-                              {"name": "initconf", "image": spec.operator_image},
-                              {"name": "initmysql", "image": spec.mysql_image}
+                              {"name": "fixdatadir",
+                               "image": spec.operator_image,
+                               "env": cluster_domain_env
+                                },
+                              {"name": "initconf",
+                               "image": spec.operator_image,
+                               "env": cluster_domain_env
+                              },
+                              {"name": "initmysql",
+                               "image": spec.mysql_image,
+                               "env": cluster_domain_env
+                              },
                           ]}
                        }}}
+
     update_stateful_set_spec(sts, patch)
 
 

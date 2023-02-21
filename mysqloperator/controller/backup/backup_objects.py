@@ -62,59 +62,9 @@ spec:
   template:
     spec:
       securityContext:
-        allowPrivilegeEscalation: false
-        privileged: false
-        readOnlyRootFilesystem: true
         runAsUser: 27
         runAsGroup: 27
         fsGroup: 27
-        capabilities:
-          drop:
-          - "AUDIT_CONTROL"
-# CAP_AUDIT_READ was introduced in Linux 3.16 which could be too new for some K8s installations RH7
-#          - "AUDIT_READ"
-          - "AUDIT_WRITE"
-          - "BLOCK_SUSPEND"
-# CAP_BPF was introduced in Linux 5.8 which could be too new for some K8s installations
-#          - "BPF"
-# CAP_CHECKPOINT_RESTORE was introduced in Linux 5.9 which could be too new for some K8s installations
-#          - "CHECKPOINT_RESTORE"
-          - "CHOWN"
-          - "DAC_READ_SEARCH"
-          - "DAC_OVERRIDE"
-          - "FOWNER"
-          - "FSETID"
-          - "IPC_LOCK"
-          - "IPC_OWNER"
-          - "KILL"
-          - "LEASE"
-          - "LINUX_IMMUTABLE"
-          - "MAC_ADMIN"
-          - "MAC_OVERRIDE"
-          - "MKNOD"
-          - "NET_ADMIN"
-          - "NET_BIND_SERVICE"
-          - "NET_BROADCAST"
-          - "NET_RAW"
-# CAP_PERFMON was introduced in Linux 5.8 which could be too new for some K8s installations
-#          - "PERFMON"
-          - "SETGID"
-          - "SETUID"
-          - "SETFCAP"
-          - "SETPCAP"
-          - "SYS_ADMIN"
-          - "SYS_BOOT"
-          - "SYS_CHROOT"
-          - "SYS_MODULE"
-          - "SYS_NICE"
-          - "SYS_PACCT"
-          - "SYS_PTRACE"
-          - "SYS_RAWIO"
-          - "SYS_RESOURCE"
-          - "SYS_TIME"
-          - "SYS_TTY_CONFIG"
-          - "SYSLOG"
-          - "WAKE_ALARM"
       containers:
       - name: operator-backup-job
         image: {spec.operator_image}
@@ -126,6 +76,18 @@ spec:
                   "--job-name", "{jobname}",
                   "--backup-dir", "/mnt/storage"
         ]
+        securityContext:
+          # These can't go to spec.template.spec.securityContext
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodTemplateSpec / https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSpec
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSecurityContext - for pods (top level)
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#Container
+          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#SecurityContext - for containers
+          allowPrivilegeEscalation: false
+          privileged: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         env:
         - name: MYSQLSH_USER_CONFIG_HOME
           value: /mysqlsh

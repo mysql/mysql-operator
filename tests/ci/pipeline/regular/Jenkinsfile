@@ -54,7 +54,7 @@ pipeline {
 				script {
 					build job: "${env.WORKERS_FOLDER}/build", parameters: [
 						string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
-						string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
+						string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
 						string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
 						booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
 					]
@@ -70,7 +70,7 @@ pipeline {
 						catchError {
 							build job: "${env.WORKERS_FOLDER}/minikube", parameters: [
 								string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
-								string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
+								string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
 								string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
 								string(name: 'OPERATOR_WORKERS_COUNT', value: '3'),
 								string(name: 'OPERATOR_NODE_MEMORY', value: '8192'),
@@ -109,7 +109,7 @@ pipeline {
 						catchError {
 							build job: "${env.WORKERS_FOLDER}/k3d", parameters: [
 								string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
-								string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
+								string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
 								string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
 								string(name: 'OPERATOR_WORKERS_COUNT', value: '4'),
 								string(name: 'OPERATOR_NODE_MEMORY', value: '8192'),

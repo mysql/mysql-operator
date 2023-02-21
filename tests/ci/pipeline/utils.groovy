@@ -3,6 +3,10 @@
 // Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 //
 
+def prepareCommunityImage(String operatorImage) {
+	return operatorImage.replace("mysql-operator", "community-operator")
+}
+
 def getImageInfo(String operatorImage) {
 	if (operatorImage) {
 		return operatorImage
@@ -31,6 +35,9 @@ def initEnv() {
 	env.GIT_BRANCH_NAME = sh (script: "git name-rev --name-only ${GIT_COMMIT}", returnStdout: true).trim()
 	env.GIT_COMMIT_SUBJECT = sh (script: "git log -1 --pretty=%s ${GIT_COMMIT}", returnStdout: true).trim()
 	env.GIT_COMMIT_SHORT = sh (script: "git rev-parse --short HEAD", returnStdout: true).trim()
+
+	env.OPERATOR_COMMUNITY_IMAGE = prepareCommunityImage("${params.OPERATOR_IMAGE}")
+
 	env.COMMUNITY_IMAGE_INFO = getImageInfo("${params.OPERATOR_IMAGE}")
 	env.ENTERPRISE_IMAGE_INFO = getImageInfo("${params.OPERATOR_ENTERPRISE_IMAGE}")
 
@@ -43,7 +50,7 @@ def getInitMessage() {
 	return """${env.BUILD_NOTIFICATION_HEADER}
 ${currentBuild.getBuildCauses().shortDescription} (${env.BUILD_TRIGGERED_BY})
 Branch/Revision: ${env.GIT_BRANCH_NAME} ${params.OPERATOR_GIT_REVISION}
-Image: ${env.COMMUNITY_IMAGE_INFO}
+Community Image: ${env.COMMUNITY_IMAGE_INFO}
 Enterprise Image: ${env.ENTERPRISE_IMAGE_INFO}
 The latest commit:
 ${env.GIT_AUTHOR_DATE}

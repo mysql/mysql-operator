@@ -21,7 +21,7 @@ IMAGE_REPOSITORY = os.getenv(
 
 # operator
 OPERATOR_IMAGE_NAME = os.getenv(
-    "OPERATOR_TEST_IMAGE_NAME", default="mysql-operator")
+    "OPERATOR_TEST_IMAGE_NAME", default="community-operator")
 
 OPERATOR_EE_IMAGE_NAME = os.getenv(
     "OPERATOR_TEST_EE_IMAGE_NAME", default="enterprise-operator")
@@ -38,13 +38,13 @@ OPERATOR_PULL_POLICY = os.getenv(
 
 # server
 SERVER_VERSION_TAG = VERSION_TAG
-SERVER_IMAGE_NAME = "mysql-server"
+SERVER_IMAGE_NAME = "community-server"
 SERVER_EE_IMAGE_NAME = "enterprise-server"
 
 
 # router
 ROUTER_VERSION_TAG = VERSION_TAG
-ROUTER_IMAGE_NAME = "mysql-router"
+ROUTER_IMAGE_NAME = "community-router"
 ROUTER_EE_IMAGE_NAME = "enterprise-router"
 
 

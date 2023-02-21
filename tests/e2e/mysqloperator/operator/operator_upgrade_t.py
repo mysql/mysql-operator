@@ -32,7 +32,7 @@ def change_operator_version(version=None):
                 "spec": {
                     "containers": [{
                         "image": target_image,
-                        "name": "mysql-operator"
+                        "name": g_ts_cfg.operator_image_name
                     }]
                 }
             }

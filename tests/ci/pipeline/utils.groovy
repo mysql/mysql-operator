@@ -38,7 +38,8 @@ def initEnv() {
 
 	env.OPERATOR_COMMUNITY_IMAGE = prepareCommunityImage("${params.OPERATOR_IMAGE}")
 
-	env.COMMUNITY_IMAGE_INFO = getImageInfo("${params.OPERATOR_IMAGE}")
+	env.BASE_IMAGE_INFO = getImageInfo("${params.OPERATOR_IMAGE}")
+	env.COMMUNITY_IMAGE_INFO = getImageInfo("${env.OPERATOR_COMMUNITY_IMAGE}")
 	env.ENTERPRISE_IMAGE_INFO = getImageInfo("${params.OPERATOR_ENTERPRISE_IMAGE}")
 
 	env.TEST_RESULTS_UNAVAILABLE = 'UNAVAILABLE'
@@ -50,6 +51,7 @@ def getInitMessage() {
 	return """${env.BUILD_NOTIFICATION_HEADER}
 ${currentBuild.getBuildCauses().shortDescription} (${env.BUILD_TRIGGERED_BY})
 Branch/Revision: ${env.GIT_BRANCH_NAME} ${params.OPERATOR_GIT_REVISION}
+Base Image: ${env.BASE_IMAGE_INFO}
 Community Image: ${env.COMMUNITY_IMAGE_INFO}
 Enterprise Image: ${env.ENTERPRISE_IMAGE_INFO}
 The latest commit:

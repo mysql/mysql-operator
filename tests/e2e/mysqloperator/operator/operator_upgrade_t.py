@@ -32,7 +32,7 @@ def change_operator_version(version=None):
                 "spec": {
                     "containers": [{
                         "image": target_image,
-                        "name": g_ts_cfg.operator_image_name
+                        "name": "mysql-operator"
                     }]
                 }
             }
@@ -60,6 +60,10 @@ def change_operator_version(version=None):
     # Wait till old operator is gone
     if pods:
         kutil.wait_pod_gone("mysql-operator", pods[0]["NAME"])
+
+    # Wait for the new operator running
+    pods = kutil.ls_pod("mysql-operator", "mysql-operator.*")
+    kutil.wait_pod("mysql-operator", pods[0]["NAME"])
 
 
 class OperatorUpgradeTest(tutil.OperatorTest):

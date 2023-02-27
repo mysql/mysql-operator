@@ -649,9 +649,21 @@ class StoreDiagnostics:
         self.store_log("pod", f"{pod}-{container}", "logs", lambda: logs(self.ns, [pod, container]))
 
 
+    def process_operators(self, pod):
+        self.process_operator(pod)
+
+        # store other operator pods if exist
+        operator_pods = ls_pod("mysql-operator", "mysql-operator.*")
+        if len(operator_pods) > 1:
+            for operator_pod in operator_pods:
+                operator_pod_name = operator_pod["NAME"]
+                if pod != operator_pod_name:
+                    self.process_operator(operator_pod_name)
+
     def process_operator(self, pod):
         self.describe_pod(pod)
         self.logs_pod(pod, "mysql-operator")
+
 
     def process_cluster(self, cluster_name):
         self.process_ic(cluster_name)
@@ -708,7 +720,7 @@ class StoreDiagnostics:
         logger.info(f"storing diagnostics for {rsrc} {self.ns}/{name} into {self.work_dir} ...")
 
         if rsrc == "operator" or self.ns == "mysql-operator":
-            self.process_operator(name)
+            self.process_operators(name)
         elif rsrc == "ic":
             self.process_cluster(name)
         elif rsrc == "po" or rsrc == "pod":

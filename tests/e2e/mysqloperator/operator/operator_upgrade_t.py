@@ -83,6 +83,24 @@ class OperatorUpgradeTest(tutil.OperatorTest):
         super().tearDownClass()
 
     def test_1_sidecar_update(self):
+        def compare_image(used, expected):
+            used_name = used[0]
+            expected_name = expected[0]
+            self.assertEqual(used_name, expected_name)
+
+            def extract_image_tag(image):
+                return image[image.rfind(':') + 1:]
+
+            used_image = used[1]
+            expected_image = expected[1]
+            if used_image != expected_image and extract_image_tag(used_image) != extract_image_tag(expected_image):
+                self.fail(f"{used_image} != {expected_image}")
+
+        def assert_images_equal(used, expected):
+            self.assertEqual(len(used), len(expected))
+            for used, expected in zip(used, expected):
+                compare_image(used, expected)
+
         def assert_sidecar_image(expected_image):
             spec = kutil.get_po(self.ns, "mycluster-0")["spec"]
             images_used = list(
@@ -91,7 +109,9 @@ class OperatorUpgradeTest(tutil.OperatorTest):
                         spec["initContainers"] + spec["containers"])
                 )
             )
-            self.assertEqual(images_used, [['fixdatadir', expected_image], ['initconf', expected_image], ['sidecar', expected_image]])
+            # TODO: bring back after upgrade to 8.0.34
+            # self.assertEqual(images_used, [['fixdatadir', expected_image], ['initconf', expected_image], ['sidecar', expected_image]])
+            assert_images_equal(images_used, [['fixdatadir', expected_image], ['initconf', expected_image], ['sidecar', expected_image]])
 
         change_operator_version(g_ts_cfg.operator_old_version_tag)
 

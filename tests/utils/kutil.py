@@ -488,13 +488,15 @@ def restart_sts(ns, name):
 #
 
 
-def logs(ns, name, prev=False):
+def logs(ns, name, prev=False, since=None):
     if type(name) is str:
         args = [name]
     else:
         args = [name[0], "-c", name[1]]
     if prev:
         args.append("-p")
+    if since:
+        args.extend(["--since", since])
     return kubectl("logs", None, args + ["-n", ns]).stdout.decode("utf8")
 
 
@@ -645,8 +647,8 @@ class StoreDiagnostics:
     def describe_pod(self, pod):
         self.store_log("pod", pod, "describe", lambda: describe_po(self.ns, pod))
 
-    def logs_pod(self, pod, container):
-        self.store_log("pod", f"{pod}-{container}", "logs", lambda: logs(self.ns, [pod, container]))
+    def logs_pod(self, pod, container, since=None):
+        self.store_log("pod", f"{pod}-{container}", "logs", lambda: logs(self.ns, [pod, container], since=since))
 
 
     def process_operators(self, pod):
@@ -662,7 +664,11 @@ class StoreDiagnostics:
 
     def process_operator(self, pod):
         self.describe_pod(pod)
-        self.logs_pod(pod, "mysql-operator")
+        # store only the last few minutes of a mysql operator pod logs
+        # it may run for quite a long time, but in the case of timeouts we are not interested in the whole
+        # run that may take plenty of MBs which are useless for diagnostics after all
+        LogOperatorPodSince = "5m"
+        self.logs_pod(pod, "mysql-operator", since=LogOperatorPodSince)
 
 
     def process_cluster(self, cluster_name):

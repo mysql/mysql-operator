@@ -22,3 +22,4 @@ grep "'minikube-v[0-9]" $WEEKLY_PIPELINE_PATH | awk -F";" '{print $2}' > $K8S_VE
 grep "'k3d-v[0-9]" $WEEKLY_PIPELINE_PATH | awk -F"[;:]" '{sub(/-k3.*/, ""); print $3}' >> $K8S_VERSIONS_PATH
 
 cat $K8S_VERSIONS_PATH | sort -uV
+rm $K8S_VERSIONS_PATH

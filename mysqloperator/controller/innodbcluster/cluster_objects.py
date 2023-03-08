@@ -204,10 +204,13 @@ spec:
           # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#SecurityContext - for containers
           allowPrivilegeEscalation: false
           privileged: false
-#          readOnlyRootFilesystem: true
-#          capabilities:
-#            drop:
-#            - ALL
+          readOnlyRootFilesystem: true
+          capabilities:
+            add:
+            - CHOWN
+            - FOWNER
+            drop:
+            - ALL
         volumeMounts:
         - name: datadir
           mountPath: /var/lib/mysql

@@ -704,6 +704,8 @@ class StoreDiagnostics:
 
     def process_generic_rsrc(self, rsrc, name):
         self.describe_rsrc(rsrc, name)
+        if not self.ns:
+            return
         ics = ls_ic(self.ns)
         for ic in ics:
             self.process_cluster(ic["NAME"])

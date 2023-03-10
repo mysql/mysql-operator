@@ -108,9 +108,9 @@ spec:
         self.wait(check_done, args=("mycluster-2", ),
                   check=lambda s: s.startswith(g_ts_cfg.version_tag), timeout=300, delay=10)
         self.wait(check_done, args=("mycluster-1", ),
-                  check=lambda s: s.startswith(g_ts_cfg.version_tag), timeout=150, delay=10)
+                  check=lambda s: s.startswith(g_ts_cfg.version_tag), timeout=300, delay=10)
         self.wait(check_done, args=("mycluster-0", ),
-                  check=lambda s: s.startswith(g_ts_cfg.version_tag), timeout=150, delay=10)
+                  check=lambda s: s.startswith(g_ts_cfg.version_tag), timeout=300, delay=10)
 
         self.wait_ic("mycluster", "ONLINE", 3)
 

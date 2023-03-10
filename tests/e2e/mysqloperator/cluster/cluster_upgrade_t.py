@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -74,10 +74,8 @@ spec:
 
         self.wait_routers("mycluster-router-*", 2)
 
-        check_all(self, self.ns, "mycluster", version=g_ts_cfg.get_old_version_tag(),
-                  instances=3, routers=2, primary=0)
-
-        # TODO check that router version is the latest by default
+        _, router_pods = check_all(self, self.ns, "mycluster", version=g_ts_cfg.get_old_version_tag(),
+                                   instances=3, routers=2, primary=0)
 
         for pod_name in ["mycluster-0", "mycluster-1", "mycluster-2"]:
             pod = kutil.get_po(self.ns, pod_name)
@@ -89,6 +87,14 @@ spec:
                 self, pod, "sidecar", None, True)
             self.assertEqual(
                 cont["image"], g_ts_cfg.get_operator_image())
+
+        for pod_name in map(lambda pod: pod["NAME"], router_pods):
+            pod = kutil.get_po(self.ns, pod_name)
+            cont = check_apiobjects.check_pod_container(
+                self, pod, "router", None, True)
+            self.assertEqual(
+                cont["image"], g_ts_cfg.get_old_router_image())
+
 
     def test_1_upgrade(self):
         """
@@ -117,8 +123,8 @@ spec:
         self.wait_routers("mycluster-router-*", 2)
 
         # TODO check that mysql is upgraded ok
-        check_all(self, self.ns, "mycluster", version=g_ts_cfg.version_tag,
-                  instances=3, routers=2, primary=None)
+        _, router_pods = check_all(self, self.ns, "mycluster", version=g_ts_cfg.version_tag,
+                                   instances=3, routers=2, primary=None)
 
         for pod_name in ["mycluster-0", "mycluster-1", "mycluster-2"]:
             pod = kutil.get_po(self.ns, pod_name)
@@ -131,7 +137,13 @@ spec:
             self.assertEqual(
                 cont["image"], g_ts_cfg.get_operator_image())
 
-        # TODO check router still 8.0.21
+        for pod_name in map(lambda pod: pod["NAME"], router_pods):
+            pod = kutil.get_po(self.ns, pod_name)
+            cont = check_apiobjects.check_pod_container(
+                self, pod, "router", None, True)
+            self.assertEqual(
+                cont["image"], g_ts_cfg.get_router_image())
+
 
     def test_1_upgrade_router(self):
         pass

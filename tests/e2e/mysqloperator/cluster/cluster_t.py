@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -78,7 +78,7 @@ def check_all(test, ns, name, instances, routers=None, primary=None, count_sessi
             router_pod = kutil.get_po(ns, router["NAME"])
             check_apiobjects.check_router_pod(test, router_pod)
 
-    return all_pods
+    return (all_pods, router_pods)
 
 
 def cross_sync_gtids(ns, pods, user, password):
@@ -897,8 +897,8 @@ spec:
             self.ns, ["mycluster-0", "mycluster-1", "mycluster-2"],
             "root", "sakila")
 
-        all_pods = check_all(self, self.ns, "mycluster",
-                             instances=3, routers=2, primary=0)
+        all_pods, _ = check_all(self, self.ns, "mycluster",
+                                instances=3, routers=2, primary=0)
 
         check_group.check_data(self, all_pods, primary=0)
 
@@ -961,8 +961,8 @@ spec:
             self.ns, ["mycluster-0", "mycluster-2", "mycluster-1"],
             "root", "sakila")
 
-        all_pods = check_all(self, self.ns, "mycluster",
-                             instances=3, routers=2, primary=2)
+        all_pods, _ = check_all(self, self.ns, "mycluster",
+                                instances=3, routers=2, primary=2)
         check_group.check_data(self, all_pods)
 
         kutil.exec(self.ns, ("mycluster-0", "sidecar"), ["mysqlsh", "root:sakila@localhost", "--", "cluster",
@@ -987,8 +987,8 @@ spec:
         self.assertEqual(pod1["status"]["containerStatuses"]
                          [0]["restartCount"], 0)
 
-        all_pods = check_all(self, self.ns, "mycluster",
-                             instances=3, routers=2, primary=0)
+        all_pods, _ = check_all(self, self.ns, "mycluster",
+                                instances=3, routers=2, primary=0)
 
         check_group.check_data(self, all_pods, primary=0)
 
@@ -1114,8 +1114,8 @@ spec:
         self.wait_ic("mycluster", "ONLINE", num_online=3, probe_time=initial_probe_time)
         self.wait_routers("mycluster-router-*", 2)
 
-        all_pods = check_all(self, self.ns, "mycluster",
-                             instances=3, routers=2)
+        all_pods, _ = check_all(self, self.ns, "mycluster",
+                                instances=3, routers=2)
         check_group.check_data(self, all_pods)
 
     def test_9_destroy(self):

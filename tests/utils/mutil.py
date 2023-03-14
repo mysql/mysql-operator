@@ -54,8 +54,7 @@ class MySQLPodSession:
     def __init__(self, ns, podname, user, password, port=3306, **kwargs):
         self.session = None
         self.proc = None
-        i = 0
-        while True:
+        for retries in range(6):
             try:
                 self.proc, self.port = kutil.portfw(ns, podname, port)
                 self.session = MySQLDbSession(user=user, password=password,
@@ -64,14 +63,12 @@ class MySQLPodSession:
                                 database='mysql',
                                 **kwargs)
                 break
-            except mysql.connector.errors.OperationalError as e:
+            except Exception as e:
                 logger.error(f"{ns}/{podname}, port={self.port}, pass={password}, {e}")
-                if i < 5:
-                    i += 1
-                    time.sleep(1)
-                    logger.debug("init mysql serssion retrying...")
-                    continue
-                raise
+                if retries == 5:
+                    raise
+                time.sleep(1)
+                logger.debug("init mysql serssion retrying...")
 
     def __del__(self):
         self.close()

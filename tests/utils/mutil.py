@@ -54,11 +54,10 @@ class MySQLPodSession:
     def __init__(self, ns, podname, user, password, port=3306, **kwargs):
         self.session = None
         self.proc = None
-        self.proc, self.port = kutil.portfw(ns, podname, port)
         i = 0
         while True:
-            i += 1
             try:
+                self.proc, self.port = kutil.portfw(ns, podname, port)
                 self.session = MySQLDbSession(user=user, password=password,
                                 host='127.0.0.1',
                                 port=self.port,
@@ -67,9 +66,10 @@ class MySQLPodSession:
                 break
             except mysql.connector.errors.OperationalError as e:
                 logger.error(f"{ns}/{podname}, port={self.port}, pass={password}, {e}")
-                if e.errno == 2013 and i < 5: # error reading initial packet (server restarting?)
+                if i < 5:
+                    i += 1
                     time.sleep(1)
-                    logger.debug("retrying...")
+                    logger.debug("init mysql serssion retrying...")
                     continue
                 raise
 

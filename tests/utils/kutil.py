@@ -907,11 +907,20 @@ def wait_ic(ns, name, status=["ONLINE"], num_online=None, timeout=200, probe_tim
 
 
 def portfw(ns, name, in_port, target_type="pod"):
-    p = kubectl_popen("port-forward", [f"{target_type}/{name}", ":%s" %
-                                       in_port, "--address", "127.0.0.1", "-n", ns])
-    line = p.stdout.readline().decode("utf8")
-    logger.info(f"portfw: {line}")
-    return p, int(line.split("->")[0].split(":")[-1].strip())
+    i = 0
+    while True:
+        p = kubectl_popen("port-forward", [f"{target_type}/{name}", ":%s" %
+                                        in_port, "--address", "127.0.0.1", "-n", ns])
+        line = p.stdout.readline().decode("utf8")
+        logger.info(f"portfw: {line}")
+        port = line.split("->")[0].split(":")[-1].strip()
+        if not port.isnumeric():
+            if i < 5:
+                i += 1
+                time.sleep(1)
+                logger.debug(f"portfw incorrect port: {port}, retrying...")
+                continue
+        return p, int(port)
 
 #
 

@@ -10,7 +10,7 @@ Introduction
    third-party software which may be included in this distribution of
    MySQL Operator for Kubernetes.
 
-   Last updated: November 2022
+   Last updated: February 2023
 
 Licensing Information
 
@@ -18,7 +18,7 @@ Licensing Information
    the MySQL team at Oracle. This software is released under version 1 of
    the Universal Permissive License (UPL), as set forth below.
 
-   Copyright (c) 1997, 2022, Oracle and/or its affiliates.
+   Copyright (c) 1997, 2023, Oracle and/or its affiliates.
 
 The Universal Permissive License (UPL), Version 1.0
 

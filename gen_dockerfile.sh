@@ -8,7 +8,7 @@
 MYSQL_REPO_URL="http://repo.mysql.com"
 MYSQL_OPERATOR_PYTHON_DEPS="mysql-operator-python-deps"
 MYSQL_OPERATOR_PYTHON_DEPS_VERSION="3.9.5"
-MYSQL_SHELL_VERSION=8.0.32
+MYSQL_SHELL_VERSION=8.0.33
 MYSQL_CONFIG_PKG="mysql80-community-release"
 MYSQL_SHELL_REPO="mysql-tools-community"
 if [ -n "${1}" ]; then

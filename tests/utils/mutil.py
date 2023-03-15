@@ -64,7 +64,7 @@ class MySQLPodSession:
                                 **kwargs)
                 break
             except Exception as e:
-                logger.error(f"{ns}/{podname}, port={self.port}, pass={password}, {e}")
+                logger.error(f"{ns}/{podname}, port={port}, pass={password}, {e}")
                 if retries == 5:
                     raise
                 time.sleep(1)

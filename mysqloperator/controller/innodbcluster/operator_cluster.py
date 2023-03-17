@@ -240,6 +240,22 @@ def on_innodbcluster_delete(name: str, namespace: str, body: Body,
     # Scale down the cluster to 0
     sts = cluster.get_stateful_set()
     if sts:
+        # First we need to check if there is only one pod there and whether it is being deleted
+        # In case it is being deleted on_pod_delete() won't be called when we scale down the STS to 0
+        # In this case the code that calls cluster finalizer removal won't be called too and the
+        # cluster finalizer will stay hanging
+        # If we check after scaling down to 0, and there is only one pod, it will be moved to Terminating
+        # state and we won't know whether it was in Terminating beforehand. If it wasn't then
+        # on_pod_delete() will be called and we will try to remove the finalizer again
+        # This is true if only the PodDisruptionBudget has set to maxUnavailable to 1. If more
+        # then len(pods) == maxUnavailable and all pods should be inspected whether they are terminating
+        pods = cluster.get_pods()
+        if len(pods) == 1 and pods[0].deleting:
+            # if there is only one pod and it is deleting then on_pod_delete() won't be called
+            # in this case the IC finalizer won't be removed and the IC will hang
+            logger.info("on_innodbcluster_delete: The cluster's only one pod is already deleting. Removing cluster finalizer here")
+            cluster.remove_cluster_finalizer()
+
         logger.info(f"Updating InnoDB Cluster StatefulSet.instances to 0")
         cluster_objects.update_stateful_set_spec(
             sts, {"spec": {"replicas": 0}})

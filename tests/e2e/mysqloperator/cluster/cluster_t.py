@@ -3,6 +3,7 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
+from time import sleep
 from asyncio import subprocess
 from utils.auxutil import isotime
 from utils import tutil
@@ -101,6 +102,85 @@ def cross_sync_gtids(ns, pods, user, password):
 
     for s in sessions:
         s.close()
+
+
+class Cluster1FinalizerRemoval(tutil.OperatorTest):
+    default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+
+    @classmethod
+    def setUpClass(cls):
+        cls.logger = logging.getLogger(__name__+":"+cls.__name__)
+        super().setUpClass()
+
+        g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
+
+    @classmethod
+    def tearDownClass(cls):
+        g_full_log.stop_watch(cls.ns, "mycluster-0")
+
+        super().tearDownClass()
+
+    def test_00_create(self):
+        """
+        Create cluster, check posted events.
+        """
+        kutil.create_user_secrets(
+            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+
+        # create cluster with mostly default configs
+        yaml = """
+apiVersion: mysql.oracle.com/v2
+kind: InnoDBCluster
+metadata:
+  name: mycluster
+spec:
+  instances: 1
+  router:
+    instances: 0
+  secretName: mypwds
+  edition: community
+  tlsUseSelfSigned: true
+  imagePullPolicy: Always
+"""
+
+        apply_time = isotime()
+        kutil.apply(self.ns, yaml)
+
+        self.wait_ic("mycluster", ["PENDING", "INITIALIZING", "ONLINE"])
+
+        self.wait_pod("mycluster-0", "Running")
+
+        self.wait_ic("mycluster", "ONLINE")
+
+        self.assertGotClusterEvent(
+            "mycluster", after=apply_time, type="Normal",
+            reason="ResourcesCreated",
+            msg="Dependency resources created, switching status to PENDING")
+        # TODO - this event not getting posted, check if normal
+        #self.assertGotClusterEvent(
+        #    "mycluster", after=apply_time, type="Normal",
+        #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
+        self.assertGotClusterEvent(
+            "mycluster", after=apply_time, type="Normal",
+            reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
+
+    def test_01_check_labels_and_annotations(self):
+        # We need to restart the pod so we can after that delete the IC and check for a race
+        # in cluster finalizer removal / hanging finalizer
+        patch = {
+                    "spec": {
+                        "imagePullPolicy": "IfNotPresent"
+                    }
+                }
+        kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
+        #It takes at least 120 seconds for a pod to restart due to grace period being 120 seconds
+        sleep(10)
+
+        kutil.delete_ic(self.ns, "mycluster")
+
+        self.wait_pod_gone("mycluster-0")
+        self.wait_ic_gone("mycluster")
+
 
 
 # Test 1 member cluster with all default configs

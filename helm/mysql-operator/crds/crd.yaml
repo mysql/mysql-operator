@@ -164,7 +164,7 @@ spec:
                           properties:
                             encryption:
                               type: string
-                              description: "Encryption endpoint URI like {<identifier}-crypto.kms.{region}.oraclecloud.com"
+                              description: "Encryption endpoint URI like {identifier}-crypto.kms.{region}.oraclecloud.com"
                             management:
                               type: string
                               description: "Management endpoint URI like {identifier}-management.kms.{region}.oraclecloud.com"

@@ -68,7 +68,7 @@ class MySQLPodSession:
                 if retries == 5:
                     raise
                 time.sleep(1)
-                logger.debug("init mysql serssion retrying...")
+                logger.debug("init mysql session retrying...")
 
     def __del__(self):
         self.close()

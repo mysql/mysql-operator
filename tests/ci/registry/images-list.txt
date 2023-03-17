@@ -103,7 +103,7 @@ mysql-enterprise-router:8.0.32
 1
 ---
 enterprise-router:8.0.33
-mysql-router:8.0.33
+mysql-enterprise-router:8.0.33
 1
 ---
 enterprise-server:8.0.28

@@ -282,6 +282,12 @@ def ls_pv(ns):
     return __ls(ns, "pv")
 
 
+def ls_secret(ns, pattern):
+    secrets = __ls(ns, "secret")
+    r = re.compile(pattern)
+    return [secret for secret in secrets if r.match(secret["NAME"])]
+
+
 def ls_all_raw(ns):
     def ignore(t, name):
         if t == "secret":
@@ -315,11 +321,17 @@ def ls_ns():
 
 #
 
+def get_raw(ns, rsrc, name, format="yaml", check=True, **kwargs):
+    r = kubectl("get", rsrc, args=[name, "-n", ns, f"-o={format}"], check=check, **kwargs)
+    if r and r.stdout:
+        return r.stdout.decode("utf8")
+    return None
+
 
 def get(ns, rsrc, name, check=True, **kwargs):
-    r = kubectl("get", rsrc, args=[name, "-n", ns, "-o=yaml"], check=check, **kwargs)
-    if r and r.stdout:
-        return yaml.safe_load(r.stdout.decode("utf8"))
+    raw_yaml = get_raw(ns, rsrc, name, check=check, **kwargs)
+    if raw_yaml:
+        return yaml.safe_load(raw_yaml)
     return None
 
 
@@ -1056,6 +1068,16 @@ def create_user_secrets(ns, name, root_user=None, root_host=None, root_pass=None
 
 def create_default_user_secrets(ns, name="mypwds", root_user="root", root_host="%", root_pass="sakila", extra_keys=[]):
     create_user_secrets(ns, name, root_user, root_host, root_pass, extra_keys)
+
+def copy_secret(secret_ns, secret_name, dst_ns):
+    src_secret_yaml = get_raw(secret_ns, "secret", secret_name)
+    src_yaml = src_secret_yaml.splitlines()
+    dst_yaml = []
+    for line in src_yaml:
+        if re.match("^\s*namespace:", line):
+            continue
+        dst_yaml.append(line)
+    apply(dst_ns, '\n'.join(dst_yaml))
 
 
 def create_pod():

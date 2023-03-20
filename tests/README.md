@@ -267,6 +267,15 @@ customized according to a local environment:
     key_fingerprint=aa:bb:cc:dd:ee:ff:gg:hh:ii:jj:kk:ll:mm:nn:oo:pp
 ```
 
+--custom-secret={[namespace/]secret_name}\
+    A custom secret that is meant to be copied into each test case namespace before its run.
+    Most of the test cases have a unique dedicated namespace, some share it with a few related ones.\
+    In the argument the namespace is optional, if not provided then its value is assumed as 'default'.\
+    e.g.:
+* default/testsecret
+* testsecret (the same as default/testsecret)
+* testns/testsecret
+
 --xml={path}\
     generate results in JUnit xml reports
 

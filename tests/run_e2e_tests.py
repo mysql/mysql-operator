@@ -220,6 +220,8 @@ if __name__ == '__main__':
             g_ts_cfg.azure_container_name = arg.partition("=")[-1]
         elif arg.startswith("--vault-cfg="):
             g_ts_cfg.vault_cfg_path=arg.partition("=")[-1]
+        elif arg.startswith("--custom-secret="):
+            g_ts_cfg.set_custom_secret(arg.partition("=")[-1])
         elif arg.startswith("--suite="):
             opt_suite_path = arg.partition("=")[-1]
         elif arg.startswith("--xml="):

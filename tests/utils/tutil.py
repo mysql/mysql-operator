@@ -12,6 +12,7 @@ import unittest
 import subprocess
 import logging
 import os
+from setup.config import g_ts_cfg
 from utils import auxutil, ociutil
 
 from utils.auxutil import isotime
@@ -384,6 +385,11 @@ class OperatorTest(unittest.TestCase):
 
         # TODO monitor for operator pod restarts (from crashes)
         g_full_log.on_operator = check_operator_output
+
+        if g_ts_cfg.custom_secret_name:
+            secrets = kutil.ls_secret(cls.ns, g_ts_cfg.custom_secret_name)
+            if len(secrets) == 0:
+                kutil.copy_secret(g_ts_cfg.custom_secret_ns, g_ts_cfg.custom_secret_name, cls.ns)
 
     @classmethod
     def tearDownClass(cls):

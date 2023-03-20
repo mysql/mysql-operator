@@ -68,6 +68,10 @@ class Config:
     # Optional K8s cluster domain alias
     k8s_cluster_domain_alias = defaults.K8S_CLUSTER_DOMAIN_ALIAS
 
+    # an optional custom secret to be copied to each test-case namespace at the startup
+    custom_secret_ns = None
+    custom_secret_name = None
+
     @property
     def operator_shell_version_num(self):
         a,b,c = self.operator_version_tag.split("-")[0].split(".")
@@ -77,6 +81,17 @@ class Config:
     def server_version_num(self):
         a,b,c = self.server_version_tag.split("-")[0].split(".")
         return int(a)*10000 + int(b)*100 + int(c)
+
+    def set_custom_secret(self, custom_secret):
+        if not custom_secret:
+            return
+        if '/' in custom_secret:
+            self.custom_secret_ns, self.custom_secret_name = custom_secret.split('/')
+        else:
+            self.custom_secret_name = custom_secret
+
+        if not self.custom_secret_ns:
+            self.custom_secret_ns = 'default'
 
     def commit(self):
         if not self.env:

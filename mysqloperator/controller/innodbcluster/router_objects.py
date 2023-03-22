@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -263,6 +263,15 @@ spec:
 
     return deployment
 
+
+def update_labels_or_annotations(what: str, what_value: dict, cluster: InnoDBCluster, logger: Logger) -> None:
+    deploy = cluster.get_router_deployment()
+    # if the size is 0 it might not exist. In this case the proper labels and annotations will be set when eventually created
+    if deploy:
+        patch = {"spec": {"template": { "metadata" : { what : what_value }}}}
+        api_apps.patch_namespaced_deployment(deploy.metadata.name, deploy.metadata.namespace, body=patch)
+
+
 def get_size(cluster: InnoDBCluster) -> int:
     deploy = cluster.get_router_deployment()
     if deploy:
@@ -290,6 +299,7 @@ def update_size(cluster: InnoDBCluster, size: int, logger: Logger) -> None:
                 namespace=cluster.namespace, body=router_deployment)
 
 
+
 def update_deployment_spec(dpl: api_client.V1Deployment, patch: dict) -> None:
     api_apps.patch_namespaced_deployment(
         dpl.metadata.name, dpl.metadata.namespace, body=patch)
@@ -308,10 +318,6 @@ def update_router_container_template_property(dpl: api_client.V1Deployment,
                     }
             }
     update_deployment_spec(dpl, patch)
-
-
-def propagate_router_field_change_to_sts(cluster: InnoDBCluster, field: str, logger: Logger) -> None:
-    pass
 
 
 def update_router_image(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, logger: Logger) -> None:

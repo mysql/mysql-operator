@@ -183,6 +183,179 @@ spec:
 
 
 
+class Cluster1AnnotationsAndLabelsUpdate(tutil.OperatorTest):
+    default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+
+    @classmethod
+    def setUpClass(cls):
+        cls.logger = logging.getLogger(__name__+":"+cls.__name__)
+        super().setUpClass()
+
+        g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
+
+    @classmethod
+    def tearDownClass(cls):
+        g_full_log.stop_watch(cls.ns, "mycluster-0")
+
+        super().tearDownClass()
+
+    def test_00_create(self):
+        """
+        Create cluster, check posted events.
+        """
+        kutil.create_user_secrets(
+            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+
+        # create cluster with mostly default configs
+        yaml = """
+apiVersion: mysql.oracle.com/v2
+kind: InnoDBCluster
+metadata:
+  name: mycluster
+spec:
+  instances: 1
+  router:
+    instances: 0
+  secretName: mypwds
+  edition: community
+  tlsUseSelfSigned: true
+  podLabels:
+    server-label1: "mycluster-server-label1-value"
+    server-label2: "mycluster-server-label2-value"
+  podAnnotations:
+    server.mycluster.example.com/ann1: "server-ann1-value"
+    server.mycluster.example.com/ann2: "server-ann2-value"
+    server.mycluster.example.com/ann3: "server-ann3-value"
+  podSpec:
+    terminationGracePeriodSeconds: 1
+"""
+
+        apply_time = isotime()
+        kutil.apply(self.ns, yaml)
+
+        self.wait_ic("mycluster", ["PENDING", "INITIALIZING", "ONLINE"])
+
+        self.wait_pod("mycluster-0", "Running")
+
+        self.wait_ic("mycluster", "ONLINE")
+
+        self.assertGotClusterEvent(
+            "mycluster", after=apply_time, type="Normal",
+            reason="ResourcesCreated",
+            msg="Dependency resources created, switching status to PENDING")
+        # TODO - this event not getting posted, check if normal
+        #self.assertGotClusterEvent(
+        #    "mycluster", after=apply_time, type="Normal",
+        #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
+        self.assertGotClusterEvent(
+            "mycluster", after=apply_time, type="Normal",
+            reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
+
+
+    def test_01_check_labels_and_annotations(self):
+        server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
+        pod_names = [server["NAME"] for server in server_pods]
+        for pod_name in pod_names:
+            pod = kutil.get_po(self.ns, pod_name)
+            self.assertEqual(pod['metadata']['labels']['server-label1'], 'mycluster-server-label1-value')
+            self.assertEqual(pod['metadata']['labels']['server-label2'], 'mycluster-server-label2-value')
+            self.assertEqual(pod['metadata']['annotations']['server.mycluster.example.com/ann1'], 'server-ann1-value')
+            self.assertEqual(pod['metadata']['annotations']['server.mycluster.example.com/ann2'], 'server-ann2-value')
+            self.assertEqual(pod['metadata']['annotations']['server.mycluster.example.com/ann3'], 'server-ann3-value')
+
+    def test_03_patch_labels_and_annotations(self):
+        patch = [
+            {
+                "op":"replace",
+                "path":"/spec/podLabels",
+                "value": {
+                    "server-label1" : "mycluster-server-label11-value",
+                    "server-label222": "mycluster-router-label222-value",
+                }
+            },
+            {
+                "op":"replace",
+                "path":"/spec/podAnnotations",
+                "value": {
+                    "server.mycluster.example.com/ann1": "server-ann111-value",
+                    "server.mycluster.example.com/ann2": "server-ann222-value",
+                    "server.mycluster.example.com/ann333": "server-ann333-value",
+                }
+            },
+        ]
+
+        kutil.patch_ic(self.ns, "mycluster", patch, type="json", data_as_type='json')
+        # We have set the terminationGracePeriodSeconds to 1s, so the pod should die quickly and be
+        # scheduled a new also quickly
+        sleep(10)
+        self.wait_pod("mycluster-0", "Running")
+        self.wait_ic("mycluster", "ONLINE")
+
+    def test_05_check_ic(self):
+        labels = kutil.get_ic(self.ns, "mycluster")["spec"]["podLabels"]
+
+        self.assertTrue('server-label1' in labels)
+        self.assertTrue('server-label222' in labels)
+        self.assertFalse('server-label2' in labels)
+        self.assertEqual(labels['server-label1'], 'mycluster-server-label11-value')
+        self.assertEqual(labels['server-label222'], 'mycluster-router-label222-value')
+
+        annotations = kutil.get_ic(self.ns, "mycluster")["spec"]["podAnnotations"]
+        self.assertTrue('server.mycluster.example.com/ann1' in annotations)
+        self.assertTrue('server.mycluster.example.com/ann2' in annotations)
+        self.assertTrue('server.mycluster.example.com/ann333' in annotations)
+        self.assertFalse('server.mycluster.example.com/ann3' in annotations)
+        self.assertEqual(annotations['server.mycluster.example.com/ann1'], 'server-ann111-value')
+        self.assertEqual(annotations['server.mycluster.example.com/ann2'], 'server-ann222-value')
+        self.assertEqual(annotations['server.mycluster.example.com/ann333'], 'server-ann333-value')
+
+    def test_07_check_sts(self):
+        labels = kutil.get_sts(self.ns, "mycluster")["spec"]["template"]["metadata"]["labels"]
+
+        self.assertTrue('server-label1' in labels)
+        self.assertTrue('server-label222' in labels)
+        self.assertFalse('server-label2' in labels)
+        self.assertEqual(labels['server-label1'], 'mycluster-server-label11-value')
+        self.assertEqual(labels['server-label222'], 'mycluster-router-label222-value')
+
+        annotations = kutil.get_sts(self.ns, "mycluster")["spec"]["template"]["metadata"]["annotations"]
+        self.assertTrue('server.mycluster.example.com/ann1' in annotations)
+        self.assertTrue('server.mycluster.example.com/ann2' in annotations)
+        self.assertTrue('server.mycluster.example.com/ann333' in annotations)
+        self.assertFalse('server.mycluster.example.com/ann3' in annotations)
+        self.assertEqual(annotations['server.mycluster.example.com/ann1'], 'server-ann111-value')
+        self.assertEqual(annotations['server.mycluster.example.com/ann2'], 'server-ann222-value')
+        self.assertEqual(annotations['server.mycluster.example.com/ann333'], 'server-ann333-value')
+
+    def test_09_check_pod(self):
+        server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
+        pod_names = [server["NAME"] for server in server_pods]
+        for pod_name in pod_names:
+            pod = kutil.get_po(self.ns, pod_name)
+            labels = pod['metadata']['labels']
+            self.assertTrue('server-label1' in labels)
+            self.assertTrue('server-label222' in labels)
+            self.assertFalse('server-label2' in labels)
+            self.assertEqual(labels['server-label1'], 'mycluster-server-label11-value')
+            self.assertEqual(labels['server-label222'], 'mycluster-router-label222-value')
+
+            annotations = pod['metadata']['annotations']
+            self.assertTrue('server.mycluster.example.com/ann1' in annotations)
+            self.assertTrue('server.mycluster.example.com/ann2' in annotations)
+            self.assertTrue('server.mycluster.example.com/ann333' in annotations)
+            self.assertFalse('server.mycluster.example.com/ann3' in annotations)
+            self.assertEqual(annotations['server.mycluster.example.com/ann1'], 'server-ann111-value')
+            self.assertEqual(annotations['server.mycluster.example.com/ann2'], 'server-ann222-value')
+            self.assertEqual(annotations['server.mycluster.example.com/ann333'], 'server-ann333-value')
+
+    def test_99_destroy(self):
+        kutil.delete_ic(self.ns, "mycluster")
+
+        self.wait_pod_gone("mycluster-0")
+        self.wait_ic_gone("mycluster")
+
+
+
 # Test 1 member cluster with all default configs
 class Cluster1Defaults(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS

@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -583,21 +583,23 @@ def apply(ns, yaml, *, check=True):
         raise
 
 
-def patch(ns, rsrc, name, changes, type=None):
-    kubectl("patch", rsrc, [name, "-p", yaml.dump(changes),
-                            "-n", ns] + (["--type=%s" % type] if type else []))
+def patch(ns, rsrc, name, changes, type=None, data_as_type='yaml'):
+    data_processor = json.dumps if data_as_type and str(data_as_type).lower() =='json' else yaml.dump
+    patch_data = data_processor(changes)
+    type_param = ["--type=%s" % type] if type else []
+    kubectl("patch", rsrc, [name, "-p", patch_data, "-n", ns, *type_param])
 
 
-def patch_pod(ns, name, changes, type=None):
-    patch(ns, "pod", name, changes, type)
+def patch_pod(ns, name, changes, type=None, data_as_type='yaml'):
+    patch(ns, "pod", name, changes, type, data_as_type='yaml')
 
 
-def patch_ic(ns, name, changes, type=None):
-    patch(ns, "ic", name, changes, type)
+def patch_ic(ns, name, changes, type=None, data_as_type='yaml'):
+    patch(ns, "ic", name, changes, type, data_as_type)
 
 
-def patch_dp(ns, name, change, type=None):
-    patch(ns, "deployment", name, change, type)
+def patch_dp(ns, name, change, type=None, data_as_type='yaml'):
+    patch(ns, "deployment", name, change, type, data_as_type)
 
 #
 

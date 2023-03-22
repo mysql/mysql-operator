@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -469,12 +469,11 @@ def on_innodbcluster_field_backup_schedules(old: str, new: str, body: Body,
         backup_objects.update_schedules(cluster.parsed_spec, old, new, logger)
 
 
-def update_tls_field(body: Body, field: str, logger: Logger) -> None:
+def on_sts_field_update(body: Body, field: str, logger: Logger) -> None:
     cluster = InnoDBCluster(body)
 
     if not cluster.get_create_time():
-        logger.debug(
-            f"Ignoring {field} change for unready cluster")
+        logger.debug(f"Ignoring {field} change for unready cluster")
         return
 
     cluster.parsed_spec.validate(logger)
@@ -487,7 +486,7 @@ def update_tls_field(body: Body, field: str, logger: Logger) -> None:
 def on_innodbcluster_field_tls_use_self_signed(body: Body,
                                                logger: Logger, **kwargs):
     logger.info("on_innodbcluster_field_tls_use_self_signed")
-    update_tls_field(body, "spec.tlsUseSelfSigned", logger)
+    on_sts_field_update(body, "spec.tlsUseSelfSigned", logger)
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
@@ -495,7 +494,7 @@ def on_innodbcluster_field_tls_use_self_signed(body: Body,
 def on_innodbcluster_field_tls_secret_name(body: Body,
                                           logger: Logger, **kwargs):
     logger.info("on_innodbcluster_field_tls_secret_name")
-    update_tls_field(body, "spec.tlsSecretName", logger)
+    on_sts_field_update(body, "spec.tlsSecretName", logger)
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
@@ -503,7 +502,7 @@ def on_innodbcluster_field_tls_secret_name(body: Body,
 def on_innodbcluster_field_router_tls_secret_name(body: Body,
                                                   logger: Logger, **kwargs):
     logger.info("on_innodbcluster_field_router_tls_secret_name")
-    update_tls_field(body, "spec.router.tlsSecretName", logger)
+    on_sts_field_update(body, "spec.router.tlsSecretName", logger)
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
@@ -511,7 +510,7 @@ def on_innodbcluster_field_router_tls_secret_name(body: Body,
 def on_innodbcluster_field_tls_ca_secret_name(body: Body,
                                               logger: Logger, **kwargs):
     logger.info("on_innodbcluster_field_tls_ca_secret_name")
-    update_tls_field(body, "spec.tlsCASecretName", logger)
+    on_sts_field_update(body, "spec.tlsCASecretName", logger)
 
 
 @kopf.on.create("", "v1", "pods",
@@ -669,3 +668,63 @@ def on_pod_delete(body: Body, logger: Logger, **kwargs):
 #@kopf.on.create("", "v1", "secrets", when=secret_belongs_to_a_cluster_checker) # type: ignore
 #@kopf.on.update("", "v1", "secrets", when=secret_belongs_to_a_cluster_checker) # type: ignore
 #
+
+
+def on_ic_labels_and_annotations_change(what: str, body: Body, diff, old, new, logger: Logger) -> None:
+    cluster = InnoDBCluster(body)
+
+    # ignore spec changes if the cluster is still being initialized
+    if not cluster.ready:
+        logger.debug(f"Ignoring {what} change for unready cluster")
+        return
+
+    # TODO - identify what cluster statuses should allow changes to the size of the cluster
+
+    sts = cluster.get_stateful_set()
+    if sts and diff:
+        logger.info(f"on_ic_labels_and_annotations_change: Updating InnoDB Cluster StatefulSet {what}")
+        patch = {field[0]: new for op, field, old, new in diff }
+        cluster_objects.update_stateful_set_spec(sts, {"spec": {"template": { "metadata" : { what : patch }}}})
+
+
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.podLabels")  # type: ignore
+def on_innodbcluster_field_pod_labels(body: Body, diff, old, new, logger: Logger, **kwargs):
+
+    on_ic_labels_and_annotations_change("labels", body, diff, old, new, logger)
+
+
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.podAnnotations")  # type: ignore
+def on_innodbcluster_field_pod_annotations(body: Body, diff, old, new, logger: Logger, **kwargs):
+
+    on_ic_labels_and_annotations_change("annotations", body, diff, old, new, logger)
+
+
+def on_ic_router_labels_and_annotations_change(what: str, body: Body, diff, logger: Logger) -> None:
+    cluster = InnoDBCluster(body)
+
+    # ignore spec changes if the cluster is still being initialized
+    if not cluster.ready:
+        logger.debug(f"Ignoring {what} change for unready cluster")
+        return
+
+    # TODO - identify what cluster statuses should allow changes to the size of the cluster
+    patch = {field[0]: new for op, field, old, new in diff }
+    logger.info(f"diff={diff}")
+    logger.info(f"patch={patch}")
+    router_objects.update_labels_or_annotations(what, patch, cluster, logger)
+
+
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.router.podLabels")  # type: ignore
+def on_innodbcluster_field_router_pod_labels(body: Body, diff, logger: Logger, **kwargs):
+
+    on_ic_router_labels_and_annotations_change("labels", body, diff, logger)
+
+
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.router.podAnnotations")  # type: ignore
+def on_innodbcluster_field_router_pod_annotations(body: Body, new, diff, logger: Logger, **kwargs):
+
+    on_ic_router_labels_and_annotations_change("annotations", body, diff, logger)

@@ -1,3 +1,5 @@
+overrideNamespace: null
+
 image:
   pullPolicy: IfNotPresent
   pullSecrets:

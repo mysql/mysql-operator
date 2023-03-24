@@ -32,7 +32,7 @@ apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: {{ $cluster_name }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ coalesce .Values.overrideNamespace .Release.Namespace }}
 spec:
   instances: {{ required "serverInstances is required" .Values.serverInstances }}
   tlsUseSelfSigned: {{ $use_self_signed }}

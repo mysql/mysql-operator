@@ -272,7 +272,7 @@ spec:
         {{- if $isDumpInstance }}
     dumpInstance:
           {{- if hasKey $backupProfile "dumpOptions" }}
-      dumpOptions: {{ toYaml $backupProfile.dumpOptions | nindent 10 }}
+      dumpOptions: {{ toYaml $backupProfile.dumpOptions | nindent 8 }}
           {{- end }}
         {{- else if $isSnapshot }}
     snapshot:

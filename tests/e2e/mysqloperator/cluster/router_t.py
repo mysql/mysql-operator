@@ -314,3 +314,113 @@ spec:
         self.wait_ic_gone("mycluster")
 
         kutil.delete_secret(self.ns, "mypwds")
+
+
+class RouterOptions(tutil.OperatorTest):
+    default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+
+    @classmethod
+    def setUpClass(cls):
+        cls.logger = logging.getLogger(__name__+":"+cls.__name__)
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+
+    def test_0_create(self):
+        """
+        Create cluster with router and some options
+        """
+        kutil.create_user_secrets(
+            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+
+        # create cluster with custom config options
+        #
+        # TODO To check escaping of bootstrap options we need a router image which
+        #      handles the escaped values properly
+        yaml = """
+apiVersion: mysql.oracle.com/v2
+kind: InnoDBCluster
+metadata:
+  name: mycluster
+spec:
+  instances: 1
+  router:
+    instances: 1
+    bootstrapOptions:
+    - --conf-set-option=DEFAULT.name=somename
+    options:
+    - "--pid-file=/tmp/it's e$caping properly"
+  secretName: mypwds
+  tlsUseSelfSigned: true
+"""
+
+        kutil.apply(self.ns, yaml)
+
+        self.wait_ic("mycluster", "ONLINE", num_online=1)
+
+        self.wait_routers("mycluster-router-.*", 1)
+
+        # check that router pods didn't restart, which could be a side-effect
+        # of router replicaset being created before the cluster is ready
+        pods = kutil.ls_po(self.ns, pattern="mycluster-router-.*")
+        self.assertEqual(1, len(pods))
+        self.assertEqual('0', pods[0]["RESTARTS"])
+
+
+    def test_1_verify_provided_options(self):
+        [pod] = kutil.ls_po(self.ns, pattern="mycluster-router-.*")
+        router_config = kutil.cat(self.ns, pod["NAME"], "/tmp/mysqlrouter/mysqlrouter.conf")
+        self.assertIn(b"name=somename", router_config, "router config does not contain the name")
+
+        self.assertTrue(kutil.file_exists(self.ns, pod["NAME"], "/tmp/it's e$caping properly"))
+
+
+    def test_2_update_bootstrap_config(self):
+        [old_pod] = kutil.ls_po(self.ns, pattern="mycluster-router-.*")
+
+        patch = {
+            "spec": {
+                "router": {
+                    "bootstrapOptions": [
+                        "--conf-set-option=DEFAULT.name=othername"
+                    ]
+                }
+            }
+        }
+        kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
+
+        self.wait_pod_gone(old_pod["NAME"], ns=self.ns)
+        self.wait_routers("mycluster-router-.*", 1)
+
+        [new_pod] = kutil.ls_po(self.ns, pattern="mycluster-router-.*")
+        router_config = kutil.cat(self.ns, new_pod["NAME"], "/tmp/mysqlrouter/mysqlrouter.conf")
+        self.assertIn(b"name=othername", router_config, "router config does not contain the name")
+
+    def test_3_update_config(self):
+        [old_pod] = kutil.ls_po(self.ns, pattern="mycluster-router-.*")
+
+        patch = {
+            "spec": {
+                "router": {
+                    "options": [
+                        "--pid-file=/tmp/with`backtick"
+                    ]
+                }
+            }
+        }
+        kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
+
+        self.wait_pod_gone(old_pod["NAME"], ns=self.ns)
+        self.wait_routers("mycluster-router-.*", 1)
+
+        [new_pod] = kutil.ls_po(self.ns, pattern="mycluster-router-.*")
+        self.assertTrue(kutil.file_exists(self.ns, new_pod["NAME"], "/tmp/with`backtick"))
+
+    def test_9_destroy(self):
+        kutil.delete_ic(self.ns, "mycluster")
+
+        self.wait_ic_gone("mycluster")
+
+        kutil.delete_secret(self.ns, "mypwds")

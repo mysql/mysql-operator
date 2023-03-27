@@ -466,6 +466,49 @@ def on_innodbcluster_field_router_version(old: str, new: str, body: Body,
             router_objects.update_router_image(router_deploy, cluster.parsed_spec, logger)
 
 
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.router.bootstrapOptions")  # type: ignore
+def on_innodbcluster_field_router_bootstrap_options(old: str, new: str, body: Body,
+                                                    logger: Logger, **kwargs):
+    if old == new:
+        return
+
+    cluster = InnoDBCluster(body)
+
+    # ignore spec changes if the cluster is still being initialized
+    if not cluster.get_create_time():
+        logger.debug(
+            f"Ignoring spec.router.bootstrapOptions change for unready cluster")
+        return
+
+    cluster.parsed_spec.validate(logger)
+    with ClusterMutex(cluster):
+        router_deploy = cluster.get_router_deployment()
+        if router_deploy:
+            router_objects.update_bootstrap_options(router_deploy, cluster, logger)
+
+
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.router.options")  # type: ignore
+def on_innodbcluster_field_router_options(old: str, new: str, body: Body,
+                                          logger: Logger, **kwargs):
+    if old == new:
+        return
+
+    cluster = InnoDBCluster(body)
+
+    # ignore spec changes if the cluster is still being initialized
+    if not cluster.get_create_time():
+        logger.debug(
+            f"Ignoring spec.router.options change for unready cluster")
+        return
+
+    cluster.parsed_spec.validate(logger)
+    with ClusterMutex(cluster):
+        router_deploy = cluster.get_router_deployment()
+        if router_deploy:
+            router_objects.update_options(router_deploy, cluster.parsed_spec, logger)
+
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
                field="spec.backupSchedules")  # type: ignore

@@ -656,6 +656,9 @@ class RouterSpec:
     podAnnotations: Optional[dict] = None
     podLabels: Optional[dict] = None
 
+    bootstrapOptions: list =  []
+    options: list = []
+
     tlsSecretName: str = ""
 
     def parse(self, spec: dict, prefix: str) -> None:
@@ -676,6 +679,12 @@ class RouterSpec:
 
         if "podLabels" in spec:
             self.podLabels = dget_dict(spec, "podLabels", prefix)
+
+        if "bootstrapOptions" in spec:
+            self.bootstrapOptions = dget_list(spec, "bootstrapOptions", prefix)
+
+        if "options" in spec:
+            self.options = dget_list(spec, "options", prefix)
 
 
 class InnoDBClusterSpec:

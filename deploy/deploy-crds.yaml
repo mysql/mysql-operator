@@ -292,6 +292,7 @@ spec:
                     podLabels:
                       type: object
                       x-kubernetes-preserve-unknown-fields: true
+<<<<<<< HEAD
 
                 metrics:
                   type: object
@@ -346,6 +347,16 @@ spec:
                     #      default: 3
                     #      description: "Maximum number of connections"
 
+                    bootstrapOptions:
+                      description: "Command line options passed to MySQL Router while bootstrapping"
+                      type: array
+                      items:
+                        type: string
+                    options:
+                      description: "Command line options passed to MySQL Router while running"
+                      type: array
+                      items:
+                        type: string
                 backupProfiles:
                   type: array
                   description: "Backup profile specifications for the cluster, which can be referenced from backup schedules and one-off backup jobs"

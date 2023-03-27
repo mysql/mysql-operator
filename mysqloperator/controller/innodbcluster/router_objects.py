@@ -3,6 +3,7 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
+from shlex import quote
 from .cluster_api import InnoDBCluster, InnoDBClusterSpec
 from ..kubeutils import client as api_client, ApiException
 from .. import config, utils
@@ -79,19 +80,14 @@ data:
 """
     return yaml.safe_load(tmpl)
 
-
-def prepare_router_deployment(cluster: InnoDBCluster, logger, *,
-                              init_only: bool = False) -> dict:
-    # Start the router deployment with 0 replicas and only set it to the desired
-    # value once the cluster is ONLINE, otherwise the router bootstraps could
-    # timeout and fail unnecessarily.
-
+def get_bootstrap_and_tls_options(cluster: InnoDBCluster) -> tuple:
     spec = cluster.parsed_spec
 
     router_tls_exists = False
     ca_and_tls = None
-    # Workaround fro rotuer bug #33996132
+    # Workaround for rotuer bug #33996132
     router_bootstrap_options = ["--conf-set-option=DEFAULT.unknown_config_option=warning"]
+    router_bootstrap_options += spec.router.bootstrapOptions
     if not spec.tlsUseSelfSigned:
         ca_and_tls = cluster.get_ca_and_tls()
         ca_file_name = ca_and_tls.get("CA", "ca.pem")
@@ -103,6 +99,19 @@ def prepare_router_deployment(cluster: InnoDBCluster, logger, *,
             router_tls_exists = True
             router_bootstrap_options += ["--client-ssl-cert=/router-ssl/key/tls.crt",
                 "--client-ssl-key=/router-ssl/key/tls.key"]
+
+    return (" ".join(map(quote, router_bootstrap_options)), router_tls_exists, ca_and_tls)
+
+def prepare_router_deployment(cluster: InnoDBCluster, logger, *,
+                              init_only: bool = False) -> dict:
+    # Start the router deployment with 0 replicas and only set it to the desired
+    # value once the cluster is ONLINE, otherwise the router bootstraps could
+    # timeout and fail unnecessarily.
+
+    spec = cluster.parsed_spec
+
+    (router_bootstrap_options, router_tls_exists, ca_and_tls) = get_bootstrap_and_tls_options(cluster)
+    router_command = ['mysqlrouter', *spec.router.options]
 
     tmpl = f"""
 apiVersion: apps/v1
@@ -180,8 +189,6 @@ spec:
               key: routerPassword
         - name: MYSQL_CREATE_ROUTER_USER
           value: "0"
-        - name: MYSQL_ROUTER_BOOTSTRAP_EXTRA_OPTIONS
-          value: "{' '.join(router_bootstrap_options)}"
         volumeMounts:
         - name: tmpdir
           mountPath: /tmp
@@ -217,6 +224,15 @@ spec:
 {utils.indent(spec.extra_router_volumes if router_tls_exists else spec.extra_router_volumes_no_cert, 6)}
 """
     deployment = yaml.safe_load(tmpl)
+
+    container = deployment["spec"]["template"]["spec"]["containers"][0]
+
+    container["args"] = router_command
+
+    container["env"].append({
+        "name": "MYSQL_ROUTER_BOOTSTRAP_EXTRA_OPTIONS",
+        "value": router_bootstrap_options
+    })
 
     metadata = {}
     if spec.router.podAnnotations:
@@ -341,6 +357,17 @@ def update_deployment_template_spec_property(dpl: api_client.V1Deployment, prope
     patch = {"spec": {"template": {"spec": { property_name: property_value }}}}
     update_deployment_spec(dpl, patch)
 
+def update_bootstrap_options(dpl: api_client.V1Deployment, cluster: InnoDBCluster, logger: Logger) -> None:
+    (router_bootstrap_options, _, _) = get_bootstrap_and_tls_options(cluster)
+    patch = [{
+        "name": "MYSQL_ROUTER_BOOTSTRAP_EXTRA_OPTIONS",
+        "value": router_bootstrap_options
+    }]
+    update_router_container_template_property(dpl, "env", patch, logger)
+
+def update_options(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, logger: Logger) -> None:
+    router_command = ["mysqlrouter", *spec.router.options]
+    update_router_container_template_property(dpl, "args", router_command, logger)
 
 def get_update_deployment_template_metadata_annotation(dpl: api_client.V1Deployment, annotation_name: str, annotation_value: str) -> str:
     patch = {"spec": {"template": {"metadata": { "annotations": { annotation_name: annotation_value }}}}}

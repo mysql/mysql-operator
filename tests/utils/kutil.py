@@ -555,6 +555,12 @@ def cat_in(ns, name, path, data):
     p = feed_kubectl(data, "exec", args=args, check=False)
 
 
+def file_exists(ns, name, path, check="-f"):
+    """Use test(1) to check if a file exist in a container"""
+    result = exec(ns, name, ["test", check, path])
+    return result.returncode == 0
+
+
 def exec(ns, name, cmd):
     if type(name) is str:
         args = [name]

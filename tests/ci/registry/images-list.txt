@@ -78,6 +78,10 @@ community-operator:8.0.33-2.0.9
 mysql-operator:8.0.33-2.0.9
 1
 ---
+community-operator:8.0.34-2.0.10
+mysql-operator:8.0.34-2.0.10
+1
+---
 community-operator:latest
 community-operator:latest
 1

@@ -19,7 +19,10 @@ CLUSTER_SSL_NAMESPACE = 'cluster-ssl'
 
 def check_verify_ca(self, ns, pod, port, ca, expected_host):
     try:
-        with mutil.MySQLPodSession(ns, pod, "root", "sakila", port=port, ssl_ca=ca, ssl_verify_cert=True) as s:
+        # TODO:
+        # use_pure is a work-around for combination of bug#35195287 in router
+        # and bug#35233031 in c/Python. Once either is fixed this can be removed
+        with mutil.MySQLPodSession(ns, pod, "root", "sakila", port=port, ssl_ca=ca, ssl_verify_cert=True, use_pure=True) as s:
             host = s.query_sql("select @@global.hostname").fetch_one()[0]
 
             self.assertEqual(expected_host, host, f"connect VERIFY_CA {pod}:{port}")

@@ -127,6 +127,7 @@ if __name__ == '__main__':
     opt_custom_dns = None
     opt_cleanup = True
     opt_registry_cfg_path = None
+    opt_ip_family = None
     opt_xml_report_path = None
 
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -149,6 +150,8 @@ if __name__ == '__main__':
             opt_nodes = int(arg.split("=")[-1])
         elif arg.startswith("--node-memory="):
             opt_node_memory = int(arg.split("=")[-1])
+        elif arg.startswith("--ip-family="):
+            opt_ip_family = arg.partition("=")[-1]
         elif arg.startswith("--cluster="):
             g_ts_cfg.k8s_cluster = arg.partition("=")[-1]
         elif arg.startswith("--cluster-domain-alias="):
@@ -279,7 +282,7 @@ if __name__ == '__main__':
 
             driver.setup_cluster(
                 nodes=opt_nodes, node_memory=opt_node_memory, version=opt_kube_version, registry_cfg_path=opt_registry_cfg_path,
-                perform_setup=opt_setup, mounts=opt_mounts, custom_dns=opt_custom_dns, cleanup=opt_cleanup)
+                perform_setup=opt_setup, mounts=opt_mounts, custom_dns=opt_custom_dns, cleanup=opt_cleanup, ip_family=opt_ip_family)
 
             if opt_load_images:
                 driver.cache_images(image_dir, images)

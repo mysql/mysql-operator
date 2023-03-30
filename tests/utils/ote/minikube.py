@@ -84,7 +84,7 @@ class MinikubeEnvironment(BaseEnvironment):
         if verbose:
             print('done')
 
-    def start_cluster(self, nodes, node_memory, version, registry_cfg_path):
+    def start_cluster(self, nodes, node_memory, version, registry_cfg_path, ip_family):
         assert registry_cfg_path is None
         args = [g_ts_cfg.env_binary_path, "start", f"--profile={g_ts_cfg.k8s_cluster}"]
         opts = os.getenv("TEST_MINIKUBE_OPTIONS")

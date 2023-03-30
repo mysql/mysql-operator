@@ -31,7 +31,7 @@ class K3dEnvironment(BaseEnvironment):
     def resolve_context(self, cluster_name):
         return f"k3d-{cluster_name}"
 
-    def start_cluster(self, nodes, node_memory, version, registry_cfg_path):
+    def start_cluster(self, nodes, node_memory, version, registry_cfg_path, ip_family):
         args = [g_ts_cfg.env_binary_path, "cluster", "create", g_ts_cfg.k8s_cluster, "--timeout", "5m", "--no-lb"]
 
         if nodes and nodes > 1:

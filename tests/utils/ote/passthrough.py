@@ -13,7 +13,7 @@ class PassthroughEnvironment(BaseEnvironment):
     def load_images(self, images):
         pass
 
-    def start_cluster(self, nodes, node_memory, version, registry_cfg_path):
+    def start_cluster(self, nodes, node_memory, version, registry_cfg_path, ip_family):
         pass
 
     def stop_cluster(self):

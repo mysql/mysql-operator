@@ -47,12 +47,12 @@ The following envars are supported:
 * OPERATOR_TEST_AZURE_CONTAINER_NAME
 
 ## Command-line options
---env=[k3d|minikube]\
+--env=[k3d|kind|minikube]\
     set the k8s environment
 
 --env-binary-path={path}\
     set the path to a custom k8s environment binary e.g. k3d-linux-amd64-5.4.4 or minikube-v1.26.1,\
-    if not set then a default binary is inferred from --env value (e.g. k3d or minikube)
+    if not set then a default binary is inferred from --env value (e.g. k3d, kind or minikube)
 
 --kubectl-path={path}\
     set the path to a custom kubectl binary e.g. kubectl-v1.25.0, if not set then a default kubectl binary\
@@ -66,6 +66,9 @@ set the kubernetes version to use, if not set, the default depends on the instal
 * for k3d it is used to pass an argument to the --image={value} option, e.g.:
     - k3d cluster create --image=rancher/k3s:v1.21.7-k3s1
     - k3d cluster create --image=rancher/k3s:v1.23.6-k3s1
+
+--ip-family=[ipv4|ipv6|dual]\
+    sets the networking IP family. By default, it is 'ipv4'. At the moment, it is supported only for the environment 'kind'.
 
 --nodes={number}\
     sets the number of nodes to use
@@ -91,7 +94,7 @@ set the kubernetes version to use, if not set, the default depends on the instal
 
 --nosetup|--no-setup\
     disable the setup of the environment and creation of a new cluster / an existing cluster will be used\
-    **CAUTION!** if not set the default cluster will be deleted (depending on chosen k8s environment - k3d or minikube)
+    **CAUTION!** if not set the default cluster will be deleted (depending on chosen k8s environment - k3d, kind or minikube)
 
 --noclean|--no-clean\
     do not delete the cluster after the tests are completed, by default it is deleted\

@@ -6,10 +6,12 @@
 from .passthrough import PassthroughEnvironment
 from .minikube import MinikubeEnvironment
 from .k3d import K3dEnvironment
+from .kind import KindEnvironment
 
 _drivers = {
     "minikube": MinikubeEnvironment,
     "k3d": K3dEnvironment,
+    "kind": KindEnvironment,
     "pass": PassthroughEnvironment
 }
 

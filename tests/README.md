@@ -68,7 +68,10 @@ set the kubernetes version to use, if not set, the default depends on the instal
     - k3d cluster create --image=rancher/k3s:v1.23.6-k3s1
 
 --ip-family=[ipv4|ipv6|dual]\
-    sets the networking IP family. By default, it is 'ipv4'. At the moment, it is supported only for the environment 'kind'.
+    sets the networking IP family. By default, it is 'ipv4'. At the moment, it is supported only for the environment 'kind'.\
+    to run against `ipv6` and `dual` the following command:\
+    `sudo sysctl net.ipv6.conf.all.disable_ipv6`\
+    should return `0`
 
 --nodes={number}\
     sets the number of nodes to use

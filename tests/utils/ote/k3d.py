@@ -108,4 +108,6 @@ class K3dEnvironment(BaseEnvironment):
         fd, path = mkstemp(prefix="k3d-registry", suffix=".yaml")
         with os.fdopen(fd, 'w') as f:
             f.write(contents)
+            print(f"k3d registry file: {path}")
+            print(contents)
         return path

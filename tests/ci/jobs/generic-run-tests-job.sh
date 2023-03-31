@@ -66,10 +66,10 @@ OTE_LOG_PREFIX=$K8S_DRIVER-build-$BUILD_NUMBER
 OTE_BUILD_TAG=ote-$OTE_LOG_PREFIX
 
 if test -z ${WORKERS_DEFER+x}; then
-	if test "$K8S_DRIVER" == "minikube"; then
-		WORKERS_DEFER=60
-	else
+	if test "$K8S_DRIVER" == "k3d"; then
 		WORKERS_DEFER=45
+	else
+		WORKERS_DEFER=60
 	fi
 fi
 

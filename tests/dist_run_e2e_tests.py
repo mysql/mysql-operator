@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2022, Oracle and/or its affiliates.
+# Copyright (c) 2022, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -128,7 +128,7 @@ class DistTestSuiteRunner:
 			self.prepare_work_subdir(self.xml_subdir)
 
 	def get_worker_cluster(self, worker_index):
-		if self.env_name == "k3d":
+		if self.env_name in ["k3d", "kind"]:
 			prefix = ""
 		else:
 			prefix = f"{self.env_name}-"

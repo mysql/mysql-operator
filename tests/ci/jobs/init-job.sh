@@ -20,6 +20,9 @@ IMAGES_LIST=$CI_DIR/registry/images-list.txt
 $CI_DIR/registry/charge-local-registry.sh $REMOTE_REGISTRY_ADDRESS $REMOTE_REPOSITORY_NAME \
 	$LOCAL_REGISTRY_ADDRESS $LOCAL_REPOSITORY_NAME $IMAGES_LIST
 
+$CI_DIR/registry/charge-local-registry.sh $REMOTE_REGISTRY_ADDRESS $WEEKLY_REPOSITORY_NAME \
+	$LOCAL_REGISTRY_ADDRESS $LOCAL_REPOSITORY_NAME $IMAGES_LIST
+
 # push images only for a build triggered from concourse (for dev branches we build images on our own)
 if [[ $OPERATOR_INTERNAL_BUILD == 'false' ]]; then
 

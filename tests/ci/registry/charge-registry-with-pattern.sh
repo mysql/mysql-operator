@@ -9,8 +9,8 @@
 # image-pattern - pattern matching images to charge e.g. ranches/k3s or 'ghcr.io/k3d-io/*'
 # registry-url - url of a registry to be charged
 # e.g.
-# ranches/k3s registry.localhost:5000
-# ghcr.io/k3d-io registry.localhost:5000
+# rancher/k3s registry.localhost:5000
+# 'ghcr.io/k3d-io/*' registry.localhost:5000
 
 set -vx
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) 2021, Oracle and/or its affiliates.
+# Copyright (c) 2021, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -25,9 +25,9 @@ LOCAL_REGISTRY_HOST_PORT=$2
 LOCAL_REGISTRY_CONTAINER_PORT=$3
 
 # if the local registry is not running
-if [ ! "$(docker ps -q -f name=${LOCAL_REGISTRY_CONTAINER_NAME})" ]; then
+if [ ! "$(docker ps -q -f name=^${LOCAL_REGISTRY_CONTAINER_NAME}\$)" ]; then
 	# if the local registry exited
-	if [ "$(docker ps -aq -f status=exited -f name=${LOCAL_REGISTRY_CONTAINER_NAME})" ]; then
+	if [ "$(docker ps -aq -f status=exited -f name=^${LOCAL_REGISTRY_CONTAINER_NAME}\$)" ]; then
 		# cleanup
 		docker rm ${LOCAL_REGISTRY_CONTAINER_NAME}
 	fi

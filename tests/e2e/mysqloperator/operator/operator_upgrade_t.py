@@ -5,6 +5,7 @@
 
 import logging
 import json
+import time
 
 from utils import tutil
 from utils import kutil
@@ -83,23 +84,27 @@ class OperatorUpgradeTest(tutil.OperatorTest):
         super().tearDownClass()
 
     def test_1_sidecar_update(self):
-        def compare_image(used, expected):
+        def compare_image(used_image, expected_image):
+            def extract_image_tag(image):
+                return image[image.rfind(':') + 1:]
+
+            if used_image != expected_image and extract_image_tag(used_image) != extract_image_tag(expected_image):
+                self.fail(f"{used_image} != {expected_image}")
+
+        # input params as tuples [name, image], e.g. ['sidecar', 'registry.localhost:5000/mysql/community-operator:8.0.34-2.0.10']
+        def compare_image_info(used, expected):
             used_name = used[0]
             expected_name = expected[0]
             self.assertEqual(used_name, expected_name)
 
-            def extract_image_tag(image):
-                return image[image.rfind(':') + 1:]
-
             used_image = used[1]
             expected_image = expected[1]
-            if used_image != expected_image and extract_image_tag(used_image) != extract_image_tag(expected_image):
-                self.fail(f"{used_image} != {expected_image}")
+            compare_image(used_image, expected_image)
 
         def assert_images_equal(used, expected):
             self.assertEqual(len(used), len(expected))
             for used, expected in zip(used, expected):
-                compare_image(used, expected)
+                compare_image_info(used, expected)
 
         def assert_sidecar_image(expected_image):
             spec = kutil.get_po(self.ns, "mycluster-0")["spec"]
@@ -112,6 +117,11 @@ class OperatorUpgradeTest(tutil.OperatorTest):
             # TODO: bring back after upgrade to 8.0.34
             # self.assertEqual(images_used, [['fixdatadir', expected_image], ['initconf', expected_image], ['sidecar', expected_image]])
             assert_images_equal(images_used, [['fixdatadir', expected_image], ['initconf', expected_image], ['sidecar', expected_image]])
+
+        def assert_cj_image(cj_name, expected_image):
+            cj = kutil.get_cj(self.ns, cj_name)
+            cj_image = cj["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"][0]["image"]
+            compare_image(cj_image, expected_image)
 
         change_operator_version(g_ts_cfg.operator_old_version_tag)
 
@@ -139,12 +149,19 @@ spec:
         self.wait_pod("mycluster-0", "Running")
         self.wait_ic("mycluster", "ONLINE", 1)
 
-        assert_sidecar_image(g_ts_cfg.get_operator_image(g_ts_cfg.operator_old_version_tag))
+        old_operator_image = g_ts_cfg.get_operator_image(g_ts_cfg.operator_old_version_tag)
+        assert_sidecar_image(old_operator_image)
+        time.sleep(10)
+        assert_cj_image("mycluster-testschedule-cb", old_operator_image)
+        assert_cj_image("mycluster-testscheduleinactive-cb", old_operator_image)
 
         # 2 - Upgrading Operator doesn't change sidecar
-
         change_operator_version()
-        assert_sidecar_image(g_ts_cfg.get_operator_image(g_ts_cfg.operator_old_version_tag))
+        assert_sidecar_image(old_operator_image)
+        time.sleep(10)
+        operator_image = g_ts_cfg.get_operator_image()
+        assert_cj_image("mycluster-testschedule-cb", operator_image)
+        assert_cj_image("mycluster-testscheduleinactive-cb", operator_image)
 
         # 3 - Upgrading the InnoDB Cluster updates sidecar
         kutil.patch_ic(self.ns, "mycluster", {"spec": {

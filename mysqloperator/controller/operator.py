@@ -6,8 +6,7 @@
 from pathlib import Path
 
 from logging import Logger
-from .innodbcluster import operator_cluster
-from .backup import operator_backup
+from .innodbcluster import operator_cluster, cluster_api
 from . import config, utils
 from .group_monitor import g_group_monitor
 import kopf
@@ -35,7 +34,9 @@ def on_startup(settings: kopf.OperatorSettings, logger: Logger, *args, **_):
     #     name='operator.mysql.oracle.com/last-handled-configuration'
     # )
 
-    operator_cluster.monitor_existing_clusters(logger)
+    clusters = cluster_api.get_all_clusters()
+    operator_cluster.ensure_backup_schedules_use_current_image(clusters, logger)
+    operator_cluster.monitor_existing_clusters(clusters, logger)
 
     g_group_monitor.start()
 

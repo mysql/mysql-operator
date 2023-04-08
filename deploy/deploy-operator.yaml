@@ -38,7 +38,7 @@ rules:
     verbs: ["create"]
   - apiGroups: ["batch"]
     resources: ["cronjobs"]
-    verbs: ["create", "update", "delete"]
+    verbs: ["get", "create", "update", "delete"]
   - apiGroups: ["apps"]
     resources: ["deployments", "statefulsets"]
     verbs: ["get", "create", "patch", "update", "watch", "delete"]

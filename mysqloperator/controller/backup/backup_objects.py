@@ -196,6 +196,11 @@ def schedule_cron_job_name(cluster_name, schedule_name : str) -> str:
     return f"{cluster_name}-{schedule_name}-cb"
 
 
+def schedule_cron_job_job(namespace, cluster_name, schedule_name : str):
+    name = schedule_cron_job_name(cluster_name, schedule_name)
+    return api_cron_job.read_namespaced_cron_job(name, namespace)
+
+
 def patch_cron_template_for_backup_schedule(base: dict, cluster_name: str, schedule_profile: BackupSchedule) -> dict:
     new_object = deepcopy(base)
     new_object["metadata"]["name"] = schedule_cron_job_name(cluster_name, schedule_profile.name)
@@ -376,3 +381,13 @@ def update_schedules(spec: InnoDBClusterSpec, old: dict, new: dict, logger: Logg
             cronjob = patch_cron_template_for_backup_schedule(cj_template, spec.name, mod_schedule_objects["new"])
             logger.info(f"backup_objects.update_schedules: {cronjob}")
             api_cron_job.replace_namespaced_cron_job(name=cj_name, namespace=namespace, body=cronjob)
+
+def ensure_schedules_use_current_image(spec: InnoDBClusterSpec, logger: Logger) -> None:
+    for schedule in spec.backupSchedules:
+        logger.info(f"Checking operator version for backup schedule {spec.namespace}/{spec.name}/{schedule.name}")
+        cj = schedule_cron_job_job(spec.namespace, spec.name, schedule.name)
+        old_image = cj.spec.job_template.spec.template.spec.containers[0].image
+        if old_image != spec.operator_image:
+            cj.spec.job_template.spec.template.spec.containers[0].image = spec.operator_image
+            cj_name = schedule_cron_job_name(spec.name, schedule.name)
+            api_cron_job.replace_namespaced_cron_job(name=cj_name, namespace=spec.namespace, body=cj)

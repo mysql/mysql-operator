@@ -4,7 +4,7 @@
 #
 
 
-from typing import Any, Optional
+from typing import Any, List, Optional
 from kopf._cogs.structs.bodies import Body
 from kubernetes.client.rest import ApiException
 
@@ -39,12 +39,20 @@ def on_group_view_change(cluster: InnoDBCluster, members: list, view_id_changed:
     c.on_group_view_change(members, view_id_changed)
 
 
-def monitor_existing_clusters(logger: Logger) -> None:
-    clusters = cluster_api.get_all_clusters()
+def monitor_existing_clusters(clusters: List[InnoDBCluster], logger: Logger) -> None:
     for cluster in clusters:
         if cluster.get_create_time():
             g_group_monitor.monitor_cluster(
                 cluster, on_group_view_change, logger)
+
+
+def ensure_backup_schedules_use_current_image(clusters: List[InnoDBCluster], logger: Logger) -> None:
+    for cluster in clusters:
+        try:
+            backup_objects.ensure_schedules_use_current_image(cluster.parsed_spec, logger)
+        except Exception as exc:
+            # In case of any error we report but continue
+            logger.warn(f"Error while ensuring {cluster.namespace}/{cluster.name} uses current operator version for scheduled backups: {exc}")
 
 
 @kopf.on.create(consts.GROUP, consts.VERSION,

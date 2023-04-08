@@ -3,7 +3,8 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 from os import execl
-from typing import Optional, cast
+from logging import Logger
+from typing import List, Optional, cast
 from .. import consts
 from .. api_utils import dget_dict, dget_str, dget_int, dget_bool, dget_list, ApiSpecError
 from .. kubeutils import api_core, api_apps, api_customobj, ApiException

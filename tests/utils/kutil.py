@@ -288,6 +288,10 @@ def ls_secret(ns, pattern):
     return [secret for secret in secrets if r.match(secret["NAME"])]
 
 
+def ls_cj(ns):
+    return __ls(ns, "cj")
+
+
 def ls_all_raw(ns):
     def ignore(t, name):
         if t == "secret":
@@ -363,6 +367,10 @@ def get_po(ns, name, jpath=None, check=True):
     return get(ns, "po", name, check=check)
 
 
+def get_cj(ns, name, jpath=None, check=True):
+    return get(ns, "cj", name, check=check)
+
+
 def get_ev(ns, selector, *, after=None, fields=None):
     def lookup(obj, field):
         r = {}
@@ -421,6 +429,10 @@ def describe_po(ns, name, jpath=None):
 
 def describe_ic(ns, name):
     return describe_rsrc(ns, "ic", name)
+
+
+def describe_cj(ns, name):
+    return describe_rsrc(ns, "cj", name)
 
 #
 

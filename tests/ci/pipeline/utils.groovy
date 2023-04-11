@@ -134,7 +134,9 @@ def anyResultsAvailable() {
 	return env.MINIKUBE_RESULT_STATUS == env.TEST_RESULTS_SOME_AVAILABLE ||
 		env.MINIKUBE_RESULT_STATUS == env.TEST_RESULTS_ALL_AVAILABLE ||
 		env.K3D_RESULT_STATUS == env.TEST_RESULTS_SOME_AVAILABLE ||
-		env.K3D_RESULT_STATUS == env.TEST_RESULTS_ALL_AVAILABLE
+		env.K3D_RESULT_STATUS == env.TEST_RESULTS_ALL_AVAILABLE ||
+		env.KIND_RESULT_STATUS == env.TEST_RESULTS_SOME_AVAILABLE ||
+		env.KIND_RESULT_STATUS == env.TEST_RESULTS_ALL_AVAILABLE
 }
 
 def getMergedIssuesReports() {
@@ -153,12 +155,15 @@ def getTestsSuiteIssuesByEnv(String k8s_env, String result) {
 	}
 }
 
-def getTestsSuiteIssues() {
+def getTestsSuiteIssues(boolean kindEnabled) {
 	sh 'ls -lRF ${LOG_DIR}'
 	def testSuiteIssues = ""
 	if (anyResultsAvailable()) {
 		testSuiteIssues += getTestsSuiteIssuesByEnv("minikube", env.MINIKUBE_RESULT_STATUS)
 		testSuiteIssues += getTestsSuiteIssuesByEnv("k3d", env.K3D_RESULT_STATUS)
+		if (kindEnabled) {
+			testSuiteIssues += getTestsSuiteIssuesByEnv("kind", env.KIND_RESULT_STATUS)
+		}
 	} else {
 		testSuiteIssues = "No test results available!\n"
 	}

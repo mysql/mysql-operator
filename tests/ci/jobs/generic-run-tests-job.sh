@@ -78,7 +78,7 @@ if test -d "${LOG_DIR}"; then
 	rm -rfd $LOG_DIR
 fi
 mkdir -p $LOG_DIR
-TEST_OPTIONS="$TEST_OPTIONS --workdir=$LOG_DIR"
+TEST_OPTIONS="$TEST_OPTIONS --workdir=$LOG_DIR ${OPERATOR_EXTRA_OPTIONS}"
 
 TESTS_LOG=$LOG_DIR/$OTE_LOG_PREFIX-all.log
 

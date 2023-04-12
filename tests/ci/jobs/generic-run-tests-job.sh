@@ -62,6 +62,10 @@ if [[ -n ${OPERATOR_NODE_MEMORY} ]]; then
 	TEST_OPTIONS="$TEST_OPTIONS --node-memory=$OPERATOR_NODE_MEMORY"
 fi
 
+if [[ -n ${OPERATOR_IP_FAMILY} ]]; then
+	TEST_OPTIONS="$TEST_OPTIONS --ip-family=$OPERATOR_IP_FAMILY"
+fi
+
 OTE_LOG_PREFIX=$K8S_DRIVER-build-$BUILD_NUMBER
 OTE_BUILD_TAG=ote-$OTE_LOG_PREFIX
 
@@ -78,7 +82,7 @@ if test -d "${LOG_DIR}"; then
 	rm -rfd $LOG_DIR
 fi
 mkdir -p $LOG_DIR
-TEST_OPTIONS="$TEST_OPTIONS --workdir=$LOG_DIR ${OPERATOR_EXTRA_OPTIONS}"
+TEST_OPTIONS="$TEST_OPTIONS --workdir=$LOG_DIR"
 
 TESTS_LOG=$LOG_DIR/$OTE_LOG_PREFIX-all.log
 
@@ -121,6 +125,9 @@ if [[ -n ${OPERATOR_K8S_VERSION} ]]; then
 fi
 if [[ -n ${OTE_MULTIPLE_NODES} ]]; then
 	JOB_BADGE="${JOB_BADGE}-${OPERATOR_NODES_COUNT}_nodes"
+fi
+if [[ -n ${OPERATOR_IP_FAMILY} && ${OPERATOR_IP_FAMILY} != "ipv4" ]]; then
+	JOB_BADGE="${JOB_BADGE}-${OPERATOR_IP_FAMILY}"
 fi
 JOB_BADGE=$(sed -e 's/[.:\/]/_/g' <<< $JOB_BADGE)
 sed -i "s/=\"e2e.mysqloperator./=\"$JOB_BADGE.e2e.mysqloperator./g" ./xml/*.xml
@@ -185,6 +192,9 @@ if [[ -n ${OTE_MULTIPLE_NODES} ]]; then
 fi
 if [[ -n ${OPERATOR_NODE_MEMORY} ]]; then
 	echo "memory per node: ${OPERATOR_NODE_MEMORY}MB" >> $RUNTIME_ENV_LOG
+fi
+if [[ -n ${OPERATOR_IP_FAMILY} ]]; then
+	echo "IP family: ${OPERATOR_IP_FAMILY}" >> $RUNTIME_ENV_LOG
 fi
 # kubectl
 KUBECTL_VERSION=$(${KUBECTL_PATH} version --client -o json | jq '.clientVersion.gitVersion')

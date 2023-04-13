@@ -16,5 +16,7 @@ IMAGES_LIST=$CI_DIR/registry/images-list.txt
 $CI_DIR/registry/charge-local-registry.sh $REMOTE_REGISTRY_ADDRESS $REMOTE_REPOSITORY_NAME \
 	$LOCAL_REGISTRY_ADDRESS $LOCAL_REPOSITORY_NAME $IMAGES_LIST
 
-$CI_DIR/registry/charge-local-registry.sh $REMOTE_REGISTRY_ADDRESS $WEEKLY_REPOSITORY_NAME \
-	$LOCAL_REGISTRY_ADDRESS $LOCAL_REPOSITORY_NAME $IMAGES_LIST
+# temporarily disable pulling from the weekly repository as they may be quite unstable, we need another policy
+# for incremental images update
+# $CI_DIR/registry/charge-local-registry.sh $REMOTE_REGISTRY_ADDRESS $WEEKLY_REPOSITORY_NAME \
+# 	$LOCAL_REGISTRY_ADDRESS $LOCAL_REPOSITORY_NAME $IMAGES_LIST

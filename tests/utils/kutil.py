@@ -478,7 +478,7 @@ def delete_pv(name, timeout=500):
     delete(None, "pv", name, timeout=timeout)
 
 
-def delete_ns(ns, timeout=90):
+def delete_ns(ns, timeout=500):
     delete(None, "ns", ns, timeout=timeout)
 
 

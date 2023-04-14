@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -190,6 +190,9 @@ def populate_with_clone(datadir: str, session: 'ClassicSession', cluster: InnoDB
     logger.info(f"Resetting password for {admin_user}@%")
     session.run_sql("SET PASSWORD FOR ?@'%'=?", [admin_user, admin_pass])
 
+    # recreate metrics user if needed
+    create_metrics_account(session, cluster, logger)
+
     wipe_old_innodb_cluster(session, logger)
 
     return session
@@ -304,6 +307,26 @@ def create_admin_account(session, cluster, logger):
     logger.info("Admin account created")
 
 
+def create_metrics_account(session: 'ClassicSession', cluster: InnoDBCluster, logger: Logger):
+    """
+    Create a user for metrics, if needed
+    """
+    if not cluster.parsed_spec.metrics or not cluster.parsed_spec.metrics.enable:
+        return
+
+    host = "localhost"
+    user = cluster.parsed_spec.metrics.dbuser_name
+    max_connections = cluster.parsed_spec.metrics.dbuser_max_connections
+    grants = cluster.parsed_spec.metrics.dbuser_grants
+
+    logger.info(f"Creating account {user}@{host}")
+    # binlog has to be disabled for this, because we need to create the account
+    # independently in all instances (so that metrics are available even on later config failure),
+    # which would cause diverging GTID sets
+    mysqlutils.setup_metrics_user(session, user, grants, max_connections)
+    logger.info("Metrics account created")
+
+
 def connect(user: str, password: str, logger: Logger, timeout: Optional[int] = 60) -> 'ClassicSession':
     shell = mysqlsh.globals.shell
 
@@ -335,6 +358,7 @@ def initialize(session, datadir: str, pod: MySQLPod, cluster: InnoDBCluster, log
     session.run_sql("SET sql_log_bin=0")
     create_root_account(session, pod, cluster, logger)
     create_admin_account(session, cluster, logger)
+    create_metrics_account(session, cluster, logger)
     session.run_sql("SET sql_log_bin=1")
 
     user, password = cluster.get_admin_account()

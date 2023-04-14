@@ -130,11 +130,11 @@ class ClusterController:
             self.dba_cluster = self.dba.get_cluster()
         else:
             # - check if we should consider pod marker for whether the instance joined
-            self.connect_to_cluster(logger)
+            self.connect_to_cluster(logger, need_primary=True)
         assert self.dba_cluster
         return self.dba_cluster
 
-    def connect_to_cluster(self, logger) -> MySQLPod:
+    def connect_to_cluster(self, logger, need_primary=False) -> MySQLPod:
         # Get list of pods and try to connect to one of them
         def try_connect() -> MySQLPod:
             last_exc = None
@@ -146,6 +146,19 @@ class ClusterController:
 
                 try:
                     self.dba = mysqlsh.connect_dba(pod.endpoint_co)
+
+                    if need_primary:
+                        res = self.dba.session.run_sql(
+                            "SELECT member_role"
+                            " FROM performance_schema.replication_group_members"
+                            " WHERE member_host = @@report_host")
+
+                        r = res.fetch_one()
+                        if r[0] != "PRIMARY":
+                            logger.info(f"Primary requested, but {pod.name} is no primary")
+                            self.dba.session.close()
+                            continue
+
                 except Exception as e:
                     logger.debug(f"connect_dba: target={pod.name} error={e}")
                     # Try another pod if we can't connect to it
@@ -154,9 +167,7 @@ class ClusterController:
 
                 try:
                     self.dba_cluster = self.dba.get_cluster()
-                    # TODO check whether member is ONLINE/quorum
-                    status = self.dba_cluster.status()
-                    logger.info(f"Connected to {pod} - {status}")
+                    logger.info(f"Connected to {pod}")
                     return pod
                 except mysqlsh.Error as e:
                     logger.info(
@@ -795,3 +806,19 @@ class ClusterController:
         if not version_valid:
             raise kopf.PermanentError(version_error)
 
+    def on_change_metrics_user(self, logger: 'Logger') -> None:
+        metrics = self.cluster.parsed_spec.metrics
+        self.connect_to_primary(None, logger)
+
+        if not metrics or not metrics.enable:
+            # This will use default name. needs to adapt when supporting custom
+            # names
+            mysqlutils.remove_metrics_user(self.dba.session)
+            return
+
+        user = metrics.dbuser_name
+        grants = metrics.dbuser_grants
+        max_connections = metrics.dbuser_max_connections
+
+        mysqlutils.setup_metrics_user(self.dba.session, user, grants,
+                                      max_connections)

@@ -76,6 +76,10 @@ AZURE_CONFIG_FILE = os.getenv(
 AZURE_CONTAINER_NAME = os.getenv(
     "OPERATOR_TEST_AZURE_CONTAINER_NAME", default=None)
 
+# metrics sidecar
+METRICS_IMAGE_NAME = os.getenv(
+    "OPERATOR_TEST_METRICS_IMAGE_NAME", default=None)
+
 
 # k8s
 K8S_CLUSTER_NAME = os.getenv(

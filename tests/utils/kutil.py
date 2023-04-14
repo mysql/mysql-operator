@@ -1082,6 +1082,20 @@ def copy_secret(secret_ns, secret_name, dst_ns):
     apply(dst_ns, '\n'.join(dst_yaml))
 
 
+def create_cm(ns, name, data):
+    nl = "\n"
+    indent = "\n  "
+    yaml = f"""
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {name}
+data:
+  {indent.join(data.strip().split(nl))}
+"""
+    apply(ns, yaml)
+
+
 def create_pod():
     pass
 

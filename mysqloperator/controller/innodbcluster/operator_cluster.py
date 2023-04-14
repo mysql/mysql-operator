@@ -13,7 +13,7 @@ from .. import consts, kubeutils, config, utils, errors, diagnose
 from .. import shellutils
 from ..group_monitor import g_group_monitor
 from ..utils import g_ephemeral_pod_state
-from ..kubeutils import api_core, api_apps, api_policy, api_rbac, api_cron_job, k8s_version
+from ..kubeutils import api_core, api_apps, api_policy, api_rbac, api_customobj, api_cron_job, k8s_version
 from ..backup import backup_objects
 from ..config import DEFAULT_OPERATOR_VERSION_TAG
 from .cluster_controller import ClusterController, ClusterMutex
@@ -207,11 +207,32 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 kopf.adopt(secret)
                 api_core.create_namespaced_secret(namespace=namespace, body=secret)
 
+            print("12. Metrics Service Monitor")
+            if not ignore_404(cluster.get_metrics_monitor):
+                if icspec.metrics and icspc.metrics.enable and icspec.metrics.monitor:
+                    print("\tPreparing...")
+                    monitor = cluster_objects.prepare_metrics_service_monitor(cluster, logger)
+                    print("\tCreating...")
+                    kopf.adopt(monitor)
+                    print(monitor)
+                    try:
+                        api_customobj.create_namespaced_custom_object(
+                            "monitoring.coreos.com", "v1", cluster.namespace,
+                            "servicemonitors", monitor)
+                    except Exception as exc:
+                        # This might be caused by Prometheus Operator missing
+                        # we won't fail for that
+                        print(exc)
+                        cluster.warn(action="CreateCluster", reason="CreateResourceFailed", message=f"{exc}")
+                else:
+                    print("\tNot requested.")
+
         except Exception as exc:
-            cluster.warn(action="CreateCluster", reason="CreateResourceFailed", message=f"{exc}")
+            cluster.warn(action="CreateCluster", reason="CreateResourceFailed",
+                         message=f"{exc}")
             raise
 
-        print(f"10. Setting operator version for the IC to {DEFAULT_OPERATOR_VERSION_TAG}")
+        print(f"13. Setting operator version for the IC to {DEFAULT_OPERATOR_VERSION_TAG}")
         cluster.set_operator_version(DEFAULT_OPERATOR_VERSION_TAG)
         cluster.info(action="CreateCluster", reason="ResourcesCreated",
                      message="Dependency resources created, switching status to PENDING")
@@ -728,3 +749,31 @@ def on_innodbcluster_field_router_pod_labels(body: Body, diff, logger: Logger, *
 def on_innodbcluster_field_router_pod_annotations(body: Body, new, diff, logger: Logger, **kwargs):
 
     on_ic_router_labels_and_annotations_change("annotations", body, diff, logger)
+
+
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.metrics")  # type: ignore
+def on_innodbcluster_field_metrics(old: str, new: str, body: Body,
+                                   logger: Logger, **kwargs):
+    if old == new:
+        return
+
+    cluster = InnoDBCluster(body)
+
+    # ignore spec changes if the cluster is still being initialized
+    if not cluster.ready:
+        logger.debug("Ignoring spec.metrics change for unready cluster")
+        return
+
+    cluster.parsed_spec.validate(logger)
+    with ClusterMutex(cluster):
+        # We have to edit the user account first, else the server might go away
+        # whie we are trying to change the user
+
+        # if we want to allow custom usernames we'd have to delete old here
+        cluster_ctl = ClusterController(cluster)
+        cluster_ctl.on_change_metrics_user(logger)
+
+        sts = cluster.get_stateful_set()
+        service = cluster.get_service()
+        cluster_objects.update_metrics(sts, service, cluster, logger)

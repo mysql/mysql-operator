@@ -33,6 +33,43 @@ class SecretData:
     secret_name: Optional[str] = None
     key: Optional[str] = None
 
+class MetriscSpec:
+    enable: bool = False
+    image: str = ""
+    options: Optional[list] = None
+    web_config: Optional[str] = None
+    tls_secret: Optional[str] = None
+    dbuser_name: str = "mysqlmetrics"
+    dbuser_grants: list = ['PROCESS', 'REPLICATION CLIENT', 'SELECT']
+    dbuser_max_connections: int = 3
+    monitor: bool = False
+    monitor_spec: dict
+
+    def parse(self, spec: dict, prefix: str) -> None:
+        self.enable = dget_bool(spec, "enable", prefix)
+        self.image = dget_str(spec, "image", prefix)
+        self.options = dget_list(spec, "options", prefix, default_value=[],
+                                 content_type=str)
+        self.web_config = dget_str(spec, "webConfig", prefix, default_value="")
+        self.tls_secret = dget_str(spec, "tlsSecret", prefix, default_value="")
+
+        self.monitor = dget_bool(spec, "monitor", prefix,
+                                 default_value=False)
+
+        self.monitor_spec = dget_dict(spec, "monitorSpec", prefix,
+                                      default_value={})
+
+
+        user_spec = dget_dict(spec, "dbUser", prefix, default_value={})
+        user_prefix = prefix+".dbUser"
+        self.dbuser_name = dget_str(user_spec, "name", user_prefix,
+                                    default_value="mysqlmetrics")
+        self.dbuser_grants = dget_list(user_spec, "options", user_prefix,
+                                       default_value=['PROCESS', 'REPLICATION CLIENT', 'SELECT'],
+                                       content_type=str)
+        self.dbuser_max_connections = dget_int(user_spec, "maxConnections",
+                                               user_prefix, default_value=3)
+
 
 class CloneInitDBSpec:
     uri: str = ""
@@ -683,6 +720,8 @@ class InnoDBClusterSpec:
 
     router: RouterSpec = RouterSpec()
 
+    metrics: Optional[MetriscSpec] = None
+
     # TODO resource allocation for server, router and sidecar
     # TODO recommendation is that sidecar has 500MB RAM if MEB is used
 
@@ -693,6 +732,7 @@ class InnoDBClusterSpec:
     mysql_port: int = 3306
     mysql_xport: int = 33060
     mysql_grport: int = 33061
+    mysql_metrics_port: int = 9104
 
     router_rwport: int = 6446
     router_roport: int = 6447
@@ -778,6 +818,10 @@ class InnoDBClusterSpec:
 
         if not self.router.tlsSecretName:
             self.router.tlsSecretName = f"{self.name}-router-tls"
+
+        if "metrics" in spec:
+            self.metrics = MetriscSpec()
+            self.metrics.parse(dget_dict(spec, "metrics", "spec"), "spec.metrics")
 
         # Initialization Options
         if "initDB" in spec:
@@ -1036,6 +1080,102 @@ class InnoDBClusterSpec:
 """)
 
         return "\n".join(mounts)
+
+    @property
+    def metrics_sidecar(self) -> str:
+        if not self.metrics or not self.metrics.enable:
+            return ""
+
+        metrics = self.metrics
+
+        mounts = ""
+        options = []
+
+        if metrics.web_config:
+            options += ["--web.config.file=/config/web.config"]
+            mounts += """
+- name: metrics-web-config
+  mountPath: /config
+  readOnly: true
+"""
+
+        if metrics.tls_secret:
+            mounts += """
+- name: metrics-tls
+  mountPath: /tls
+  readOnly: true
+"""
+
+        options_yaml = ""
+        if options:
+            options_yaml = yaml.dump(options)
+
+        return f"""
+- name: metrics
+  args:
+{utils.indent(options_yaml, 4)}
+  image: {metrics.image}
+  imagePullPolicy: {self.sidecar_image_pull_policy}
+  securityContext:
+      # These can't go to spec.template.spec.securityContext
+      # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodTemplateSpec / https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSpec
+      # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSecurityContext - for pods (top level)
+      # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#Container
+      # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#SecurityContext - for containers
+      allowPrivilegeEscalation: false
+      privileged: false
+      readOnlyRootFilesystem: true
+      capabilities:
+      drop:
+      - ALL
+      # We must use same user id as auth_socket expects
+      runAsUser: 2
+      runAsGroup: 27
+  env:
+  - name: DATA_SOURCE_NAME
+    value: {metrics.dbuser_name}:@unix(/var/run/mysqld/mysql.sock)/
+  ports:
+  - containerPort: {self.mysql_metrics_port}
+    name: metrics
+    protocol: TCP
+  volumeMounts:
+  - name: rundir
+    mountPath: /var/run/mysqld
+{utils.indent(mounts, 2)}
+"""
+
+
+    @property
+    def metrics_volumes(self) -> str:
+        volumes = ""
+
+        if self.metrics and self.metrics.web_config:
+            volumes += f"""
+- name: metrics-web-config
+  configMap:
+    name: {self.metrics.web_config}
+"""
+
+        if self.metrics and self.metrics.tls_secret:
+            volumes += f"""
+- name: metrics-tls
+  secret:
+    name: {self.metrics.tls_secret}
+"""
+
+
+        return volumes
+
+    @property
+    def metrics_service_port(self) -> str:
+        if not self.metrics or not self.metrics.enable:
+            return ""
+
+        return f"""
+- name: metrics
+  port: {self.mysql_metrics_port}
+  targetPort: {self.mysql_metrics_port}
+"""
 
     @property
     def image_pull_secrets(self) -> str:
@@ -1373,6 +1513,15 @@ class InnoDBCluster(K8sInterfaceObject):
         try:
             return cast(api_client.V1ConfigMap,
                         api_core.read_namespaced_config_map(f"{self.name}-initmysql", self.namespace))
+        except ApiException as e:
+            if e.status == 404:
+                return None
+            raise
+
+    def get_metrics_monitor(self) :#-> typing.Optional[api_customobj.___]:
+        try:
+            return api_customobj.get_namespaced_custom_object(
+                "monitoring.coreos.com", "v1", self.namespace, "servicemonitors", self.name)
         except ApiException as e:
             if e.status == 404:
                 return None

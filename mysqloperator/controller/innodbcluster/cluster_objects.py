@@ -1,15 +1,17 @@
-# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
 from logging import Logger, getLogger
+import kopf
 from typing import List, Dict
 from ..kubeutils import client as api_client, ApiException
 from .. import utils, config, consts
 from .cluster_api import InnoDBCluster, InnoDBClusterSpec
+from . import cluster_controller
 import yaml
-from ..kubeutils import api_core, api_apps, k8s_cluster_domain
+from ..kubeutils import api_core, api_apps, api_customobj, k8s_cluster_domain
 import base64
 
 # TODO replace app field with component (mysqld,router) and tier (mysql)
@@ -42,6 +44,7 @@ spec:
   - name: gr-xcom
     port: {spec.mysql_grport}
     targetPort: {spec.mysql_grport}
+{utils.indent(spec.metrics_service_port, 2)}
   selector:
     component: mysqld
     tier: mysql
@@ -440,6 +443,8 @@ spec:
         - name: mysql-tmp
           mountPath: /tmp
 {utils.indent(spec.extra_volume_mounts, 8)}
+
+{utils.indent(spec.metrics_sidecar, 6)}
       volumes:
       - name: mycnfdata
         emptyDir: {{}}
@@ -462,6 +467,7 @@ spec:
       - name: sidecar-tmp
         emptyDir: {{}}
 {utils.indent(spec.extra_volumes, 6)}
+{utils.indent(spec.metrics_volumes, 6)}
   volumeClaimTemplates:
   - metadata:
       name: datadir
@@ -721,6 +727,30 @@ data:
 
     return cm
 
+def prepare_metrics_service_monitor(cluster: InnoDBCluster, logger: Logger) -> List[Dict]:
+    monitor = f"""
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {cluster.name}
+spec:
+  selector:
+    matchLabels:
+      mysql.oracle.com/cluster: {cluster.name}
+      tier: mysql
+  endpoints:
+  - port: metrics
+    path: /metrics
+"""
+    monitor = yaml.safe_load(monitor)
+
+    if cluster.parsed_spec.metrics and cluster.parsed_spec.metrics.monitor_spec:
+        utils.merge_patch_object(monitor["spec"],
+                                 cluster.parsed_spec.metrics.monitor_spec,
+                                 "spec.metrics.monitorSpec")
+
+    return monitor
+
 
 def reconcile_stateful_set(cluster: InnoDBCluster, logger: Logger) -> None:
     logger.info("reconcile_stateful_set")
@@ -812,6 +842,67 @@ def update_pull_policy(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec, l
 def update_template_property(sts: api_client.V1StatefulSet, property_name: str, property_value: str, logger: Logger) -> None:
     patch = {"spec": {"template": {"spec": { property_name: property_value }}}}
     update_stateful_set_spec(sts, patch)
+
+
+def update_metrics(sts: api_client.V1StatefulSet,
+                   service: api_client.V1Service,
+                   cluster: InnoDBCluster, logger: Logger) -> None:
+    spec = cluster.parsed_spec
+
+    # Changes to the metrics user will be handled by the ClusterController and
+    # should be done before this is being called
+
+    # Here we are first removing old sidecar and volumes, if they exist and
+    # then add current as needed
+
+    sts.spec.template.spec.containers = list(filter(
+        lambda container: container.name != "metrics",
+        sts.spec.template.spec.containers
+    ))
+
+    sts.spec.template.spec.volumes = list(filter(
+        lambda volume: volume.name not in ['metrics-web-config', 'metrics-tls'],
+        sts.spec.template.spec.volumes
+    ))
+
+    if spec.metrics and spec.metrics.enable:
+        sts.spec.template.spec.containers += yaml.safe_load(spec.metrics_sidecar)
+        if spec.metrics_volumes:
+            sts.spec.template.spec.volumes += yaml.safe_load(spec.metrics_volumes)
+
+    logger.info("Updating StatefulSet")
+    api_apps.replace_namespaced_stateful_set(
+        sts.metadata.name, sts.metadata.namespace, body=sts)
+
+    # Same with the instance service, first remove old port and then re-add
+    # if needed
+
+    service.spec.ports = list(filter(
+        lambda port: port.name != "metrics",
+        service.spec.ports))
+
+    if spec.metrics and spec.metrics.enable:
+        service.spec.ports += yaml.safe_load(spec.metrics_service_port)
+
+    logger.info("Updating Service")
+    api_core.replace_namespaced_service(
+        service.metadata.name, service.metadata.namespace, service)
+
+    try:
+        api_customobj.delete_namespaced_custom_object(
+            "monitoring.coreos.com", "v1", spec.namespace, "servicemonitors", spec.name)
+    except Exception as exc:
+        # This may fail for a variety of reasons
+        # Most likely: It wasn't enabled before, but might also have failed to
+        # create due to missign Prometheus Operator or some other reason
+        print(f"Previous  ServiceMonitor was not removed. This is usually ok. Reason: {exc}")
+
+    if spec.metrics and spec.metrics.enable and spec.metrics.monitor:
+        monitor = prepare_metrics_service_monitor(cluster, logger)
+        kopf.adopt(monitor)
+        api_customobj.create_namespaced_custom_object(
+            "monitoring.coreos.com", "v1", spec.namespace, "servicemonitors",
+            monitor)
 
 
 def on_first_cluster_pod_created(cluster: InnoDBCluster, logger: Logger) -> None:

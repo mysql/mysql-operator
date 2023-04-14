@@ -1,9 +1,10 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
 import mysqlsh
+from typing import List
 
 
 def is_client_error(code):
@@ -96,6 +97,24 @@ def setup_backup_account(session, user, password):
         f"GRANT select, show databases, show view, lock tables, reload ON *.* TO {user}")
     session.run_sql(
         f"GRANT backup_admin /*!80020 , show_routine */ ON *.* TO {user}")
+
+def setup_metrics_user(session: 'mysqlsh.ClassicSession', user: str,
+                       grants: List, max_connections: int) -> None:
+    host = "localhost"
+    grants = ", ".join(grants)
+
+    session.run_sql("DROP USER IF EXISTS ?@?", [user, host])
+    session.run_sql(
+        "CREATE USER IF NOT EXISTS ?@? IDENTIFIED WITH auth_socket AS 'daemon' WITH MAX_USER_CONNECTIONS ?", [user, host, max_connections])
+    session.run_sql("REVOKE ALL PRIVILEGES, GRANT OPTION FROM ?@?", [user, host])
+    session.run_sql(f"GRANT {grants} ON *.* TO ?@? WITH GRANT OPTION", [user, host])
+
+
+def remove_metrics_user(session: 'mysqlsh.ClassicSession') -> None:
+    user = "mysqlmetrics"
+    host = "localhost"
+
+    session.run_sql("DROP USER IF EXISTS ?@?", [user, host])
 
 
 def count_gtids(gtid_set: str) -> int:

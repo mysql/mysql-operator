@@ -62,6 +62,9 @@ class Config:
     # vault
     vault_cfg_path = defaults.OCI_VAULT_CONFIG_PATH
 
+    # metrics sidecar
+    metrics_image_name = defaults.METRICS_IMAGE_NAME
+
     # diagnostics
     work_dir = None
 

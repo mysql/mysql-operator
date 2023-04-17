@@ -46,7 +46,8 @@ spec:
                   description: "MySQL Server Edition (community or enterprise)"
                 imageRepository:
                   type: string
-                  description: "Repository from where images must be pulled from; defaults to mysql for community and container-registry.oracle.com/mysql for enterprise"
+                  description: "Repository where images are pulled from"
+                  default: "container-registry.oracle.com/mysql"
                 imagePullPolicy:
                   type: string
                   description: "Defaults to Always, but set to IfNotPresent in deploy-operator.yaml when deploying Operator"

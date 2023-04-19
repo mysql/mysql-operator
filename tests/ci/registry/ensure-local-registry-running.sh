@@ -16,7 +16,9 @@ IMAGES_LIST=$CI_DIR/registry/images-list.txt
 $CI_DIR/registry/charge-local-registry.sh $REMOTE_REGISTRY_ADDRESS $REMOTE_REPOSITORY_NAME \
 	$LOCAL_REGISTRY_ADDRESS $LOCAL_REPOSITORY_NAME $IMAGES_LIST
 
-# temporarily disable pulling from the weekly repository as they may be quite unstable, we need another policy
-# for incremental images update
-# $CI_DIR/registry/charge-local-registry.sh $REMOTE_REGISTRY_ADDRESS $WEEKLY_REPOSITORY_NAME \
-# 	$LOCAL_REGISTRY_ADDRESS $LOCAL_REPOSITORY_NAME $IMAGES_LIST
+if [[ $OPERATOR_ALLOW_WEEKLY_IMAGES == 'true' ]]; then
+	# temporarily allow pulling not-so-stable router and server images from the weekly repository, but we need
+	# another policy for incremental images update (when they are good enough to not fail our test suite)
+	$CI_DIR/registry/charge-local-registry.sh $REMOTE_REGISTRY_ADDRESS $WEEKLY_REPOSITORY_NAME \
+		$LOCAL_REGISTRY_ADDRESS $LOCAL_REPOSITORY_NAME $IMAGES_LIST
+fi

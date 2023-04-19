@@ -1,4 +1,4 @@
-// Copyright (c) 2022, Oracle and/or its affiliates.
+// Copyright (c) 2022,2023, Oracle and/or its affiliates.
 //
 // Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 //
@@ -17,6 +17,7 @@ pipeline {
 		string(name: 'OPERATOR_IMAGE', description: 'an image related to the aforementioned git revision')
 		string(name: 'OPERATOR_ENTERPRISE_IMAGE', description: '...and a related enterprise image, it can be empty, then it will be built locally')
 		booleanParam(name: 'OPERATOR_INTERNAL_BUILD', defaultValue: false, description: 'triggered by us (e.g. by a push to a dev branch) or externally (e.g. from the concourse)')
+		booleanParam(name: 'OPERATOR_ALLOW_WEEKLY_IMAGES', defaultValue: false, description: 'allows to use the not-so-stable router and server weekly images')
 	}
  	options {
 		timeout(time: 3, unit: 'HOURS')
@@ -40,7 +41,8 @@ pipeline {
 						string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
 						string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
 						string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
-						booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD)
+						booleanParam(name: 'OPERATOR_INTERNAL_BUILD', value: params.OPERATOR_INTERNAL_BUILD),
+						booleanParam(name: 'OPERATOR_ALLOW_WEEKLY_IMAGES', value: params.OPERATOR_ALLOW_WEEKLY_IMAGES)
 					]
 					env.INIT_STAGE_SUCCEEDED = true
 				}

@@ -19,6 +19,10 @@ def isCIExperimentalBuild() {
 	return params.OPERATOR_GIT_REVISION.contains(CI_EXPERIMENTAL_BRANCH_PREFIX)
 }
 
+def yesOrNo(boolean flag) {
+	return flag ? "yes" : "no"
+}
+
 def initEnv() {
 	env.WORKERS_FOLDER = 'Shell/KubernetesOperator/' + "${isCIExperimentalBuild() ? 'sandbox' : 'workers'}"
 	env.BUILD_TRIGGERED_BY = "${params.OPERATOR_INTERNAL_BUILD ? 'internal' : 'concourse'}"
@@ -54,6 +58,7 @@ Branch/Revision: ${env.GIT_BRANCH_NAME} ${params.OPERATOR_GIT_REVISION}
 Base Image: ${env.BASE_IMAGE_INFO}
 Community Image: ${env.COMMUNITY_IMAGE_INFO}
 Enterprise Image: ${env.ENTERPRISE_IMAGE_INFO}
+Allow weekly images: ${yesOrNo(params.OPERATOR_ALLOW_WEEKLY_IMAGES)}
 The latest commit:
 ${env.GIT_AUTHOR_DATE}
 ${env.GIT_COMMIT} [hash: ${env.GIT_COMMIT_SHORT}]
@@ -122,7 +127,7 @@ def getTestSuiteReport() {
 	testSuiteReport = "Test suite:\n"
 
 	def briefReportPath = "${env.LOG_DIR}/test_suite_brief_report.txt"
-	def ReportedErrorsMaxCount = 30
+	def ReportedErrorsMaxCount = 40
 	sh "cat $reportPath | sed -ne '1,$ReportedErrorsMaxCount p' -e '${ReportedErrorsMaxCount+1} iand more...' > $briefReportPath"
 	testSuiteReport += readFile(file: briefReportPath)
 
@@ -197,7 +202,7 @@ def getChangeLog() {
 
 	def listOfChanges = []
 
-	def ChangesMaxCount = 10
+	def ChangesMaxCount = 15
 	def firstChangeIndex = 0
 	if (allChangesCount > ChangesMaxCount) {
 		listOfChanges.add("[...previous...]")

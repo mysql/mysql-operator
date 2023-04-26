@@ -14,12 +14,12 @@
 
 set -vx
 
-SCRIPT_DIR=$(dirname $(readlink -f "${BASH_SOURCE[0]}"))
-
 if [ "$#" -ne 1 ]; then
 	echo "usage: <dest-binaries-dir>"
 	exit 1
 fi
+
+SCRIPT_DIR=$(dirname $(readlink -f "${BASH_SOURCE[0]}"))
 
 DEST_DIR=$1
 

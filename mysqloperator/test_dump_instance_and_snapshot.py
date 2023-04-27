@@ -179,7 +179,7 @@ def pod_spec_correct_output() -> dict:
                     },
                     {
                         "name":"OCI_CONFIG_NAME",
-                        "value":"/oci_config"
+                        "value":"/mysqlsh/oci_config"
                     },
                     {
                         "name":"OCI_API_KEY_NAME",
@@ -195,6 +195,14 @@ def pod_spec_correct_output() -> dict:
                     ]
                 }
             ],
+            'securityContext': {
+                'allowPrivilegeEscalation': False,
+                'fsGroup': 27,
+                'privileged': False,
+                'readOnlyRootFilesystem': True,
+                'runAsNonRoot': True,
+                'runAsUser': 27
+            },
             "restartPolicy":"Never",
             "terminationGracePeriodSeconds":60,
             "serviceAccountName":"mycluster-sa",

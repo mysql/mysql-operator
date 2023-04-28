@@ -24,13 +24,13 @@ SCRIPT_DIR=$(dirname $(readlink -f "${BASH_SOURCE[0]}"))
 DEST_DIR=$1
 
 KUBECTL_LINK_PATTERN='https://dl.k8s.io/release/VERSION/bin/linux/amd64/kubectl'
-$SCRIPT_DIR/download-binaries-from-list.sh ./kubectl-versions.txt $KUBECTL_LINK_PATTERN $DEST_DIR kubectl
+$SCRIPT_DIR/download-binaries-from-list.sh $SCRIPT_DIR/kubectl-versions.txt $KUBECTL_LINK_PATTERN $DEST_DIR kubectl
 
 MINIKUBE_LINK_PATTERN='https://github.com/kubernetes/minikube/releases/download/VERSION/minikube-linux-amd64'
-$SCRIPT_DIR/download-binaries-from-list.sh ./minikube-versions.txt $MINIKUBE_LINK_PATTERN $DEST_DIR minikube
+$SCRIPT_DIR/download-binaries-from-list.sh $SCRIPT_DIR/minikube-versions.txt $MINIKUBE_LINK_PATTERN $DEST_DIR minikube
 
 K3D_LINK_PATTERN='https://github.com/k3d-io/k3d/releases/download/VERSION/k3d-linux-amd64'
-$SCRIPT_DIR/download-binaries-from-list.sh ./k3d-versions.txt $K3D_LINK_PATTERN $DEST_DIR k3d
+$SCRIPT_DIR/download-binaries-from-list.sh $SCRIPT_DIR/k3d-versions.txt $K3D_LINK_PATTERN $DEST_DIR k3d
 
 KIND_LINK_PATTERN='https://github.com/kubernetes-sigs/kind/releases/download/VERSION/kind-linux-amd64'
-$SCRIPT_DIR/download-binaries-from-list.sh ./kind-versions.txt $KIND_LINK_PATTERN $DEST_DIR kind
+$SCRIPT_DIR/download-binaries-from-list.sh $SCRIPT_DIR/kind-versions.txt $KIND_LINK_PATTERN $DEST_DIR kind

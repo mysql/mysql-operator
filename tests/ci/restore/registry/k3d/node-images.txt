@@ -1,0 +1,8 @@
+rancher/k3s:v1.21.11-k3s1
+rancher/k3s:v1.22.7-k3s1
+rancher/k3s:v1.23.5-k3s1
+rancher/k3s:v1.24.7-k3s1
+rancher/k3s:v1.25.3-k3s1
+rancher/k3s:v1.26.0-k3s2
+rancher/k3s:v1.26.0-k3s1
+rancher/k3s:v1.26.1-k3s1

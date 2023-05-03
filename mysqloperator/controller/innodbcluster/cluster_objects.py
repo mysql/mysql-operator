@@ -722,13 +722,16 @@ data:
     return cm
 
 
-def reconcile_stateful_set(cluster: InnoDBCluster, logger: Logger) -> None:
+def reconcile_stateful_set_from_spec(spec: InnoDBClusterSpec, logger: Logger) -> None:
     logger.info("reconcile_stateful_set")
-    patch = prepare_cluster_stateful_set(cluster.parsed_spec, logger)
+    patch = prepare_cluster_stateful_set(spec, logger)
 
     logger.info(f"reconcile_stateful_set: patch={patch}")
     api_apps.patch_namespaced_stateful_set(
-        cluster.name, cluster.namespace, body=patch)
+        spec.name, spec.namespace, body=patch)
+
+def reconcile_stateful_set(cluster: InnoDBCluster, logger: Logger) -> None:
+    reconcile_stateful_set_from_spec(cluster.parsed_spec, logger)
 
 
 def update_stateful_set_spec(sts : api_client.V1StatefulSet, patch: dict) -> None:
@@ -743,42 +746,7 @@ def update_mysql_image(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec, l
     so that a single rolling upgrade covers both and we don't require a restart
     for upgrading sidecar.
     """
-
-    # Operators <= 8.0.32-2.0.8 don't set this environment variable, we have to make sure it is there
-    cluster_domain_env = [{
-        "name": "MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN",
-        "value": k8s_cluster_domain(logger)
-    }]
-
-    patch = {"spec": {"template":
-                      {"spec": {
-                          "containers": [
-                               {"name": "sidecar",
-                                "image": spec.operator_image,
-                                "env": cluster_domain_env
-                               },
-                               {"name": "mysql",
-                                "image": spec.mysql_image,
-                                "env": cluster_domain_env
-                               },
-                          ],
-                          "initContainers": [
-                              {"name": "fixdatadir",
-                               "image": spec.operator_image,
-                               "env": cluster_domain_env
-                                },
-                              {"name": "initconf",
-                               "image": spec.operator_image,
-                               "env": cluster_domain_env
-                              },
-                              {"name": "initmysql",
-                               "image": spec.mysql_image,
-                               "env": cluster_domain_env
-                              },
-                          ]}
-                       }}}
-
-    update_stateful_set_spec(sts, patch)
+    reconcile_stateful_set_from_spec(spec, logger)
 
 
 def update_operator_image(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec) -> None:

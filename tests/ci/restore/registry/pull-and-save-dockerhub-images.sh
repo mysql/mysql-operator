@@ -4,12 +4,15 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
-# auxiliary script to pull all needed images and save them to tar.gz archives
+# auxiliary script to pull all needed images available on dockerhub only and save them to tar.gz archives,
+# so they can be copied anywhere
+# over time, these images may be available in other repos, then use charge-registry-from-links.sh to
+# operate on them directly
 # usage: <dest-archives-dir>
 # input:
 # dest-archives-dir - destination dir to store archives
 # e.g.
-# ./pull-and-save-all-images.sh ~/k8s-archives
+# ./pull-and-save-dockerhub-images.sh ~/k8s-archives
 
 set -vx
 

@@ -9,7 +9,7 @@
 # image-name - image to pull and save e.g. rancher/k3s:v1.25.6-k3s1
 # dest-dir - optional directory to store the archive
 # e.g.
-# ./pull-and-save-image.sh rancher/k3s:v1.26.1-k3s1 ~/images
+# ./pull-and-save-image.sh rancher/k3s:v1.26.1-k3s1 ~/k8s-archives
 
 set -vx
 
@@ -27,7 +27,19 @@ else
 fi
 
 docker pull $IMAGE_NAME
-IMAGE_ARCHIVE_NAME=$(sed -e 's/[.:\@/]/_/g' <<< $IMAGE_NAME).tar.gz
-IMAGE_ARCHIVE_PATH=$DEST_DIR/$IMAGE_ARCHIVE_NAME
-docker save $IMAGE_NAME | gzip > $IMAGE_ARCHIVE_PATH
-echo "image $IMAGE_NAME saved to $IMAGE_ARCHIVE_PATH"
+IMAGE_DATE=$(docker inspect -f '{{ .Created }}' $IMAGE_NAME)
+ARCHIVE_NAME=$(sed -e 's/[.:\@/]/_/g' <<< $IMAGE_NAME).tar.gz
+ARCHIVE_PATH=$DEST_DIR/$ARCHIVE_NAME
+
+if [[ -f $ARCHIVE_PATH ]]; then
+	ARCHIVE_RAW_DATE=$(stat --format=%y ${ARCHIVE_PATH})
+	ARCHIVE_DATE=$(date -d "${ARCHIVE_RAW_DATE}" -u +'%Y-%m-%dT%H:%M:%S.%9NZ')
+
+	if [[ "$IMAGE_DATE" < "$ARCHIVE_DATE" ]]; then
+		echo "skip saving as the archive ($ARCHIVE_PATH) is newer ($ARCHIVE_DATE) than the image $IMAGE_NAME ($IMAGE_DATE)"
+		exit 0
+	fi
+fi
+
+docker save $IMAGE_NAME | gzip > $ARCHIVE_PATH
+echo "image $IMAGE_NAME saved to $ARCHIVE_PATH"

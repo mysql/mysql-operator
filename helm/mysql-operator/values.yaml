@@ -1,7 +1,7 @@
 image:
-  registry:
+  registry: container-registry.oracle.com
   repository: mysql
-  name: mysql-operator
+  name: community-operator
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
@@ -11,7 +11,7 @@ image:
 
 envs:
     imagesPullPolicy: IfNotPresent
-    imagesDefaultRegistry: 
+    imagesDefaultRegistry:
     imagesDefaultRepository:
     k8sClusterDomain:
 

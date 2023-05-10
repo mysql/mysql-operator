@@ -6,7 +6,7 @@
 # generic script intended for building dev images
 set -vx
 
-source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || return
+source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || exit 10
 
 DEV_IMAGE_DOCKERFILE=$CI_DIR/registry/dev/Dockerfile
 

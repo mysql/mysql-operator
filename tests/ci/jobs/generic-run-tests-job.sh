@@ -10,7 +10,7 @@ export http_proxy=$HTTP_PROXY
 export https_proxy=$HTTPS_PROXY
 export no_proxy=$NO_PROXY
 
-source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || return
+source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || exit 10
 
 # set our temporary kubeconfig, because the default one may contain unrelated data that could fail the build
 export KUBECONFIG=$(mktemp /tmp/kubeconfig.$K8S_DRIVER-XXXXXX)

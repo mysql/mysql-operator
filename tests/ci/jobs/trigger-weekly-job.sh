@@ -6,7 +6,7 @@
 # a helper job to trigger the weekly build
 set -vx
 
-source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || return
+source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || exit 10
 
 PIPELINE_NAME=weekly
 

@@ -6,7 +6,7 @@
 
 set -vx
 
-source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || return
+source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || exit 10
 
 SCRIPT_DIR=$(dirname $(readlink -f "${BASH_SOURCE[0]}"))
 

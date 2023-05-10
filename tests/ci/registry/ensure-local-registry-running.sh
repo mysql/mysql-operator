@@ -6,7 +6,7 @@
 # ensure the local registry is running, and charged with common images
 set -vx
 
-source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || return
+source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || exit 10
 
 $CI_DIR/registry/run-local-registry.sh $LOCAL_REGISTRY_CONTAINER_NAME $LOCAL_REGISTRY_HOST_PORT $LOCAL_REGISTRY_CONTAINER_PORT
 

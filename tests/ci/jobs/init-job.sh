@@ -14,8 +14,9 @@ $CI_DIR/cleanup/purge.sh
 # ensure the local registry is running, and charged with common images
 $CI_DIR/registry/ensure-local-registry-running.sh
 
-# push images only for a build triggered from concourse (for dev branches we build images on our own)
-if [[ $OPERATOR_INTERNAL_BUILD == 'false' ]]; then
+# at the moment, we push images only for a build triggered from concourse, while for dev branches
+# we build images on our own
+if [[ $OPERATOR_BUILD_IMAGES == 'false' ]]; then
 
 	# prepare community image (needed only for SysQA flow for enterprise edition)
 	if [[ -n $OPERATOR_IMAGE ]]; then

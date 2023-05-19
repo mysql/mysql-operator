@@ -13,7 +13,10 @@ pipeline {
 		}
 	}
 	parameters {
+		string(name: 'OPERATOR_GIT_REPO_URL', description: 'a git repository url')
+		string(name: 'OPERATOR_GIT_REPO_NAME', description: 'a git repository name, e.g. origin, gerrit ')
 		string(name: 'OPERATOR_GIT_REVISION', description: 'a git revision or branch to run against')
+		string(name: 'OPERATOR_GIT_REFSPEC', description: 'a git refspec - commit id or gerrit patchset')
 		string(name: 'OPERATOR_IMAGE', description: 'an image related to the aforementioned git revision')
 		string(name: 'OPERATOR_ENTERPRISE_IMAGE', description: '...and a related enterprise image, it can be empty, then it will be built locally')
 		string(name: 'OPERATOR_TRIGGERED_BY', defaultValue: 'concourse', description: 'how the build was triggered - the following flows are supported: concourse, internal, or gerrit')
@@ -39,7 +42,10 @@ pipeline {
 					sh 'mkdir -p ${LOG_DIR}'
 
 					build job: "${env.WORKERS_FOLDER}/init", parameters: [
+						string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
+						string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
 						string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+						string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
 						string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
 						string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
 						string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
@@ -57,7 +63,10 @@ pipeline {
 			steps {
 				script {
 					build job: "${env.WORKERS_FOLDER}/build", parameters: [
+						string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
+						string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
 						string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+						string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
 						string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
 						string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
 						string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
@@ -74,7 +83,10 @@ pipeline {
 						echo "minikube"
 						catchError {
 							build job: "${env.WORKERS_FOLDER}/minikube", parameters: [
+								string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
+								string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
 								string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+								string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
 								string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
 								string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
 								string(name: 'OPERATOR_WORKERS_COUNT', value: '3'),
@@ -114,7 +126,10 @@ pipeline {
 						sleep 300
 						catchError {
 							build job: "${env.WORKERS_FOLDER}/k3d", parameters: [
+								string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
+								string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
 								string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+								string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
 								string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
 								string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
 								string(name: 'OPERATOR_WORKERS_COUNT', value: '4'),
@@ -147,7 +162,10 @@ pipeline {
 					script {
 						if (utils.anyResultsAvailable()) {
 							build job: "${env.WORKERS_FOLDER}/prepare-test-suite-report", parameters: [
+								string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
+								string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
 								string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+								string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
 								string(name: 'TEST_RESULT_BUILD_URL', value: env.BUILD_URL)
 							]
 

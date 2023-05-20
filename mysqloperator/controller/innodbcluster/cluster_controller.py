@@ -534,8 +534,9 @@ class ClusterController:
 
             if peer_pod:
                 removed = False
+                remove_options = {}
+
                 if not force:
-                    remove_options = {}
                     logger.info(
                         f"remove_instance: {pod.name}  peer={peer_pod.name}  options={remove_options}")
                     try:
@@ -555,6 +556,7 @@ class ClusterController:
                             removed = True
 
                 if not removed:
+                    remove_options["force"] = True
                     logger.info(
                         f"remove_instance: {pod.name}  peer={peer_pod.name}  options={remove_options}")
                     try:

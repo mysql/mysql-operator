@@ -18,10 +18,13 @@ pipeline {
 		}
 	}
 	parameters {
-		string(name: 'OPERATOR_GIT_REVISION', defaultValue: 'trunk', description: 'a git revision or branch to run against')
-		string(name: 'OPERATOR_IMAGE', description: 'an image related to the aforementioned git revision')
-		string(name: 'OPERATOR_ENTERPRISE_IMAGE', description: '...and a related enterprise image, it can be empty, then it will be built locally')
-		string(name: 'OPERATOR_TRIGGERED_BY', defaultValue: 'concourse', description: 'how the build was triggered - the following flows are supported: concourse, internal, or gerrit')
+		string(name: 'OPERATOR_GIT_REPO_URL', description: 'a git repository url', trim: true)
+		string(name: 'OPERATOR_GIT_REPO_NAME', description: 'a git repository name, e.g. origin, gerrit ', trim: true)
+		string(name: 'OPERATOR_GIT_REVISION', defaultValue: 'trunk', description: 'a git revision or branch to run against', trim: true)
+		string(name: 'OPERATOR_GIT_REFSPEC', description: 'a git refspec - commit sha or gerrit patchset', trim: true)
+		string(name: 'OPERATOR_IMAGE', description: 'an image related to the aforementioned git revision', trim: true)
+		string(name: 'OPERATOR_ENTERPRISE_IMAGE', description: '...and a related enterprise image, it can be empty, then it will be built locally', trim: true)
+		string(name: 'OPERATOR_TRIGGERED_BY', defaultValue: 'concourse', description: 'how the build was triggered - the following flows are supported: concourse, internal, or gerrit', trim: true)
 		booleanParam(name: 'OPERATOR_BUILD_IMAGES', defaultValue: false, description: 'indicates whether the images should be built locally by us (e.g. in case of a push to a dev branch) or use ones delivered externally (e.g. from the concourse)')
 		booleanParam(name: 'OPERATOR_ALLOW_WEEKLY_IMAGES', defaultValue: false, description: 'allows to use the not-so-stable router and server weekly images')
 	}
@@ -35,11 +38,10 @@ pipeline {
 				script {
 					utils = load "${WORKSPACE}/tests/ci/pipeline/utils.groovy"
 					utils.initEnv()
-					initMessage = utils.getInitMessage()
 
 					slackSend channel: "${env.SLACK_CHANNEL}",
-						color: env.COLOR_INFO,
-						message: initMessage
+						color: utils.getIntroColor(),
+						attachments: utils.getIntroAttachments()
 
 					sh 'mkdir -p ${LOG_DIR}'
 

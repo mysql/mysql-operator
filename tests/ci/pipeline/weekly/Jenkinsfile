@@ -41,12 +41,15 @@ pipeline {
 
 					slackSend channel: "${env.SLACK_CHANNEL}",
 						color: utils.getIntroColor(),
-						attachments: utils.getIntroAttachments()
+						attachments: utils.getIntroContents()
 
 					sh 'mkdir -p ${LOG_DIR}'
 
 					build job: "${env.WORKERS_FOLDER}/init", parameters: [
+						string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
+						string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
 						string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+						string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
 						string(name: 'OPERATOR_IMAGE', value: params.OPERATOR_IMAGE),
 						string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
 						string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
@@ -64,7 +67,10 @@ pipeline {
 			steps {
 				script {
 					build job: "${env.WORKERS_FOLDER}/build", parameters: [
+						string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
+						string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
 						string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+						string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
 						string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
 						string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
 						string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
@@ -114,7 +120,10 @@ pipeline {
 								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [$env_binary_path, $k8s_version, $kubectl_path, $workers_count, $nodes_count, $node_memory, $ip_family]"
 								catchError {
 									build job: "${env.WORKERS_FOLDER}/${K8S_ENVIRONMENT}", parameters: [
+										string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
+										string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
 										string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+										string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
 										string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
 										string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
 										string(name: 'OPERATOR_ENV_BINARY_PATH', value: env_binary_path),
@@ -124,8 +133,7 @@ pipeline {
 										string(name: 'OPERATOR_NODES_COUNT', value: nodes_count),
 										string(name: 'OPERATOR_NODE_MEMORY', value: node_memory),
 										string(name: 'OPERATOR_IP_FAMILY', value: ip_family),
-										string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
-										booleanParam(name: 'OPERATOR_BUILD_IMAGES', value: params.OPERATOR_BUILD_IMAGES)
+										string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY)
 									]
 								}
 								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) completed"
@@ -188,7 +196,10 @@ pipeline {
 								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [$env_binary_path, $k8s_version, $kubectl_path, $workers_count, $nodes_count, $node_memory, $ip_family]"
 								catchError {
 									build job: "${env.WORKERS_FOLDER}/${K8S_ENVIRONMENT}", parameters: [
+										string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
+										string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
 										string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+										string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
 										string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
 										string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
 										string(name: 'OPERATOR_ENV_BINARY_PATH', value: env_binary_path),
@@ -198,8 +209,7 @@ pipeline {
 										string(name: 'OPERATOR_NODES_COUNT', value: nodes_count),
 										string(name: 'OPERATOR_NODE_MEMORY', value: node_memory),
 										string(name: 'OPERATOR_IP_FAMILY', value: ip_family),
-										string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
-										booleanParam(name: 'OPERATOR_BUILD_IMAGES', value: params.OPERATOR_BUILD_IMAGES)
+										string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY)
 									]
 								}
 								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) completed"
@@ -255,7 +265,10 @@ pipeline {
 								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [$env_binary_path, $k8s_version, $kubectl_path, $workers_count, $nodes_count, $node_memory, $ip_family]"
 								catchError {
 									build job: "${env.WORKERS_FOLDER}/${K8S_ENVIRONMENT}", parameters: [
+										string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
+										string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
 										string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+										string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
 										string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
 										string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
 										string(name: 'OPERATOR_ENV_BINARY_PATH', value: env_binary_path),
@@ -265,8 +278,7 @@ pipeline {
 										string(name: 'OPERATOR_NODES_COUNT', value: nodes_count),
 										string(name: 'OPERATOR_NODE_MEMORY', value: node_memory),
 										string(name: 'OPERATOR_IP_FAMILY', value: ip_family),
-										string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
-										booleanParam(name: 'OPERATOR_BUILD_IMAGES', value: params.OPERATOR_BUILD_IMAGES)
+										string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY)
 									]
 								}
 								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) completed"
@@ -299,7 +311,10 @@ pipeline {
 				script {
 					if (utils.anyResultsAvailable()) {
 						build job: "${env.WORKERS_FOLDER}/prepare-test-suite-report", parameters: [
+							string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
+							string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
 							string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+							string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
 							string(name: 'TEST_RESULT_BUILD_URL', value: env.BUILD_URL)
 						]
 
@@ -380,7 +395,7 @@ pipeline {
 			script {
 				slackSend channel: "${env.SLACK_CHANNEL}",
 					color: utils.getBuildResultColor(),
-					attachments: utils.getBuildAttachments()
+					attachments: utils.getBuildSummary()
 			}
 		}
 	}

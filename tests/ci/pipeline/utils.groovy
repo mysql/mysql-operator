@@ -3,6 +3,53 @@
 // Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 //
 
+def isCIExperimentalBuild() {
+	final CI_EXPERIMENTAL_BRANCH_PREFIX = 'ci/experimental/'
+	if (params.OPERATOR_GIT_REVISION.contains(CI_EXPERIMENTAL_BRANCH_PREFIX)) {
+		return true
+	}
+
+	final INSIDE_SANDBOX_JOB_FOLDER = '/sandbox/'
+	if (env.JOB_NAME.contains(INSIDE_SANDBOX_JOB_FOLDER)) {
+		return true
+	}
+
+	return false
+}
+
+def isGerritBuild() {
+	return env.BUILD_TRIGGERED_BY == 'gerrit'
+}
+
+def getTriggeredBy(String triggeredBy) {
+	if (triggeredBy) {
+		return triggeredBy
+	}
+	return 'concourse'
+}
+
+def hasValue(def variable) {
+	return variable != null && variable != 'undefined' && variable != ''
+}
+
+def getGitBranchName() {
+	if (isGerritBuild()) {
+		return params.OPERATOR_GERRIT_TOPIC
+	}
+
+	def resolvedGitBranchName = sh (script: "git name-rev --name-only ${GIT_COMMIT}", returnStdout: true).trim()
+	if (hasValue(resolvedGitBranchName)) {
+		return resolvedGitBranchName
+	}
+
+	resolvedGitBranchName = sh (script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+	if (hasValue(resolvedGitBranchName) && (resolvedGitBranchName != 'HEAD')) {
+		return resolvedGitBranchName
+	}
+
+	return env.GIT_BRANCH
+}
+
 def prepareCommunityImage(String operatorImage) {
 	return operatorImage.replace("mysql-operator", "community-operator")
 }
@@ -14,18 +61,13 @@ def getImageInfo(String operatorImage) {
 	return "not specified, it will be built locally"
 }
 
-def isCIExperimentalBuild() {
-	final CI_EXPERIMENTAL_BRANCH_PREFIX = 'ci/experimental/'
-	return params.OPERATOR_GIT_REVISION.contains(CI_EXPERIMENTAL_BRANCH_PREFIX)
-}
-
 def yesOrNo(boolean flag) {
 	return flag ? "yes" : "no"
 }
 
 def initEnv() {
 	env.WORKERS_FOLDER = 'Shell/KubernetesOperator/' + "${isCIExperimentalBuild() ? 'sandbox' : 'workers'}"
-	env.BUILD_TRIGGERED_BY = "${params.OPERATOR_INTERNAL_BUILD ? 'internal' : 'concourse'}"
+	env.BUILD_TRIGGERED_BY = getTriggeredBy(params.OPERATOR_TRIGGERED_BY)
 	env.LOG_SUBDIR = "build-${BUILD_NUMBER}"
 	env.LOG_DIR = "${WORKSPACE}/${LOG_SUBDIR}"
 	env.ARTIFACT_FILENAME = "${JOB_BASE_NAME}-${BUILD_NUMBER}-result.tar.bz2"
@@ -36,7 +78,7 @@ def initEnv() {
 	env.COLOR_INFO = '#808080'
 
 	env.GIT_AUTHOR_DATE = sh (script: "git log -1 --pretty='%an <%ae>, %ad' ${GIT_COMMIT}", returnStdout: true).trim()
-	env.GIT_BRANCH_NAME = sh (script: "git name-rev --name-only ${GIT_COMMIT}", returnStdout: true).trim()
+	env.GIT_BRANCH_NAME = getGitBranchName()
 	env.GIT_COMMIT_SUBJECT = sh (script: "git log -1 --pretty=%s ${GIT_COMMIT}", returnStdout: true).trim()
 	env.GIT_COMMIT_SHORT = sh (script: "git rev-parse --short HEAD", returnStdout: true).trim()
 
@@ -51,18 +93,65 @@ def initEnv() {
 	env.TEST_RESULTS_ALL_AVAILABLE = 'ALL_AVAILABLE'
 }
 
-def getInitMessage() {
+def getIntroHeader() {
 	return """${env.BUILD_NOTIFICATION_HEADER}
-${currentBuild.getBuildCauses().shortDescription} (${env.BUILD_TRIGGERED_BY})
-Branch/Revision: ${env.GIT_BRANCH_NAME} ${params.OPERATOR_GIT_REVISION}
-Base Image: ${env.BASE_IMAGE_INFO}
-Community Image: ${env.COMMUNITY_IMAGE_INFO}
-Enterprise Image: ${env.ENTERPRISE_IMAGE_INFO}
-Allow weekly images: ${yesOrNo(params.OPERATOR_ALLOW_WEEKLY_IMAGES)}
-The latest commit:
+${currentBuild.getBuildCauses().shortDescription} (flow: ${env.BUILD_TRIGGERED_BY})
+Branch: ${env.GIT_BRANCH_NAME}
+Revision: ${params.OPERATOR_GIT_REVISION}"""
+}
+
+def getLatestCommit() {
+	return """Latest commit
 ${env.GIT_AUTHOR_DATE}
 ${env.GIT_COMMIT} [hash: ${env.GIT_COMMIT_SHORT}]
 ${env.GIT_COMMIT_SUBJECT}"""
+}
+
+def getImagesInfo() {
+	return """Images
+Base: ${env.BASE_IMAGE_INFO}
+Community: ${env.COMMUNITY_IMAGE_INFO}
+Enterprise: ${env.ENTERPRISE_IMAGE_INFO}
+Allow weekly images: ${yesOrNo(params.OPERATOR_ALLOW_WEEKLY_IMAGES)}"""
+}
+
+def getGerritCRInfo() {
+	return """Code Review (<${params.OPERATOR_GERRIT_CHANGE_URL}|Open>)
+Change: ${params.OPERATOR_GERRIT_CHANGE_NUMBER}
+Patchset: #${params.OPERATOR_GERRIT_PATCHSET_NUMBER}
+Change-ID: ${params.OPERATOR_GERRIT_CHANGE_ID}"""
+}
+
+def getIntroColor() {
+	return env.COLOR_INFO
+}
+
+def getIntroContents() {
+	def introColor = getIntroColor()
+
+	def attachments = [
+		[
+			text: getIntroHeader(),
+			color: introColor
+		],
+		[
+			text: getLatestCommit(),
+			color: introColor
+		],
+		[
+			text: getImagesInfo(),
+			color: introColor
+		]
+	]
+
+	if (isGerritBuild()) {
+		attachments.add([
+			text: getGerritCRInfo(),
+			color: introColor
+		])
+	}
+
+	return attachments
 }
 
 def addTestResults(String k8s_env, int expectedResultsCount) {
@@ -124,7 +213,7 @@ def getTestSuiteReport() {
 		return ""
 	}
 
-	testSuiteReport = "Test suite:\n"
+	testSuiteReport = "Test suite (<${env.RUN_TESTS_DISPLAY_URL}|Open>)\n"
 
 	def briefReportPath = "${env.LOG_DIR}/test_suite_brief_report.txt"
 	def ReportedErrorsMaxCount = 40
@@ -193,7 +282,7 @@ def getChangeLog() {
 		return "No changes\n"
 	}
 
-	def changesLog = "Changes:\n"
+	def changesLog = "Changes (<${env.RUN_CHANGES_DISPLAY_URL}|Open>)\n"
 
 	def allChangesCount = 0
 	for (int i = 0; i < changeSetsCount; ++i) {
@@ -239,7 +328,7 @@ def getTestResults() {
 		return "Init (local registry) stage failed!"
 	}
 
-	if (params.OPERATOR_INTERNAL_BUILD && !env.BUILD_STAGE_SUCCEEDED) {
+	if (params.OPERATOR_BUILD_IMAGES && !env.BUILD_STAGE_SUCCEEDED) {
 		return "Build dev-images stage failed!"
 	}
 
@@ -270,7 +359,7 @@ def getBuildResultColor() {
 	return "good"
 }
 
-def getBuildSummary() {
+def getBuildSummaryHeader() {
 	return """${env.BUILD_NOTIFICATION_HEADER}
 Status: ${env.BUILD_STATUS}
 Duration: ${env.BUILD_DURATION}"""
@@ -281,14 +370,14 @@ def getBuildStats() {
 	if (!stats) {
 		stats = "Not found!"
 	}
-	return "Stats:\n${stats}"
+	return "Stats\n${stats}"
 }
 
-def getBuildAttachments() {
+def getBuildSummary() {
 	def summaryColor = getBuildResultColor()
 	def attachments = [
 		[
-			text: getBuildSummary(),
+			text: getBuildSummaryHeader(),
 			color: summaryColor
 		],
 		[

@@ -196,17 +196,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 api_core.create_namespaced_service(
                     namespace=namespace, body=router_service)
 
-            print("10. Router NodePort Service")
-            if not ignore_404(cluster.get_router_nodeport_service):
-                print("\tPreparing...")
-                router_nodeport_service = router_objects.prepare_router_nodeport_service(
-                    icspec)
-                print("\tCreating...")
-                kopf.adopt(router_nodeport_service)
-                api_core.create_namespaced_service(
-                    namespace=namespace, body=router_nodeport_service)
-
-            print("11. Router Deployment")
+            print("10. Router Deployment")
             if not ignore_404(cluster.get_router_deployment):
                 if icspec.router.instances > 0:
                     print("\tPreparing...")
@@ -231,6 +221,17 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 kopf.adopt(secret)
                 api_core.create_namespaced_secret(
                     namespace=namespace, body=secret)
+
+            if cluster.annotations["service.is.nodeport"] == "ok":
+                print("12. Router NodePort Service")
+                if not ignore_404(cluster.get_router_nodeport_service):
+                    print("\tPreparing...")
+                    router_nodeport_service = router_objects.prepare_router_nodeport_service(
+                        icspec)
+                    print("\tCreating...")
+                    kopf.adopt(router_nodeport_service)
+                    api_core.create_namespaced_service(
+                        namespace=namespace, body=router_nodeport_service)
 
         except Exception as exc:
             cluster.warn(action="CreateCluster",

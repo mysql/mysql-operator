@@ -26,8 +26,10 @@ from kubernetes import client
 
 MAX_CLUSTER_NAME_LEN = 28
 
+
 def escape_value_for_mycnf(value: str) -> str:
     return '"'+value.replace("\\", "\\\\").replace("\"", "\\\"")+'"'
+
 
 class SecretData:
     secret_name: Optional[str] = None
@@ -114,6 +116,7 @@ class KeyringConfigStorage(Enum):
     CONFIGMAP = 1
     SECRET = 2
 
+
 class KeyringFileSpec:
     fileName: Optional[str] = None
     readOnly: Optional[bool] = False
@@ -127,7 +130,8 @@ class KeyringFileSpec:
 
     def parse(self, spec: dict, prefix: str) -> None:
         self.fileName = dget_str(spec, "fileName", prefix)
-        self.readOnly = dget_bool(spec, "readOnly", prefix, default_value=False)
+        self.readOnly = dget_bool(
+            spec, "readOnly", prefix, default_value=False)
         self.storage = dget_dict(spec, "storage", prefix)
 
     @property
@@ -137,7 +141,6 @@ class KeyringFileSpec:
     def add_to_sts_spec(self, statefulset: dict) -> None:
         self.add_conf_to_sts_spec(statefulset)
         self.add_storage_to_sts_spec(statefulset)
-
 
     def add_conf_to_sts_spec(self, statefulset: dict) -> None:
         cm_mount_name = "keyringfile-conf"
@@ -169,7 +172,8 @@ spec:
   volumes:
 {utils.indent(volumes, 2)}
 """
-        utils.merge_patch_object(statefulset["spec"]["template"], yaml.safe_load(patch))
+        utils.merge_patch_object(
+            statefulset["spec"]["template"], yaml.safe_load(patch))
 
     def add_storage_to_sts_spec(self, statefulset: dict) -> None:
         if not self.storage:
@@ -193,17 +197,19 @@ spec:
     volumeMounts:
 {utils.indent(mounts, 6)}
 """
-        utils.merge_patch_object(statefulset["spec"]["template"], yaml.safe_load(patch))
+        utils.merge_patch_object(
+            statefulset["spec"]["template"], yaml.safe_load(patch))
 
-        statefulset["spec"]["template"]["spec"]["volumes"].append({"name" : storage_mount_name, **self.storage})
-
+        statefulset["spec"]["template"]["spec"]["volumes"].append(
+            {"name": storage_mount_name, **self.storage})
 
     def add_to_global_manifest(self, manifest: dict) -> dict:
         component_name = "file://component_keyring_file"
         if not manifest.get("components"):
             manifest["components"] = f"{component_name}"
         else:
-            manifest["components"] = manifest["components"] + f",{component_name}"  # no space allowed after comma
+            manifest["components"] = manifest["components"] + \
+                f",{component_name}"  # no space allowed after comma
 
     def add_component_manifest(self, data: dict, storage_type: KeyringConfigStorage) -> None:
         if storage_type == KeyringConfigStorage.CONFIGMAP:
@@ -238,11 +244,13 @@ class KeyringEncryptedFileSpec:
                                 api_core.read_namespaced_secret(secret_name, self.namespace))
 
                 if not expected_key in password.data:
-                   raise ApiSpecError(f"Secret {secret_name} has no key {expected_key}")
+                    raise ApiSpecError(
+                        f"Secret {secret_name} has no key {expected_key}")
                 password = password.data[expected_key]
 
                 if not password:
-                    raise ApiSpecError(f"Secret {secret_name}'s {expected_key} is empty")
+                    raise ApiSpecError(
+                        f"Secret {secret_name}'s {expected_key} is empty")
 
                 return utils.b64decode(password)
             except ApiException as e:
@@ -250,10 +258,11 @@ class KeyringEncryptedFileSpec:
                     raise ApiSpecError(f"Secret {secret_name} is missing")
                 raise
 
-
         self.fileName = dget_str(spec, "fileName", prefix)
-        self.readOnly = dget_bool(spec, "readOnly", prefix, default_value=False)
-        self.password = get_password_from_secret(dget_str(spec, "password", prefix))
+        self.readOnly = dget_bool(
+            spec, "readOnly", prefix, default_value=False)
+        self.password = get_password_from_secret(
+            dget_str(spec, "password", prefix))
 
         self.storage = dget_dict(spec, "storage", prefix)
 
@@ -264,7 +273,6 @@ class KeyringEncryptedFileSpec:
     def add_to_sts_spec(self, statefulset: dict) -> None:
         self.add_conf_to_sts_spec(statefulset)
         self.add_storage_to_sts_spec(statefulset)
-
 
     def add_conf_to_sts_spec(self, statefulset: dict) -> None:
         cm_mount_name = "keyringencfile-conf"
@@ -296,7 +304,8 @@ spec:
   volumes:
 {utils.indent(volumes, 2)}
 """
-        utils.merge_patch_object(statefulset["spec"]["template"], yaml.safe_load(patch))
+        utils.merge_patch_object(
+            statefulset["spec"]["template"], yaml.safe_load(patch))
 
     def add_storage_to_sts_spec(self, statefulset: dict) -> None:
         if not self.storage:
@@ -320,17 +329,19 @@ spec:
     volumeMounts:
 {utils.indent(mounts, 6)}
 """
-        utils.merge_patch_object(statefulset["spec"]["template"], yaml.safe_load(patch))
+        utils.merge_patch_object(
+            statefulset["spec"]["template"], yaml.safe_load(patch))
 
-        statefulset["spec"]["template"]["spec"]["volumes"].append({"name" : storage_mount_name, **self.storage})
-
+        statefulset["spec"]["template"]["spec"]["volumes"].append(
+            {"name": storage_mount_name, **self.storage})
 
     def add_to_global_manifest(self, manifest: dict) -> None:
         component_name = "file://component_keyring_encrypted_file"
         if not manifest.get("components"):
             manifest["components"] = f"{component_name}"
         else:
-            manifest["components"] = manifest["components"] + f",{component_name}"  # no space allowed after comma
+            manifest["components"] = manifest["components"] + \
+                f",{component_name}"  # no space allowed after comma
 
     def add_component_manifest(self, data: dict, storage_type: KeyringConfigStorage) -> None:
         if storage_type == KeyringConfigStorage.SECRET:
@@ -363,11 +374,12 @@ class KeyringOciSpec:
         self.user = dget_str(spec, "user", prefix)
         self.keySecret = dget_str(spec, "keySecret", prefix)
         self.keyFingerprint = dget_str(spec, "keyFingerprint", prefix)
-        self.tenancy= dget_str(spec, "tenancy", prefix)
+        self.tenancy = dget_str(spec, "tenancy", prefix)
         self.compartment = dget_str(spec, "compartment", prefix)
         self.virtualVault = dget_str(spec, "virtualVault", prefix)
         self.masterKey = dget_str(spec, "masterKey", prefix)
-        self.caCertificate = dget_str(spec, "caCertificate", prefix, default_value="")
+        self.caCertificate = dget_str(
+            spec, "caCertificate", prefix, default_value="")
         endpoints = dget_dict(spec, "endpoints", prefix, {})
         if endpoints:
             self.endpointEncryption = dget_str(endpoints, "encryption", prefix)
@@ -405,7 +417,8 @@ spec:
     secret:
       secretName: {self.keySecret}
 """
-        utils.merge_patch_object(statefulset["spec"]["template"], yaml.safe_load(patch))
+        utils.merge_patch_object(
+            statefulset["spec"]["template"], yaml.safe_load(patch))
 
         if self.caCertificate:
             patch = f"""
@@ -425,7 +438,8 @@ spec:
     secret:
       secretName: {self.caCertificate}
 """
-            utils.merge_patch_object(statefulset["spec"]["template"], yaml.safe_load(patch))
+            utils.merge_patch_object(
+                statefulset["spec"]["template"], yaml.safe_load(patch))
 
     def add_to_initconf(self, configmap: dict):
         # TODO: move to component ....
@@ -477,11 +491,14 @@ class KeyringSpec:
                 "One of file, encryptedFile or oci must be specified in spec.keyring")
 
         if krFile:
-            self.keyringFile = KeyringFileSpec(self.namespace, self.global_manifest_name, self.component_config_configmap_name, self.keyring_mount_path)
+            self.keyringFile = KeyringFileSpec(
+                self.namespace, self.global_manifest_name, self.component_config_configmap_name, self.keyring_mount_path)
             self.keyringFile.parse(krFile, "spec.keyring.file")
         elif krEncryptedFile:
-            self.keyringEncryptedFile = KeyringEncryptedFileSpec(self.namespace, self.global_manifest_name, self.component_config_configmap_name, self.keyring_mount_path)
-            self.keyringEncryptedFile.parse(krEncryptedFile, "spec.keyring.encryptedFile")
+            self.keyringEncryptedFile = KeyringEncryptedFileSpec(
+                self.namespace, self.global_manifest_name, self.component_config_configmap_name, self.keyring_mount_path)
+            self.keyringEncryptedFile.parse(
+                krEncryptedFile, "spec.keyring.encryptedFile")
         elif krOci:
             self.keyringOci = KeyringOciSpec()
             self.keyringOci.parse(krOci, "spec.keyring.oci")
@@ -496,7 +513,7 @@ class KeyringSpec:
             return self.keyringOci.is_component
         else:
             return False
-            #raise Exception("NEEDS IMPLEMENTATION")
+            # raise Exception("NEEDS IMPLEMENTATION")
 
     @property
     def component_config_configmap_name(self) -> str:
@@ -511,27 +528,30 @@ class KeyringSpec:
             raise Exception("NOT IMPLEMENTED YET")
 
         data = {
-            self.global_manifest_name : {}
+            self.global_manifest_name: {}
         }
         if self.keyringFile:
-            self.keyringFile.add_to_global_manifest(data[self.global_manifest_name])
-            self.keyringFile.add_component_manifest(data, KeyringConfigStorage.CONFIGMAP)
+            self.keyringFile.add_to_global_manifest(
+                data[self.global_manifest_name])
+            self.keyringFile.add_component_manifest(
+                data, KeyringConfigStorage.CONFIGMAP)
         elif self.keyringEncryptedFile:
-            self.keyringEncryptedFile.add_to_global_manifest(data[self.global_manifest_name])
-            self.keyringEncryptedFile.add_component_manifest(data, KeyringConfigStorage.CONFIGMAP)
+            self.keyringEncryptedFile.add_to_global_manifest(
+                data[self.global_manifest_name])
+            self.keyringEncryptedFile.add_component_manifest(
+                data, KeyringConfigStorage.CONFIGMAP)
         else:
             raise Exception("NEEDS IMPLEMENTATION")
 
-        cm =  {
-            'apiVersion' : "v1",
+        cm = {
+            'apiVersion': "v1",
             'kind': 'ConfigMap',
             'metadata': {
                 'name': self.component_config_configmap_name
             },
-            'data' : { k: utils.dict_to_json_string(data[k]) for k in data }
+            'data': {k: utils.dict_to_json_string(data[k]) for k in data}
         }
         return cm
-
 
     def get_component_config_secret_manifest(self) -> Optional[Dict]:
         if not self.is_component:
@@ -540,25 +560,26 @@ class KeyringSpec:
         data = {
         }
         if self.keyringFile:
-            self.keyringFile.add_component_manifest(data, KeyringConfigStorage.SECRET)
+            self.keyringFile.add_component_manifest(
+                data, KeyringConfigStorage.SECRET)
         elif self.keyringEncryptedFile:
-            self.keyringEncryptedFile.add_component_manifest(data, KeyringConfigStorage.SECRET)
+            self.keyringEncryptedFile.add_component_manifest(
+                data, KeyringConfigStorage.SECRET)
         else:
             raise Exception("NEEDS IMPLEMENTATION")
 
         if len(data) == 0:
             return None
 
-        cm =  {
-            'apiVersion' : "v1",
+        cm = {
+            'apiVersion': "v1",
             'kind': 'Secret',
             'metadata': {
                 'name': self.component_config_secret_name
             },
-            'data' : { k: utils.b64encode(utils.dict_to_json_string(data[k])) for k in data }
+            'data': {k: utils.b64encode(utils.dict_to_json_string(data[k])) for k in data}
         }
         return cm
-
 
     def add_to_sts_spec_component_global_manifest(self, statefulset: dict):
         mounts = f"""
@@ -589,15 +610,15 @@ spec:
   volumes:
 {utils.indent(volumes, 4)}
 """
-        utils.merge_patch_object(statefulset["spec"]["template"], yaml.safe_load(patch))
-
+        utils.merge_patch_object(
+            statefulset["spec"]["template"], yaml.safe_load(patch))
 
     def add_to_sts_spec(self, statefulset: dict):
         if self.is_component:
             self.add_to_sts_spec_component_global_manifest(statefulset)
 
         if self.keyringFile:
-             self.keyringFile.add_to_sts_spec(statefulset)
+            self.keyringFile.add_to_sts_spec(statefulset)
         elif self.keyringEncryptedFile:
             self.keyringEncryptedFile.add_to_sts_spec(statefulset)
         elif self.keyringOci:
@@ -613,7 +634,7 @@ class RouterSpec:
     instances: int = 1
 
     # Router version, if user wants to override it (latest by default)
-    version: str = None # config.DEFAULT_ROUTER_VERSION_TAG
+    version: str = None  # config.DEFAULT_ROUTER_VERSION_TAG
 
     podSpec: dict = {}
     podAnnotations: Optional[dict] = None
@@ -745,7 +766,8 @@ class InnoDBClusterSpec:
                 spec, "imagePullSecrets", "spec", content_type=dict)
 
         if "serviceAccountName" in spec:
-            self.serviceAccountName = dget_str(spec, "serviceAccountName", "spec")
+            self.serviceAccountName = dget_str(
+                spec, "serviceAccountName", "spec")
 
         if "imageRepository" in spec:
             self.imageRepository = dget_str(spec, "imageRepository", "spec")
@@ -760,11 +782,13 @@ class InnoDBClusterSpec:
             self.podLabels = dget_dict(spec, "podLabels", "spec")
 
         if "datadirVolumeClaimTemplate" in spec:
-            self.datadirVolumeClaimTemplate = spec.get("datadirVolumeClaimTemplate")
+            self.datadirVolumeClaimTemplate = spec.get(
+                "datadirVolumeClaimTemplate")
 
         self.keyring = KeyringSpec(self.namespace, self.name)
         if "keyring" in spec:
-            self.keyring.parse(dget_dict(spec, "keyring", "spec"), "spec.keyring")
+            self.keyring.parse(
+                dget_dict(spec, "keyring", "spec"), "spec.keyring")
 
         if "mycnf" in spec:
             self.mycnf = dget_str(spec, "mycnf", "spec")
@@ -787,19 +811,20 @@ class InnoDBClusterSpec:
         if "baseServerId" in spec:
             self.baseServerId = dget_int(spec, "baseServerId", "spec")
 
-
         self.backupProfiles = []
         if "backupProfiles" in spec:
-            profiles = dget_list(spec, "backupProfiles", "spec", [], content_type=dict)
+            profiles = dget_list(spec, "backupProfiles",
+                                 "spec", [], content_type=dict)
             for profile in profiles:
                 self.backupProfiles.append(self.parse_backup_profile(profile))
 
-
         self.backupSchedules = []
         if "backupSchedules" in spec:
-            schedules = dget_list(spec, "backupSchedules", "spec", [], content_type=dict)
+            schedules = dget_list(spec, "backupSchedules",
+                                  "spec", [], content_type=dict)
             for schedule in schedules:
-                self.backupSchedules.append(self.parse_backup_schedule(schedule))
+                self.backupSchedules.append(
+                    self.parse_backup_schedule(schedule))
 
     def parse_backup_profile(self, spec: dict) -> BackupProfile:
         profile = BackupProfile()
@@ -855,7 +880,8 @@ class InnoDBClusterSpec:
             pass
 
         if self.tlsSecretName and not self.tlsCASecretName:
-            logger.info("spec.tlsSecretName is set but will be ignored because self.tlsCASecretName is not set")
+            logger.info(
+                "spec.tlsSecretName is set but will be ignored because self.tlsCASecretName is not set")
 
         if self.mycnf:
             if "[mysqld]" not in self.mycnf:
@@ -868,7 +894,8 @@ class InnoDBClusterSpec:
         # validate version
         if self.version:
             # note: format of the version string is defined in the CRD
-            [valid_version, version_error] = utils.version_in_range(self.version)
+            [valid_version, version_error] = utils.version_in_range(
+                self.version)
 
             if not valid_version:
                 raise ApiSpecError(version_error)
@@ -906,7 +933,6 @@ class InnoDBClusterSpec:
             image = config.MYSQL_OPERATOR_EE_IMAGE
 
         return self.format_image(image, self.sidecarVersion)
-
 
     @property
     def mysql_image_pull_policy(self) -> str:
@@ -1023,7 +1049,6 @@ class InnoDBClusterSpec:
 
         return "\n".join(mounts)
 
-
     @property
     def extra_router_volume_mounts(self) -> str:
         mounts = []
@@ -1049,7 +1074,6 @@ class InnoDBClusterSpec:
         return f"serviceAccountName: {saName}"
 
 
-
 class InnoDBCluster(K8sInterfaceObject):
     def __init__(self, cluster: Body) -> None:
         super().__init__()
@@ -1067,9 +1091,9 @@ class InnoDBCluster(K8sInterfaceObject):
     def _get(cls, ns: str, name: str) -> Body:
         try:
             ret = cast(Body,
-                        api_customobj.get_namespaced_custom_object(
-                            consts.GROUP, consts.VERSION, ns,
-                            consts.INNODBCLUSTER_PLURAL, name))
+                       api_customobj.get_namespaced_custom_object(
+                           consts.GROUP, consts.VERSION, ns,
+                           consts.INNODBCLUSTER_PLURAL, name))
         except ApiException as e:
             raise e
 
@@ -1147,7 +1171,8 @@ class InnoDBCluster(K8sInterfaceObject):
         return self._parsed_spec
 
     def parse_spec(self) -> None:
-        self._parsed_spec = InnoDBClusterSpec(self.namespace, self.name, self.spec)
+        self._parsed_spec = InnoDBClusterSpec(
+            self.namespace, self.name, self.spec)
 
     def reload(self) -> None:
         self.obj = self._get(self.namespace, self.name)
@@ -1209,6 +1234,15 @@ class InnoDBCluster(K8sInterfaceObject):
         try:
             return cast(api_client.V1Service,
                         api_core.read_namespaced_service(self.name, self.namespace))
+        except ApiException as e:
+            if e.status == 404:
+                return None
+            raise
+
+    def get_router_nodeport_service(self) -> typing.Optional[api_client.V1Service]:
+        try:
+            return cast(api_client.V1Service,
+                        api_core.read_namespaced_service(self.name+"nodeport", self.namespace))
         except ApiException as e:
             if e.status == 404:
                 return None
@@ -1313,8 +1347,10 @@ class InnoDBCluster(K8sInterfaceObject):
         try:
             router_tls_secret = cast(api_client.V1Secret, api_core.read_namespaced_secret(
                                      self.parsed_spec.router.tlsSecretName, self.namespace))
-            ret["router_tls.crt"] = utils.b64decode(router_tls_secret.data["tls.crt"])
-            ret["router_tls.key"] = utils.b64decode(router_tls_secret.data["tls.key"])
+            ret["router_tls.crt"] = utils.b64decode(
+                router_tls_secret.data["tls.crt"])
+            ret["router_tls.key"] = utils.b64decode(
+                router_tls_secret.data["tls.key"])
         except ApiException as e:
             if e.status != 404:
                 raise
@@ -1335,7 +1371,6 @@ class InnoDBCluster(K8sInterfaceObject):
         return cast(api_client.V1RoleBinding,
                     api_rbac.read_namespaced_role_binding(f"{self.name}-sidecar-rb", self.namespace))
 
-
     def get_configmap(self, cm_name: str) -> typing.Optional[api_client.V1ConfigMap]:
         try:
             cm = cast(api_client.V1ConfigMap,
@@ -1343,7 +1378,8 @@ class InnoDBCluster(K8sInterfaceObject):
             getLogger().info(f"ConfigMap {cm_name} found in {self.namespace}")
             return cm
         except ApiException as e:
-            getLogger().info(f"ConfigMap {cm_name} NOT found in {self.namespace}")
+            getLogger().info(
+                f"ConfigMap {cm_name} NOT found in {self.namespace}")
             if e.status == 404:
                 return None
             raise
@@ -1472,7 +1508,7 @@ class InnoDBCluster(K8sInterfaceObject):
 
     def _remove_finalizer(self, fin: str) -> None:
         # TODO strategic merge patch not working here??
-        #patch = { "metadata": { "$deleteFromPrimitiveList/finalizers": [fin] }}
+        # patch = { "metadata": { "$deleteFromPrimitiveList/finalizers": [fin] }}
         patch = {"metadata": {"finalizers": [
             f for f in self.metadata["finalizers"] if f != fin]}}
 
@@ -1491,7 +1527,8 @@ class InnoDBCluster(K8sInterfaceObject):
     def set_operator_version(self, version: str) -> None:
         v = self.operator_version
         if v != version:
-            patch = {"metadata": {"annotations": {"mysql.oracle.com/mysql-operator-version": version}}}
+            patch = {"metadata": {"annotations": {
+                "mysql.oracle.com/mysql-operator-version": version}}}
 
             # TODO store the current server/router version + timestamp
             # store previous versions in a version history log
@@ -1523,7 +1560,8 @@ class InnoDBCluster(K8sInterfaceObject):
         if self.parsed_spec.tlsUseSelfSigned:
             return False
         try:
-            api_core.read_namespaced_secret(self.parsed_spec.router.tlsSecretName, self.namespace)
+            api_core.read_namespaced_secret(
+                self.parsed_spec.router.tlsSecretName, self.namespace)
         except ApiException as e:
             if e.status == 404:
                 return False
@@ -1531,28 +1569,40 @@ class InnoDBCluster(K8sInterfaceObject):
         return True
 
     def log_cluster_info(self, logger: Logger) -> None:
-        logger.info(f"InnoDB Cluster {self.namespace}/{self.name} Edition({self.parsed_spec.edition}) Edition")
-        logger.info(f"\tServer Image:\t{self.parsed_spec.mysql_image} / {self.parsed_spec.mysql_image_pull_policy}")
-        logger.info(f"\tRouter Image:\t{self.parsed_spec.router_image} / {self.parsed_spec.router_image_pull_policy}")
-        logger.info(f"\tSidecar Image:\t{self.parsed_spec.operator_image} / {self.parsed_spec.operator_image_pull_policy}")
+        logger.info(
+            f"InnoDB Cluster {self.namespace}/{self.name} Edition({self.parsed_spec.edition}) Edition")
+        logger.info(
+            f"\tServer Image:\t{self.parsed_spec.mysql_image} / {self.parsed_spec.mysql_image_pull_policy}")
+        logger.info(
+            f"\tRouter Image:\t{self.parsed_spec.router_image} / {self.parsed_spec.router_image_pull_policy}")
+        logger.info(
+            f"\tSidecar Image:\t{self.parsed_spec.operator_image} / {self.parsed_spec.operator_image_pull_policy}")
         logger.info(f"\tImagePullPolicy:\t{self.parsed_spec.imagePullPolicy}")
         logger.info(f"\tImageRepository:\t{self.parsed_spec.imageRepository}")
         logger.info(f"\tBase ServerId:\t{self.parsed_spec.baseServerId}")
-        logger.info(f"\tRouter instances:\t{self.parsed_spec.router.instances}")
-        logger.info(f"\tBackup profiles:\t{len(self.parsed_spec.backupProfiles)}")
-        logger.info(f"\tBackup schedules:\t{len(self.parsed_spec.backupSchedules)}")
+        logger.info(
+            f"\tRouter instances:\t{self.parsed_spec.router.instances}")
+        logger.info(
+            f"\tBackup profiles:\t{len(self.parsed_spec.backupProfiles)}")
+        logger.info(
+            f"\tBackup schedules:\t{len(self.parsed_spec.backupSchedules)}")
         self.log_tls_info(logger)
 
     def log_tls_info(self, logger: Logger) -> None:
-        logger.info(f"\tServer.TLS.useSelfSigned:\t{self.parsed_spec.tlsUseSelfSigned}")
+        logger.info(
+            f"\tServer.TLS.useSelfSigned:\t{self.parsed_spec.tlsUseSelfSigned}")
         if not self.parsed_spec.tlsUseSelfSigned:
-            logger.info(f"\tServer.TLS.tlsCASecretName:\t{self.parsed_spec.tlsCASecretName}")
-            logger.info(f"\tServer.TLS.tlsSecretName:\t{self.parsed_spec.tlsSecretName}")
-            logger.info(f"\tTLS.keys                :\t{list(self.get_ca_and_tls().keys())}")
+            logger.info(
+                f"\tServer.TLS.tlsCASecretName:\t{self.parsed_spec.tlsCASecretName}")
+            logger.info(
+                f"\tServer.TLS.tlsSecretName:\t{self.parsed_spec.tlsSecretName}")
+            logger.info(
+                f"\tTLS.keys                :\t{list(self.get_ca_and_tls().keys())}")
             router_tls_exists = self.router_tls_exists()
             logger.info(f"\tRouter.TLS exists       :\t{router_tls_exists}")
             if router_tls_exists:
-                logger.info(f"\tRouter.TLS.tlsSecretName:\t{self.parsed_spec.router.tlsSecretName}")
+                logger.info(
+                    f"\tRouter.TLS.tlsSecretName:\t{self.parsed_spec.router.tlsSecretName}")
 
 
 def get_all_clusters(ns: str = None) -> typing.List[InnoDBCluster]:

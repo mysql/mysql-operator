@@ -59,7 +59,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
     # TODO: If we set the status here it will be emptied for unknown reasons later
     #       and hide other later set status (i.e. when using an invalid spec.version)
     #
-    #cluster.set_status({
+    # cluster.set_status({
     #    "cluster": {
     #        "status":  diagnose.ClusterDiagStatus.INITIALIZING.value,
     #        "onlineInstances": 0,
@@ -90,7 +90,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 return None
             raise
 
-    #print(f"Default operator IC edition: {config.MYSQL_OPERATOR_DEFAULT_IC_EDITION} Edition")
+    # print(f"Default operator IC edition: {config.MYSQL_OPERATOR_DEFAULT_IC_EDITION} Edition")
     cluster.log_cluster_info(logger)
 
     if not cluster.ready:
@@ -111,7 +111,8 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             print("1. Initial Configuration ConfigMap and Container Probes")
             if not ignore_404(cluster.get_initconf):
                 print("\tPreparing...")
-                configs = cluster_objects.prepare_initconf(cluster, icspec, logger)
+                configs = cluster_objects.prepare_initconf(
+                    cluster, icspec, logger)
                 print("\tCreating...")
                 kopf.adopt(configs)
                 api_core.create_namespaced_config_map(namespace, configs)
@@ -122,7 +123,8 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 secret = cluster_objects.prepare_secrets(icspec)
                 print("\tCreating...")
                 kopf.adopt(secret)
-                api_core.create_namespaced_secret(namespace=namespace, body=secret)
+                api_core.create_namespaced_secret(
+                    namespace=namespace, body=secret)
 
             print("3. Router Accounts")
             if not ignore_404(cluster.get_router_account):
@@ -130,7 +132,8 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 secret = router_objects.prepare_router_secrets(icspec)
                 print("\tCreating...")
                 kopf.adopt(secret)
-                api_core.create_namespaced_secret(namespace=namespace, body=secret)
+                api_core.create_namespaced_secret(
+                    namespace=namespace, body=secret)
 
             print("4. Cluster Service")
             if not ignore_404(cluster.get_service):
@@ -138,18 +141,21 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 service = cluster_objects.prepare_cluster_service(icspec)
                 print("\tCreating...")
                 kopf.adopt(service)
-                api_core.create_namespaced_service(namespace=namespace, body=service)
+                api_core.create_namespaced_service(
+                    namespace=namespace, body=service)
 
             print("5. Cluster ServiceAccount")
             if not ignore_404(cluster.get_service_account):
                 print("\tPreparing...")
                 sa = cluster_objects.prepare_service_account(icspec)
                 if sa is None:
-                    print(f"\tService account is predefined: {icspec.serviceAccountName}. Not creating")
+                    print(
+                        f"\tService account is predefined: {icspec.serviceAccountName}. Not creating")
                 else:
                     print(f"\tCreating...{sa}")
                     kopf.adopt(sa)
-                    api_core.create_namespaced_service_account(namespace=namespace, body=sa)
+                    api_core.create_namespaced_service_account(
+                        namespace=namespace, body=sa)
 
             print("6. Cluster RoleBinding")
             if not ignore_404(cluster.get_role_binding):
@@ -157,24 +163,29 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 rb = cluster_objects.prepare_role_binding(icspec)
                 print(f"\tCreating...{rb}")
                 kopf.adopt(rb)
-                api_rbac.create_namespaced_role_binding(namespace=namespace, body=rb)
+                api_rbac.create_namespaced_role_binding(
+                    namespace=namespace, body=rb)
 
             print("7. Cluster StatefulSet")
             if not ignore_404(cluster.get_stateful_set):
                 print("\tPreparing...")
-                statefulset = cluster_objects.prepare_cluster_stateful_set(icspec, logger)
+                statefulset = cluster_objects.prepare_cluster_stateful_set(
+                    icspec, logger)
                 print(f"\tCreating...{statefulset}")
                 kopf.adopt(statefulset)
 
-                api_apps.create_namespaced_stateful_set(namespace=namespace, body=statefulset)
+                api_apps.create_namespaced_stateful_set(
+                    namespace=namespace, body=statefulset)
 
             print("8. Cluster PodDisruptionBudget")
             if not ignore_404(cluster.get_disruption_budget):
                 print("\tPreparing...")
-                disruption_budget = cluster_objects.prepare_cluster_pod_disruption_budget(icspec)
+                disruption_budget = cluster_objects.prepare_cluster_pod_disruption_budget(
+                    icspec)
                 print("\tCreating...")
                 kopf.adopt(disruption_budget)
-                api_policy.create_namespaced_pod_disruption_budget(namespace=namespace, body=disruption_budget)
+                api_policy.create_namespaced_pod_disruption_budget(
+                    namespace=namespace, body=disruption_budget)
 
             print("9. Router Service")
             if not ignore_404(cluster.get_router_service):
@@ -182,18 +193,31 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 router_service = router_objects.prepare_router_service(icspec)
                 print("\tCreating...")
                 kopf.adopt(router_service)
-                api_core.create_namespaced_service(namespace=namespace, body=router_service)
+                api_core.create_namespaced_service(
+                    namespace=namespace, body=router_service)
 
-            print("10. Router Deployment")
+            print("10. Router NodePort Service")
+            if not ignore_404(cluster.get_router_nodeport_service):
+                print("\tPreparing...")
+                router_nodeport_service = router_objects.prepare_router_nodeport_service(
+                    icspec)
+                print("\tCreating...")
+                kopf.adopt(router_nodeport_service)
+                api_core.create_namespaced_service(
+                    namespace=namespace, body=router_nodeport_service)
+
+            print("11. Router Deployment")
             if not ignore_404(cluster.get_router_deployment):
                 if icspec.router.instances > 0:
                     print("\tPreparing...")
                     # This will create the deployment but 0 instances. When the cluster is created (first
                     # instance joins it) the instance count will be set to icspec.router.instances
-                    router_deployment = router_objects.prepare_router_deployment(cluster, logger, init_only=True)
+                    router_deployment = router_objects.prepare_router_deployment(
+                        cluster, logger, init_only=True)
                     print(f"\tCreating...{router_deployment}")
                     kopf.adopt(router_deployment)
-                    api_apps.create_namespaced_deployment(namespace=namespace, body=router_deployment)
+                    api_apps.create_namespaced_deployment(
+                        namespace=namespace, body=router_deployment)
                 else:
                     # If the user decides to set !0 routers, the routine that handles that that
                     # will create the deployment
@@ -205,13 +229,16 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 secret = backup_objects.prepare_backup_secrets(icspec)
                 print("\tCreating...")
                 kopf.adopt(secret)
-                api_core.create_namespaced_secret(namespace=namespace, body=secret)
+                api_core.create_namespaced_secret(
+                    namespace=namespace, body=secret)
 
         except Exception as exc:
-            cluster.warn(action="CreateCluster", reason="CreateResourceFailed", message=f"{exc}")
+            cluster.warn(action="CreateCluster",
+                         reason="CreateResourceFailed", message=f"{exc}")
             raise
 
-        print(f"10. Setting operator version for the IC to {DEFAULT_OPERATOR_VERSION_TAG}")
+        print(
+            f"10. Setting operator version for the IC to {DEFAULT_OPERATOR_VERSION_TAG}")
         cluster.set_operator_version(DEFAULT_OPERATOR_VERSION_TAG)
         cluster.info(action="CreateCluster", reason="ResourcesCreated",
                      message="Dependency resources created, switching status to PENDING")
@@ -298,7 +325,8 @@ def on_innodbcluster_field_version(old, new, body: Body,
         cluster_objects.update_mysql_image(sts, cluster.parsed_spec, logger)
         router_deploy = cluster.get_router_deployment()
         if router_deploy:
-            router_objects.update_router_image(router_deploy, cluster.parsed_spec, logger)
+            router_objects.update_router_image(
+                router_deploy, cluster.parsed_spec, logger)
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
@@ -309,7 +337,8 @@ def on_innodbcluster_field_image_repository(old, new, body: Body,
 
     # ignore spec changes if the cluster is still being initialized
     if not cluster.ready:
-        logger.debug(f"Ignoring spec.imageRepository change for unready cluster")
+        logger.debug(
+            f"Ignoring spec.imageRepository change for unready cluster")
         return
 
     sts = cluster.get_stateful_set()
@@ -323,7 +352,9 @@ def on_innodbcluster_field_image_repository(old, new, body: Body,
         cluster_objects.update_operator_image(sts, cluster.parsed_spec)
         router_deploy = cluster.get_router_deployment()
         if router_deploy:
-            router_objects.update_router_image(router_deploy, cluster.parsed_spec, logger)
+            router_objects.update_router_image(
+                router_deploy, cluster.parsed_spec, logger)
+
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL, field="spec.router.podSpec")
 def on_innodbcluster_field_route_podSpec(old, new, body: Body, logger: Logger, **kwargs):
@@ -358,15 +389,17 @@ def on_innodbcluster_field_mysql_podSpec(old, new, body: Body, logger: Logger, *
             cluster_objects.update_mysql_resources(
                 sts, cluster.parsed_spec, logger)
 
+
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
                field="spec.imagePullPolicy")  # type: ignore
 def on_innodbcluster_field_image_pull_policy(old, new, body: Body,
-                                            logger: Logger, **kwargs):
+                                             logger: Logger, **kwargs):
     cluster = InnoDBCluster(body)
 
     # ignore spec changes if the cluster is still being initialized
     if not cluster.ready:
-        logger.debug(f"Ignoring spec.imagePullPolicy change for unready cluster")
+        logger.debug(
+            f"Ignoring spec.imagePullPolicy change for unready cluster")
         return
 
     sts = cluster.get_stateful_set()
@@ -379,7 +412,8 @@ def on_innodbcluster_field_image_pull_policy(old, new, body: Body,
         cluster_objects.update_pull_policy(sts, cluster.parsed_spec, logger)
         router_deploy = cluster.get_router_deployment()
         if router_deploy:
-            router_objects.update_pull_policy(router_deploy, cluster.parsed_spec, logger)
+            router_objects.update_pull_policy(
+                router_deploy, cluster.parsed_spec, logger)
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
@@ -450,14 +484,14 @@ def on_innodbcluster_field_router_version(old: str, new: str, body: Body,
     with ClusterMutex(cluster):
         router_deploy = cluster.get_router_deployment()
         if router_deploy:
-            router_objects.update_router_image(router_deploy, cluster.parsed_spec, logger)
-
+            router_objects.update_router_image(
+                router_deploy, cluster.parsed_spec, logger)
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
                field="spec.backupSchedules")  # type: ignore
 def on_innodbcluster_field_backup_schedules(old: str, new: str, body: Body,
-                                          logger: Logger, **kwargs):
+                                            logger: Logger, **kwargs):
     if old == new:
         return
 
@@ -478,7 +512,8 @@ def on_innodbcluster_field_backup_schedules(old: str, new: str, body: Body,
     # don't need to take actions in post_create_actions() in the cluster controller
     # but async await for Kopf to call again this handler.
     if not cluster.get_create_time():
-        raise kopf.TemporaryError("The cluster is not ready. Will create the schedules once the first instance is up and running", delay=10)
+        raise kopf.TemporaryError(
+            "The cluster is not ready. Will create the schedules once the first instance is up and running", delay=10)
 
     cluster.parsed_spec.validate(logger)
     with ClusterMutex(cluster):
@@ -509,7 +544,7 @@ def on_innodbcluster_field_tls_use_self_signed(body: Body,
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
                field="spec.tlsSecretName")  # type: ignore
 def on_innodbcluster_field_tls_secret_name(body: Body,
-                                          logger: Logger, **kwargs):
+                                           logger: Logger, **kwargs):
     logger.info("on_innodbcluster_field_tls_secret_name")
     update_tls_field(body, "spec.tlsSecretName", logger)
 
@@ -545,13 +580,15 @@ def on_pod_create(body: Body, logger: Logger, **kwargs):
     # check general assumption
     assert not pod.deleting
 
-    logger.info(f"POD CREATED: pod={pod.name} ContainersReady={pod.check_condition('ContainersReady')} Ready={pod.check_condition('Ready')} gate[configured]={pod.get_member_readiness_gate('configured')}")
+    logger.info(
+        f"POD CREATED: pod={pod.name} ContainersReady={pod.check_condition('ContainersReady')} Ready={pod.check_condition('Ready')} gate[configured]={pod.get_member_readiness_gate('configured')}")
 
     configured = pod.get_member_readiness_gate("configured")
     if not configured:
         # TODO add extra diagnostics about why the pod is not ready yet, for
         # example, unbound volume claims, initconf not finished etc
-        raise kopf.TemporaryError(f"Sidecar of {pod.name} is not yet configured", delay=30)
+        raise kopf.TemporaryError(
+            f"Sidecar of {pod.name} is not yet configured", delay=30)
 
     # If we are here all containers have started. This means, that if we are initializing
     # the database from a donor (cloning) the sidecar has already started a seed instance
@@ -574,7 +611,8 @@ def on_pod_create(body: Body, logger: Logger, **kwargs):
         cluster_ctl.on_pod_created(pod, logger)
 
         # Remember how many restarts happened as of now
-        g_ephemeral_pod_state.set(pod, "mysql-restarts", pod.get_container_restarts("mysql"), context="on_pod_create")
+        g_ephemeral_pod_state.set(
+            pod, "mysql-restarts", pod.get_container_restarts("mysql"), context="on_pod_create")
 
 
 @kopf.on.event("", "v1", "pods",
@@ -607,7 +645,8 @@ def on_pod_event(event, body: Body, logger: Logger, **kwargs):
                 f"{c.name}={'ready' if c.ready else 'not-ready'}" for c in pod.status.container_statuses]
             conditions = [
                 f"{c.type}={c.status}" for c in pod.status.conditions]
-            logger.debug(f"POD EVENT {event}: pod={pod.name} containers_ready={ready} deleting={pod.deleting} phase={pod.phase} member_info={member_info} restarts={mysql_restarts} containers={containers} conditions={conditions}")
+            logger.debug(
+                f"POD EVENT {event}: pod={pod.name} containers_ready={ready} deleting={pod.deleting} phase={pod.phase} member_info={member_info} restarts={mysql_restarts} containers={containers} conditions={conditions}")
 
             cluster = pod.get_cluster()
             if not cluster:
@@ -621,7 +660,8 @@ def on_pod_event(event, body: Body, logger: Logger, **kwargs):
                 if ready and event == "mysql-restarted":
                     cluster_ctl.on_pod_restarted(pod, logger)
 
-                    g_ephemeral_pod_state.set(pod, "mysql-restarts", mysql_restarts, context="on_pod_event")
+                    g_ephemeral_pod_state.set(
+                        pod, "mysql-restarts", mysql_restarts, context="on_pod_event")
 
                 # Check if we should refresh the cluster status
                 status = cluster_ctl.probe_status_if_needed(pod, logger)
@@ -672,7 +712,7 @@ def on_pod_delete(body: Body, logger: Logger, **kwargs):
 
 # An example of a `when` hook for finding secrets belonging to a IC
 #
-#def secret_belongs_to_a_cluster_checker(meta, namespace:str, name, logger: Logger, **_) -> bool:
+# def secret_belongs_to_a_cluster_checker(meta, namespace:str, name, logger: Logger, **_) -> bool:
 #    clusters = get_all_clusters(namespace)
 #    for cluster in clusters:
 #        if name in (cluster.parsed_spec.tlsCASecretName,
@@ -682,6 +722,6 @@ def on_pod_delete(body: Body, logger: Logger, **kwargs):
 #    return False
 #
 # Use like the following
-#@kopf.on.create("", "v1", "secrets", when=secret_belongs_to_a_cluster_checker) # type: ignore
-#@kopf.on.update("", "v1", "secrets", when=secret_belongs_to_a_cluster_checker) # type: ignore
+# @kopf.on.create("", "v1", "secrets", when=secret_belongs_to_a_cluster_checker) # type: ignore
+# @kopf.on.update("", "v1", "secrets", when=secret_belongs_to_a_cluster_checker) # type: ignore
 #

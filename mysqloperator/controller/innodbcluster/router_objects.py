@@ -12,6 +12,31 @@ import kopf
 from logging import Logger
 from typing import Optional
 
+def prepare_router_nodeport_service(spec: InnoDBClusterSpec) -> dict:
+    tmpl = f"""
+apiVersion: v1
+kind: Service
+metadata:
+  name: {spec.name}-nodeport
+  namespace: {spec.namespace}
+  labels:
+    tier: mysql
+    mysql.oracle.com/cluster: {spec.name}
+spec:
+  ports:
+  - name: mysql
+    port: {spec.mysql_port}
+    protocol: TCP
+    targetPort: {spec.router_rwport}
+  selector:
+    component: mysqlrouter
+    tier: mysql
+    mysql.oracle.com/cluster: {spec.name}
+  type: NodePort
+"""
+    return yaml.safe_load(tmpl)
+
+
 
 def prepare_router_service(spec: InnoDBClusterSpec) -> dict:
     tmpl = f"""

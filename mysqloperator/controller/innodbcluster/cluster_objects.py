@@ -739,6 +739,9 @@ def update_stateful_set_spec(sts : api_client.V1StatefulSet, patch: dict) -> Non
         sts.metadata.name, sts.metadata.namespace, body=patch)
 
 
+def update_mysql_resources(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec, logger: Logger) -> None:
+    reconcile_stateful_set_from_spec(spec, logger)
+
 def update_mysql_image(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec, logger: Logger) -> None:
     """Update MySQL Server image
 

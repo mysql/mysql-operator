@@ -91,18 +91,19 @@ def prepare_router_deployment(cluster: InnoDBCluster, logger, *,
     router_tls_exists = False
     ca_and_tls = None
     # Workaround fro rotuer bug #33996132
-    router_bootstrap_options = ["--conf-set-option=DEFAULT.unknown_config_option=warning"]
+    router_bootstrap_options = [
+        "--conf-set-option=DEFAULT.unknown_config_option=warning"]
     if not spec.tlsUseSelfSigned:
         ca_and_tls = cluster.get_ca_and_tls()
         ca_file_name = ca_and_tls.get("CA", "ca.pem")
         router_bootstrap_options += [f"--server-ssl-ca=/router-ssl/ca/{ca_file_name}",
-            "--server-ssl-verify=VERIFY_IDENTITY",
-            f"--ssl-ca=/router-ssl/ca/{ca_file_name}"
-            ]
+                                     "--server-ssl-verify=VERIFY_IDENTITY",
+                                     f"--ssl-ca=/router-ssl/ca/{ca_file_name}"
+                                     ]
         if cluster.router_tls_exists():
             router_tls_exists = True
             router_bootstrap_options += ["--client-ssl-cert=/router-ssl/key/tls.crt",
-                "--client-ssl-key=/router-ssl/key/tls.key"]
+                                         "--client-ssl-key=/router-ssl/key/tls.key"]
 
     tmpl = f"""
 apiVersion: apps/v1
@@ -225,7 +226,8 @@ spec:
         metadata['labels'] = spec.router.podLabels
 
     if len(metadata):
-        utils.merge_patch_object(deployment["spec"]["template"], {"metadata" : metadata })
+        utils.merge_patch_object(deployment["spec"]["template"], {
+                                 "metadata": metadata})
 
     if spec.router.podSpec:
         utils.merge_patch_object(deployment["spec"]["template"]["spec"],
@@ -237,37 +239,44 @@ spec:
     # the handler will get the new values, hash them and this will trigger the reboot.
     if ca_and_tls:
         # the annotation keys should be the same as in restart_deployment_for_tls()
-        tls_hashes_patch = {"spec": { "template": { "metadata": { "annotations": { }}}}}
+        tls_hashes_patch = {
+            "spec": {"template": {"metadata": {"annotations": {}}}}}
 
         ca_pem = ca_and_tls.get(ca_and_tls.get("CA", "ca.pem"))
         ca_pem_sha256 = utils.sha256(ca_pem) if ca_pem else None
         if ca_pem_sha256:
-          tls_hashes_patch['spec']['template']['metadata']['annotations']['mysql.oracle.com/ca.pem.sha256'] = ca_pem_sha256
+            tls_hashes_patch['spec']['template']['metadata']['annotations']['mysql.oracle.com/ca.pem.sha256'] = ca_pem_sha256
 
         crl_pem = ca_and_tls.get('crl.pem')
         crl_pem_sha256 = utils.sha256(crl_pem) if crl_pem else None
         if crl_pem_sha256:
-          tls_hashes_patch['spec']['template']['metadata']['annotations']['mysql.oracle.com/crl.pem.sha256'] = crl_pem_sha256
+            tls_hashes_patch['spec']['template']['metadata']['annotations']['mysql.oracle.com/crl.pem.sha256'] = crl_pem_sha256
 
         router_tls_crt = ca_and_tls.get('router_tls.crt')
-        router_tls_crt_sha256 = utils.sha256(router_tls_crt) if router_tls_crt else None
+        router_tls_crt_sha256 = utils.sha256(
+            router_tls_crt) if router_tls_crt else None
         if router_tls_crt_sha256:
-          tls_hashes_patch['spec']['template']['metadata']['annotations']['mysql.oracle.com/router_tls.crt.sha256'] = router_tls_crt_sha256
+            tls_hashes_patch['spec']['template']['metadata']['annotations'][
+                'mysql.oracle.com/router_tls.crt.sha256'] = router_tls_crt_sha256
 
         router_tls_key = ca_and_tls.get('router_tls.key')
-        router_tls_key_sha256 = utils.sha256(router_tls_key) if router_tls_key else None
+        router_tls_key_sha256 = utils.sha256(
+            router_tls_key) if router_tls_key else None
         if router_tls_key_sha256:
-          tls_hashes_patch['spec']['template']['metadata']['annotations']['mysql.oracle.com/router_tls.key.sha256'] = router_tls_key_sha256
+            tls_hashes_patch['spec']['template']['metadata']['annotations'][
+                'mysql.oracle.com/router_tls.key.sha256'] = router_tls_key_sha256
 
         utils.merge_patch_object(deployment, tls_hashes_patch)
 
     return deployment
+
 
 def get_size(cluster: InnoDBCluster) -> int:
     deploy = cluster.get_router_deployment()
     if deploy:
         return deploy.spec.replicas
     return None
+
 
 def update_size(cluster: InnoDBCluster, size: int, logger: Logger) -> None:
     deploy = cluster.get_router_deployment()
@@ -290,6 +299,15 @@ def update_size(cluster: InnoDBCluster, size: int, logger: Logger) -> None:
                 namespace=cluster.namespace, body=router_deployment)
 
 
+def reconcile_router_deployment_resources(cluster: InnoDBCluster, logger: Logger) -> None:
+    logger.info("reconcile_deployment")
+    patch = prepare_router_deployment(cluster, logger)
+
+    logger.info(f"reconcile_deployment: patch={patch}")
+    api_apps.patch_namespaced_deployment(
+        cluster.name+"-router", cluster.namespace, body=patch)
+
+
 def update_deployment_spec(dpl: api_client.V1Deployment, patch: dict) -> None:
     api_apps.patch_namespaced_deployment(
         dpl.metadata.name, dpl.metadata.namespace, body=patch)
@@ -303,10 +321,10 @@ def update_router_container_template_property(dpl: api_client.V1Deployment,
                           "containers": [
                                {"name": "router", property_name: property_value}
                           ]
-                        }
                       }
-                    }
-            }
+                      }
+                      }
+             }
     update_deployment_spec(dpl, patch)
 
 
@@ -314,8 +332,13 @@ def propagate_router_field_change_to_sts(cluster: InnoDBCluster, field: str, log
     pass
 
 
+def update_router_resources(dpl: api_client.V1Deployment, cluster: InnoDBCluster, logger: Logger) -> None:
+    reconcile_router_deployment_resources(cluster, logger)
+
+
 def update_router_image(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, logger: Logger) -> None:
-    update_router_container_template_property(dpl, "image", spec.router_image, logger)
+    update_router_container_template_property(
+        dpl, "image", spec.router_image, logger)
 
 
 def update_router_version(cluster: InnoDBCluster, logger: Logger) -> None:
@@ -328,26 +351,31 @@ def update_pull_policy(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, lo
     # NOTE: We are using spec.mysql_image_pull_policy and not spec.router_image_pull_policy
     #       (both are decorated), becase the latter will read the value from the Router Deployment
     #       and thus the value will be constant. We are using the former to push the value down
-    update_router_container_template_property(dpl, "imagePullPolicy", spec.mysql_image_pull_policy, logger)
+    update_router_container_template_property(
+        dpl, "imagePullPolicy", spec.mysql_image_pull_policy, logger)
 
 
 def update_deployment_template_spec_property(dpl: api_client.V1Deployment, property_name: str, property_value: str) -> None:
-    patch = {"spec": {"template": {"spec": { property_name: property_value }}}}
+    patch = {"spec": {"template": {"spec": {property_name: property_value}}}}
     update_deployment_spec(dpl, patch)
 
 
 def get_update_deployment_template_metadata_annotation(dpl: api_client.V1Deployment, annotation_name: str, annotation_value: str) -> str:
-    patch = {"spec": {"template": {"metadata": { "annotations": { annotation_name: annotation_value }}}}}
+    patch = {"spec": {"template": {"metadata": {
+        "annotations": {annotation_name: annotation_value}}}}}
     return patch
 
 
 def restart_deployment_for_tls(dpl: api_client.V1Deployment, router_tls_crt, router_tls_key, ca_pem, crl_pem: Optional[str], logger: Logger) -> bool:
-    logger.info(f"restart_deployment_for_tls \ntrouter_ls_crt is None={router_tls_crt is None} \nrouter_tls_key is None={router_tls_key is None} \nca_pem is None={ca_pem is None} \ncrl_pem is None={crl_pem  is None}")
-    logger.info(f"dpl.spec.template.metadata.annotations={dpl.spec.template.metadata.annotations}")
+    logger.info(
+        f"restart_deployment_for_tls \ntrouter_ls_crt is None={router_tls_crt is None} \nrouter_tls_key is None={router_tls_key is None} \nca_pem is None={ca_pem is None} \ncrl_pem is None={crl_pem  is None}")
+    logger.info(
+        f"dpl.spec.template.metadata.annotations={dpl.spec.template.metadata.annotations}")
 
     base = None
 
-    secrets = {'router_tls.crt': router_tls_crt, 'router_tls.key': router_tls_key, 'ca.pem': ca_pem, 'crl.pem': crl_pem}
+    secrets = {'router_tls.crt': router_tls_crt,
+               'router_tls.key': router_tls_key, 'ca.pem': ca_pem, 'crl.pem': crl_pem}
 
     for sec_name, sec_value in secrets.items():
         if not sec_value is None:
@@ -355,10 +383,12 @@ def restart_deployment_for_tls(dpl: api_client.V1Deployment, router_tls_crt, rou
             new_ann_value = utils.sha256(sec_value)
             patch = None
             if dpl.spec.template.metadata.annotations is None or dpl.spec.template.metadata.annotations.get(ann_name) is None:
-                patch = get_update_deployment_template_metadata_annotation(dpl, ann_name, new_ann_value)
+                patch = get_update_deployment_template_metadata_annotation(
+                    dpl, ann_name, new_ann_value)
             else:
                 if dpl.spec.template.metadata.annotations.get(ann_name) != new_ann_value:
-                    patch = get_update_deployment_template_metadata_annotation(dpl, ann_name, new_ann_value)
+                    patch = get_update_deployment_template_metadata_annotation(
+                        dpl, ann_name, new_ann_value)
                     logger.info(f"Annotation {ann_name} has a different value")
                 else:
                     logger.info(f"Annotation {ann_name} unchanged")
@@ -370,7 +400,8 @@ def restart_deployment_for_tls(dpl: api_client.V1Deployment, router_tls_crt, rou
                     utils.merge_patch_object(base, patch)
 
     if not base is None:
-        patch = get_update_deployment_template_metadata_annotation(dpl, 'kubectl.kubernetes.io/restartedAt', utils.isotime())
+        patch = get_update_deployment_template_metadata_annotation(
+            dpl, 'kubectl.kubernetes.io/restartedAt', utils.isotime())
         utils.merge_patch_object(base, patch)
         logger.info(f"Deployment needs a restart. Patching with {base}")
         update_deployment_spec(dpl, base)

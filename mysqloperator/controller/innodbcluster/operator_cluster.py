@@ -325,6 +325,38 @@ def on_innodbcluster_field_image_repository(old, new, body: Body,
         if router_deploy:
             router_objects.update_router_image(router_deploy, cluster.parsed_spec, logger)
 
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL, field="spec.router.podSpec")
+def on_innodbcluster_field_route_podSpec(old, new, body: Body, logger: Logger, **kwargs):
+    cluster = InnoDBCluster(body)
+    if not cluster.ready:
+        logger.debug(
+            f"Ignoring spec.router.podSpec change for unready cluster")
+        return
+    with ClusterMutex(cluster):
+        deploy = cluster.get_router_deployment()
+        if deploy and old != new:
+            logger.info(
+                f"Updating MySQL route resources for InnoDB Cluster Deployment pod template from {old} to {new}")
+            cluster.parsed_spec.validate(logger)
+            router_objects.update_router_resources(
+                deploy, cluster, logger)
+
+
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL, field="spec.podSpec")
+def on_innodbcluster_field_mysql_podSpec(old, new, body: Body, logger: Logger, **kwargs):
+    cluster = InnoDBCluster(body)
+    if not cluster.ready:
+        logger.debug(
+            f"Ignoring spec.podSpec change for unready cluster")
+        return
+    with ClusterMutex(cluster):
+        sts = cluster.get_stateful_set()
+        if sts and old != new:
+            logger.info(
+                f"Updating MySQL resources for InnoDB Cluster statefulset pod template from {old} to {new}")
+            cluster.parsed_spec.validate(logger)
+            cluster_objects.update_mysql_resources(
+                sts, cluster.parsed_spec, logger)
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
                field="spec.imagePullPolicy")  # type: ignore

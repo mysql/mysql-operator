@@ -12,6 +12,7 @@ import kopf
 from logging import Logger
 from typing import Optional
 
+
 def prepare_router_nodeport_service(spec: InnoDBClusterSpec) -> dict:
     tmpl = f"""
 apiVersion: v1
@@ -35,7 +36,6 @@ spec:
   type: NodePort
 """
     return yaml.safe_load(tmpl)
-
 
 
 def prepare_router_service(spec: InnoDBClusterSpec) -> dict:

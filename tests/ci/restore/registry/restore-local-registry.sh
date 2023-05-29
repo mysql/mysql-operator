@@ -18,7 +18,7 @@ fi
 
 ARCHIVES_DIR=$1
 
-source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || return
+source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || exit 10
 
 # ensure the local registry is running, and charged with common images
 $CI_DIR/registry/ensure-local-registry-running.sh
@@ -32,9 +32,11 @@ $RESTORE_REGISTRY_DIR/k3d/preload-images-to-registry.sh
 
 K3S_IMAGES_LINK_PATTERN='https://github.com/k3s-io/k3s/releases/download/VERSION/k3s-airgap-images-amd64.tar.gz'
 $RESTORE_REGISTRY_DIR/charge-registry-from-links.sh $RESTORE_REGISTRY_DIR/k3d/k3s-airgap-images.txt \
-	$K3S_IMAGES_LINK_PATTERN $ARCHIVES_DIR $LOCAL_REGISTRY_ADDRESS
+	$K3S_IMAGES_LINK_PATTERN $ARCHIVES_DIR $LOCAL_REGISTRY_ADDRESS 1
 
 $RESTORE_REGISTRY_DIR/charge-registry-from-archives.sh $RESTORE_REGISTRY_DIR/k3d/node-images.txt \
 	$ARCHIVES_DIR $LOCAL_REGISTRY_ADDRESS
 $RESTORE_REGISTRY_DIR/charge-registry-from-archives.sh $RESTORE_REGISTRY_DIR/kind/node-images.txt \
+	$ARCHIVES_DIR $LOCAL_REGISTRY_ADDRESS
+$RESTORE_REGISTRY_DIR/charge-registry-from-archives.sh $RESTORE_REGISTRY_DIR/other/other-images.txt \
 	$ARCHIVES_DIR $LOCAL_REGISTRY_ADDRESS

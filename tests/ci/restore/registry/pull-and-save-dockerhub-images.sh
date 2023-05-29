@@ -27,3 +27,4 @@ DEST_ARCHIVES_DIR=$1
 
 $SCRIPT_DIR/pull-and-save-images.sh $SCRIPT_DIR/k3d/node-images.txt $DEST_ARCHIVES_DIR
 $SCRIPT_DIR/pull-and-save-images.sh $SCRIPT_DIR/kind/node-images.txt $DEST_ARCHIVES_DIR
+$SCRIPT_DIR/pull-and-save-images.sh $SCRIPT_DIR/other/other-images.txt $DEST_ARCHIVES_DIR

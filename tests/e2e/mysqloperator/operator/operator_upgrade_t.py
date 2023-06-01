@@ -181,7 +181,6 @@ spec:
         assert_cj_image("mycluster-testscheduleinactive-cb", old_operator_image)
 
         # 2 - Upgrading Operator doesn't change sidecar
-
         change_operator_version()
         assert_sidecar_image(old_operator_image)
         time.sleep(10)

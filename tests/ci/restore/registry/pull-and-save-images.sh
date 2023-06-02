@@ -26,5 +26,7 @@ DEST_ARCHIVES_DIR=$2
 
 while read -r IMAGE_TO_PULL
 do
-    $SCRIPT_DIR/pull-and-save-image.sh $IMAGE_TO_PULL $DEST_ARCHIVES_DIR
+	if [[ -n $IMAGE_TO_PULL ]]; then
+		$SCRIPT_DIR/pull-and-save-image.sh $IMAGE_TO_PULL $DEST_ARCHIVES_DIR
+	fi
 done < $IMAGES_LIST

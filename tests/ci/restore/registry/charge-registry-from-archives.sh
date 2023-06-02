@@ -29,7 +29,10 @@ REGISTRY_URL=$3
 
 while read -r IMAGE_NAME
 do
+	if [[ -z $IMAGE_NAME ]]; then
+		continue
+	fi
 	IMAGE_ARCHIVE_NAME=$(sed -e 's/[.:\@/]/_/g' <<< $IMAGE_NAME).tar.gz
 	IMAGE_ARCHIVE_PATH=$ARCHIVES_DIR/$IMAGE_ARCHIVE_NAME
-	$SCRIPT_DIR/charge-registry-from-archive.sh $IMAGE_ARCHIVE_PATH $REGISTRY_URL
+	$SCRIPT_DIR/charge-registry-from-archive.sh $IMAGE_ARCHIVE_PATH $REGISTRY_URL $IMAGE_NAME
 done < $IMAGES_LIST

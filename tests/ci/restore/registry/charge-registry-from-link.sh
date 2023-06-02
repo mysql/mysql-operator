@@ -38,11 +38,7 @@ if [[ "$#" -eq 3 || "$#" -eq 4 ]]; then
 else
 	ARCHIVES_DIR=$(mktemp -d)
 fi
-if [[ "$#" -eq 4 ]]; then
-	ARCHIVE_SUFFIX=$4
-else
-	ARCHIVE_SUFFIX=
-fi
+ARCHIVE_SUFFIX=$4
 
 ARCHIVE_FILENAME=$(basename $ARCHIVE_LINK)
 if [[ -z $ARCHIVE_SUFFIX ]]; then

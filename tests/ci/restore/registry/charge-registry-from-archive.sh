@@ -8,18 +8,25 @@
 # usage: <archive-path> <registry-url>
 # archive-path - path to an archive
 # registry-url - url of a registry to be charged
+# original-image-name - original name of an image, needed only for archives containing single image (i.e. no 'repository'
+#		file inside)
 # e.g.
-# ./charge-registry-from-archive.sh ./k3s-airgap-images-arm64.tar.gz registry.localhost:5000
+# ./charge-registry-from-archive.sh ~/k8s-archives/k3s-airgap-images-amd64-v1_21_11_2Bk3s1.tar.gz registry.localhost:5000
+# ./charge-registry-from-archive.sh \
+#		~/k8s-archives/kindest_node_v1_27_1_sha256_9915f5629ef4d29f35b478e819249e89cfaffcbfeebda4324e5c01d53d937b09.tar.gz
+#		registry.localhost:5000 \
+#		kindest/node:v1.27.1@sha256:9915f5629ef4d29f35b478e819249e89cfaffcbfeebda4324e5c01d53d937b09
 
 set -vx
 
-if [ "$#" -ne 2 ]; then
-	echo "usage: <archive-path> <registry-url>"
+if [[ "$#" -ne 2 && "$#" -ne 3 ]]; then
+	echo "usage: <archive-path> <registry-url> <original-image-name>"
 	exit 1
 fi
 
 ARCHIVE_PATH=$1
 REGISTRY_URL=$2
+IMAGE_NAME=$3
 
 ls -l $ARCHIVE_PATH
 
@@ -33,17 +40,24 @@ docker load -i $ARCHIVE_PATH
 
 # charge the (local) registry
 REPOSITORIES_FILENAME=repositories
-TMP_REPOSITORIES_FILENAME=$(mktemp repositories.XXXXX)
-tar xvf $ARCHIVE_PATH -O $REPOSITORIES_FILENAME > $TMP_REPOSITORIES_FILENAME
-cat $TMP_REPOSITORIES_FILENAME
+if tar -tf $ARCHIVE_PATH | grep -q $REPOSITORIES_FILENAME; then
+	TMP_REPOSITORIES_FILENAME=$(mktemp repositories.XXXXX)
+	tar xvf $ARCHIVE_PATH -O $REPOSITORIES_FILENAME > $TMP_REPOSITORIES_FILENAME
+	cat $TMP_REPOSITORIES_FILENAME
 
-IMAGES=$(cat $TMP_REPOSITORIES_FILENAME | jq -r 'keys[] as $k | "\($k):\(.[$k] | to_entries[] | .key)"')
+	IMAGES=$(cat $TMP_REPOSITORIES_FILENAME | jq -r 'keys[] as $k | "\($k):\(.[$k] | to_entries[] | .key)"')
+else
+	IMAGES=$IMAGE_NAME
+fi
 
 echo $IMAGES
 
 rm $TMP_REPOSITORIES_FILENAME
 
 for IMAGE in $IMAGES; do
+	if [[ $IMAGE == *@* ]]; then
+		IMAGE="${IMAGE%%@*}"-$(sed -e 's/:/-/g' <<< "${IMAGE##*@}")
+	fi
 	IMAGE_IN_REGISTRY=$REGISTRY_URL/$IMAGE
 	docker tag $IMAGE $IMAGE_IN_REGISTRY
 	docker push $IMAGE_IN_REGISTRY

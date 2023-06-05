@@ -247,6 +247,7 @@ pipeline {
 					// use versions similar to kind, but a little different
 					// https://github.com/kubernetes-sigs/kind/releases
 					// curl -L https://github.com/kubernetes-sigs/kind/releases/download/v0.17.0/kind-linux-amd64 -o kind-v0.17.0
+					// node images related to a given release are listed in its description (section 'New Features')
 					// format of values: 'kind-version;k8s-version-image;kubectl-version;workers-count;nodes-count-per-worker;node-memory-limit;ip-family',
 					//				e.g. 'kind-v0.18.0;;kubectl-v1.26.1;2;1;8192;ipv6' - 2 workers with 1 node each, 8GB limit per node
 					// 					 'kind-v0.17.0;;kubectl-v1.26.1;1;2;4096;dual' - 1 workers with 2 nodes each, 4GB limit per node

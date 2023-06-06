@@ -1,32 +1,20 @@
 #!/bin/bash
-# Copyright (c) 2021, 2022 Oracle and/or its affiliates.
+# Copyright (c) 2021, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
 
-MYSQL_REPO_URL="http://repo.mysql.com"
-MYSQL_OPERATOR_PYTHON_DEPS="mysql-operator-python-deps"
-MYSQL_OPERATOR_PYTHON_DEPS_VERSION="3.9.5"
-MYSQL_SHELL_VERSION=8.0.33
-MYSQL_CONFIG_PKG="mysql80-community-release"
-MYSQL_SHELL_REPO="mysql-tools-community"
-if [ -n "${1}" ]; then
-  MYSQL_REPO_URL="${1}"
-fi
-if [ -n "${2}" ]; then
-  MYSQL_OPERATOR_PYTHON_DEPS="${2}"
-fi
-if [ -n "${3}" ]; then
- MYSQL_SHELL_VERSION="${3}"
-fi
-if [ -n "${4}" ]; then
- MYSQL_CONFIG_PKG="${4}"
-fi
-if [ -n "${5}" ]; then
- MYSQL_SHELL_REPO="${5}"
-fi
-sed 's#%%MYSQL_OPERATOR_PYTHON_DEPS%%#'"${MYSQL_OPERATOR_PYTHON_DEPS}:${MYSQL_OPERATOR_PYTHON_DEPS_VERSION}"'#g' docker-build/Dockerfile > tmpfile
+MYSQL_REPO_URL="http://repo.mysql.com"; [ -n "${1}" ] && MYSQL_REPO_URL="${1}"
+MYSQL_OPERATOR_PYTHON_DEPS="mysql-operator-python-deps"; [ -n "${2}" ] && MYSQL_OPERATOR_PYTHON_DEPS="${2}"
+MYSQL_OPERATOR_PYTHON_DEPS_VERSION="3.10.8"; [ -n "${3}" ] && MYSQL_OPERATOR_PYTHON_DEPS_VERSION="${3}"
+MYSQL_SHELL_VERSION=8.0.33; [ -n "${4}" ] && MYSQL_SHELL_VERSION="${4}"
+MYSQL_CONFIG_PKG="mysql80-community-release"; [ -n "${5}" ] && MYSQL_CONFIG_PKG="${5}"
+MYSQL_SHELL_REPO="mysql-tools-community"; [ -n "${6}" ] && MYSQL_SHELL_REPO="${6}"
+ARCH="amd64"; [ -n "${7}" ] && ARCH="${7}"
+
+
+sed 's#%%MYSQL_OPERATOR_PYTHON_DEPS%%#'"${MYSQL_OPERATOR_PYTHON_DEPS}:${MYSQL_OPERATOR_PYTHON_DEPS_VERSION}-${ARCH}"'#g' docker-build/Dockerfile > tmpfile
 sed -i 's#%%MYSQL_SHELL_VERSION%%#'"${MYSQL_SHELL_VERSION}"'#g' tmpfile
 sed -i 's#%%MYSQL_REPO_URL%%#'"${MYSQL_REPO_URL}"'#g' tmpfile
 sed -i 's#%%MYSQL_CONFIG_PKG%%#'"${MYSQL_CONFIG_PKG}"'#g' tmpfile

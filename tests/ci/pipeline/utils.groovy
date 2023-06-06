@@ -33,7 +33,7 @@ def hasValue(def variable) {
 }
 
 def getGitBranchName() {
-	if (isGerritBuild()) {
+	if (isGerritBuild() && params.OPERATOR_GERRIT_TOPIC) {
 		return params.OPERATOR_GERRIT_TOPIC
 	}
 

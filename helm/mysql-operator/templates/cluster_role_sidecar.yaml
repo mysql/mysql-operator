@@ -19,7 +19,7 @@ rules:
     verbs: ["get", "create", "list", "watch", "patch"]
   - apiGroups: [""]
     resources: ["services"]
-    verbs: ["get", "create", "list"]
+    verbs: ["get", "create", "list", "update"]
   - apiGroups: [""]
     resources: ["serviceaccounts"]
     verbs: ["get", "create"]

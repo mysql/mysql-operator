@@ -7,4 +7,4 @@
 ARCH='amd64'; [ -n "$1" ] && ARCH="${1}"
 set -e
 
-docker build --build-arg http_proxy=${http_proxy} --build-arg https_proxy=${https_proxy} --build-arg no_proxy=${no_proxy} -t mysql/community-operator:8.0-$ARCH .
+docker build --build-arg http_proxy=${http_proxy} --build-arg https_proxy=${https_proxy} --build-arg no_proxy=${no_proxy} -t mysql/community-operator:8.1-$ARCH .

@@ -4,6 +4,6 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
-SUFFIX=''; [ -n "$1" ] && ARCH="-${1}"
+SUFFIX=''; [ -n "$1" ] && SUFFIX="-${1}"
 
-echo "8.1.0-2.1.0$ARCH"
+echo "8.1.0-2.1.0$SUFFIX"

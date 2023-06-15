@@ -16,19 +16,10 @@
 set -e
 
 REPO=mysql/mysql-operator; [ -n "$1" ] && REPO=$1
-PYTHON_DEPS_VERSION=$2
+MANIFEST_VERSION=$2
 
-if [[ $REPO =~ (python-deps) ]]; then
-    MANIFEST_VERSIONS=$PYTHON_DEPS_VERSION
-else
-    MANIFEST_VERSIONS=$(./tag.sh)
-fi
-
-for MANIFEST_VERSION in $MANIFEST_VERSIONS; do
-  docker pull "$REPO:$MANIFEST_VERSION-arm64" "$REPO:$MANIFEST_VERSION-amd64"
-  docker manifest create "$REPO:$MANIFEST_VERSION" "$REPO:$MANIFEST_VERSION-arm64" "$REPO:$MANIFEST_VERSION-amd64"
-  docker manifest add "$REPO:$MANIFEST_VERSION" "$REPO:$MANIFEST_VERSION-arm64" --os linux --arch arm64
-  docker manifest add "$REPO:$MANIFEST_VERSION" "$REPO:$MANIFEST_VERSION-amd64" --os linux --arch amd64
-  docker manifest push "$REPO:$MANIFEST_VERSION" "docker://$REPO:$MANIFEST_VERSION"
-
-done
+docker pull "$REPO:$MANIFEST_VERSION-arm64" "$REPO:$MANIFEST_VERSION-amd64"
+docker manifest create "$REPO:$MANIFEST_VERSION" "$REPO:$MANIFEST_VERSION-arm64" "$REPO:$MANIFEST_VERSION-amd64"
+docker manifest add "$REPO:$MANIFEST_VERSION" "$REPO:$MANIFEST_VERSION-arm64" --os linux --arch arm64
+docker manifest add "$REPO:$MANIFEST_VERSION" "$REPO:$MANIFEST_VERSION-amd64" --os linux --arch amd64
+docker manifest push "$REPO:$MANIFEST_VERSION" "docker://$REPO:$MANIFEST_VERSION"

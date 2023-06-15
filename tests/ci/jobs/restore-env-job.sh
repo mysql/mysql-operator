@@ -13,10 +13,16 @@ source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || exit 10
 BINARIES_DIR=$WORKSPACE/binaries
 ARCHIVES_DIR=$WORKSPACE/archives
 
+mkdir -p $BINARIES_DIR
+mkdir -p $ARCHIVES_DIR
+
 $CI_DIR/restore/restore-env.sh $BINARIES_DIR $ARCHIVES_DIR
 
 echo """
-    0. before executing this job, run pull-and-save-dockerhub-images.sh to collect unreachable images, then copy them to $ARCHIVES_DIR
+    0. before executing this job, run $CI_DIR/restore/registry/pull-and-save-dockerhub-images.sh locally to
+        collect unreachable images, then copy them to $ARCHIVES_DIR, and set owner:group:
+        sudo chown james:common $ARCHIVES_DIR/*
     1. after executing this job, copy all binaries from $BINARIES_DIR to a reachable path, e.g.
+        sudo chmod +x $BINARIES_DIR/*
         sudo cp -ruv $BINARIES_DIR /usr/local/bin
 """

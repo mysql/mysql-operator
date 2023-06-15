@@ -46,19 +46,20 @@ if tar -tf $ARCHIVE_PATH | grep -q $REPOSITORIES_FILENAME; then
 	cat $TMP_REPOSITORIES_FILENAME
 
 	IMAGES=$(cat $TMP_REPOSITORIES_FILENAME | jq -r 'keys[] as $k | "\($k):\(.[$k] | to_entries[] | .key)"')
+	rm $TMP_REPOSITORIES_FILENAME
 else
 	IMAGES=$IMAGE_NAME
 fi
 
 echo $IMAGES
 
-rm $TMP_REPOSITORIES_FILENAME
-
 for IMAGE in $IMAGES; do
-	if [[ $IMAGE == *@* ]]; then
-		IMAGE="${IMAGE%%@*}"-$(sed -e 's/:/-/g' <<< "${IMAGE##*@}")
+	if [[ $IMAGE != *@* ]]; then
+		IMAGE_IN_REGISTRY=$REGISTRY_URL/$IMAGE
+	else
+		IMAGE_WITH_SHA="${IMAGE%%@*}"-$(sed -e 's/:/-/g' <<< "${IMAGE##*@}")
+		IMAGE_IN_REGISTRY=$REGISTRY_URL/$IMAGE_WITH_SHA
 	fi
-	IMAGE_IN_REGISTRY=$REGISTRY_URL/$IMAGE
 	docker tag $IMAGE $IMAGE_IN_REGISTRY
 	docker push $IMAGE_IN_REGISTRY
 	docker image rm $IMAGE_IN_REGISTRY

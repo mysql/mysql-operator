@@ -6,8 +6,8 @@
 {{- $imagePullPolicies := list "ifnotpresent" "always" "never" }}
 {{- $serverVersion := .Values.serverVersion | default .Chart.AppVersion }}
 {{- if and ((.Values).routerInstances) (((.Values).router).instances) }}
-  {{- if ne ((.Values).routerInstances) (((.Values).router).instances) }}
-    {{- $err := printf "routerInstances and router.instances both are specified and have different values %d and %d. Use only one" ((.Values).routerInstances) (((.Values).router).instances) }}
+  {{- if ne (toString ((.Values).routerInstances)) (toString (((.Values).router).instances)) }}
+    {{- $err := printf "routerInstances and router.instances both are specified and have different values %s and %s. Use only one" (toString ((.Values).routerInstances)) (toString (((.Values).router).instances)) }}
     {{- fail $err }}
   {{- end }}
 {{- end }}

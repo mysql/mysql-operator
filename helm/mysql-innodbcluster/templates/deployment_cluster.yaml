@@ -5,13 +5,12 @@
 {{- $forbiddenVersions := list "8.0.29" }}
 {{- $imagePullPolicies := list "ifnotpresent" "always" "never" }}
 {{- $serverVersion := .Values.serverVersion | default .Chart.AppVersion }}
-{{- if and ((.Values).routerInstances) (((.Values).router).instances) }}
+{{- if and (hasKey (.Values) "routerInstances") (hasKey ((.Values).router) "instances") }}
   {{- if ne (toString ((.Values).routerInstances)) (toString (((.Values).router).instances)) }}
     {{- $err := printf "routerInstances and router.instances both are specified and have different values %s and %s. Use only one" (toString ((.Values).routerInstances)) (toString (((.Values).router).instances)) }}
     {{- fail $err }}
   {{- end }}
 {{- end }}
-{{- $routerInstances := coalesce ((.Values).routerInstances) (((.Values).router).instances) }}
 {{- if lt $serverVersion $minimalVersion }}
   {{- $err := printf "It is not possible to use MySQL version %s . Please, use %s or above" $serverVersion $minimalVersion }}
   {{- fail $err }}
@@ -37,7 +36,13 @@ spec:
   instances: {{ required "serverInstances is required" .Values.serverInstances }}
   tlsUseSelfSigned: {{ $use_self_signed }}
   router:
-    instances: {{ required "router.instances is required" $routerInstances }}
+{{- if hasKey (.Values) "routerInstances" }}
+    instances: {{ .Values.routerInstances }}
+{{- else if hasKey ((.Values).router) "instances" }}
+    instances: {{ .Values.router.instances }}
+{{- else }}
+  {{- fail "router.instances is required" }}
+{{- end }}
 {{- if (((.Values).router).podSpec) }}
     podSpec:  {{ toYaml (((.Values).router).podSpec) | nindent 6 }}
 {{- end }}

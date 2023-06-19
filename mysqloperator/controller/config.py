@@ -23,7 +23,7 @@ OPERATOR_VERSION = "2.1.0"
 OPERATOR_EDITION = Edition.community
 OPERATOR_EDITION_NAME_TO_ENUM = { edition.value : edition.name for edition in Edition }
 
-SHELL_VERSION = "8.0.33"
+SHELL_VERSION = "8.1.0"
 
 MIN_BASE_SERVER_ID = 1
 MAX_BASE_SERVER_ID = 4000000000

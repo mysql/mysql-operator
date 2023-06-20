@@ -312,7 +312,7 @@ spec:
                         type: string
                     webConfig:
                       type: string
-                      description: "Name of a ConfigMap with a web.config file, if this option is provided a command line option --web-condif-file is added"
+                      description: "Name of a ConfigMap with a web.config file, if this option is provided a command line option --web-config-file is added"
                     tlsSecret:
                       type: string
                       description: "Name of a Secret with TLS certificate, key and CA, which will be mounted at /tls into the container an can be used from webConfig"

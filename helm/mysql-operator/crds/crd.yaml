@@ -292,6 +292,60 @@ spec:
                     podLabels:
                       type: object
                       x-kubernetes-preserve-unknown-fields: true
+                        
+                metrics:
+                  type: object
+                  description: "Configuration of a Prometheus-style metrics provider"
+                  required: ["enable", "image"]
+                  properties:
+                    enable:
+                      type: boolean
+                      default: false
+                      description: "Toggle to enable or disable the metrics sidecar"
+                    image:
+                      type: string
+                      description: "Name of an image to be used for the metrics sidecar, if provided metrics will be enabled"
+                    options:
+                      type: array
+                      description: "Options passed to the metrics provider as command line arguments"
+                      items:
+                        type: string
+                    webConfig:
+                      type: string
+                      description: "Name of a ConfigMap with a web.config file, if this option is provided a command line option --web-config-file is added"
+                    tlsSecret:
+                      type: string
+                      description: "Name of a Secret with TLS certificate, key and CA, which will be mounted at /tls into the container an can be used from webConfig"
+                    monitor:
+                      type: boolean
+                      description: "Create a ServiceMonitor for Prometheus Operator"
+                      default: false
+                    monitorSpec:
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                      description: "Custom configuration for the ServiceMonitor object"
+                      default: {}
+
+                    # These are only supported for development purpose:
+                    #dbUser:
+                    #  type: object
+                    #  description: "MySQL user accoutn to be used for collecting metrics"
+                    #  properties:
+                    #    name:
+                    #      type: string
+                    #      description: "The account name, host part will always be localhost"
+                    #      default: mysqlmetrics
+                    #    grants:
+                    #      type: array
+                    #      description: "GRANTs given to the account"
+                    #      default: [ 'PROCESS', 'REPLICATION CLIENT', 'SELECT' ]
+                    #      items:
+                    #        type: string
+                    #    maxConnections:
+                    #      type: integer
+                    #      default: 3
+                    #      description: "Maximum number of connections"
+ 
                 backupProfiles:
                   type: array
                   description: "Backup profile specifications for the cluster, which can be referenced from backup schedules and one-off backup jobs"

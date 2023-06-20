@@ -1,3 +1,15 @@
+kindest/node:v1.27.1
+kindest/node:v1.27.0
+kindest/node:v1.26.4
+kindest/node:v1.26.3
+kindest/node:v1.25.9
+kindest/node:v1.25.8
+kindest/node:v1.24.13
+kindest/node:v1.24.12
+kindest/node:v1.23.17
+kindest/node:v1.22.17
+kindest/node:v1.21.14
+
 kindest/node:v1.27.1@sha256:9915f5629ef4d29f35b478e819249e89cfaffcbfeebda4324e5c01d53d937b09
 kindest/node:v1.27.0@sha256:c6b22e613523b1af67d4bc8a0c38a4c3ea3a2b8fbc5b367ae36345c9cb844518
 kindest/node:v1.26.3@sha256:61b92f38dff6ccc29969e7aa154d34e38b89443af1a2c14e6cfbd2df6419c66f

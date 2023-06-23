@@ -96,8 +96,8 @@ pipeline {
 					// curl -L https://dl.k8s.io/release/v1.23.14/bin/linux/amd64/kubectl -o kubectl-v1.23.14
 					// curl -L https://github.com/kubernetes/minikube/releases/download/v1.27.1/minikube-linux-amd64 -o minikube-v1.27.1
 					// format of values: 'minikube-version;k8s-version;kubectl-version;workers-count;nodes-count-per-worker;node-memory-limit;ip-family',
-					//				e.g. 'minikube-v1.22.0;v1.21.5;kubectl-v1.21.14;5;1;8192;' - 5 workers with 1 node each, 8GB limit per node
-					// 					 'minikube-v1.25.2;v1.23.4;kubectl-v1.23.4;3;2;4096;' - 3 workers with 2 nodes each, 4GB limit per node
+					//				e.g. 'minikube-v1.22.0;v1.21.5;kubectl-v1.21.14;5;1;8192;ipv4' - 5 workers with 1 node each, 8GB limit per node
+					// 					 'minikube-v1.25.2;v1.23.4;kubectl-v1.23.4;3;2;4096;ipv4' - 3 workers with 2 nodes each, 4GB limit per node
 					axis {
 						name 'K8S_VERSION'
 						values 'minikube-v1.22.0;v1.21.5;kubectl-v1.21.14;5;1;8192;ipv4',

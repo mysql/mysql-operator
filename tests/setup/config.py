@@ -67,6 +67,7 @@ class Config:
 
     # diagnostics
     work_dir = None
+    operator_log = None
 
     # Optional K8s cluster domain alias
     k8s_cluster_domain_alias = defaults.K8S_CLUSTER_DOMAIN_ALIAS

@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -6,12 +6,17 @@
 from pathlib import Path
 
 from logging import Logger
-from .innodbcluster import operator_cluster, cluster_api
+from .innodbcluster import cluster_api
+
 from . import config, utils
 from .group_monitor import g_group_monitor
 import kopf
 import logging
 
+
+# These have to be imported so that kopf sees the annotations in those files
+from .innodbcluster import operator_cluster
+from .backup import operator_backup
 
 # @kopf.on.login()
 # def on_login(**kwargs):

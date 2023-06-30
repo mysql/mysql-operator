@@ -18,6 +18,12 @@ set -e
 REPO=mysql/mysql-operator; [ -n "$1" ] && REPO=$1
 MANIFEST_VERSIONS=("${@:2}")
 
+if [ -z $MANIFEST_VERSIONS ]; then
+    VER=$(./tag.sh)
+    MAJ_VER=${VER:0:3}
+    MANIFEST_VERSIONS=($VER $MAJ_VER)
+fi
+
 for MANIFEST_VERSION in ${MANIFEST_VERSIONS[@]}
 do
     docker pull "$REPO:$MANIFEST_VERSION-arm64" "$REPO:$MANIFEST_VERSION-amd64"

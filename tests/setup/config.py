@@ -48,6 +48,7 @@ class Config:
 
     # enterprise
     enterprise_skip = defaults.ENTERPRISE_SKIP
+    audit_log_skip = defaults.AUDIT_LOG_SKIP
 
     # OCI Object Store backup
     oci_skip = defaults.OCI_SKIP

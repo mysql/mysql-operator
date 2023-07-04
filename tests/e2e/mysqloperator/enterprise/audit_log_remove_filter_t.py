@@ -11,7 +11,7 @@ from utils import mutil
 
 # test the audit log on the 3-instance cluster, set a filter, verify it is replicated to replicas
 # then remove the filter, and assert it changed on replicas too
-@unittest.skipIf(g_ts_cfg.enterprise_skip, "Enterprise test cases are skipped")
+@unittest.skipIf(g_ts_cfg.enterprise_skip or g_ts_cfg.audit_log_skip, "Enterprise Audit Log test cases are skipped")
 class AuditLogRemoveFilter(AuditLogBase):
     add_data_timestamp = None
     instance_primary = "mycluster-0"

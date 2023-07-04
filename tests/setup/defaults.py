@@ -52,6 +52,8 @@ ROUTER_EE_IMAGE_NAME = "enterprise-router"
 ENTERPRISE_SKIP = os.getenv(
     "OPERATOR_TEST_SKIP_ENTERPRISE", default=False)
 
+AUDIT_LOG_SKIP = os.getenv(
+    "OPERATOR_TEST_SKIP_AUDIT_LOG", default=False)
 
 # oci
 OCI_SKIP = os.getenv(

@@ -14,7 +14,7 @@ from utils import mutil
 # - set a filter, and verify it is set in the whole cluster
 # - kill primary instance, wait for another primary to be set
 # - add some data, and verify they are logged
-@unittest.skipIf(g_ts_cfg.enterprise_skip, "Enterprise test cases are skipped")
+@unittest.skipIf(g_ts_cfg.enterprise_skip or g_ts_cfg.audit_log_skip, "Enterprise Audit Log test cases are skipped")
 class AuditLogChangePrimary(AuditLogBase):
     add_data_timestamp = None
     primary_instance = "mycluster-0"

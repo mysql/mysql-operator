@@ -88,7 +88,7 @@ class PrintTestSuiteReport:
 	def print_items(self, kind, items):
 		if items:
 			items.sort()
-			print(f"{len(items)} {kind} test(s):")
+			print(f"\n{len(items)} {kind} test(s):")
 			for item in items:
 				print(f"{item}")
 

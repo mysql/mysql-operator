@@ -11,7 +11,7 @@ from utils import mutil
 
 # test the audit log on the 3-instance cluster, with plugin installed on two
 # instances (the primary and one secondary)
-@unittest.skipIf(g_ts_cfg.enterprise_skip, "Enterprise test cases are skipped")
+@unittest.skipIf(g_ts_cfg.enterprise_skip or g_ts_cfg.audit_log_skip, "Enterprise Audit Log test cases are skipped")
 class AuditLogClusterIncomplete(AuditLogBase):
     add_data_timestamp = None
     test_table = "cluster0"

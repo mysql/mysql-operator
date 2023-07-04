@@ -35,6 +35,7 @@ The following envars are supported:
 * OPERATOR_TEST_VERSION_TAG
 * OPERATOR_TEST_PULL_POLICY
 * OPERATOR_TEST_SKIP_ENTERPRISE
+* OPERATOR_TEST_SKIP_AUDIT_LOG
 * OPERATOR_TEST_SKIP_OCI
 * OPERATOR_TEST_OCI_CONFIG_PATH
 * OPERATOR_TEST_OCI_BUCKET
@@ -185,6 +186,10 @@ mirrors:
 
 --skip-enterprise\
     force to skip all tests related to the enterprise edition, by default it is false
+
+--skip-audit-log\
+    force to skip all tests related to the audit log, by default it is false\
+    they can be run only against the enterprise edition, so `--skip-enterprise` also disable them
 
 --skip-oci\
     force to skip all OCI tests even if OCI is properly configured, by default it is false

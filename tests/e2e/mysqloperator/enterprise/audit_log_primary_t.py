@@ -10,7 +10,7 @@ from utils import auxutil
 from utils import mutil
 
 # test the audit log on the primary of a cluster
-@unittest.skipIf(g_ts_cfg.enterprise_skip, "Enterprise test cases are skipped")
+@unittest.skipIf(g_ts_cfg.enterprise_skip or g_ts_cfg.audit_log_skip, "Enterprise Audit Log test cases are skipped")
 class AuditLogPrimary(audit_log_base.AuditLogBase):
     add_data_timestamp = None
     test_table = "mycluster0"

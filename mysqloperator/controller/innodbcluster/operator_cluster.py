@@ -217,7 +217,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
 
             print("12. Metrics Service Monitor")
             if not ignore_404(cluster.get_metrics_monitor):
-                if icspec.metrics and icspc.metrics.enable and icspec.metrics.monitor:
+                if icspec.metrics and icspec.metrics.enable and icspec.metrics.monitor:
                     print("\tPreparing...")
                     monitor = cluster_objects.prepare_metrics_service_monitor(cluster, logger)
                     print("\tCreating...")

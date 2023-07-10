@@ -484,6 +484,9 @@ class OperatorTest(unittest.TestCase):
         pass  # TODO
 
     def wait(self, fn, args=tuple(), check=None, timeout=60, delay=2, timeout_diagnostics=None):
+        if not timeout_diagnostics:
+            timeout_diagnostics = lambda : kutil.store_ns_diagnostics(self.ns)
+
         # TODO abort watchers when nothing new gets printed by operator for a while too
         self.check_operator_exceptions()
 

@@ -630,6 +630,9 @@ def drain_node(node):
 #
 
 class StoreDiagnostics:
+    operator_ns = "mysql-operator"
+    operator_container = "mysql-operator"
+
     def __init__(self, ns):
         self.ns = ns
         self.work_dir = None
@@ -670,32 +673,40 @@ class StoreDiagnostics:
     def describe_ic(self, ic):
         self.store_log("ic", ic, "describe", lambda: describe_ic(self.ns, ic))
 
-    def describe_pod(self, pod):
-        self.store_log("pod", pod, "describe", lambda: describe_po(self.ns, pod))
+    def describe_pod(self, pod, ns=None):
+        self.store_log("pod", pod, "describe", lambda: describe_po(ns if ns else self.ns, pod))
 
-    def logs_pod(self, pod, container, since=None):
-        self.store_log("pod", f"{pod}-{container}", "logs", lambda: logs(self.ns, [pod, container], since=since))
+    def logs_pod(self, pod, container, ns=None, since=None):
+        self.store_log("pod", f"{pod}-{container}", "logs", lambda: logs(ns if ns else self.ns, [pod, container], since=since))
 
 
-    def process_operators(self, pod):
-        self.process_operator(pod)
-
+    def process_operators(self):
         # store other operator pods if exist
-        operator_pods = ls_pod("mysql-operator", "mysql-operator.*")
-        if len(operator_pods) > 1:
-            for operator_pod in operator_pods:
-                operator_pod_name = operator_pod["NAME"]
-                if pod != operator_pod_name:
-                    self.process_operator(operator_pod_name)
+        operator_pods = ls_pod(self.operator_ns, "mysql-operator-.*")
+        for operator_pod in operator_pods:
+            operator_pod_name = operator_pod["NAME"]
+            self.process_operator(operator_pod_name)
 
     def process_operator(self, pod):
-        self.describe_pod(pod)
+        self.describe_pod(pod, ns=self.operator_ns)
         # store only the last few minutes of a mysql operator pod logs
         # it may run for quite a long time, but in the case of timeouts we are not interested in the whole
         # run that may take plenty of MBs which are useless for diagnostics after all
         LogOperatorPodSince = "5m"
-        self.logs_pod(pod, "mysql-operator", since=LogOperatorPodSince)
+        self.logs_pod(pod, self.operator_container, ns=self.operator_ns, since=LogOperatorPodSince)
 
+
+    def process_namespace(self):
+        self.process_all_clusters()
+        self.process_operators()
+
+
+    def process_all_clusters(self):
+        if not self.ns:
+            return
+        ics = ls_ic(self.ns)
+        for ic in ics:
+            self.process_cluster(ic["NAME"])
 
     def process_cluster(self, cluster_name):
         self.process_ic(cluster_name)
@@ -716,7 +727,10 @@ class StoreDiagnostics:
     def process_pods(self, cluster_name):
         pods = ls_pod(self.ns, f"{cluster_name}-.*")
         for pod in pods:
-            self.process_pod(pod["NAME"])
+            pod_name = pod["NAME"]
+            if pod_name.startswith(f"{cluster_name}-router-"):
+                continue
+            self.process_pod(pod_name)
 
     def process_router(self, router):
         self.describe_pod(router)
@@ -730,11 +744,6 @@ class StoreDiagnostics:
 
     def process_generic_rsrc(self, rsrc, name):
         self.describe_rsrc(rsrc, name)
-        if not self.ns:
-            return
-        ics = ls_ic(self.ns)
-        for ic in ics:
-            self.process_cluster(ic["NAME"])
 
 
     def extract_cluster_name_from_pod(self, base_name):
@@ -753,18 +762,25 @@ class StoreDiagnostics:
         self.create_work_dir()
         logger.info(f"storing diagnostics for {rsrc} {self.ns}/{name} into {self.work_dir} ...")
 
-        if rsrc == "operator" or self.ns == "mysql-operator":
-            self.process_operators(name)
+        if rsrc == "operator" or self.ns == self.operator_ns:
+            self.process_operators()
+        elif rsrc == "ns":
+            self.process_namespace()
         elif rsrc == "ic":
             self.process_cluster(name)
+            self.process_operators()
         elif rsrc == "po" or rsrc == "pod":
             cluster_name = self.extract_cluster_name_from_pod(name)
             self.process_cluster(cluster_name)
+            self.process_operators()
         elif rsrc == "router":
             cluster_name = self.extract_cluster_name_from_routers_pattern(name)
             self.process_cluster(cluster_name)
+            self.process_operators()
         else:
             self.process_generic_rsrc(rsrc, name)
+            self.process_all_clusters()
+            self.process_operators()
 
         logger.info(f"storing diagnostics for {rsrc} {self.ns}/{name} completed")
 
@@ -785,6 +801,9 @@ def store_routers_diagnostics(ns, name_pattern):
 
 def store_ic_diagnostics(ns, name):
     store_diagnostics(ns, "ic", name)
+
+def store_ns_diagnostics(ns):
+    store_diagnostics(ns, "ns", ns)
 
 #
 

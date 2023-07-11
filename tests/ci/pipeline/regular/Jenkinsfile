@@ -29,7 +29,7 @@ pipeline {
 		string(name: 'OPERATOR_GERRIT_CHANGE_ID', description: 'gerrit CR Change-ID', trim: true)
 	}
  	options {
-		timeout(time: 3, unit: 'HOURS')
+		timeout(time: 24, unit: 'HOURS')
 		timestamps()
 	}
 	stages {

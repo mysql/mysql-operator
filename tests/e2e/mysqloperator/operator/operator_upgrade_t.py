@@ -12,7 +12,7 @@ from utils import kutil
 from utils.optesting import COMMON_OPERATOR_ERRORS
 from setup.config import g_ts_cfg
 
-def change_operator_version(version=None):
+def change_operator_version(version=None, store_operator_log=None):
     """Change to the given operator version"""
 
     # Get name of current operator pod, once this is gone we know the new one
@@ -58,6 +58,9 @@ def change_operator_version(version=None):
 
     kutil.patch_dp("mysql-operator", "mysql-operator", patch)
 
+    if store_operator_log:
+        store_operator_log()
+
     # Wait till old operator is gone
     if pods:
         kutil.wait_pod_gone("mysql-operator", pods[0]["NAME"])
@@ -79,7 +82,7 @@ class OperatorUpgradeTest(tutil.OperatorTest):
     def tearDownClass(cls):
         # Revert to current operator version under test, if tests passed this
         # should be a no-op as the test itself should do that already
-        change_operator_version()
+        change_operator_version(store_operator_log=lambda: cls.take_log_operator_snapshot())
 
         super().tearDownClass()
 
@@ -123,7 +126,7 @@ class OperatorUpgradeTest(tutil.OperatorTest):
             cj_image = cj["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"][0]["image"]
             compare_image(cj_image, expected_image)
 
-        change_operator_version(g_ts_cfg.operator_old_version_tag)
+        change_operator_version(g_ts_cfg.operator_old_version_tag, store_operator_log=lambda: self.take_log_operator_snapshot())
 
         kutil.create_user_secrets(
             self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
@@ -181,7 +184,8 @@ spec:
         assert_cj_image("mycluster-testscheduleinactive-cb", old_operator_image)
 
         # 2 - Upgrading Operator doesn't change sidecar
-        change_operator_version()
+        change_operator_version(store_operator_log=lambda: self.take_log_operator_snapshot())
+
         assert_sidecar_image(old_operator_image)
         time.sleep(10)
         operator_image = g_ts_cfg.get_operator_image()

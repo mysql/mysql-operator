@@ -19,6 +19,7 @@ from utils.auxutil import isotime
 from . import fmt
 from . import kutil
 from . import mutil
+import datetime
 import time
 import sys
 import re
@@ -312,6 +313,64 @@ class PodHelper:
                         checkabort=self.owner.check_operator_exceptions)
 
 
+class StoreLogOperator:
+    operator_ns = "mysql-operator"
+    operator_container = "mysql-operator"
+    timestamp = None
+    work_dir = None
+
+    def get_timestamp_now(self):
+        timestamp = datetime.datetime.now(datetime.timezone.utc)
+        return timestamp.isoformat()
+
+    def mark_timestamp(self):
+        prev_timestamp = self.timestamp
+        self.timestamp = self.get_timestamp_now()
+        return prev_timestamp
+
+    def get_work_dir(self):
+        if not self.work_dir:
+            self.work_dir = os.path.join(g_ts_cfg.work_dir, 'operator-log', g_ts_cfg.k8s_context)
+
+        if not os.path.exists(self.work_dir):
+            os.makedirs(self.work_dir)
+
+        return self.work_dir
+
+    def get_snapshot_log_path(self, snapshot_dir, cls_name):
+        index = 0
+        log_fname = f'{datetime.datetime.utcnow().strftime("%Y.%m.%d-%H.%M.%S")}-{cls_name}'
+        while True:
+            suffix = f"-{str(index)}" if index > 0 else ""
+            snapshot_log_path = os.path.join(snapshot_dir, log_fname) + f"{suffix}.log"
+            if not os.path.exists(snapshot_log_path):
+                return snapshot_log_path
+            index += 1
+
+    def store_log(self, operator_pod, timestamp, snapshot_log_path):
+        try:
+            logger.info(f"store snapshot of operator {self.operator_ns}/{operator_pod} log into {snapshot_log_path}...")
+            contents = kutil.logs(self.operator_ns, [operator_pod, self.operator_container], since_time=timestamp)
+            with open(snapshot_log_path, 'w') as f:
+                f.write(contents)
+            logger.info(f"store snapshot of operator {self.operator_ns}/{operator_pod} log into {snapshot_log_path} completed")
+        except BaseException as err:
+            logger.error(f"error while storing snapshot of operator {self.operator_ns}/{operator_pod} log into {snapshot_log_path}: {err}")
+
+    def take_snapshot(self, cls_name):
+        logger.info(f"taking snapshot of operator log for {cls_name}...")
+        snapshot_dir = self.get_work_dir()
+        prev_timestamp = self.mark_timestamp()
+
+        operator_pods = kutil.ls_pod(self.operator_ns, "mysql-operator-.*")
+        for operator_pod in operator_pods:
+            snapshot_log_path = self.get_snapshot_log_path(snapshot_dir, cls_name)
+            self.store_log(operator_pod["NAME"], prev_timestamp, snapshot_log_path)
+        logger.info(f"taking snapshot of operator log for {cls_name} completed")
+
+g_store_log_operator = None
+
+
 def mangle_name(base_name):
     ns = []
     prev_chr_was_upper = False
@@ -409,6 +468,12 @@ class OperatorTest(unittest.TestCase):
                 mutil.logger.removeHandler(cls.stream_handler)
                 ociutil.logger.removeHandler(cls.stream_handler)
                 cls.logger.removeHandler(cls.stream_handler)
+            cls.take_log_operator_snapshot()
+
+    @classmethod
+    def take_log_operator_snapshot(cls):
+        if g_store_log_operator:
+            g_store_log_operator.take_snapshot(mangle_name(cls.__name__))
 
     def setUp(self):
         self.allowed_op_logged_errors = self.default_allowed_op_errors[:]

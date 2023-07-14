@@ -512,7 +512,7 @@ def restart_sts(ns, name):
 #
 
 
-def logs(ns, name, prev=False, since=None):
+def logs(ns, name, prev=False, since=None, since_time=None):
     if type(name) is str:
         args = [name]
     else:
@@ -521,6 +521,8 @@ def logs(ns, name, prev=False, since=None):
         args.append("-p")
     if since:
         args.extend(["--since", since])
+    if since_time:
+        args.extend(["--since-time", since_time])
     return kubectl("logs", None, args + ["-n", ns]).stdout.decode("utf8")
 
 

@@ -305,6 +305,12 @@ e2e.mysqloperator.cluster.cluster_badspec_t.ClusterSpecRuntimeChecksModification
     if not provided, then a tmp dir will be used
 
 
+--store-operator-log\
+    store operator log(s), consecutive snapshots are taken at the teardown of every test case\
+    they are stored in a subdirectory `${workdir}/operator-log` where the workdir directory is
+    specified by the option `--work-dir`
+
+
 filters can be used, see the description of 'arguments'
 
 ```text

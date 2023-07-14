@@ -19,7 +19,7 @@ trap 'kill $(jobs -p)' EXIT
 cd "$TESTS_DIR"
 
 if test -z ${TEST_OPTIONS+x}; then
-	TEST_OPTIONS='-t -vvv --doperator --dkube --doci --skip-audit-log'
+	TEST_OPTIONS='-t -vvv --doperator --dkube --doci --skip-audit-log --store-operator-log'
 fi
 
 ENV_BINARY_PATH=${OPERATOR_ENV_BINARY_PATH}

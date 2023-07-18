@@ -106,7 +106,7 @@ def get_current_context():
 
     raise Exception(f"Could not get current context {ret}")
 
-def kubectl(cmd, rsrc=None, args=None, timeout=None, check=True, ignore=[], timeout_diagnostics=None):
+def kubectl(cmd, rsrc=None, args=None, timeout=None, check=True, ignore=[], timeout_diagnostics=None, mute_dbg_log=False):
     argv = [g_ts_cfg.kubectl_path, f"--context={g_ts_cfg.k8s_context}", cmd]
     if rsrc:
         argv.append(rsrc)
@@ -135,7 +135,7 @@ def kubectl(cmd, rsrc=None, args=None, timeout=None, check=True, ignore=[], time
                          e.cmd, e.returncode,
                          decode_stream(e.stderr), decode_stream(e.stdout))
             raise
-    if debug_kubectl:
+    if not mute_dbg_log and debug_kubectl:
         logger.debug("rc = %s, stdout = %s, stderr = %s", r.returncode,
                      decode_stream(r.stdout), decode_stream(r.stderr))
     return r
@@ -416,19 +416,19 @@ def get_po_ev(ns, name, *, after=None, fields=None):
 
 #
 
-def describe_rsrc(ns, rsrc, name, jpath=None):
-    r = kubectl("describe", rsrc, [name, "-n", ns])
+def describe_rsrc(ns, rsrc, name, jpath=None, mute_dbg_log=False):
+    r = kubectl("describe", rsrc, [name, "-n", ns], mute_dbg_log=mute_dbg_log)
     if r.stdout:
         return r.stdout.decode("utf8")
     raise Exception(f"Error for describe {ns}/{name}")
 
 
-def describe_po(ns, name, jpath=None):
-    return describe_rsrc(ns, "po", name, jpath)
+def describe_po(ns, name, jpath=None, mute_dbg_log=False):
+    return describe_rsrc(ns, "po", name, jpath, mute_dbg_log=mute_dbg_log)
 
 
-def describe_ic(ns, name):
-    return describe_rsrc(ns, "ic", name)
+def describe_ic(ns, name, mute_dbg_log=False):
+    return describe_rsrc(ns, "ic", name, mute_dbg_log=mute_dbg_log)
 
 
 def describe_cj(ns, name):
@@ -512,7 +512,7 @@ def restart_sts(ns, name):
 #
 
 
-def logs(ns, name, prev=False, since=None, since_time=None):
+def logs(ns, name, prev=False, since=None, since_time=None, mute_dbg_log=False):
     if type(name) is str:
         args = [name]
     else:
@@ -523,7 +523,7 @@ def logs(ns, name, prev=False, since=None, since_time=None):
         args.extend(["--since", since])
     if since_time:
         args.extend(["--since-time", since_time])
-    return kubectl("logs", None, args + ["-n", ns]).stdout.decode("utf8")
+    return kubectl("logs", None, args + ["-n", ns], mute_dbg_log=mute_dbg_log).stdout.decode("utf8")
 
 
 def cat(ns, name, path):
@@ -631,7 +631,7 @@ def drain_node(node):
 
 #
 
-class StoreDiagnostics:
+class StoreTimeoutDiagnostics:
     operator_ns = "mysql-operator"
     operator_container = "mysql-operator"
 
@@ -641,7 +641,7 @@ class StoreDiagnostics:
 
 
     def get_work_dir(self):
-        work_dir = os.path.join(g_ts_cfg.work_dir, 'diagnostics', g_ts_cfg.k8s_context)
+        work_dir = os.path.join(g_ts_cfg.work_dir, 'diagnostics', 'timeout', g_ts_cfg.k8s_context)
         if self.ns:
             work_dir = os.path.join(work_dir, self.ns)
         if not os.path.exists(work_dir):
@@ -670,16 +670,16 @@ class StoreDiagnostics:
             logger.error(f"error while storing '{kind_of_log}' diagnostics for {rsrc} {self.ns}/{item_name}: {err}")
 
     def describe_rsrc(self, rsrc, name):
-        self.store_log(rsrc, name, "describe", lambda: describe_rsrc(self.ns, rsrc, name))
+        self.store_log(rsrc, name, "describe", lambda: describe_rsrc(self.ns, rsrc, name, mute_dbg_log=True))
 
     def describe_ic(self, ic):
-        self.store_log("ic", ic, "describe", lambda: describe_ic(self.ns, ic))
+        self.store_log("ic", ic, "describe", lambda: describe_ic(self.ns, ic, mute_dbg_log=True))
 
     def describe_pod(self, pod, ns=None):
-        self.store_log("pod", pod, "describe", lambda: describe_po(ns if ns else self.ns, pod))
+        self.store_log("pod", pod, "describe", lambda: describe_po(ns if ns else self.ns, pod, mute_dbg_log=True))
 
     def logs_pod(self, pod, container, ns=None, since=None):
-        self.store_log("pod", f"{pod}-{container}", "logs", lambda: logs(ns if ns else self.ns, [pod, container], since=since))
+        self.store_log("pod", f"{pod}-{container}", "logs", lambda: logs(ns if ns else self.ns, [pod, container], since=since, mute_dbg_log=True))
 
 
     def process_operators(self):
@@ -789,7 +789,7 @@ class StoreDiagnostics:
 
 def store_diagnostics(ns, rsrc, name):
     if name and name[0].isalpha():
-        sd = StoreDiagnostics(ns)
+        sd = StoreTimeoutDiagnostics(ns)
         sd.run(rsrc, name)
 
 def store_operator_diagnostics(ns, name):

@@ -246,7 +246,7 @@ if __name__ == '__main__':
     g_ts_cfg.commit()
 
     if g_ts_cfg.store_operator_log:
-        tutil.g_store_log_operator = tutil.StoreLogOperator()
+        tutil.g_store_log_operator = tutil.StoreOperatorLog()
 
     if opt_suite_path:
         with open(opt_suite_path, 'r') as f:

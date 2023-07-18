@@ -313,7 +313,7 @@ class PodHelper:
                         checkabort=self.owner.check_operator_exceptions)
 
 
-class StoreLogOperator:
+class StoreOperatorLog:
     operator_ns = "mysql-operator"
     operator_container = "mysql-operator"
     timestamp = None
@@ -330,7 +330,7 @@ class StoreLogOperator:
 
     def get_work_dir(self):
         if not self.work_dir:
-            self.work_dir = os.path.join(g_ts_cfg.work_dir, 'operator-log', g_ts_cfg.k8s_context)
+            self.work_dir = os.path.join(g_ts_cfg.work_dir, 'diagnostics', 'operator-log', g_ts_cfg.k8s_context)
 
         if not os.path.exists(self.work_dir):
             os.makedirs(self.work_dir)
@@ -350,7 +350,7 @@ class StoreLogOperator:
     def store_log(self, operator_pod, timestamp, snapshot_log_path):
         try:
             logger.info(f"store snapshot of operator {self.operator_ns}/{operator_pod} log into {snapshot_log_path}...")
-            contents = kutil.logs(self.operator_ns, [operator_pod, self.operator_container], since_time=timestamp)
+            contents = kutil.logs(self.operator_ns, [operator_pod, self.operator_container], since_time=timestamp, mute_dbg_log=True)
             with open(snapshot_log_path, 'w') as f:
                 f.write(contents)
             logger.info(f"store snapshot of operator {self.operator_ns}/{operator_pod} log into {snapshot_log_path} completed")

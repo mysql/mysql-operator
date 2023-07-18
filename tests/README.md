@@ -307,7 +307,7 @@ e2e.mysqloperator.cluster.cluster_badspec_t.ClusterSpecRuntimeChecksModification
 
 --store-operator-log\
     store operator log(s), consecutive snapshots are taken at the teardown of every test case\
-    they are stored in a subdirectory `${workdir}/operator-log` where the workdir directory is
+    they are stored in a subdirectory `${workdir}/diagnostics/operator-log` where the workdir directory is
     specified by the option `--work-dir`
 
 

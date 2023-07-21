@@ -3,8 +3,6 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
-# check ip_whitelist
-
 # check state of group
 
 
@@ -94,7 +92,6 @@ def check_instance(test, icobj, all_pods, pod, is_primary, num_sessions=None, ve
             my_group_seeds = [m for m in grvars["group_replication_group_seeds"].strip(
                 ", ").split(",") if not m.startswith(name)]
             test.assertSetEqual(set(my_group_seeds), group_seeds, name)
-        #test.assertSetEqual(set(grvars["group_replication_ip_whitelist"].split(",")), group_seeds)
 
         # check that SSL is enabled for recovery
         row = session.query_sql(

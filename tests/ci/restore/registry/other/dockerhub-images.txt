@@ -1,0 +1,1 @@
+fluent/fluentd-kubernetes-daemonset:v1-debian-s3

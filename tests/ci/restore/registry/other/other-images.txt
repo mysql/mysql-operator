@@ -1,1 +1,2 @@
-fluent/fluentd-kubernetes-daemonset:v1-debian-s3
+mcr.microsoft.com/azure-storage/azurite
+mcr.microsoft.com/azure-cli

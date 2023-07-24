@@ -38,5 +38,8 @@ $RESTORE_REGISTRY_DIR/charge-registry-from-archives.sh $RESTORE_REGISTRY_DIR/k3d
 	$ARCHIVES_DIR $LOCAL_REGISTRY_ADDRESS
 $RESTORE_REGISTRY_DIR/charge-registry-from-archives.sh $RESTORE_REGISTRY_DIR/kind/node-images.txt \
 	$ARCHIVES_DIR $LOCAL_REGISTRY_ADDRESS
-$RESTORE_REGISTRY_DIR/charge-registry-from-archives.sh $RESTORE_REGISTRY_DIR/other/other-images.txt \
+$RESTORE_REGISTRY_DIR/charge-registry-from-archives.sh $RESTORE_REGISTRY_DIR/other/dockerhub-images.txt \
 	$ARCHIVES_DIR $LOCAL_REGISTRY_ADDRESS
+
+$RESTORE_REGISTRY_DIR/pull-images-and-charge-registry.sh $RESTORE_REGISTRY_DIR/other/other-images.txt \
+	$LOCAL_REGISTRY_ADDRESS

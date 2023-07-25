@@ -44,6 +44,9 @@ class InstanceDiagStatus(enum.Enum):
     # Instance of an unmanaged replication group. Probably was already member but got removed
     UNMANAGED = "UNMANAGED"
 
+    # Instance is not reachable, maybe networking issue
+    UNREACHABLE = "UNREACHABLE"
+
     # Uncertain because we can't connect or query it
     UNKNOWN = "UNKNOWN"
 
@@ -168,6 +171,8 @@ def diagnose_instance(pod: MySQLPod, logger, dba: 'Dba' = None) -> InstanceStatu
                 status.status = InstanceDiagStatus.ERROR
             elif mystate == "OFFLINE":
                 status.status = InstanceDiagStatus.OFFLINE
+            elif mystate == "UNREACHABLE":
+                status.status = InstanceDiagStatus.UNREACHABLE
             else:
                 assert False, f"{pod.endpoint}: bad state {mystate}"
         except mysqlsh.Error as e:

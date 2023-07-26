@@ -21,7 +21,7 @@ pipeline {
 		string(name: 'OPERATOR_ENTERPRISE_IMAGE', description: '...and a related enterprise image, it can be empty, then it will be built locally', trim: true)
 		string(name: 'OPERATOR_TRIGGERED_BY', defaultValue: 'concourse', description: 'how the build was triggered - the following flows are supported: concourse, internal, or gerrit', trim: true)
 		booleanParam(name: 'OPERATOR_BUILD_IMAGES', defaultValue: false, description: 'indicates whether the images should be built locally by us (e.g. in case of a push to a dev branch) or use ones delivered externally (e.g. from the concourse)')
-		booleanParam(name: 'OPERATOR_ALLOW_WEEKLY_IMAGES', defaultValue: false, description: 'allows to use the not-so-stable router and server weekly images')
+		booleanParam(name: 'OPERATOR_ALLOW_WEEKLY_IMAGES', defaultValue: true, description: 'allows to use the not-so-stable router and server weekly images')
 		string(name: 'OPERATOR_GERRIT_CHANGE_URL', description: 'link to gerrit Code Review', trim: true)
 		string(name: 'OPERATOR_GERRIT_TOPIC', description: 'name of a dev branch used for gerrit CR', trim: true)
 		string(name: 'OPERATOR_GERRIT_CHANGE_NUMBER', description: 'gerrit CR change number', trim: true)

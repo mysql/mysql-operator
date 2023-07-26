@@ -219,6 +219,8 @@ if __name__ == '__main__':
             g_ts_cfg.oci_bucket_name = arg.partition("=")[-1]
         elif arg == "--skip-azure":
             g_ts_cfg.azure_skip = True
+        elif arg == "--start-azure":
+            g_ts_cfg.start_azure = True
         elif arg.startswith("--azure-config="):
             g_ts_cfg.azure_config_file = arg.partition("=")[-1]
         elif arg.startswith("--azure-container="):

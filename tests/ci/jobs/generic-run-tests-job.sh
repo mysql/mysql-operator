@@ -22,6 +22,10 @@ if test -z ${TEST_OPTIONS+x}; then
 	TEST_OPTIONS='-t -vvv --doperator --dkube --doci --skip-audit-log --store-operator-log'
 fi
 
+if [[ -z ${OPERATOR_TEST_SKIP_AZURE} ]]; then
+	TEST_OPTIONS="$TEST_OPTIONS --start-azure"
+fi
+
 ENV_BINARY_PATH=${OPERATOR_ENV_BINARY_PATH}
 if [[ -n ${ENV_BINARY_PATH} ]]; then
 	TEST_OPTIONS="$TEST_OPTIONS --env-binary-path=$ENV_BINARY_PATH"
@@ -99,7 +103,7 @@ touch $TESTS_LOG
 tail -f "$TESTS_LOG" &
 
 # a patch to avoid timeout ("FATAL: command execution failed") for long-lasting operations
-"$CI_DIR/jobs/auxiliary/show-progress.sh" 240 30 &
+"$CI_DIR/jobs/auxiliary/show-progress.sh" 240 60 &
 
 # by default TEST_SUITE is not defined, it means to run all tests
 if test $OPERATOR_WORKERS_COUNT == 1; then

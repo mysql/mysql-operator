@@ -245,8 +245,16 @@ customized according to a local environment:
 --skip-azure\
     force to skip all Azure tests even if Azure is properly configured, by default it is false
 
+--start-azure\
+    make the test suite start Azure container on its own\
+    by default, the option is not set and user is responsible for the Azure setup\
+    if `--azure-config` is not set, then a tmp config file will be generated\
+    if `--azure-container` is not set, then a random name will be assigned\
+    the option will be ignored in case the `--skip-azure` or `--no-setup` is enabled
+
 --azure-config={path}\
     path to an Azure config file; by default the path is empty, then all Azure-related tests are skipped\
+    but check also `--start-azure` option whereby an empty path is allowed and file is generated\
     below is a sample config file with fake data used as an illustration of what format is expected:
 ```ini
     [storage]
@@ -257,7 +265,8 @@ customized according to a local environment:
 
 --azure-container={name}\
     Azure storage container name\
-    by default it is empty, then all Azure-related tests are skipped
+    by default it is empty, then all Azure-related tests are skipped\
+    but check also `--start-azure` option whereby an empty name is allowed and a name will be assigned
 
 --vault-cfg={path}\
     Used for OCI vault-related tests. See also profile VAULT in --oci-config. It contains a single section [OCI]

@@ -3,6 +3,8 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
+import os
+import pathlib
 from utils import auxutil
 from setup import defaults
 import tempfile
@@ -57,6 +59,7 @@ class Config:
 
     # Azure BLOB Storage Backup
     azure_skip = defaults.AZURE_SKIP
+    start_azure = False
     azure_config_file = defaults.AZURE_CONFIG_FILE
     azure_container_name = defaults.AZURE_CONTAINER_NAME
 
@@ -65,6 +68,9 @@ class Config:
 
     # metrics sidecar
     metrics_image_name = defaults.METRICS_IMAGE_NAME
+
+    # runtime environment
+    workspace_dir = None
 
     # diagnostics
     work_dir = None
@@ -111,8 +117,17 @@ class Config:
         if self.image_registry:
             self.image_registry_host, self.image_registry_port, self.image_registry_is_loopback = auxutil.resolve_registry_url(self.image_registry)
 
+        if not self.workspace_dir:
+            self.workspace_dir = str(pathlib.Path(__file__).absolute().parent.parent.parent)
+
         if not self.work_dir:
             self.work_dir = tempfile.mkdtemp()
+
+        if self.start_azure:
+            if not g_ts_cfg.azure_config_file:
+                g_ts_cfg.azure_config_file = tempfile.mktemp('.cfg','azure-')
+            if not g_ts_cfg.azure_container_name:
+                g_ts_cfg.azure_container_name = f'azure-{g_ts_cfg.k8s_cluster}'
 
     def get_worker_label(self):
         if self.k8s_cluster:
@@ -146,6 +161,12 @@ class Config:
 
     def get_old_router_image(self):
         return f"{self.get_image_registry_repository()}/{self.router_image_name}:{self.get_old_version_tag()}"
+
+    def get_tests_dir(self):
+        return os.path.join(self.workspace_dir, "tests")
+
+    def get_ci_dir(self):
+        return os.path.join(self.get_tests_dir(), "ci")
 
 
 # test-suite configuration

@@ -78,6 +78,9 @@ class BaseEnvironment:
           if custom_dns:
             self.add_custom_dns(custom_dns)
 
+          if self.can_start_azure():
+            self.start_azure()
+
         ret = subprocess.call([g_ts_cfg.kubectl_path, f"--context={g_ts_cfg.k8s_context}", "cluster-info"])
         if ret:
           raise Exception(f"cannot get cluster-info for context '{g_ts_cfg.k8s_context}'")
@@ -85,6 +88,14 @@ class BaseEnvironment:
     def add_custom_dns(self, custom_dns):
       ote_dir = os.path.dirname(os.path.realpath(__file__))
       subprocess.check_call(f"{ote_dir}/add_custom_dns.sh {custom_dns}", shell=True)
+
+    def can_start_azure(self):
+        return not g_ts_cfg.azure_skip and g_ts_cfg.start_azure and g_ts_cfg.azure_config_file and g_ts_cfg.azure_container_name
+
+    def start_azure(self):
+        script_path = os.path.join(g_ts_cfg.get_ci_dir(), "jobs/auxiliary/start-azure.sh")
+        shell_cmd = f"{script_path} {g_ts_cfg.image_registry} {g_ts_cfg.azure_config_file} {g_ts_cfg.azure_container_name}"
+        subprocess.check_call(shell_cmd, shell=True)
 
     def setup_operator(self, deploy_files):
         self.deploy_operator(deploy_files)

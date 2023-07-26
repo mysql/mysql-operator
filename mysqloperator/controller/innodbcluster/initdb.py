@@ -261,7 +261,7 @@ class RestorePath(RestoreDump):
 
     @property
     def path(self):
-        path = self.init_spec.path
+        return self.init_spec.path
 
     def clean_config(self):
         pass

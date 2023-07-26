@@ -29,8 +29,9 @@ class Snapshot:
         return f"Object Snapshot: storage={self.storage}"
 
     def __eq__(self, other : 'Snapshot') -> bool:
-        assert isinstance(other, Snapshot)
-        return (self.storage == other.storage)
+        assert other is None or isinstance(other, Snapshot)
+        return (other is not None \
+                and self.storage == other.storage)
 
 
 class DumpInstance:
@@ -53,9 +54,10 @@ class DumpInstance:
         return f"Object DumpInstance: storage={self.storage}"
 
     def __eq__(self, other : 'DumpInstance') -> bool:
-        assert isinstance(other, DumpInstance)
-        return (self.dumpOptions == other.dumpOptions and \
-                self.storage == other.storage)
+        assert other is None or isinstance(other, DumpInstance)
+        return (other is not None \
+                and self.dumpOptions == other.dumpOptions \
+                and self.storage == other.storage)
 
 
 class BackupProfile:
@@ -103,10 +105,11 @@ class BackupProfile:
         return f"Object BackupProfile name={self.name} dumpInstance={self.dumpInstance} snapshot={self.snapshot} podAnnotations={self.podAnnotations} podLabels={self.podLabels}"
 
     def __eq__(self, other: 'BackupProfile') -> bool:
-        assert isinstance(other, BackupProfile)
-        return (self.name == other.name and \
-                self.dumpInstance == other.dumpInstance and \
-                self.snapshot == other.snapshot)
+        assert other is None or isinstance(other, BackupProfile)
+        return (other is not None \
+                and self.name == other.name \
+                and self.dumpInstance == other.dumpInstance \
+                and self.snapshot == other.snapshot)
 
 class BackupSchedule:
     def __init__(self, cluster_spec):
@@ -161,16 +164,16 @@ class BackupSchedule:
         return f"Object BackupSchedule scheduleName={self.name} deleteBackupData={self.deleteBackupData} enabled={self.enabled} backupProfileName={self.backupProfileName} schedule={self.schedule} profile={self.backupProfile}"
 
     def __eq__(self, other : 'BackupSchedule') -> bool:
-        assert isinstance(other, BackupSchedule)
-        eq = (self.cluster_spec.namespace == other.cluster_spec.namespace and \
-                self.cluster_spec.name == other.cluster_spec.name and \
-                self.name == other.name and \
-                self.backupProfileName == other.backupProfileName and \
-                self.backupProfile == other.backupProfile and \
-                self.schedule == other.schedule and \
-                self.deleteBackupData == other.deleteBackupData and \
-                self.enabled == other.enabled)
-        return eq
+        assert other is None or isinstance(other, BackupSchedule)
+        return (other is not None \
+                and self.cluster_spec.namespace == other.cluster_spec.namespace \
+                and self.cluster_spec.name == other.cluster_spec.name \
+                and self.name == other.name \
+                and self.backupProfileName == other.backupProfileName \
+                and self.backupProfile == other.backupProfile \
+                and self.schedule == other.schedule \
+                and self.deleteBackupData == other.deleteBackupData \
+                and self.enabled == other.enabled)
 
 
 class MySQLBackupSpec:

@@ -26,6 +26,8 @@ class ScheduledBackupDisabledRef(tutil.OperatorTest):
     disabled_profile_name = "disabled-ref-scheduled-backup"
     disabled_schedule_name = "disabled-schedule-ref"
     disabled_dump_name_prefix = f"{cluster_name}-{disabled_schedule_name}"
+    initial_schedule = "*/1 * 1-31 1-12 *"
+    new_schedule = "*/15 * 31 12 *"
 
     @classmethod
     def setUpClass(cls):
@@ -99,7 +101,7 @@ spec:
           claimName: {self.disabled_volume_name}
   backupSchedules:
     - name: {self.disabled_schedule_name}
-      schedule: "*/1 * 1-31 1-12 *"
+      schedule: "{self.initial_schedule}"
       deleteBackupData: true
       backupProfileName: {self.disabled_profile_name}
       enabled: false
@@ -109,7 +111,7 @@ spec:
         self.wait_pod(f"{self.cluster_name}-0", "Running")
         self.wait_ic(self.cluster_name, "ONLINE", 1)
 
-    def check_ic(self):
+    def check_schedule(self, enabled, schedule):
         ic = kutil.get_ic(self.ns, self.cluster_name)
         spec = ic["spec"]
 
@@ -123,11 +125,11 @@ spec:
         backupSchedule = spec["backupSchedules"][0]
         self.assertEqual(backupSchedule["backupProfileName"], self.disabled_profile_name)
         self.assertTrue(backupSchedule["deleteBackupData"])
-        self.assertFalse(backupSchedule["enabled"])
+        self.assertEqual(backupSchedule["enabled"], enabled)
         self.assertEqual(backupSchedule["name"], self.disabled_schedule_name)
-        self.assertEqual(backupSchedule["schedule"], "*/1 * 1-31 1-12 *")
+        self.assertEqual(backupSchedule["schedule"], schedule)
 
-    def test_1_dont_backup_to_volume(self):
+    def test_2_dont_backup_to_volume(self):
         # ensure backup is not performed
         for i in range(3):
           time.sleep(60)
@@ -142,8 +144,31 @@ spec:
             mbkName = mbkName["NAME"]
             self.assertFalse(mbkName.startswith(self.disabled_dump_name_prefix))
 
-        self.check_ic()
+        self.check_schedule(enabled = False, schedule = self.initial_schedule)
 
+    def test_4_change_schedule(self):
+        patch = [
+            {
+                "op":"replace",
+                "path":"/spec/backupSchedules/0/schedule",
+                "value": self.new_schedule
+            }
+        ]
+
+        kutil.patch_ic(self.ns, self.cluster_name, patch, type="json", data_as_type='json')
+        self.check_schedule(enabled = False, schedule = self.new_schedule)
+
+    def test_6_enable_schedule(self):
+        patch = [
+            {
+                "op":"replace",
+                "path":"/spec/backupSchedules/0/enabled",
+                "value": True
+            }
+        ]
+
+        kutil.patch_ic(self.ns, self.cluster_name, patch, type="json", data_as_type='json')
+        self.check_schedule(enabled = True, schedule = self.new_schedule)
 
     def test_9_destroy(self):
         kutil.delete_ic(self.ns, self.cluster_name)

@@ -43,7 +43,7 @@ For changes only to the Operator code, which don't require changes to dependenci
 
 After building an image like this:
 
-    docker build -t  mysql/community-operator:8.0.34-2.0.11 -f Dockerfile.patch .
+    docker build -t  mysql/community-operator:8.0.35-2.0.12 -f Dockerfile.patch .
 
 This can be passed to a local registry and used from there. Please refer to the MySQL Operator documentation and the documentation of your Kubernetes distribution of choice.
 

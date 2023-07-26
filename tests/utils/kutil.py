@@ -434,6 +434,10 @@ def describe_ic(ns, name, mute_dbg_log=False):
 def describe_cj(ns, name):
     return describe_rsrc(ns, "cj", name)
 
+
+def describe_cj(ns, name):
+    return describe_rsrc(ns, "cj", name)
+
 #
 
 def delete(ns, rsrc, name, timeout, wait=True):

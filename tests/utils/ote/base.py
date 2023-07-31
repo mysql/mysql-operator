@@ -94,7 +94,7 @@ class BaseEnvironment:
 
     def start_azure(self):
         script_path = os.path.join(g_ts_cfg.get_ci_dir(), "jobs/auxiliary/start-azure.sh")
-        shell_cmd = f"{script_path} {g_ts_cfg.image_registry} {g_ts_cfg.azure_config_file} {g_ts_cfg.azure_container_name}"
+        shell_cmd = f"{script_path} {g_ts_cfg.k8s_context} {g_ts_cfg.image_registry} {g_ts_cfg.azure_config_file} {g_ts_cfg.azure_container_name}"
         subprocess.check_call(shell_cmd, shell=True)
 
     def setup_operator(self, deploy_files):

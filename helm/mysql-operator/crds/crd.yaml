@@ -292,6 +292,17 @@ spec:
                     podLabels:
                       type: object
                       x-kubernetes-preserve-unknown-fields: true
+                    bootstrapOptions:
+                      description: "Command line options passed to MySQL Router while bootstrapping"
+                      type: array
+                      items:
+                        type: string
+                    options:
+                      description: "Command line options passed to MySQL Router while running"
+                      type: array
+                      items:
+                        type: string
+ 
                         
                 metrics:
                   type: object
@@ -345,17 +356,6 @@ spec:
                     #      type: integer
                     #      default: 3
                     #      description: "Maximum number of connections"
- 
-                    bootstrapOptions:
-                      description: "Command line options passed to MySQL Router while bootstrapping"
-                      type: array
-                      items:
-                        type: string
-                    options:
-                      description: "Command line options passed to MySQL Router while running"
-                      type: array
-                      items:
-                        type: string
  
                 backupProfiles:
                   type: array

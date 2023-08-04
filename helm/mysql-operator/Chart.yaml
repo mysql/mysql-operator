@@ -4,4 +4,4 @@ name: mysql-operator
 description: MySQL Operator Helm Chart for deploying MySQL InnoDB Cluster in Kubernetes
 type: application
 version: "2.1.1"
-icon: https://labs.mysql.com/common/themes/sakila/favicon.ico
+icon: https://www.mysql.com/common/logos/logo-mysql-170x115.png

@@ -1,4 +1,4 @@
-# Copyright (c) 2021, Oracle and/or its affiliates.
+# Copyright (c) 2021, 2023 Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -405,16 +405,20 @@ spec:
 
         self.wait_pod("mycluster-0", "Pending")
 
+        SECRET_TLS_NOT_FOUND='secret "mycluster-tls" not found'
+        SECRET_CA_NOT_FOUND='secret "mycluster-ca" not found'
         def check_error():
             out = kutil.describe_po(self.ns, "mycluster-0")
-            if 'secret "mycluster-tls" not found' in out and 'secret "mycluster-ca" not found' in out:
-                return out
-            return ""
+            matched_lines=''
+            for line in out.split('\n'):
+                if SECRET_TLS_NOT_FOUND in line or SECRET_TLS_NOT_FOUND in line:
+                    matched_lines += f"{line}'\n"
+            return matched_lines
 
         # cluster will be stuck at PENDING because of the missing secret
-        out = self.wait(check_error)
-        self.assertIn('secret "mycluster-tls" not found', out)
-        self.assertIn('secret "mycluster-ca" not found', out)
+        matched_lines = self.wait(check_error)
+        self.assertIn(SECRET_TLS_NOT_FOUND, matched_lines)
+        self.assertIn(SECRET_CA_NOT_FOUND, matched_lines)
 
 
     def test_1_create_cluster_missing_ssl_recover(self):

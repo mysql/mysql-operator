@@ -75,6 +75,7 @@ class Config:
     # diagnostics
     work_dir = None
     store_operator_log = False
+    current_test_name = None
 
     # Optional K8s cluster domain alias
     k8s_cluster_domain_alias = defaults.K8S_CLUSTER_DOMAIN_ALIAS
@@ -167,6 +168,14 @@ class Config:
 
     def get_ci_dir(self):
         return os.path.join(self.get_tests_dir(), "ci")
+
+    def get_diagnostics_dir(self, ns=None):
+        diagnostics_dir = os.path.join(g_ts_cfg.work_dir, 'diagnostics', g_ts_cfg.k8s_context)
+        if self.current_test_name:
+            diagnostics_dir = os.path.join(diagnostics_dir, self.current_test_name)
+        elif ns:
+            diagnostics_dir = os.path.join(diagnostics_dir, ns)
+        return diagnostics_dir
 
 
 # test-suite configuration

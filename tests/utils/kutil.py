@@ -7,6 +7,7 @@
 
 # Use kubectl instead of the API so we go through the same code path as an end-user
 
+import datetime
 import os
 import subprocess
 import logging
@@ -18,6 +19,7 @@ import base64
 import pathlib
 import json
 from setup.config import g_ts_cfg
+from enum import Enum
 
 logger = logging.getLogger("kutil")
 
@@ -106,7 +108,56 @@ def get_current_context():
 
     raise Exception(f"Could not get current context {ret}")
 
-def kubectl(cmd, rsrc=None, args=None, timeout=None, check=True, ignore=[], timeout_diagnostics=None, mute_dbg_log=False):
+
+def get_kubectl_diagnostics_log_path(cmd, rsrc, argv):
+    ns=None
+    NAMESPACE_OPTION='-n'
+    if argv and NAMESPACE_OPTION in argv:
+        ns = argv[argv.index(NAMESPACE_OPTION) + 1]
+
+    diag_dir = g_ts_cfg.get_diagnostics_dir(ns)
+    if not os.path.exists(diag_dir):
+        os.makedirs(diag_dir)
+
+    log_fname = f'{datetime.datetime.utcnow().strftime("%Y.%m.%d-%H.%M.%S")}-{cmd}'
+    if rsrc:
+        log_fname += f"-{rsrc}"
+
+    base_log_path = os.path.join(diag_dir, log_fname)
+
+    index = 0
+    while True:
+        suffix = f"-{str(index)}" if index > 0 else ""
+        log_path = base_log_path + f"{suffix}.log"
+        if not os.path.exists(log_path):
+            return log_path
+        index += 1
+
+def store_kubectl_diagnostics(cmd, rsrc, argv, contents):
+    log_path = get_kubectl_diagnostics_log_path(cmd, rsrc, argv)
+    cmd_info = f"kubectl {cmd}"
+    if rsrc:
+        cmd_info += f" {rsrc}"
+    subject = f"storing '{cmd_info}' diagnostics in {log_path}"
+    try:
+        logger.info(f"{subject}...")
+        with open(log_path, 'w') as f:
+            f.write(f"{' '.join(argv)}\n")
+            f.write(contents)
+        logger.info(f"{subject} completed...")
+    except BaseException as err:
+        logger.error(f"error while {subject}: {err}")
+
+class KubectlCmdOutputLogging(Enum):
+    # if debug_kubectl is True, log kubectl cmd output to logger
+    STD = 1
+    # if debug_kubectl is True, log kubectl output to a file in diagnostics dir
+    # it is used to avoid storing long cmd outputs in standard log
+    DIAGNOSTICS = 2
+    # don't write kubectl cmd output to logger regardless debug_kubectl is True
+    MUTE = 3
+
+def kubectl(cmd, rsrc=None, args=None, timeout=None, check=True, ignore=[], timeout_diagnostics=None, cmd_output_log=KubectlCmdOutputLogging.STD):
     argv = [g_ts_cfg.kubectl_path, f"--context={g_ts_cfg.k8s_context}", cmd]
     if rsrc:
         argv.append(rsrc)
@@ -135,9 +186,13 @@ def kubectl(cmd, rsrc=None, args=None, timeout=None, check=True, ignore=[], time
                          e.cmd, e.returncode,
                          decode_stream(e.stderr), decode_stream(e.stdout))
             raise
-    if not mute_dbg_log and debug_kubectl:
-        logger.debug("rc = %s, stdout = %s, stderr = %s", r.returncode,
-                     decode_stream(r.stdout), decode_stream(r.stderr))
+    if debug_kubectl and cmd_output_log != KubectlCmdOutputLogging.MUTE:
+        cmd_output = f"rc = {r.returncode}, stdout = {decode_stream(r.stdout)}, stderr = {decode_stream(r.stderr)}"
+        if cmd_output_log == KubectlCmdOutputLogging.STD:
+            logger.debug(cmd_output)
+        elif cmd_output_log == KubectlCmdOutputLogging.DIAGNOSTICS:
+            store_kubectl_diagnostics(cmd, rsrc, argv, cmd_output)
+
     return r
 
 
@@ -213,7 +268,7 @@ def feed_kubectl(input, cmd, rsrc=None, args=None, check=True):
         logger.debug("run %s", argv)
         MaxInputSize = 16384
         if input and len(input) < MaxInputSize:
-            logger.debug("input: %s", input)
+            store_kubectl_diagnostics(cmd, rsrc, argv, input)
     r = subprocess.run(argv, input=input.encode("utf8"),
                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                        check=check)
@@ -325,15 +380,15 @@ def ls_ns():
 
 #
 
-def get_raw(ns, rsrc, name, format="yaml", check=True, **kwargs):
-    r = kubectl("get", rsrc, args=[name, "-n", ns, f"-o={format}"], check=check, **kwargs)
+def get_raw(ns, rsrc, name, format="yaml", check=True, cmd_output_log=KubectlCmdOutputLogging.DIAGNOSTICS, **kwargs):
+    r = kubectl("get", rsrc, args=[name, "-n", ns, f"-o={format}"], check=check, cmd_output_log=cmd_output_log, **kwargs)
     if r and r.stdout:
         return r.stdout.decode("utf8")
     return None
 
 
-def get(ns, rsrc, name, check=True, **kwargs):
-    raw_yaml = get_raw(ns, rsrc, name, check=check, **kwargs)
+def get(ns, rsrc, name, check=True, cmd_output_log=KubectlCmdOutputLogging.DIAGNOSTICS, **kwargs):
+    raw_yaml = get_raw(ns, rsrc, name, check=check, cmd_output_log=cmd_output_log, **kwargs)
     if raw_yaml:
         return yaml.safe_load(raw_yaml)
     return None
@@ -386,7 +441,7 @@ def get_ev(ns, selector, *, after=None, fields=None):
     r = kubectl("get", "ev", args=[
                 "--field-selector="+selector,
                 "--sort-by=.metadata.creationTimestamp",
-                "-n", ns, "-o=yaml"])
+                "-n", ns, "-o=yaml"], cmd_output_log=KubectlCmdOutputLogging.DIAGNOSTICS)
 
     if r.stdout:
         evs = yaml.safe_load(r.stdout.decode("utf8"))["items"]
@@ -416,27 +471,24 @@ def get_po_ev(ns, name, *, after=None, fields=None):
 
 #
 
-def describe_rsrc(ns, rsrc, name, jpath=None, mute_dbg_log=False):
-    r = kubectl("describe", rsrc, [name, "-n", ns], mute_dbg_log=mute_dbg_log)
+def describe_rsrc(ns, rsrc, name, jpath=None, cmd_output_log=KubectlCmdOutputLogging.DIAGNOSTICS):
+    r = kubectl("describe", rsrc, [name, "-n", ns], cmd_output_log=cmd_output_log)
     if r.stdout:
         return r.stdout.decode("utf8")
     raise Exception(f"Error for describe {ns}/{name}")
 
 
-def describe_po(ns, name, jpath=None, mute_dbg_log=False):
-    return describe_rsrc(ns, "po", name, jpath, mute_dbg_log=mute_dbg_log)
+def describe_po(ns, name, jpath=None, cmd_output_log=KubectlCmdOutputLogging.DIAGNOSTICS):
+    return describe_rsrc(ns, "po", name, jpath, cmd_output_log=cmd_output_log)
 
 
-def describe_ic(ns, name, mute_dbg_log=False):
-    return describe_rsrc(ns, "ic", name, mute_dbg_log=mute_dbg_log)
+def describe_ic(ns, name, cmd_output_log=KubectlCmdOutputLogging.DIAGNOSTICS):
+    return describe_rsrc(ns, "ic", name, cmd_output_log=cmd_output_log)
 
 
-def describe_cj(ns, name):
-    return describe_rsrc(ns, "cj", name)
+def describe_cj(ns, name, cmd_output_log=KubectlCmdOutputLogging.DIAGNOSTICS):
+    return describe_rsrc(ns, "cj", name, cmd_output_log=cmd_output_log)
 
-
-def describe_cj(ns, name):
-    return describe_rsrc(ns, "cj", name)
 
 #
 
@@ -516,7 +568,7 @@ def restart_sts(ns, name):
 #
 
 
-def logs(ns, name, prev=False, since=None, since_time=None, mute_dbg_log=False):
+def logs(ns, name, prev=False, since=None, since_time=None, cmd_output_log=KubectlCmdOutputLogging.DIAGNOSTICS):
     if type(name) is str:
         args = [name]
     else:
@@ -527,7 +579,7 @@ def logs(ns, name, prev=False, since=None, since_time=None, mute_dbg_log=False):
         args.extend(["--since", since])
     if since_time:
         args.extend(["--since-time", since_time])
-    return kubectl("logs", None, args + ["-n", ns], mute_dbg_log=mute_dbg_log).stdout.decode("utf8")
+    return kubectl("logs", None, args + ["-n", ns], cmd_output_log=cmd_output_log).stdout.decode("utf8")
 
 
 def cat(ns, name, path):
@@ -651,18 +703,17 @@ class StoreTimeoutDiagnostics:
 
 
     def get_work_dir(self):
-        work_dir = os.path.join(g_ts_cfg.work_dir, 'diagnostics', 'timeout', g_ts_cfg.k8s_context)
+        base_work_dir = os.path.join(g_ts_cfg.work_dir, 'timeout', g_ts_cfg.k8s_context)
         if self.ns:
-            work_dir = os.path.join(work_dir, self.ns)
-        if not os.path.exists(work_dir):
-            return work_dir
+            base_work_dir = os.path.join(base_work_dir, self.ns)
 
         index = 0
         while True:
-            diag_dir_index = work_dir + str(index)
-            if not os.path.exists(diag_dir_index):
-                return diag_dir_index
+            work_dir = base_work_dir + f"-{str(index)}" if index > 0 else ""
+            if not os.path.exists(work_dir):
+                return work_dir
             index += 1
+
 
     def create_work_dir(self):
         self.work_dir = self.get_work_dir()
@@ -680,16 +731,16 @@ class StoreTimeoutDiagnostics:
             logger.error(f"error while storing '{kind_of_log}' diagnostics for {rsrc} {self.ns}/{item_name}: {err}")
 
     def describe_rsrc(self, rsrc, name):
-        self.store_log(rsrc, name, "describe", lambda: describe_rsrc(self.ns, rsrc, name, mute_dbg_log=True))
+        self.store_log(rsrc, name, "describe", lambda: describe_rsrc(self.ns, rsrc, name, cmd_output_log=KubectlCmdOutputLogging.MUTE))
 
     def describe_ic(self, ic):
-        self.store_log("ic", ic, "describe", lambda: describe_ic(self.ns, ic, mute_dbg_log=True))
+        self.store_log("ic", ic, "describe", lambda: describe_ic(self.ns, ic, cmd_output_log=KubectlCmdOutputLogging.MUTE))
 
     def describe_pod(self, pod, ns=None):
-        self.store_log("pod", pod, "describe", lambda: describe_po(ns if ns else self.ns, pod, mute_dbg_log=True))
+        self.store_log("pod", pod, "describe", lambda: describe_po(ns if ns else self.ns, pod, cmd_output_log=KubectlCmdOutputLogging.MUTE))
 
     def logs_pod(self, pod, container, ns=None, since=None):
-        self.store_log("pod", f"{pod}-{container}", "logs", lambda: logs(ns if ns else self.ns, [pod, container], since=since, mute_dbg_log=True))
+        self.store_log("pod", f"{pod}-{container}", "logs", lambda: logs(ns if ns else self.ns, [pod, container], since=since, cmd_output_log=KubectlCmdOutputLogging.MUTE))
 
 
     def process_operators(self):

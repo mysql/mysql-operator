@@ -330,7 +330,7 @@ class StoreOperatorLog:
 
     def get_work_dir(self):
         if not self.work_dir:
-            self.work_dir = os.path.join(g_ts_cfg.work_dir, 'diagnostics', 'operator-log', g_ts_cfg.k8s_context)
+            self.work_dir = os.path.join(g_ts_cfg.work_dir, 'operator-log', g_ts_cfg.k8s_context)
 
         if not os.path.exists(self.work_dir):
             os.makedirs(self.work_dir)
@@ -350,7 +350,7 @@ class StoreOperatorLog:
     def store_log(self, operator_pod, timestamp, snapshot_log_path):
         try:
             logger.info(f"store snapshot of operator {self.operator_ns}/{operator_pod} log into {snapshot_log_path}...")
-            contents = kutil.logs(self.operator_ns, [operator_pod, self.operator_container], since_time=timestamp, mute_dbg_log=True)
+            contents = kutil.logs(self.operator_ns, [operator_pod, self.operator_container], since_time=timestamp, cmd_output_log=kutil.KubectlCmdOutputLogging.MUTE)
             with open(snapshot_log_path, 'w') as f:
                 f.write(contents)
             logger.info(f"store snapshot of operator {self.operator_ns}/{operator_pod} log into {snapshot_log_path} completed")
@@ -402,12 +402,13 @@ class OperatorTest(unittest.TestCase):
         kutil.logger.addHandler(cls.stream_handler)
         mutil.logger.addHandler(cls.stream_handler)
         ociutil.logger.addHandler(cls.stream_handler)
+        g_ts_cfg.current_test_name = mangle_name(cls.__name__)
 
         cls.logger.info(f"Starting {cls.__name__}")
         if ns:
             __class__.ns = ns
         else:
-            __class__.ns = mangle_name(cls.__name__)
+            __class__.ns = g_ts_cfg.current_test_name
 
         leftovers = kutil.ls_all_raw(cls.ns)
         if leftovers:
@@ -468,6 +469,7 @@ class OperatorTest(unittest.TestCase):
                 mutil.logger.removeHandler(cls.stream_handler)
                 ociutil.logger.removeHandler(cls.stream_handler)
                 cls.logger.removeHandler(cls.stream_handler)
+            g_ts_cfg.current_test_name = None
             cls.take_log_operator_snapshot()
 
     @classmethod

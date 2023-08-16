@@ -250,13 +250,18 @@ class ClusterController:
                 "initialDataSource": "blank",
             })
 
-
         # The operator manages GR, so turn off start_on_boot to avoid conflicts
         create_options = {
             "gtidSetIsComplete": assume_gtid_set_complete,
             "manualStartOnBoot": True,
             "memberSslMode": "REQUIRED" if self.cluster.parsed_spec.tlsUseSelfSigned else "VERIFY_IDENTITY",
         }
+        if not self.cluster.parsed_spec.tlsUseSelfSigned:
+            rdns = seed_pod.get_cluster().get_tls_issuer_and_subject_rdns()
+            create_options["memberAuthType"] = "CERT_SUBJECT"
+            create_options["certIssuer"] = rdns["issuer"]
+            create_options["certSubject"] = rdns["subject"]
+
         create_options.update(common_gr_options)
 
         def should_retry(err):
@@ -277,8 +282,7 @@ class ClusterController:
             if not self.dba_cluster:
                 self.log_mysql_info(seed_pod, dba.session, logger)
 
-                logger.info(
-                    f"create_cluster: seed={seed_pod.name}, options={create_options}")
+                logger.info(f"CREATE CLUSTER: seed={seed_pod.name}, options={create_options}")
 
                 try:
                     self.dba_cluster = dba.create_cluster(
@@ -460,10 +464,16 @@ class ClusterController:
         add_options = {
             "recoveryMethod": recovery_method,
         }
+
+        for option in self.dba_cluster.options()["defaultReplicaSet"]["globalOptions"]:
+            if option["option"] == "memberAuthType" and option["value"] in ["CERT_SUBJECT", "CERT_SUBJECT_PASSWORD"]:
+                rdns = pod.get_cluster().get_tls_issuer_and_subject_rdns()
+                # add_instance() needs only certSubject and but not memberAuthType and certIssuer
+                add_options["certSubject"] = rdns["subject"]
+
         add_options.update(common_gr_options)
 
-        logger.info(
-            f"add_instance: target={pod.endpoint}  cluster_peer={peer_pod.endpoint}  options={add_options}...")
+        logger.info(f"ADD INSTANCE: target={pod.endpoint}  cluster_peer={peer_pod.endpoint}  options={add_options}")
 
         pod.add_member_finalizer()
 

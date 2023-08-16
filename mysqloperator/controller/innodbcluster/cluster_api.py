@@ -21,6 +21,7 @@ from logging import Logger
 import json
 import yaml
 import datetime
+from cryptography import x509
 from kubernetes import client
 
 
@@ -1469,6 +1470,32 @@ class InnoDBCluster(K8sInterfaceObject):
                 raise
 
         return ret
+
+    def get_tls_issuer_and_subject_rdns(self) -> Dict[str, str]:
+        ca_and_tls = self.get_ca_and_tls()
+        tls_cert = x509.load_pem_x509_certificate(ca_and_tls["tls.crt"].encode('ascii'))
+        # See RF 4514
+        # 2.1.  Converting the RDNSequence
+
+        # If the RDNSequence is an empty sequence, the result is the empty or
+        # zero-length string.
+        #
+        # Otherwise, the output consists of the string encodings of each
+        # RelativeDistinguishedName in the RDNSequence (according to Section
+        # 2.2), starting with the last element of the sequence and moving
+        # backwards toward the first.
+
+        # The encodings of adjoining RelativeDistinguishedNames are separated
+        # by a comma (',' U+002C) character.
+        # ---
+        # The fields come in reverse order of what we need, so [::-1] reverses it again after
+        # splitting and before joining with a `/`
+        issuer_rdns = "/" + "/".join(tls_cert.issuer.rfc4514_string().split(",")[::-1])
+        subject_rdns = "/" + "/".join(tls_cert.subject.rfc4514_string().split(",")[::-1])
+        return {
+           "issuer" : issuer_rdns,
+           "subject" : subject_rdns
+        }
 
     def get_admin_account(self) -> Tuple[str, str]:
         secrets = self.get_private_secrets()

@@ -183,7 +183,371 @@ spec:
 
         self.wait_pod_gone("mycluster-0")
         self.wait_ic_gone("mycluster")
+        kutil.delete_secret(self.ns, "mypwds")
 
+
+class Cluster1ServiceAccountDefault(tutil.OperatorTest):
+    cluster_name = "mycluster"
+    sa_name = "mycluster-sidecar-sa"
+    default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+
+    @classmethod
+    def setUpClass(cls):
+        cls.logger = logging.getLogger(__name__+":"+cls.__name__)
+        super().setUpClass()
+
+        g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-0")
+
+    @classmethod
+    def tearDownClass(cls):
+        g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-0")
+
+        super().tearDownClass()
+
+    def test_00_create(self):
+        """
+        Create cluster, check posted events.
+        """
+        kutil.create_user_secrets(
+            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+
+        # create cluster with mostly default configs
+        yaml = f"""
+apiVersion: mysql.oracle.com/v2
+kind: InnoDBCluster
+metadata:
+  name: {self.cluster_name}
+spec:
+  instances: 1
+  router:
+    instances: 0
+  secretName: mypwds
+  edition: community
+  tlsUseSelfSigned: true
+  # don't specify serviceAccountName and see if the default one will be created
+  podSpec:
+    terminationGracePeriodSeconds: 1
+"""
+
+        apply_time = isotime()
+        kutil.apply(self.ns, yaml)
+
+        self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
+
+        self.wait_pod(f"{self.cluster_name}-0", "Running")
+
+        self.wait_ic(self.cluster_name, "ONLINE")
+
+        self.assertGotClusterEvent(
+            self.cluster_name, after=apply_time, type="Normal",
+            reason="ResourcesCreated",
+            msg="Dependency resources created, switching status to PENDING")
+        # TODO - this event not getting posted, check if normal
+        #self.assertGotClusterEvent(
+        #    "mycluster", after=apply_time, type="Normal",
+        #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
+        self.assertGotClusterEvent(
+            self.cluster_name, after=apply_time, type="Normal",
+            reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
+
+
+    def test_01_check_labels_and_annotations(self):
+        sas = [sa["NAME"] for sa in kutil.ls_sa(self.ns)]
+        self.assertTrue('default' in sas)
+        self.assertTrue(self.sa_name in sas)
+        cluster_sa = kutil.get_sa(self.ns, self.sa_name)
+        self.assertTrue('imagePullSecrets' not in cluster_sa)
+
+    def test_99_destroy(self):
+        kutil.delete_ic(self.ns, self.cluster_name)
+
+        self.wait_pod_gone(f"{self.cluster_name}-0")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_secret(self.ns, "mypwds")
+
+
+class Cluster1ServiceAccountDefaultWithPullSecret(tutil.OperatorTest):
+    cluster_name = "mycluster"
+    sa_name = "mycluster-sidecar-sa"
+    priv_registry_secret_name = "priv-reg-secret"
+    default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+
+    @classmethod
+    def setUpClass(cls):
+        cls.logger = logging.getLogger(__name__+":"+cls.__name__)
+        super().setUpClass()
+
+        g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-0")
+
+    @classmethod
+    def tearDownClass(cls):
+        g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-0")
+
+        super().tearDownClass()
+
+    def test_00_create(self):
+        """
+        Create cluster, check posted events.
+        """
+        kutil.create_user_secrets(
+            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+
+        # {"auths":{"https://192.168.20.198:5000/v2/":{"username":"user","password":"pass","email":"user@example.com","auth":"dXNlcjpwYXNz"}}}  # user:pass
+        yaml = f"""
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/dockerconfigjson
+metadata:
+  name: {self.priv_registry_secret_name}
+data:
+  .dockerconfigjson: eyJhdXRocyI6eyJodHRwczovLzE5Mi4xNjguMjAuMTk4OjUwMDAvdjIvIjp7InVzZXJuYW1lIjoidXNlciIsInBhc3N3b3JkIjoicGFzcyIsImVtYWlsIjoidXNlckBleGFtcGxlLmNvbSIsImF1dGgiOiJkWE5sY2pwd1lYTnoifX19
+"""
+        kutil.apply(self.ns, yaml)
+
+        # create cluster with mostly default configs
+        yaml = f"""
+apiVersion: mysql.oracle.com/v2
+kind: InnoDBCluster
+metadata:
+  name: {self.cluster_name}
+spec:
+  instances: 1
+  router:
+    instances: 0
+  secretName: mypwds
+  edition: community
+  tlsUseSelfSigned: true
+  imagePullSecrets:
+  - name : {self.priv_registry_secret_name}
+  podSpec:
+    terminationGracePeriodSeconds: 1
+"""
+        apply_time = isotime()
+        kutil.apply(self.ns, yaml)
+
+        self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
+
+        self.wait_pod(f"{self.cluster_name}-0", "Running")
+
+        self.wait_ic(self.cluster_name, "ONLINE")
+
+        self.assertGotClusterEvent(
+            self.cluster_name, after=apply_time, type="Normal",
+            reason="ResourcesCreated",
+            msg="Dependency resources created, switching status to PENDING")
+        # TODO - this event not getting posted, check if normal
+        #self.assertGotClusterEvent(
+        #    "mycluster", after=apply_time, type="Normal",
+        #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
+        self.assertGotClusterEvent(
+            self.cluster_name, after=apply_time, type="Normal",
+            reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
+
+    def test_01_check_labels_and_annotations(self):
+        sas = [sa["NAME"] for sa in kutil.ls_sa(self.ns)]
+        self.assertTrue('default' in sas)
+        self.assertTrue(self.sa_name in sas)
+        cluster_sa = kutil.get_sa(self.ns, self.sa_name)
+        self.assertTrue('imagePullSecrets' in cluster_sa)
+        found = False
+        for pull_secret in cluster_sa['imagePullSecrets']:
+            if "name" in pull_secret and pull_secret["name"] == self.priv_registry_secret_name:
+                found = True
+        if not found:
+            print(cluster_sa)
+
+        self.assertTrue(found)
+        print(cluster_sa)
+
+    def test_99_destroy(self):
+        kutil.delete_ic(self.ns, self.cluster_name)
+
+        self.wait_pod_gone(f"{self.cluster_name}-0")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_secret(self.ns, self.priv_registry_secret_name)
+
+
+class Cluster1ServiceAccountNamed(tutil.OperatorTest):
+    cluster_name = "mycluster"
+    sa_name = "mycluster-named-sa"
+    default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+
+    @classmethod
+    def setUpClass(cls):
+        cls.logger = logging.getLogger(__name__+":"+cls.__name__)
+        super().setUpClass()
+
+        g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-0")
+
+    @classmethod
+    def tearDownClass(cls):
+        g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-0")
+
+        super().tearDownClass()
+
+    def test_00_create(self):
+        """
+        Create cluster, check posted events.
+        """
+        kutil.create_user_secrets(
+            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+
+        # create cluster with mostly default configs
+        yaml = f"""
+apiVersion: mysql.oracle.com/v2
+kind: InnoDBCluster
+metadata:
+  name: {self.cluster_name}
+spec:
+  instances: 1
+  router:
+    instances: 0
+  secretName: mypwds
+  edition: community
+  tlsUseSelfSigned: true
+  serviceAccountName: {self.sa_name}
+  podSpec:
+    terminationGracePeriodSeconds: 1
+"""
+
+        apply_time = isotime()
+        kutil.apply(self.ns, yaml)
+
+        self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
+
+        self.wait_pod(f"{self.cluster_name}-0", "Running")
+
+        self.wait_ic(self.cluster_name, "ONLINE")
+
+        self.assertGotClusterEvent(
+            self.cluster_name, after=apply_time, type="Normal",
+            reason="ResourcesCreated",
+            msg="Dependency resources created, switching status to PENDING")
+        # TODO - this event not getting posted, check if normal
+        #self.assertGotClusterEvent(
+        #    "mycluster", after=apply_time, type="Normal",
+        #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
+        self.assertGotClusterEvent(
+            self.cluster_name, after=apply_time, type="Normal",
+            reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
+
+    def test_01_check_labels_and_annotations(self):
+        sas = [sa["NAME"] for sa in kutil.ls_sa(self.ns)]
+        self.assertTrue('default' in sas)
+        self.assertTrue(self.sa_name in sas)
+        cluster_sa = kutil.get_sa(self.ns, self.sa_name)
+        self.assertTrue('imagePullSecrets' not in cluster_sa)
+
+    def test_99_destroy(self):
+        kutil.delete_ic(self.ns, self.cluster_name)
+
+        self.wait_pod_gone(f"{self.cluster_name}-0")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_secret(self.ns, "mypwds")
+
+
+class Cluster1ServiceAccountNamedWithPullSecret(tutil.OperatorTest):
+    cluster_name = "mycluster"
+    sa_name = "mycluster-named-sa"
+    priv_registry_secret_name = "priv-reg-secret"
+    default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+
+    @classmethod
+    def setUpClass(cls):
+        cls.logger = logging.getLogger(__name__+":"+cls.__name__)
+        super().setUpClass()
+
+        g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-0")
+
+    @classmethod
+    def tearDownClass(cls):
+        g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-0")
+
+        super().tearDownClass()
+
+    def test_00_create(self):
+        """
+        Create cluster, check posted events.
+        """
+        kutil.create_user_secrets(
+            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+
+        # {"auths":{"https://192.168.20.198:5000/v2/":{"username":"user","password":"pass","email":"user@example.com","auth":"dXNlcjpwYXNz"}}}  # user:pass
+        yaml = f"""
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/dockerconfigjson
+metadata:
+  name: {self.priv_registry_secret_name}
+data:
+  .dockerconfigjson: eyJhdXRocyI6eyJodHRwczovLzE5Mi4xNjguMjAuMTk4OjUwMDAvdjIvIjp7InVzZXJuYW1lIjoidXNlciIsInBhc3N3b3JkIjoicGFzcyIsImVtYWlsIjoidXNlckBleGFtcGxlLmNvbSIsImF1dGgiOiJkWE5sY2pwd1lYTnoifX19
+"""
+        kutil.apply(self.ns, yaml)
+
+        # create cluster with mostly default configs
+        yaml = f"""
+apiVersion: mysql.oracle.com/v2
+kind: InnoDBCluster
+metadata:
+  name: {self.cluster_name}
+spec:
+  instances: 1
+  router:
+    instances: 0
+  secretName: mypwds
+  edition: community
+  tlsUseSelfSigned: true
+  serviceAccountName: {self.sa_name}
+  imagePullSecrets:
+  - name : {self.priv_registry_secret_name}
+  podSpec:
+    terminationGracePeriodSeconds: 1
+"""
+        apply_time = isotime()
+        kutil.apply(self.ns, yaml)
+
+        self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
+
+        self.wait_pod(f"{self.cluster_name}-0", "Running")
+
+        self.wait_ic(self.cluster_name, "ONLINE")
+
+        self.assertGotClusterEvent(
+            self.cluster_name, after=apply_time, type="Normal",
+            reason="ResourcesCreated",
+            msg="Dependency resources created, switching status to PENDING")
+        # TODO - this event not getting posted, check if normal
+        #self.assertGotClusterEvent(
+        #    "mycluster", after=apply_time, type="Normal",
+        #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
+        self.assertGotClusterEvent(
+            self.cluster_name, after=apply_time, type="Normal",
+            reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
+
+    def test_01_check_labels_and_annotations(self):
+        sas = [sa["NAME"] for sa in kutil.ls_sa(self.ns)]
+        self.assertTrue('default' in sas)
+        self.assertTrue(self.sa_name in sas)
+        cluster_sa = kutil.get_sa(self.ns, self.sa_name)
+        self.assertTrue('imagePullSecrets' in cluster_sa)
+        found = False
+        for pull_secret in cluster_sa['imagePullSecrets']:
+            if "name" in pull_secret and pull_secret["name"] == self.priv_registry_secret_name:
+                found = True
+        if not found:
+            print(cluster_sa)
+
+        self.assertTrue(found)
+        print(cluster_sa)
+
+    def test_99_destroy(self):
+        kutil.delete_ic(self.ns, self.cluster_name)
+
+        self.wait_pod_gone(f"{self.cluster_name}-0")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_secret(self.ns, self.priv_registry_secret_name)
 
 
 class Cluster1AnnotationsAndLabelsUpdate(tutil.OperatorTest):
@@ -356,6 +720,7 @@ spec:
 
         self.wait_pod_gone("mycluster-0")
         self.wait_ic_gone("mycluster")
+        kutil.delete_secret(self.ns, "mypwds")
 
 
 

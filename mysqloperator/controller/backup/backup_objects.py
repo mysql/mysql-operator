@@ -61,6 +61,7 @@ metadata:
 spec:
   template:
     spec:
+      serviceAccountName: {spec.serviceAccountName}
       securityContext:
         runAsUser: 27
         runAsGroup: 27
@@ -101,8 +102,6 @@ spec:
         emptyDir: {{}}
       restartPolicy: Never
       terminationGracePeriodSeconds: 60
-{utils.indent(spec.image_pull_secrets, 6)}
-{utils.indent(spec.service_account_name, 6)}
 """
     job = yaml.safe_load(tmpl)
 
@@ -275,8 +274,7 @@ spec:
             emptyDir: {{}}
           restartPolicy: Never
           terminationGracePeriodSeconds: 60
-{utils.indent(spec.image_pull_secrets, 10)}
-{utils.indent(spec.service_account_name, 10)}
+          serviceAccountName: {spec.serviceAccountName}
 """
     base = yaml.safe_load(tmpl.replace("\n\n", "\n"))
 

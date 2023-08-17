@@ -5,8 +5,8 @@
 
 from logging import Logger, getLogger
 import kopf
-from typing import List, Dict
-from ..kubeutils import client as api_client
+from typing import List, Dict, Optional
+from ..kubeutils import client as api_client, ApiException
 from .. import utils, config, consts
 from .cluster_api import InnoDBCluster, AbstractServerSetSpec, InnoDBClusterSpec, ReadReplicaSpec, InnoDBClusterSpecProperties
 from . import cluster_controller
@@ -218,11 +218,10 @@ spec:
         app.kubernetes.io/created-by: mysql-operator
     spec:
       subdomain: {spec.name}
-{utils.indent(spec.image_pull_secrets, 6)}
       readinessGates:
       - conditionType: "mysql.oracle.com/configured"
       - conditionType: "mysql.oracle.com/ready"
-{utils.indent(spec.service_account_name, 6)}
+      serviceAccountName: {spec.serviceAccountName}
       securityContext:
         runAsUser: 27
         runAsGroup: 27
@@ -555,22 +554,29 @@ def update_stateful_set_size(cluster: InnoDBCluster, rr_spec: ReadReplicaSpec, l
 
 
 def prepare_service_account(spec: InnoDBClusterSpec) -> dict:
-    if not spec.serviceAccountName is None:
-        return None
     account = f"""
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: {spec.name}-sidecar-sa
+  name: {spec.serviceAccountName}
   namespace: {spec.namespace}
+{spec.image_pull_secrets}
 """
+
     account = yaml.safe_load(account)
 
     return account
 
 
+def prepare_service_account_patch_for_image_pull_secrets(spec: InnoDBClusterSpec) -> Optional[Dict]:
+    if not spec.imagePullSecrets:
+        return None
+    return {
+        "imagePullSecrets" : spec.imagePullSecrets
+    }
+
+
 def prepare_role_binding(spec: InnoDBClusterSpec) -> dict:
-    sa_name = f"{spec.name}-sidecar-sa" if spec.serviceAccountName is None else spec.serviceAccountName
     rolebinding = f"""
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -579,7 +585,7 @@ metadata:
   namespace: {spec.namespace}
 subjects:
   - kind: ServiceAccount
-    name: {sa_name}
+    name: {spec.serviceAccountName}
 roleRef:
   kind: ClusterRole
   name: mysql-sidecar

@@ -162,8 +162,7 @@ spec:
         app.kubernetes.io/managed-by: mysql-operator
         app.kubernetes.io/created-by: mysql-operator
     spec:
-{utils.indent(spec.service_account_name, 6)}
-{utils.indent(spec.image_pull_secrets, 6)}
+      serviceAccountName: {spec.serviceAccountName}
       securityContext:
         runAsUser: 999
         runAsGroup: 999

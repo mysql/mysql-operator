@@ -188,8 +188,7 @@ class MySQLBackupSpec:
         self.addTimestampToBackupDirectory: bool = True
         self.operator_image: str = ""
         self.operator_image_pull_policy: str = ""
-        self.image_pull_secrets: Optional[str] = None
-        self.service_account_name: Optional[str] = None
+        self.serviceAccountName : Optional[str] = None
         self.parse(spec)
 
     def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
@@ -217,8 +216,7 @@ class MySQLBackupSpec:
 
         self.operator_image = cluster.parsed_spec.operator_image
         self.operator_image_pull_policy = cluster.parsed_spec.operator_image_pull_policy
-        self.image_pull_secrets = cluster.parsed_spec.image_pull_secrets
-        self.service_account_name = cluster.parsed_spec.service_account_name
+        self.serviceAccountName = cluster.parsed_spec.serviceAccountName
 
         if self.backupProfileName:
             self.backupProfile = cluster.parsed_spec.get_backup_profile(self.backupProfileName)

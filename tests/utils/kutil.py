@@ -341,6 +341,8 @@ def ls_pvc(ns):
 def ls_pv(ns):
     return __ls(ns, "pv")
 
+def ls_sa(ns):
+    return __ls(ns, "sa")
 
 def ls_secret(ns, pattern):
     secrets = __ls(ns, "secret")
@@ -438,9 +440,11 @@ def get_svc(ns, name, jpath=None):
 def get_po(ns, name, jpath=None, check=True):
     return get(ns, "po", name, check=check)
 
-
 def get_cj(ns, name, jpath=None, check=True):
     return get(ns, "cj", name, check=check)
+
+def get_sa(ns, name, jpath=None, check=True):
+    return get(ns, "sa", name, check=check)
 
 
 def get_ev(ns, selector, *, after=None, fields=None):

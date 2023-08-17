@@ -196,15 +196,19 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 api_core.create_namespaced_service(namespace=namespace, body=service)
 
             print("5. Cluster ServiceAccount")
-            if not ignore_404(cluster.get_service_account):
+            existing_sa = ignore_404(cluster.get_service_account)
+            print(f"\tExisting SA: {existing_sa}")
+            print(f"\tImagePullSecrets: {icspec.imagePullSecrets}")
+            if not existing_sa:
                 print("\tPreparing...")
                 sa = cluster_objects.prepare_service_account(icspec)
-                if sa is None:
-                    print(f"\tService account is predefined: {icspec.serviceAccountName}. Not creating")
-                else:
-                    print(f"\tCreating...{sa}")
-                    kopf.adopt(sa)
-                    api_core.create_namespaced_service_account(namespace=namespace, body=sa)
+                print(f"\tCreating...{sa}")
+                kopf.adopt(sa)
+                api_core.create_namespaced_service_account(namespace=namespace, body=sa)
+            elif icspec.imagePullSecrets:
+                patch = cluster_objects.prepare_service_account_patch_for_image_pull_secrets(icspec)
+                print(f"\tPatching existing SA with {patch}")
+                api_core.patch_namespaced_service_account(name=existing_sa.metadata.name, namespace=namespace, body=patch)
 
             print("6. Cluster RoleBinding")
             if not ignore_404(cluster.get_role_binding):

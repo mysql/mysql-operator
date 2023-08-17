@@ -23,7 +23,7 @@ rules:
     verbs: ["get", "create", "list", "update", "delete", "patch"]
   - apiGroups: [""]
     resources: ["serviceaccounts"]
-    verbs: ["get", "create"]
+    verbs: ["get", "create", "patch"]
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["create", "patch", "update"]

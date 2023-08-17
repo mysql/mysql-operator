@@ -848,8 +848,7 @@ class AbstractServerSetSpec(abc.ABC):
             self.imagePullSecrets = dget_list(
                 spec_root, "imagePullSecrets", "spec", content_type=dict)
 
-        if "serviceAccountName" in spec_root:
-            self.serviceAccountName = dget_str(spec_root, "serviceAccountName", "spec")
+        self.serviceAccountName = dget_str(spec_root, "serviceAccountName", "spec", default_value=f"{self.name}-sidecar-sa")
 
         if "imageRepository" in spec_root:
             self.imageRepository = dget_str(spec_root, "imageRepository", "spec")
@@ -1132,7 +1131,6 @@ class AbstractServerSetSpec(abc.ABC):
     name: {self.metrics.tls_secret}
 """
 
-
         return volumes
 
     @property
@@ -1153,13 +1151,6 @@ class AbstractServerSetSpec(abc.ABC):
         return ""
 
 
-    @property
-    def service_account_name(self) -> str:
-        saName = f"{self.serviceAccountName}" if self.serviceAccountName else f"{self.name}-sidecar-sa"
-        return f"serviceAccountName: {saName}"
-
-
-
 class ReadReplicaSpec(AbstractServerSetSpec):
     def __init__(self, namespace: str, cluster_name: str, spec_root: dict,
                  spec_specific: dict, where_specific: str):
@@ -1170,11 +1161,6 @@ class ReadReplicaSpec(AbstractServerSetSpec):
 
     def load(self, spec_root: dict, spec_specific: dict, where_specific: str):
         self._load(spec_root, spec_specific, where_specific)
-
-    @property
-    def service_account_name(self) -> str:
-        saName = f"{self.serviceAccountName}" if self.serviceAccountName else f"{self.cluster_name}-sidecar-sa"
-        return f"serviceAccountName: {saName}"
 
 
 class InnoDBClusterSpec(AbstractServerSetSpec):
@@ -1692,7 +1678,7 @@ class InnoDBCluster(K8sInterfaceObject):
 
     def get_service_account(self) -> api_client.V1ServiceAccount:
         return cast(api_client.V1ServiceAccount,
-                    api_core.read_namespaced_service_account(f"{self.name}-sidecar-sa", self.namespace))
+                    api_core.read_namespaced_service_account(self.parsed_spec.serviceAccountName, self.namespace))
 
     def get_role_binding(self) -> api_client.V1RoleBinding:
         return cast(api_client.V1RoleBinding,

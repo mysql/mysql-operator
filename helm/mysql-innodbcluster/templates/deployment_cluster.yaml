@@ -413,3 +413,7 @@ spec:
   podAnnotations: {{ toYaml ((.Values).podAnnotations) | nindent 4 }}
 {{- end }}
 
+
+{{ if ((.Values).logs) }}
+  logs: {{ toYaml ((.Values).logs) | nindent 4 }}
+{{ end }}

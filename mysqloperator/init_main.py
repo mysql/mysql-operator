@@ -38,9 +38,11 @@ def init_conf(datadir, pod, cluster, logger):
 
     srcdir = "/mnt/initconf/"
     destdir = "/mnt/mycnfdata/"
+    mycnf_dir = destdir + "my.cnf.d"
+    initdb_dir = destdir + "docker-entrypoint-initdb.d"
 
-    os.makedirs(destdir + "my.cnf.d", exist_ok=True)
-    os.makedirs(destdir + "docker-entrypoint-initdb.d", exist_ok=True)
+    os.makedirs(mycnf_dir, exist_ok=True)
+    os.makedirs(initdb_dir, exist_ok=True)
 
     with open(srcdir + "my.cnf.in") as f:
         data = f.read()
@@ -51,16 +53,17 @@ def init_conf(datadir, pod, cluster, logger):
             mycnf.write(data)
 
     for f in os.listdir(srcdir):
+        file = os.path.join(srcdir, f)
         if f.startswith("initdb-"):
-            shutil.copy(os.path.join(srcdir, f), destdir +
-                        "docker-entrypoint-initdb.d")
+            print(f"Copying {file} to {initdb_dir}")
+            shutil.copy(file, initdb_dir)
             if f.endswith(".sh"):
-                os.chmod(os.path.join(
-                    destdir + "docker-entrypoint-initdb.d", f), 0o555)
+                os.chmod(os.path.join(initdb_dir, f), 0o555)
         elif f.endswith(".cnf"):
-            shutil.copy(os.path.join(srcdir, f), destdir + "my.cnf.d")
+            print(f"Copying {file} to {mycnf_dir}")
+            shutil.copy(file, mycnf_dir)
 
-    logger.info(f"Configuration done")
+    logger.info("Configuration done")
 
 
 def main(argv):

@@ -4,7 +4,7 @@
 #
 
 from logging import Logger
-from typing import Callable, Optional, TYPE_CHECKING, Tuple
+from typing import Callable, Optional, TYPE_CHECKING, Tuple, List
 
 from mysqloperator.controller.innodbcluster.cluster_api import InnoDBCluster
 
@@ -188,7 +188,7 @@ class GroupMonitor(threading.Thread):
     def __init__(self):
         super().__init__(daemon=True, name="group-monitor")
 
-        self.clusters = []
+        self.clusters : List[MonitoredCluster] = []
         self.stopped = False
 
     def monitor_cluster(self, cluster: InnoDBCluster,

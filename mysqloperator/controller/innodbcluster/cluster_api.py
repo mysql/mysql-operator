@@ -5,19 +5,19 @@
 
 from enum import Enum
 import typing
-from typing import Optional, List, Tuple, Dict, cast, overload
+from typing import Optional, Union, List, Tuple, Dict, Callable, cast, overload
 
 from kopf._cogs.structs.bodies import Body
-from logging import getLogger
+from logging import getLogger, Logger
 from ..k8sobject import K8sInterfaceObject
 from .. import utils, config, consts
 from ..backup.backup_api import BackupProfile, BackupSchedule
 from ..storage_api import StorageSpec
-from ..api_utils import Edition, dget_bool, dget_dict, dget_enum, dget_str, dget_int, dget_list, ApiSpecError, ImagePullPolicy
+from ..api_utils import Edition, dget_bool, dget_dict, dget_enum, dget_str, dget_int, dget_float, dget_list, ApiSpecError, ImagePullPolicy
 from ..kubeutils import api_core, api_apps, api_customobj, api_policy, api_rbac, api_batch, api_cron_job
 from ..kubeutils import client as api_client, ApiException
 from ..kubeutils import k8s_cluster_domain
-from logging import Logger
+from .logs.logs_api import LogsSpec
 import json
 import yaml
 import datetime
@@ -646,6 +646,7 @@ spec:
             self.keyringOci.add_to_initconf(configmap)
 
 
+
 class RouterSpec:
     # number of Router instances (optional)
     instances: int = 1
@@ -688,6 +689,15 @@ class RouterSpec:
             self.options = dget_list(spec, "options", prefix)
 
 
+# Must correspond to the names in the CRD
+class InnoDBClusterSpecProperties(Enum):
+    LOGS = "logs"
+    ROUTER = "router"
+    BACKUP_PROFILES = "backupProfiles"
+    BACKUP_SCHEDULES = "backupSchedules"
+    INITDB = "initDB"
+
+
 class InnoDBClusterSpec:
     # name of user-provided secret containing root password (optional)
     secretName: Optional[str] = None
@@ -724,6 +734,7 @@ class InnoDBClusterSpec:
     podSpec: dict = {}
     podAnnotations: Optional[dict] = None
     podLabels: Optional[dict] = None
+    backupSchedules: List[BackupSchedule] = []
 
     # Initialize DB
     initDB: Optional[InitDB] = None
@@ -731,6 +742,7 @@ class InnoDBClusterSpec:
     router: RouterSpec = RouterSpec()
 
     metrics: Optional[MetriscSpec] = None
+    logs: Optional[LogsSpec] = None
 
     # TODO resource allocation for server, router and sidecar
     # TODO recommendation is that sidecar has 500MB RAM if MEB is used
@@ -753,10 +765,15 @@ class InnoDBClusterSpec:
     def __init__(self, namespace: str, name: str, spec: dict):
         self.namespace = namespace
         self.name = name
-        self.backupSchedules: List[BackupSchedule] = []
         self.load(spec)
 
     def load(self, spec: dict) -> None:
+        # initialize now or all instances will share the same list initialized before the ctor
+        self.add_to_initconf_cbs: Dict[str, List[Callable]] = {}
+        self.remove_from_sts_cbs: Dict[str, List[Callable]] = {}
+        self.add_to_sts_cbs: Dict[str, List[Callable]] = {}
+        self.get_configmap_cbs: Dict[str, List[Callable]] = {}
+
         self.secretName = dget_str(spec, "secretName", "spec")
 
         if "tlsCASecretName" in spec:
@@ -820,11 +837,10 @@ class InnoDBClusterSpec:
             self.mycnf = dget_str(spec, "mycnf", "spec")
 
         # Router Options
-        if "router" in spec:
-            self.router = RouterSpec()
-            self.router.parse(dget_dict(spec, "router", "spec"), "spec.router")
-        else:
-            self.router = RouterSpec()
+        self.router = RouterSpec()
+        section = InnoDBClusterSpecProperties.ROUTER.value
+        if section in spec:
+            self.router.parse(dget_dict(spec, section, "spec"), f"spec.{section}")
 
         if not self.router.tlsSecretName:
             self.router.tlsSecretName = f"{self.name}-router-tls"
@@ -833,9 +849,30 @@ class InnoDBClusterSpec:
             self.metrics = MetriscSpec()
             self.metrics.parse(dget_dict(spec, "metrics", "spec"), "spec.metrics")
 
+        self.logs = LogsSpec(self.namespace, self.name)
+        section = InnoDBClusterSpecProperties.LOGS.value
+        if section in spec:
+            self.logs.parse(dget_dict(spec, section, "spec"), f"spec.{section}", getLogger())
+
+            cb = self.logs.get_configmaps_cb()
+            if cb:
+                self.get_configmap_cbs[InnoDBClusterSpecProperties.LOGS.value] = [cb]
+
+            cb = self.logs.get_add_to_initconf_cb()
+            if cb:
+                self.add_to_initconf_cbs[InnoDBClusterSpecProperties.LOGS.value] = [cb]
+
+            cb = self.logs.get_remove_from_sts_cb()
+            if cb:
+                self.remove_from_sts_cbs[InnoDBClusterSpecProperties.LOGS.value] = [cb]
+            cb = self.logs.get_add_to_sts_cb()
+            if cb:
+                self.add_to_sts_cbs[InnoDBClusterSpecProperties.LOGS.value] = [cb]
+
         # Initialization Options
-        if "initDB" in spec:
-            self.load_initdb(dget_dict(spec, "initDB", "spec"))
+        section = InnoDBClusterSpecProperties.INITDB.value
+        if section in spec:
+            self.load_initdb(dget_dict(spec, section, "spec"))
 
         # TODO keep a list of base_server_id in the operator to keep things globally unique?
         if "baseServerId" in spec:
@@ -843,15 +880,17 @@ class InnoDBClusterSpec:
 
 
         self.backupProfiles = []
-        if "backupProfiles" in spec:
-            profiles = dget_list(spec, "backupProfiles", "spec", [], content_type=dict)
+        section = InnoDBClusterSpecProperties.BACKUP_PROFILES.value
+        if section in spec:
+            profiles = dget_list(spec, section, "spec", [], content_type=dict)
             for profile in profiles:
                 self.backupProfiles.append(self.parse_backup_profile(profile))
 
 
         self.backupSchedules = []
-        if "backupSchedules" in spec:
-            schedules = dget_list(spec, "backupSchedules", "spec", [], content_type=dict)
+        section = InnoDBClusterSpecProperties.BACKUP_SCHEDULES.value
+        if section in spec:
+            schedules = dget_list(spec, section, "spec", [], content_type=dict)
             for schedule in schedules:
                 self.backupSchedules.append(self.parse_backup_schedule(schedule))
 
@@ -926,6 +965,8 @@ class InnoDBClusterSpec:
 
             if not valid_version:
                 raise ApiSpecError(version_error)
+
+        self.logs.validate()
 
     def format_image(self, image, version):
         if self.imageRepository:
@@ -1512,14 +1553,23 @@ class InnoDBCluster(K8sInterfaceObject):
                     api_rbac.read_namespaced_role_binding(f"{self.name}-sidecar-rb", self.namespace))
 
 
+    def delete_configmap(self, cm_name: str) -> typing.Optional[api_client.V1Status]:
+        try:
+            body = api_client.V1DeleteOptions(grace_period_seconds=0)
+            status = cast(api_client.V1Status,
+                          api_core.delete_namespaced_config_map(cm_name, self.namespace, body=body))
+            return status
+        except ApiException as e:
+            if e.status == 404:
+                return None
+            raise
+
     def get_configmap(self, cm_name: str) -> typing.Optional[api_client.V1ConfigMap]:
         try:
             cm = cast(api_client.V1ConfigMap,
                       api_core.read_namespaced_config_map(f"{cm_name}", self.namespace))
-            getLogger().info(f"ConfigMap {cm_name} found in {self.namespace}")
             return cm
         except ApiException as e:
-            getLogger().info(f"ConfigMap {cm_name} NOT found in {self.namespace}")
             if e.status == 404:
                 return None
             raise
@@ -1528,10 +1578,8 @@ class InnoDBCluster(K8sInterfaceObject):
         try:
             cm = cast(api_client.V1Secret,
                       api_core.read_namespaced_secret(f"{s_name}", self.namespace))
-            getLogger().info(f"Secret {s_name} found in {self.namespace}")
             return cm
         except ApiException as e:
-            getLogger().info(f"Secret {s_name} NOT found in {self.namespace}")
             if e.status == 404:
                 return None
             raise
@@ -1723,7 +1771,15 @@ class InnoDBCluster(K8sInterfaceObject):
         logger.info(f"\tImagePullPolicy:\t{self.parsed_spec.imagePullPolicy}")
         logger.info(f"\tImageRepository:\t{self.parsed_spec.imageRepository}")
         logger.info(f"\tBase ServerId:\t{self.parsed_spec.baseServerId}")
+        logger.info(f"\tLog collection:\t{self.parsed_spec.logs.collect}")
         logger.info(f"\tRouter instances:\t{self.parsed_spec.router.instances}")
+        if self.parsed_spec.logs.collect:
+            logger.info(f"\tLog collector image:\t{self.parsed_spec.logs.collector.image_name}")
+        if self.parsed_spec.metrics:
+            logger.info(f"\tMetrics enabled:\t{self.parsed_spec.metrics.enable}")
+            logger.info(f"\tMetrics monitor:\t{self.parsed_spec.metrics.monitor}")
+            if self.parsed_spec.metrics.enable:
+                logger.info(f"\tMetrics image:\t{self.parsed_spec.metrics.image}")
         logger.info(f"\tBackup profiles:\t{len(self.parsed_spec.backupProfiles)}")
         logger.info(f"\tBackup schedules:\t{len(self.parsed_spec.backupSchedules)}")
         self.log_tls_info(logger)

@@ -6,9 +6,9 @@
 from logging import Logger, getLogger
 import kopf
 from typing import List, Dict
-from ..kubeutils import client as api_client, ApiException
+from ..kubeutils import client as api_client
 from .. import utils, config, consts
-from .cluster_api import InnoDBCluster, InnoDBClusterSpec
+from .cluster_api import InnoDBCluster, InnoDBClusterSpec, InnoDBClusterSpecProperties
 from . import cluster_controller
 import yaml
 from ..kubeutils import api_core, api_apps, api_customobj, k8s_cluster_domain
@@ -133,8 +133,8 @@ spec:
 #
 def prepare_cluster_stateful_set(spec: InnoDBClusterSpec, logger: Logger) -> dict:
     init_mysql_argv = ["mysqld", "--user=mysql"]
-    if config.enable_mysqld_general_log:
-        init_mysql_argv.append("--general-log=1")
+#    if config.enable_mysqld_general_log:
+#        init_mysql_argv.append("--general-log=1")
 
     mysql_argv = init_mysql_argv
 
@@ -482,25 +482,33 @@ spec:
 
     metadata = {}
     if spec.podAnnotations:
+        print("\t\tAdding podAnnotations")
         metadata['annotations'] = spec.podAnnotations
     if spec.podLabels:
+        print("\t\tAdding podLabels")
         metadata['labels'] = spec.podLabels
 
     if len(metadata):
         utils.merge_patch_object(statefulset["spec"]["template"], {"metadata" : metadata })
 
     if spec.keyring:
+        print("\t\tAdding keyring bits")
         spec.keyring.add_to_sts_spec(statefulset)
 
+    for subsystem in spec.add_to_sts_cbs:
+        for add_to_sts_cb in spec.add_to_sts_cbs[subsystem]:
+            print(f"\t\tAdding {subsystem} bits")
+            add_to_sts_cb(statefulset, logger)
+
     if spec.podSpec:
+        print("\t\tAdding podSpec")
         utils.merge_patch_object(statefulset["spec"]["template"]["spec"],
                                  spec.podSpec, "spec.podSpec")
 
     if spec.datadirVolumeClaimTemplate:
+        print("\t\tAdding datadirVolumeClaimTemplate")
         utils.merge_patch_object(statefulset["spec"]["volumeClaimTemplates"][0]["spec"],
                                  spec.datadirVolumeClaimTemplate, "spec.volumeClaimTemplates[0].spec")
-
-
     return statefulset
 
 def prepare_service_account(spec: InnoDBClusterSpec) -> dict:
@@ -539,6 +547,19 @@ roleRef:
     return rolebinding
 
 
+def prepare_additional_configmaps(cluster: InnoDBCluster, logger: Logger) -> List[Dict]:
+    spec = cluster.parsed_spec
+    configmaps = []
+    prefix = ''
+    for subsystem in spec.get_configmap_cbs:
+        for cb in spec.get_configmap_cbs[subsystem]:
+            cm = cb(prefix, logger)
+            if cm:
+                configmaps.extend(cm)
+
+    return configmaps
+
+
 def prepare_component_config_configmaps(cluster: InnoDBCluster, logger: Logger) -> List[Dict]:
     spec = cluster.parsed_spec
     configmaps = []
@@ -555,7 +576,7 @@ def prepare_component_config_secrets(cluster: InnoDBCluster, logger: Logger) -> 
     if spec.keyring.is_component:
         cm = spec.keyring.get_component_config_secret_manifest()
         if cm:
-          secrets.append(cm)
+            secrets.append(cm)
 
     return secrets
 
@@ -625,7 +646,6 @@ fi
     has_crl = cluster.tls_has_crl()
 
     if not spec.tlsUseSelfSigned:
-        logger.info(f"CA={cluster.get_ca_and_tls().get('CA')}")
         ca_file_name = cluster.get_ca_and_tls().get("CA", "ca.pem")
     else:
         ca_file_name = ""
@@ -717,13 +737,19 @@ data:
     # Additional user configurations taken from spec.mycnf in InnoDBCluster.
     # Do not edit directly.
 {utils.indent(spec.mycnf, 4) if spec.mycnf else ""}
-
-
 """
+
     cm = yaml.safe_load(tmpl)
 
+    # At some point wrap this as a function and add it to spec.add_to_initconf_cbs
     if spec.keyring and not spec.keyring.is_component:
         spec.keyring.add_to_initconf(cm)
+
+    prefix = 5
+    for subsystem in spec.add_to_initconf_cbs:
+        for add_to_initconf_cb in spec.add_to_initconf_cbs[subsystem]:
+          add_to_initconf_cb(cm, f"{prefix:02d}-", logger)
+          prefix = prefix + 1
 
     return cm
 
@@ -903,6 +929,39 @@ def update_metrics(sts: api_client.V1StatefulSet,
         api_customobj.create_namespaced_custom_object(
             "monitoring.coreos.com", "v1", spec.namespace, "servicemonitors",
             monitor)
+
+def update_objects_for_logs(sts: api_client.V1StatefulSet, cluster: InnoDBCluster, logger: Logger) -> None:
+    logger.info(f"update_sts_for_logs")
+
+    subsystem = InnoDBClusterSpecProperties.LOGS.value
+    spec = cluster.parsed_spec
+
+    for get_configmap_cb in spec.get_configmap_cbs[subsystem]:
+        prefix = ''
+        new_configmaps = get_configmap_cb(prefix, logger)
+        for new_cm in new_configmaps:
+            cm_name = new_cm["metadata"]["name"]
+            current_cm = cluster.get_configmap(cm_name)
+            if current_cm:
+                data_differs = current_cm.data != new_cm["data"]
+                if data_differs:
+                    print(f"\t\tReplacing {cluster.namespace}/{cm_name}")
+                    current_cm.data = new_cm["data"]
+                    api_core.replace_namespaced_config_map(cm_name, cluster.namespace, body=current_cm)
+            else:
+                print(f"\t\tNo such cm exists. Creating {cluster.namespace}/{new_cm}")
+                kopf.adopt(new_cm)
+                api_core.create_namespaced_config_map(cluster.namespace, new_cm)
+
+    print(f"\t\tWalking over add_to_sts_cbs len={len(spec.add_to_sts_cbs[subsystem])}")
+    for add_to_sts_cb in spec.add_to_sts_cbs[subsystem]:
+        print("\t\tPatching STS")
+        add_to_sts_cb(sts, logger)
+        if not hasattr(sts.spec.template.metadata, "annotations") or sts.spec.template.metadata.annotations is None:
+            setattr(sts.spec.template.metadata, "annotations", {})
+        sts.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = utils.isotime()
+        print("\t\tReplacing STS")
+        api_apps.replace_namespaced_stateful_set(sts.metadata.name, sts.metadata.namespace, body=sts)
 
 
 def on_first_cluster_pod_created(cluster: InnoDBCluster, logger: Logger) -> None:

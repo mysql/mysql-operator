@@ -9,7 +9,7 @@ from .kubeutils import k8s_version
 import os
 
 debug = False
-enable_mysqld_general_log = False
+#enable_mysqld_general_log = False
 
 _pull_policy = os.getenv("MYSQL_OPERATOR_IMAGE_PULL_POLICY")
 if _pull_policy:
@@ -74,7 +74,7 @@ def config_from_env() -> None:
     import mysqlsh
 
     global debug
-    global enable_mysqld_general_log
+#    global enable_mysqld_general_log
     global default_image_pull_policy
 
     level = os.getenv("MYSQL_OPERATOR_DEBUG")
@@ -83,7 +83,7 @@ def config_from_env() -> None:
         level = int(level)
         if level > 0:
             debug = level
-            enable_mysqld_general_log = True
+#            enable_mysqld_general_log = True
 
             if level > 4:
                 mysqlsh.globals.shell.options.logLevel = 8

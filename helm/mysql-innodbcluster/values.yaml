@@ -29,6 +29,60 @@ baseServerId: 1000
 #  podAnnotations:
 #  podLabels:
 
+#logs:
+#  error:
+#    enabled: true
+#    collect: false
+#  general:
+#    enabled: false
+#    collect: false
+#  slowQuery:
+#    enabled: false
+#    longQueryTime: 2.5
+#  collector:
+#    image: "192.168.20.198:5000/fluentd-es:v1.16"
+#    fluentd:
+#      forwarding:
+#        enabled: false
+#        forwarderSpec:
+#          podSpec:
+#            terminationGracePeriod: 42
+#          podAnnotations:
+#            forwarderAnnotation1: forwarderAnnotation1Value
+#          podLabels:
+#            forwarderLabel1: forwarderLabel1Value
+#      generalLog:
+#        tag: "genLogTag"
+##        options:
+#      errorLog:
+#        tag: "errLogTag"
+##        options:
+##      slowLog:
+#        tag: "slowLogTag"
+##        options:
+#     recordAugmentation:
+#        enabled: false
+#        labels:
+#        - fieldName: "pod_name"
+#          labelName: "statefulset.kubernetes.io/pod-name"
+#        annotations:
+#        - fieldName: "membership-info"
+#          labelName: "mysql.oracle.com/membership-info"
+#        staticFields:
+#        - fieldName: "static_field_1"
+#          fieldValue: "static_field_1_value"
+#        resourceFields:
+#        - fieldName: "pod_ip"
+#          fieldPath: "status.podIP"
+#        - fieldName: "host_ip"
+#          fieldPath: "status.hostIP"
+#      additionalFilterConfiguration: |
+#        filterConfigValueLine1
+#        filterConfigValueLine1
+#      sink:
+##       rawConfig:
+
+
 #keyring:
 #  file:
 #    fileName:

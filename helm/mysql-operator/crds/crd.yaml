@@ -302,8 +302,7 @@ spec:
                       type: array
                       items:
                         type: string
- 
-                        
+
                 metrics:
                   type: object
                   description: "Configuration of a Prometheus-style metrics provider"
@@ -356,7 +355,7 @@ spec:
                     #      type: integer
                     #      default: 3
                     #      description: "Maximum number of connections"
- 
+
                 backupProfiles:
                   type: array
                   description: "Backup profile specifications for the cluster, which can be referenced from backup schedules and one-off backup jobs"
@@ -589,6 +588,191 @@ spec:
                         type: boolean
                         default: true
                         description: "Whether the schedule is enabled or not"
+                logs:
+                  type: object
+                  properties:
+                    general:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: false
+                          description: "Whether general logging should be enabled"
+                        collect:
+                          type: boolean
+                          default: false
+                          description: "Whether general logging data should be collected. Implies that the logging should be enabled."
+                    error:
+                      type: object
+                      properties:
+                        collect:
+                          type: boolean
+                          default: false
+                          description: "Whether error logging data should be collected. Implies that the logging should be enabled. If enabled the error log will be switched to JSON format output"
+                        verbosity:
+                          type: integer
+                          default: 3
+                          minimum: 1
+                          maximum: 3
+                          description: "Log error verbosity. See documentation of --log-error-verbosity of MySQL Server"
+                    slowQuery:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: false
+                          description: "Whether slow query logging should be enabled"
+                        longQueryTime:
+                          type: number
+                          minimum: 0
+                          default: 10
+                          description: "Long query time threshold"
+                        collect:
+                          type: boolean
+                          default: false
+                          description: "Whether slow query logging data should be collected. Implies that the logging should be enabled."
+                    collector:
+                      type: object
+                      oneOf:
+                      - required: ["image", "fluentd"]
+                      properties:
+                        image:
+                          type: string
+                          description: "Name of an image, incl. registry and repository, to be used for the log collector sidecar. If provided needs to be an image for the collector type configured"
+                        containerName:
+                          type: string
+                          default: "logcollector"
+                          description: "Name of the collector container sidecar"
+                        env:
+                          type: array
+                          items:
+                            type: object
+                            description: "Environment variables to be passed to the image. Definition will be directly copied like podSpec fields are"
+                            x-kubernetes-preserve-unknown-fields: true
+                        fluentd:
+                          type: object
+                          description: "Properties of the fluentd log collector"
+                          oneOf:
+                          - required: ["sinks"]
+                          properties:
+                            generalLog:
+                              type: object
+                              properties:
+                                tag:
+                                  type: string
+                                  default: ""
+                                  description: "Tag for the general log records"
+                                options:
+                                  type: object
+                                  description: "fluentd specific options for the general log"
+                                  x-kubernetes-preserve-unknown-fields: true
+                            errorLog:
+                              type: object
+                              properties:
+                                tag:
+                                  type: string
+                                  default: ""
+                                  description: "Tag for the error log records"
+                                options:
+                                  type: object
+                                  description: "fluentd specific options for the error log"
+                                  x-kubernetes-preserve-unknown-fields: true
+                            slowQueryLog:
+                              type: object
+                              properties:
+                                tag:
+                                  type: string
+                                  default: ""
+                                  description: "Tag for the slow log records"
+                                options:
+                                  type: object
+                                  description: "fluentd specific options for the error log"
+                                  x-kubernetes-preserve-unknown-fields: true
+                            recordAugmentation:
+                              type: object
+                              properties:
+                                enabled:
+                                  type: boolean
+                                  default: false
+                                  description: "Whether to enable record augmentation with additional data"
+                                labels:
+                                  type: array
+                                  items:
+                                    type: object
+                                    required: ["fieldName", "labelName"]
+                                    properties:
+                                      fieldName:
+                                        type: string
+                                        description: "Name of the field added to the log record with value from labelName"
+                                      labelName:
+                                        type: string
+                                        description: "Name of the pod label that holds the value to be stored under fieldName in the log record"
+                                annotations:
+                                  type: array
+                                  items:
+                                    type: object
+                                    required: ["fieldName", "annotationName"]
+                                    properties:
+                                      fieldName:
+                                        type: string
+                                        description: "Name of the field added to the log record with value from annotationName"
+                                      annotationName:
+                                        type: string
+                                        description: "Name of the pod label that holds the value to be stored under fieldName in the log record"
+                                staticFields:
+                                  type: array
+                                  items:
+                                    type: object
+                                    required: ["fieldName", "fieldValue"]
+                                    properties:
+                                      fieldName:
+                                        type: string
+                                        description: "Name of the field added to the log record with value from fieldValue"
+                                      fieldValue:
+                                        type: string
+                                        description: "Value for the static field with name taken from fieldName"
+                                podFields:
+                                  type: array
+                                  items:
+                                    type: object
+                                    required: ["fieldName", "fieldPath"]
+                                    properties:
+                                      fieldName:
+                                        type: string
+                                        description: "Name of the field added to the log record with value taken from a field with path stored in fieldPath"
+                                      fieldPath:
+                                        type: string
+                                        description: "Value for the field fieldName. The path should be of the same syntax as the one used for mounting environment variables from field reference - valueFrom.fieldRef.fieldPath . The field will be mounted in the pod as a environment variable, prefixed with a prefix and used then added to the log record. Examples for fieldRef are : spec.nodeName, metadata.namespace, status.podIP, etc."
+                                resourceFields:
+                                  type: array
+                                  items:
+                                    type: object
+                                    required: ["fieldName", "containerName", "resource"]
+                                    properties:
+                                      fieldName:
+                                        type: string
+                                        description: "Name of the field added to the log record with value taken from a field with path stored in fieldPath"
+                                      containerName:
+                                        type: string
+                                      resource:
+                                        type: string
+                                        description: "See https://kubernetes.io/docs/tasks/inject-data-application/environment-variable-expose-pod-information/#use-container-fields-as-values-for-environment-variables"
+                            additionalFilterConfiguration:
+                              type: string
+                              description: "Raw configuration of additional Fluentd filters to be added to the configuration file"
+                            sinks:
+                              type: array
+                              items:
+                                type: object
+                                required: ["name", "rawConfig"]
+                                x-kubernetes-preserve-unknown-fields: true
+                                properties:
+                                  name:
+                                    type: string
+                                    description: "Name of the sink. Used only for documentation purposes"
+                                  rawConfig:
+                                    type: "string"
+                                    description: "Raw configuration of the sink"
             status:
               type: object
               x-kubernetes-preserve-unknown-fields: true

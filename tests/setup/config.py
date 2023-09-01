@@ -63,6 +63,8 @@ class Config:
     azure_config_file = defaults.AZURE_CONFIG_FILE
     azure_container_name = defaults.AZURE_CONTAINER_NAME
 
+    fluentd_image_name = defaults.FLUENTD_IMAGE_NAME
+
     # vault
     vault_cfg_path = defaults.OCI_VAULT_CONFIG_PATH
 
@@ -176,6 +178,9 @@ class Config:
         elif ns:
             diagnostics_dir = os.path.join(diagnostics_dir, ns)
         return diagnostics_dir
+
+    def get_fluentd_image(self) -> str:
+        return f"{self.image_registry}{'/' if self.image_registry else ''}{self.fluentd_image_name}"
 
 
 # test-suite configuration

@@ -103,18 +103,25 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
 
     if not cluster.ready:
         try:
-            print("0.Configuration ConfigMaps")
+            print("0. Components ConfigMaps and Secrets")
             for cm in cluster_objects.prepare_component_config_configmaps(cluster, logger):
                 if not cluster.get_configmap(cm['metadata']['name']):
-                    print(f"\tCreating...{cm}")
+                    print(f"\tCreating CM {cm['metadata']['name']} ...")
                     kopf.adopt(cm)
                     api_core.create_namespaced_config_map(namespace, cm)
 
             for secret in cluster_objects.prepare_component_config_secrets(cluster, logger):
                 if not cluster.get_secret(secret['metadata']['name']):
-                    print(f"\tCreating...{secret}")
+                    print(f"\tCreating Secret {secret['metadata']['name']} ...")
                     kopf.adopt(secret)
                     api_core.create_namespaced_secret(namespace, secret)
+
+            print("0.5. Additional ConfigMaps")
+            for cm in cluster_objects.prepare_additional_configmaps(cluster, logger):
+                if not cluster.get_configmap(cm['metadata']['name']):
+                    print(f"\tCreating CM {cm['metadata']['name']} ...")
+                    kopf.adopt(cm)
+                    api_core.create_namespaced_config_map(namespace, cm)
 
             print("1. Initial Configuration ConfigMap and Container Probes")
             if not ignore_404(cluster.get_initconf):
@@ -144,7 +151,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             if not ignore_404(cluster.get_service):
                 print("\tPreparing...")
                 service = cluster_objects.prepare_cluster_service(icspec)
-                print("\tCreating...")
+                print(f"\tCreating Service {service['metadata']['name']}...")
                 kopf.adopt(service)
                 api_core.create_namespaced_service(namespace=namespace, body=service)
 
@@ -163,7 +170,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             if not ignore_404(cluster.get_role_binding):
                 print("\tPreparing...")
                 rb = cluster_objects.prepare_role_binding(icspec)
-                print(f"\tCreating...{rb}")
+                print(f"\tCreating RoleBinding {rb['metadata']['name']} ...")
                 kopf.adopt(rb)
                 api_rbac.create_namespaced_role_binding(namespace=namespace, body=rb)
 
@@ -828,3 +835,21 @@ def on_innodbcluster_field_metrics(old: str, new: str, body: Body,
         sts = cluster.get_stateful_set()
         service = cluster.get_service()
         cluster_objects.update_metrics(sts, service, cluster, logger)
+
+
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL, field="spec.logs")  # type: ignore
+def on_innodbcluster_field_logs(old: str, new: str, body: Body, logger: Logger, **kwargs):
+    if old == new:
+        return
+
+    cluster = InnoDBCluster(body)
+
+    # ignore spec changes if the cluster is still being initialized
+    if not cluster.ready:
+        logger.debug("Ignoring spec.logs change for unready cluster")
+        return
+
+    cluster.parsed_spec.validate(logger)
+    with ClusterMutex(cluster):
+        sts = cluster.get_stateful_set()
+        cluster_objects.update_objects_for_logs(sts, cluster, logger)

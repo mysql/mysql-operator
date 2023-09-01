@@ -75,6 +75,8 @@ def dget_enum(d: dict, key: str, what: str, *, default_value: Optional[E], enum_
 def dget_int(d: dict, key: str, what: str, *, default_value: Optional[int] = None) -> int:
     return _dget(d, key, what, default_value, int)
 
+def dget_float(d: dict, key: str, what: str, *, default_value: Optional[float] = None) -> int:
+    return _dget(d, key, what, default_value, float)
 
 def dget_bool(d: dict, key: str, what: str, *, default_value: Optional[bool] = None) -> bool:
     return _dget(d, key, what, default_value, bool)

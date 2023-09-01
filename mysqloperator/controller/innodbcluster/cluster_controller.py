@@ -13,6 +13,7 @@ from . import router_objects
 from .cluster_api import MySQLPod, InnoDBCluster, client
 import typing
 from typing import Optional, TYPE_CHECKING, Dict
+from logging import Logger
 if TYPE_CHECKING:
     from mysqlsh.mysql import ClassicSession
     from mysqlsh import Dba, Cluster
@@ -812,7 +813,7 @@ class ClusterController:
         if not version_valid:
             raise kopf.PermanentError(version_error)
 
-    def on_change_metrics_user(self, logger: 'Logger') -> None:
+    def on_change_metrics_user(self, logger: Logger) -> None:
         metrics = self.cluster.parsed_spec.metrics
         self.connect_to_primary(None, logger)
 

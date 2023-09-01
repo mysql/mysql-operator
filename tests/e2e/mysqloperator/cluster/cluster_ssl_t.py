@@ -112,6 +112,8 @@ def check_ssl(self, ns, pod, ca=None, crl=None, ssl_cert_days=None, check_gr_acc
 
         if check_gr_accounts:
             with mutil.MySQLPodSession(ns, pod, "root", "sakila") as s:
+                print(s.query_sql("""SELECT User, ssl_type, x509_issuer, x509_subject FROM mysql.user
+                                     WHERE User like "mysql_innodb_cluster_%" """).fetch_all())
                 row = s.query_sql("""SELECT COUNT(*) as tls_gr_user_count FROM mysql.user
                                     WHERE ssl_type="SPECIFIED"
                                     AND x509_issuer != "0x"

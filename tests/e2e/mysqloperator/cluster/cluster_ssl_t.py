@@ -111,6 +111,8 @@ def check_ssl(self, ns, pod, ca=None, crl=None, ssl_cert_days=None, check_gr_acc
         check_connect_via_operator_pod(self, f"{pod}.mycluster-instances.{ns}.svc.cluster.local:3306", capath, ssl_mode="VERIFY_IDENTITY")
 
         if check_gr_accounts:
+            cluster_info = kutil.get_ic(self.ns, "mycluster")["metadata"]["annotations"]["mysql.oracle.com/cluster-info"]
+            print(cluster_info)
             with mutil.MySQLPodSession(ns, pod, "root", "sakila") as s:
                 print(s.query_sql("""SELECT User, ssl_type, x509_issuer, x509_subject FROM mysql.user
                                      WHERE User like "mysql_innodb_cluster_%" """).fetch_all())

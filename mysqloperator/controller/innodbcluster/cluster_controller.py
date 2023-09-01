@@ -213,31 +213,21 @@ class ClusterController:
         logger.info("Creating cluster at %s" % seed_pod.name)
 
         assume_gtid_set_complete = False
+        initial_data_source = "blank"
         if self.cluster.parsed_spec.initDB:
             # TODO store version
             # TODO store last known quorum
             if self.cluster.parsed_spec.initDB.clone:
-                self.cluster.update_cluster_info({
-                    "initialDataSource": f"clone={self.cluster.parsed_spec.initDB.clone.uri}",
-                })
+                initial_data_source = f"clone={self.cluster.parsed_spec.initDB.clone.uri}"
             elif self.cluster.parsed_spec.initDB.dump and seed_pod.index == 0: # A : Should we check for index?
                 if self.cluster.parsed_spec.initDB.dump.storage.ociObjectStorage:
-                    self.cluster.update_cluster_info({
-                        "initialDataSource": f"dump={self.cluster.parsed_spec.initDB.dump.storage.ociObjectStorage.bucketName}",
-                    })
+                    initial_data_source = f"dump={self.cluster.parsed_spec.initDB.dump.storage.ociObjectStorage.bucketName}"
                 elif self.cluster.parsed_spec.initDB.dump.storage.s3:
-                    self.cluster.update_cluster_info({
-                        "initialDataSource": f"dump={self.cluster.parsed_spec.initDB.dump.storage.s3.bucketName}",
-                    })
+                    initial_data_source = f"dump={self.cluster.parsed_spec.initDB.dump.storage.s3.bucketName}"
                 elif self.cluster.parsed_spec.initDB.dump.storage.azure:
-                    self.cluster.update_cluster_info({
-                        "initialDataSource": f"dump={self.cluster.parsed_spec.initDB.dump.storage.azure.containerName}",
-                    })
+                    initial_data_source = f"dump={self.cluster.parsed_spec.initDB.dump.storage.azure.containerName}",
                 elif self.cluster.parsed_spec.initDB.dump.storage.persistentVolumeClaim:
-                    self.cluster.update_cluster_info({
-                        "initialDataSource": f"dump={self.cluster.parsed_spec.initDB.dump.storage.persistentVolumeClaim}",
-                    })
-                    # A : How to import from a dump?
+                    initial_data_source = f"dump={self.cluster.parsed_spec.initDB.dump.storage.persistentVolumeClaim}"
                 else:
                     assert 0, "Unknown Dump storage mechanism"
             else:
@@ -246,9 +236,6 @@ class ClusterController:
             # We're creating the cluster from scratch, so GTID set is sure to be complete
             assume_gtid_set_complete = True
 
-            self.cluster.update_cluster_info({
-                "initialDataSource": "blank",
-            })
 
         # The operator manages GR, so turn off start_on_boot to avoid conflicts
         create_options = {
@@ -257,12 +244,21 @@ class ClusterController:
             "memberSslMode": "REQUIRED" if self.cluster.parsed_spec.tlsUseSelfSigned else "VERIFY_IDENTITY",
         }
         if not self.cluster.parsed_spec.tlsUseSelfSigned:
+            logger.info("Using TLS GR authentication")
             rdns = seed_pod.get_cluster().get_tls_issuer_and_subject_rdns()
             create_options["memberAuthType"] = "CERT_SUBJECT"
             create_options["certIssuer"] = rdns["issuer"]
             create_options["certSubject"] = rdns["subject"]
+        else:
+            logger.info("Using PASSWORD GR authentication")
 
         create_options.update(common_gr_options)
+
+        cluster_info = {
+            "initialDataSource" : initial_data_source,
+            "createOptions" : create_options,
+        }
+        self.cluster.update_cluster_info(cluster_info)
 
         def should_retry(err):
             if seed_pod.deleting:

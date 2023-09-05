@@ -17,6 +17,7 @@ pipeline {
 		string(name: 'OPERATOR_GIT_REPO_NAME', defaultValue: 'origin', description: 'a git repository name, e.g. origin, gerrit', trim: true)
 		string(name: 'OPERATOR_GIT_REVISION', description: 'a git revision or branch to run against', trim: true)
 		string(name: 'OPERATOR_GIT_REFSPEC', defaultValue: "${params.OPERATOR_GIT_REVISION}", description: 'a git refspec - commit id or gerrit patchset', trim: true)
+		string(name: 'OPERATOR_GIT_BRANCH', description: 'a readable git branch name', trim: true)
 		string(name: 'OPERATOR_IMAGE', description: 'an image related to the aforementioned git revision', trim: true)
 		string(name: 'OPERATOR_ENTERPRISE_IMAGE', description: '...and a related enterprise image, it can be empty, then it will be built locally', trim: true)
 		string(name: 'OPERATOR_TRIGGERED_BY', defaultValue: 'concourse', description: 'how the build was triggered - the following flows are supported: concourse, internal, or gerrit', trim: true)

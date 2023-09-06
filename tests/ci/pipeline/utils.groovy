@@ -5,7 +5,8 @@
 
 def isCIExperimentalBuild() {
 	final CI_EXPERIMENTAL_BRANCH_PREFIX = 'ci/experimental/'
-	if (params.OPERATOR_GIT_REVISION.contains(CI_EXPERIMENTAL_BRANCH_PREFIX)) {
+	if (params.OPERATOR_GIT_REVISION.contains(CI_EXPERIMENTAL_BRANCH_PREFIX) ||
+		params.OPERATOR_GIT_BRANCH.contains(CI_EXPERIMENTAL_BRANCH_PREFIX)) {
 		return true
 	}
 
@@ -35,6 +36,10 @@ def hasValue(def variable) {
 def getGitBranchName() {
 	if (isGerritBuild() && params.OPERATOR_GERRIT_TOPIC) {
 		return params.OPERATOR_GERRIT_TOPIC
+	}
+
+	if (params.OPERATOR_GIT_BRANCH) {
+		return params.OPERATOR_GIT_BRANCH
 	}
 
 	def resolvedGitBranchName = sh (script: "git name-rev --name-only ${GIT_COMMIT}", returnStdout: true).trim()

@@ -4,7 +4,7 @@
 #
 
 from enum import Enum
-import typing
+import typing, abc
 from typing import Optional, Union, List, Tuple, Dict, Callable, cast, overload
 
 from kopf._cogs.structs.bodies import Body
@@ -698,7 +698,7 @@ class InnoDBClusterSpecProperties(Enum):
     INITDB = "initDB"
 
 
-class InnoDBClusterSpec:
+class AbstractServerSetSpec(abc.ABC):
     # name of user-provided secret containing root password (optional)
     secretName: Optional[str] = None
 
@@ -736,19 +736,9 @@ class InnoDBClusterSpec:
     podLabels: Optional[dict] = None
     backupSchedules: List[BackupSchedule] = []
 
-    # Initialize DB
-    initDB: Optional[InitDB] = None
-
-    router: RouterSpec = RouterSpec()
 
     metrics: Optional[MetriscSpec] = None
     logs: Optional[LogsSpec] = None
-
-    # TODO resource allocation for server, router and sidecar
-    # TODO recommendation is that sidecar has 500MB RAM if MEB is used
-
-    # Backup info
-    backupProfiles: List[BackupProfile] = []
 
     # (currently) non-configurable constants
     mysql_port: int = 3306
@@ -762,97 +752,96 @@ class InnoDBClusterSpec:
     router_roxport: int = 6449
     router_httpport: int = 8443
 
+
+    # TODO resource allocation for server, router and sidecar
+    # TODO recommendation is that sidecar has 500MB RAM if MEB is used
+
     def __init__(self, namespace: str, name: str, spec: dict):
         self.namespace = namespace
         self.name = name
-        self.load(spec)
+        self.backupSchedules: List[BackupSchedule] = []
 
+    #@abc .abstracmethod
     def load(self, spec: dict) -> None:
+        ...
+
+    def _load(self, spec_root: dict, spec_specific: dict, where_specific: str) -> None:
         # initialize now or all instances will share the same list initialized before the ctor
         self.add_to_initconf_cbs: Dict[str, List[Callable]] = {}
         self.remove_from_sts_cbs: Dict[str, List[Callable]] = {}
         self.add_to_sts_cbs: Dict[str, List[Callable]] = {}
         self.get_configmap_cbs: Dict[str, List[Callable]] = {}
 
-        self.secretName = dget_str(spec, "secretName", "spec")
+        self.secretName = dget_str(spec_root, "secretName", "spec")
 
-        if "tlsCASecretName" in spec:
-            self.tlsCASecretName = dget_str(spec, "tlsCASecretName", "spec")
+        if "tlsCASecretName" in spec_root:
+            self.tlsCASecretName = dget_str(spec_root, "tlsCASecretName", "spec")
         else:
             self.tlsCASecretName = f"{self.name}-ca"
 
-        if "tlsSecretName" in spec:
-            self.tlsSecretName = dget_str(spec, "tlsSecretName", "spec")
+        if "tlsSecretName" in spec_root:
+            self.tlsSecretName = dget_str(spec_root, "tlsSecretName", "spec")
         else:
             self.tlsSecretName = f"{self.name}-tls"
 
-        if "tlsUseSelfSigned" in spec:
-            self.tlsUseSelfSigned = dget_bool(spec, "tlsUseSelfSigned", "spec")
+        if "tlsUseSelfSigned" in spec_root:
+            self.tlsUseSelfSigned = dget_bool(spec_root, "tlsUseSelfSigned", "spec")
 
-        self.instances = dget_int(spec, "instances", "spec")
-        if "version" in spec:
-            self.version = dget_str(spec, "version", "spec")
+        self.instances = dget_int(spec_specific, "instances", where_specific)
+        if "version" in spec_specific:
+            self.version = dget_str(spec_specific, "version", where_specific)
 
-        if "edition" in spec:
+        if "edition" in spec_root:
             self.edition = dget_enum(
-                spec, "edition", "spec", default_value=config.OPERATOR_EDITION,
+                spec_root, "edition", "spec", default_value=config.OPERATOR_EDITION,
                 enum_type=Edition)
 
-            if "imageRepository" not in spec:
+            if "imageRepository" not in spec_root:
                 self.imageRepository = config.DEFAULT_IMAGE_REPOSITORY
 
-        if "imagePullPolicy" in spec:
+        if "imagePullPolicy" in spec_root:
             self.imagePullPolicy = dget_enum(
-                spec, "imagePullPolicy", "spec",
+                spec_root, "imagePullPolicy", "spec",
                 default_value=config.default_image_pull_policy,
                 enum_type=ImagePullPolicy)
 
-        if "imagePullSecrets" in spec:
+        if "imagePullSecrets" in spec_root:
             self.imagePullSecrets = dget_list(
-                spec, "imagePullSecrets", "spec", content_type=dict)
+                spec_root, "imagePullSecrets", "spec", content_type=dict)
 
-        if "serviceAccountName" in spec:
-            self.serviceAccountName = dget_str(spec, "serviceAccountName", "spec")
+        if "serviceAccountName" in spec_root:
+            self.serviceAccountName = dget_str(spec_root, "serviceAccountName", "spec")
 
-        if "imageRepository" in spec:
-            self.imageRepository = dget_str(spec, "imageRepository", "spec")
+        if "imageRepository" in spec_root:
+            self.imageRepository = dget_str(spec_root, "imageRepository", "spec")
 
-        if "podSpec" in spec:  # TODO - replace with something more specific
-            self.podSpec = dget_dict(spec, "podSpec", "spec")
+        if "podSpec" in spec_specific:  # TODO - replace with something more specific
+            self.podSpec = dget_dict(spec_specific, "podSpec", where_specific)
 
-        if "podAnnotations" in spec:
-            self.podAnnotations = dget_dict(spec, "podAnnotations", "spec")
+        if "podAnnotations" in spec_specific:
+            self.podAnnotations = dget_dict(spec_specific, "podAnnotations", where_specific)
 
-        if "podLabels" in spec:
-            self.podLabels = dget_dict(spec, "podLabels", "spec")
+        if "podLabels" in spec_specific:
+            self.podLabels = dget_dict(spec_specific, "podLabels", where_specific)
 
-        if "datadirVolumeClaimTemplate" in spec:
-            self.datadirVolumeClaimTemplate = spec.get("datadirVolumeClaimTemplate")
+        if "datadirVolumeClaimTemplate" in spec_specific:
+            self.datadirVolumeClaimTemplate = dget_dict(spec_specific, "datadirVolumeClaimTemplate", where_specific)
 
         self.keyring = KeyringSpec(self.namespace, self.name)
-        if "keyring" in spec:
-            self.keyring.parse(dget_dict(spec, "keyring", "spec"), "spec.keyring")
+        if "keyring" in spec_root:
+            self.keyring.parse(dget_dict(spec_root, "keyring", "spec"), "spec.keyring")
 
-        if "mycnf" in spec:
-            self.mycnf = dget_str(spec, "mycnf", "spec")
+        if "mycnf" in spec_root:
+            self.mycnf = dget_str(spec_root, "mycnf", "spec")
 
-        # Router Options
-        self.router = RouterSpec()
-        section = InnoDBClusterSpecProperties.ROUTER.value
-        if section in spec:
-            self.router.parse(dget_dict(spec, section, "spec"), f"spec.{section}")
-
-        if not self.router.tlsSecretName:
-            self.router.tlsSecretName = f"{self.name}-router-tls"
-
-        if "metrics" in spec:
+        if "metrics" in spec_root:
             self.metrics = MetriscSpec()
-            self.metrics.parse(dget_dict(spec, "metrics", "spec"), "spec.metrics")
+            self.metrics.parse(dget_dict(spec_root, "metrics", "spec"), "spec.metrics")
 
         self.logs = LogsSpec(self.namespace, self.name)
         section = InnoDBClusterSpecProperties.LOGS.value
-        if section in spec:
-            self.logs.parse(dget_dict(spec, section, "spec"), f"spec.{section}", getLogger())
+        if section in spec_root:
+            self.logs.parse(dget_dict(spec_root, section, "spec"), f"spec.{section}", getLogger())
 
             cb = self.logs.get_configmaps_cb()
             if cb:
@@ -871,38 +860,13 @@ class InnoDBClusterSpec:
 
         # Initialization Options
         section = InnoDBClusterSpecProperties.INITDB.value
-        if section in spec:
-            self.load_initdb(dget_dict(spec, section, "spec"))
+        if section in spec_root:
+            self.load_initdb(dget_dict(spec_root, section, "spec"))
 
         # TODO keep a list of base_server_id in the operator to keep things globally unique?
-        if "baseServerId" in spec:
-            self.baseServerId = dget_int(spec, "baseServerId", "spec")
+        if "baseServerId" in spec_root:
+            self.baseServerId = dget_int(spec_root, "baseServerId", "spec")
 
-
-        self.backupProfiles = []
-        section = InnoDBClusterSpecProperties.BACKUP_PROFILES.value
-        if section in spec:
-            profiles = dget_list(spec, section, "spec", [], content_type=dict)
-            for profile in profiles:
-                self.backupProfiles.append(self.parse_backup_profile(profile))
-
-
-        self.backupSchedules = []
-        section = InnoDBClusterSpecProperties.BACKUP_SCHEDULES.value
-        if section in spec:
-            schedules = dget_list(spec, section, "spec", [], content_type=dict)
-            for schedule in schedules:
-                self.backupSchedules.append(self.parse_backup_schedule(schedule))
-
-    def parse_backup_profile(self, spec: dict) -> BackupProfile:
-        profile = BackupProfile()
-        profile.parse(spec, "spec.backupProfiles")
-        return profile
-
-    def parse_backup_schedule(self, spec: dict) -> BackupSchedule:
-        schedule = BackupSchedule(self)
-        schedule.parse(spec, "spec.backupSchedules")
-        return schedule
 
     def print_backup_schedules(self) -> None:
         for schedule in self.backupSchedules:
@@ -939,21 +903,12 @@ class InnoDBClusterSpec:
 
         # TODO validate against downgrades, invalid version jumps
 
-        # check that the secret exists and it contains rootPassword
-        if self.secretName:  # TODO
-            pass
-
         # validate podSpec through the Kubernetes API
         if self.podSpec:
             pass
 
         if self.tlsSecretName and not self.tlsCASecretName:
             logger.info("spec.tlsSecretName is set but will be ignored because self.tlsCASecretName is not set")
-
-        if self.mycnf:
-            if "[mysqld]" not in self.mycnf:
-                logger.warning(
-                    "spec.mycnf data does not contain a [mysqld] line")
 
         # TODO ensure that if version is set, then image and routerImage are not
         # TODO should we support upgrading router only?
@@ -980,19 +935,6 @@ class InnoDBClusterSpec:
         return self.format_image(image, self.version)
 
     @property
-    def router_image(self) -> str:
-        if self.router.version:
-            version = self.router.version
-        elif self.version:
-            version = self.version
-        else:
-            version = config.DEFAULT_ROUTER_VERSION_TAG
-
-        image = config.MYSQL_ROUTER_IMAGE if self.edition == Edition.community else config.MYSQL_ROUTER_EE_IMAGE
-
-        return self.format_image(image, version)
-
-    @property
     def operator_image(self) -> str:
         # version is the same as ours (operator)
         if self.edition == Edition.community:
@@ -1010,10 +952,6 @@ class InnoDBClusterSpec:
     @property
     def sidecar_image_pull_policy(self) -> str:
         return self.imagePullPolicy.value
-
-    @property
-    def router_image_pull_policy(self) -> str:
-        return self.router.podSpec.get("imagePullPolicy", self.imagePullPolicy.value)
 
     @property
     def operator_image_pull_policy(self) -> str:
@@ -1072,65 +1010,6 @@ class InnoDBClusterSpec:
 """)
         return "\n".join(mounts)
 
-    @property
-    def extra_router_volumes_no_cert(self) -> str:
-        volumes = []
-
-        if not self.tlsUseSelfSigned:
-            volumes.append(f"""
-- name: ssl-ca-data
-  projected:
-    sources:
-    - secret:
-        name: {self.tlsCASecretName}
-""")
-
-        return "\n".join(volumes)
-
-    @property
-    def extra_router_volumes(self) -> str:
-        volumes = []
-
-        if not self.tlsUseSelfSigned:
-            volumes.append(f"""
-- name: ssl-ca-data
-  projected:
-    sources:
-    - secret:
-        name: {self.tlsCASecretName}
-- name: ssl-key-data
-  projected:
-    sources:
-    - secret:
-        name: {self.router.tlsSecretName}
-""")
-
-        return "\n".join(volumes)
-
-    @property
-    def extra_router_volume_mounts_no_cert(self) -> str:
-        mounts = []
-        if not self.tlsUseSelfSigned:
-            mounts.append(f"""
-- mountPath: /router-ssl/ca/
-  name: ssl-ca-data
-""")
-
-        return "\n".join(mounts)
-
-
-    @property
-    def extra_router_volume_mounts(self) -> str:
-        mounts = []
-        if not self.tlsUseSelfSigned:
-            mounts.append(f"""
-- mountPath: /router-ssl/ca/
-  name: ssl-ca-data
-- mountPath: /router-ssl/key/
-  name: ssl-key-data
-""")
-
-        return "\n".join(mounts)
 
     @property
     def metrics_sidecar(self) -> str:
@@ -1234,11 +1113,176 @@ class InnoDBClusterSpec:
             return f"imagePullSecrets:\n{yaml.safe_dump(self.imagePullSecrets)}"
         return ""
 
+
     @property
     def service_account_name(self) -> str:
         saName = f"{self.serviceAccountName}" if self.serviceAccountName else f"{self.name}-sidecar-sa"
         return f"serviceAccountName: {saName}"
 
+
+
+
+class InnoDBClusterSpec(AbstractServerSetSpec):
+    # Initialize DB
+    initDB: Optional[InitDB] = None
+
+    router: RouterSpec = RouterSpec()
+
+    # Backup info
+    backupProfiles: List[BackupProfile] = []
+
+
+    def __init__(self, namespace: str, name: str, spec: dict):
+        self.namespace = namespace
+        self.name = name
+        self.backupSchedules: List[BackupSchedule] = []
+        self.load(spec)
+
+
+    def load(self, spec: dict) -> None:
+        self._load(spec, spec, "spec")
+
+        # Router Options
+        self.router = RouterSpec()
+        section = InnoDBClusterSpecProperties.ROUTER.value
+        if section in spec:
+            self.router.parse(dget_dict(spec, section, "spec"), "spec.router")
+
+        if not self.router.tlsSecretName:
+            self.router.tlsSecretName = f"{self.name}-router-tls"
+
+        # Initialization Options
+        if "initDB" in spec:
+            self.load_initdb(dget_dict(spec, "initDB", "spec"))
+
+        self.backupProfiles = []
+        section = InnoDBClusterSpecProperties.BACKUP_PROFILES.value
+        if section in spec:
+            profiles = dget_list(spec, section, "spec", [], content_type=dict)
+            for profile in profiles:
+                self.backupProfiles.append(self.parse_backup_profile(profile))
+
+
+        self.backupSchedules = []
+        section = InnoDBClusterSpecProperties.BACKUP_SCHEDULES.value
+        if section in spec:
+            schedules = dget_list(spec, section, "spec", [], content_type=dict)
+            for schedule in schedules:
+                self.backupSchedules.append(self.parse_backup_schedule(schedule))
+
+    def validate(self, logger: Logger) -> None:
+        super().validate(logger)
+
+        # check that the secret exists and it contains rootPassword
+        if self.secretName:  # TODO
+            pass
+
+        if self.mycnf:
+            if "[mysqld]" not in self.mycnf:
+                logger.warning(
+                    "spec.mycnf data does not contain a [mysqld] line")
+
+    def parse_backup_profile(self, spec: dict) -> BackupProfile:
+        profile = BackupProfile()
+        profile.parse(spec, "spec.backupProfiles")
+        return profile
+
+    def parse_backup_schedule(self, spec: dict) -> BackupSchedule:
+        schedule = BackupSchedule(self)
+        schedule.parse(spec, "spec.backupSchedules")
+        return schedule
+
+    def print_backup_schedules(self) -> None:
+        for schedule in self.backupSchedules:
+            print(f"schedule={schedule}")
+
+    def load_initdb(self, spec: dict) -> None:
+        self.initDB = InitDB()
+        self.initDB.parse(spec, "spec.initDB")
+
+    def get_backup_profile(self, name: str) -> Optional[BackupProfile]:
+        if self.backupProfiles:
+            for profile in self.backupProfiles:
+                if profile.name == name:
+                    return profile
+        return None
+
+    @property
+    def extra_router_volumes_no_cert(self) -> str:
+        volumes = []
+
+        if not self.tlsUseSelfSigned:
+            volumes.append(f"""
+- name: ssl-ca-data
+  projected:
+    sources:
+    - secret:
+        name: {self.tlsCASecretName}
+""")
+
+        return "\n".join(volumes)
+
+    @property
+    def extra_router_volumes(self) -> str:
+        volumes = []
+
+        if not self.tlsUseSelfSigned:
+            volumes.append(f"""
+- name: ssl-ca-data
+  projected:
+    sources:
+    - secret:
+        name: {self.tlsCASecretName}
+- name: ssl-key-data
+  projected:
+    sources:
+    - secret:
+        name: {self.router.tlsSecretName}
+""")
+
+        return "\n".join(volumes)
+
+    @property
+    def extra_router_volume_mounts_no_cert(self) -> str:
+        mounts = []
+        if not self.tlsUseSelfSigned:
+            mounts.append(f"""
+- mountPath: /router-ssl/ca/
+  name: ssl-ca-data
+""")
+
+        return "\n".join(mounts)
+
+
+    @property
+    def extra_router_volume_mounts(self) -> str:
+        mounts = []
+        if not self.tlsUseSelfSigned:
+            mounts.append(f"""
+- mountPath: /router-ssl/ca/
+  name: ssl-ca-data
+- mountPath: /router-ssl/key/
+  name: ssl-key-data
+""")
+
+        return "\n".join(mounts)
+
+    @property
+    def router_image(self) -> str:
+        if self.router.version:
+            version = self.router.version
+        elif self.version:
+            version = self.version
+        else:
+            version = config.DEFAULT_ROUTER_VERSION_TAG
+
+        image = config.MYSQL_ROUTER_IMAGE if self.edition == Edition.community else config.MYSQL_ROUTER_EE_IMAGE
+
+        return self.format_image(image, version)
+
+    @property
+    def router_image_pull_policy(self) -> str:
+        return self.router.podSpec.get("imagePullPolicy", self.imagePullPolicy.value)
 
 
 class InnoDBCluster(K8sInterfaceObject):

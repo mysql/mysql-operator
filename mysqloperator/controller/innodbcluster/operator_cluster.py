@@ -191,7 +191,33 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 kopf.adopt(disruption_budget)
                 api_policy.create_namespaced_pod_disruption_budget(namespace=namespace, body=disruption_budget)
 
-            print("9. Router Service")
+            print("9. Read Replica StatefulSets")
+            if len(icspec.readReplicas) > 0:
+                print(f"\t{len(icspec.readReplicas)} Read Replicas ...")
+                for rr in icspec.readReplicas:
+                    if not ignore_404(lambda: cluster.get_read_replica_initconf(rr.name)):
+                        print(f"\t\tPreparing... {rr.name} initconf")
+                        configs = cluster_objects.prepare_initconf(cluster, rr, logger)
+                        print("\t\tCreating...")
+                        kopf.adopt(configs)
+                        api_core.create_namespaced_config_map(namespace, configs)
+                    if not ignore_404(lambda: cluster.get_read_replica_service(rr.name)):
+                        print(f"\t\tPreparing... {rr.name} Service")
+                        service = cluster_objects.prepare_cluster_service(rr)
+                        print("\t\tCreating...")
+                        kopf.adopt(service)
+                        api_core.create_namespaced_service(namespace=namespace, body=service)
+                    if not ignore_404(lambda: cluster.get_read_replica_stateful_set(rr.name)):
+                        print(f"\t\tPreparing {rr.name} StatefulSet")
+                        statefulset = cluster_objects.prepare_cluster_stateful_set(rr, logger)
+                        print(f"\t\tCreating...{statefulset}")
+                        kopf.adopt(statefulset)
+
+                        api_apps.create_namespaced_stateful_set(namespace=namespace, body=statefulset)
+            else:
+                print("\tNo Read Replica")
+
+            print("10. Router Service")
             if not ignore_404(cluster.get_router_service):
                 print("\tPreparing...")
                 router_service = router_objects.prepare_router_service(icspec)
@@ -199,7 +225,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 kopf.adopt(router_service)
                 api_core.create_namespaced_service(namespace=namespace, body=router_service)
 
-            print("10. Router Deployment")
+            print("11. Router Deployment")
             if not ignore_404(cluster.get_router_deployment):
                 if icspec.router.instances > 0:
                     print("\tPreparing...")
@@ -214,7 +240,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                     # will create the deployment
                     print("\tRouter count is 0. No Deployment is created.")
 
-            print("11. Backup Secrets")
+            print("12. Backup Secrets")
             if not ignore_404(cluster.get_backup_account):
                 print("\tPreparing...")
                 secret = backup_objects.prepare_backup_secrets(icspec)
@@ -222,7 +248,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 kopf.adopt(secret)
                 api_core.create_namespaced_secret(namespace=namespace, body=secret)
 
-            print("12. Metrics Service Monitor")
+            print("13. Metrics Service Monitor")
             if not ignore_404(cluster.get_metrics_monitor):
                 if icspec.metrics and icspec.metrics.enable and icspec.metrics.monitor:
                     print("\tPreparing...")

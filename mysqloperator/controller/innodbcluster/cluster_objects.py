@@ -8,7 +8,7 @@ import kopf
 from typing import List, Dict
 from ..kubeutils import client as api_client
 from .. import utils, config, consts
-from .cluster_api import InnoDBCluster, InnoDBClusterSpec, InnoDBClusterSpecProperties
+from .cluster_api import InnoDBCluster, AbstractServerSetSpec, InnoDBClusterSpec, ReadReplicaSpec, InnoDBClusterSpecProperties
 from . import cluster_controller
 import yaml
 from ..kubeutils import api_core, api_apps, api_customobj, k8s_cluster_domain
@@ -19,7 +19,18 @@ import base64
 # This service includes all instances, even those that are not ready
 
 
-def prepare_cluster_service(spec: InnoDBClusterSpec) -> dict:
+def prepare_cluster_service(spec: AbstractServerSetSpec) -> dict:
+    extra_label = ""
+    if type(spec) is InnoDBClusterSpec:
+        instance_type = "group-member"
+        cluster_name = spec.name
+        instances = spec.instances
+    elif type(spec) is ReadReplicaSpec:
+        instance_type = "read-replica"
+        cluster_name = spec.cluster_name
+        extra_label = f"mysql.oracle.com/read-replica: {spec.name}"
+    else:
+        raise NotImplementedError(f"Unknown subtype {type(spec)} for creating StatefulSet")
     tmpl = f"""
 apiVersion: v1
 kind: Service
@@ -29,6 +40,8 @@ metadata:
   labels:
     tier: mysql
     mysql.oracle.com/cluster: {spec.name}
+    mysql.oracle.com/instance-type: {instance_type}
+    {extra_label}
   annotations:
     service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
 spec:
@@ -48,7 +61,9 @@ spec:
   selector:
     component: mysqld
     tier: mysql
-    mysql.oracle.com/cluster: {spec.name}
+    mysql.oracle.com/cluster: {cluster_name}
+    mysql.oracle.com/instance-type: {instance_type}
+    {extra_label}
   type: ClusterIP
 """
     return yaml.safe_load(tmpl)
@@ -131,7 +146,7 @@ spec:
 # this checks that the server is still healthy. If it fails above the threshold
 # (e.g. because of a deadlock), the container is restarted.
 #
-def prepare_cluster_stateful_set(spec: InnoDBClusterSpec, logger: Logger) -> dict:
+def prepare_cluster_stateful_set(spec: AbstractServerSetSpec, logger: Logger) -> dict:
     init_mysql_argv = ["mysqld", "--user=mysql"]
 #    if config.enable_mysqld_general_log:
 #        init_mysql_argv.append("--general-log=1")
@@ -142,6 +157,21 @@ def prepare_cluster_stateful_set(spec: InnoDBClusterSpec, logger: Logger) -> dic
     # on the safe side
     cluster_domain = k8s_cluster_domain(logger)
 
+    extra_label = ""
+    if type(spec) is InnoDBClusterSpec:
+        instance_type = "group-member"
+        cluster_name = spec.name
+        instances = spec.instances
+    elif type(spec) is ReadReplicaSpec:
+        instance_type = "read-replica"
+        cluster_name = spec.cluster_name
+        extra_label = f"mysql.oracle.com/read-replica: {spec.name}"
+        # initial startup no replica, we scale up once the group is running
+        instances = 0
+    else:
+        raise NotImplementedError(f"Unknown subtype {type(spec)} for creating StatefulSet")
+
+
     # TODO re-add "--log-file=",
     tmpl = f"""
 apiVersion: apps/v1
@@ -150,7 +180,9 @@ metadata:
   name: {spec.name}
   labels:
     tier: mysql
-    mysql.oracle.com/cluster: {spec.name}
+    mysql.oracle.com/cluster: {cluster_name}
+    mysql.oracle.com/instance-type: {instance_type}
+    {extra_label}
     app.kubernetes.io/name: mysql-innodbcluster
     app.kubernetes.io/instance: mysql-innodbcluster-{spec.name}
     app.kubernetes.io/component: database
@@ -158,13 +190,15 @@ metadata:
     app.kubernetes.io/created-by: mysql-operator
 spec:
   serviceName: {spec.name}-instances
-  replicas: {spec.instances}
+  replicas: {instances}
   podManagementPolicy: Parallel
   selector:
     matchLabels:
       component: mysqld
       tier: mysql
-      mysql.oracle.com/cluster: {spec.name}
+      mysql.oracle.com/cluster: {cluster_name}
+      mysql.oracle.com/instance-type: {instance_type}
+      {extra_label}
       app.kubernetes.io/name: mysql-innodbcluster-mysql-server
       app.kubernetes.io/instance: mysql-innodbcluster-{spec.name}-mysql-server
       app.kubernetes.io/component: database
@@ -175,7 +209,9 @@ spec:
       labels:
         component: mysqld
         tier: mysql
-        mysql.oracle.com/cluster: {spec.name}
+        mysql.oracle.com/cluster: {cluster_name}
+        mysql.oracle.com/instance-type: {instance_type}
+        {extra_label}
         app.kubernetes.io/name: mysql-innodbcluster-mysql-server
         app.kubernetes.io/instance: mysql-innodbcluster-{spec.name}-mysql-server
         app.kubernetes.io/component: database
@@ -511,6 +547,14 @@ spec:
                                  spec.datadirVolumeClaimTemplate, "spec.volumeClaimTemplates[0].spec")
     return statefulset
 
+def update_stateful_set_size(cluster: InnoDBCluster, rr_spec: ReadReplicaSpec, logger: Logger) -> None:
+    sts = cluster.get_read_replica_stateful_set(rr_spec.name)
+    if sts:
+        patch = {"spec": {"replicas": rr_spec.instances}}
+        api_apps.patch_namespaced_stateful_set(
+            sts.metadata.name, sts.metadata.namespace, body=patch)
+
+
 def prepare_service_account(spec: InnoDBClusterSpec) -> dict:
     if not spec.serviceAccountName is None:
         return None
@@ -580,7 +624,7 @@ def prepare_component_config_secrets(cluster: InnoDBCluster, logger: Logger) -> 
 
     return secrets
 
-def prepare_initconf(cluster: InnoDBCluster, spec: InnoDBClusterSpec, logger: Logger) -> dict:
+def prepare_initconf(cluster:  InnoDBCluster, spec: AbstractServerSetSpec, logger: Logger) -> dict:
 
     liveness_probe = """#!/bin/bash
 # Copyright (c) 2020, 2021, Oracle and/or its affiliates.

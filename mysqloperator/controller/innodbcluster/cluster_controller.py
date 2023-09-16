@@ -9,7 +9,7 @@ from .. import consts, errors, kubeutils, shellutils, utils, config, mysqlutils
 from .. import diagnose
 from ..backup import backup_objects
 from ..shellutils import DbaWrap
-from . import router_objects
+from . import cluster_objects, router_objects
 from .cluster_api import MySQLPod, InnoDBCluster, client
 import typing
 from typing import Optional, TYPE_CHECKING, Dict
@@ -336,6 +336,11 @@ class ClusterController:
         logger.debug(f"Creating backup account {user}")
         mysqlutils.setup_backup_account(session, user, password)
 
+        # update read replicas
+        for rr in self.cluster.parsed_spec.readReplicas:
+            logger.debug(f"Setting {rr.name} replicas to {rr.instances}")
+            cluster_objects.update_stateful_set_size(self.cluster, rr, logger)
+
         # update the router deployment
         n = self.cluster.parsed_spec.router.instances
         if n:
@@ -468,14 +473,21 @@ class ClusterController:
                 # add_instance() needs only certSubject and but not memberAuthType and certIssuer
                 add_options["certSubject"] = rdns["subject"]
 
-        add_options.update(common_gr_options)
 
-        logger.info(f"ADD INSTANCE: target={pod.endpoint}  cluster_peer={peer_pod.endpoint}  options={add_options}")
+        if pod.instance_type == "group-member":
+            add_options.update(common_gr_options)
+
+        logger.info(
+            f"ADD INSTANCE: target={pod.endpoint}  instance_type={pod.instance_type} cluster_peer={peer_pod.endpoint}  options={add_options}...")
 
         pod.add_member_finalizer()
 
         try:
-            self.dba_cluster.add_instance(pod.endpoint_co, add_options)
+            if pod.instance_type == "read-replica":
+                #self.dba_cluster.add_replica_instance(pod.endpoint_co, add_options)
+                self.dba_cluster.add_replica_instance(pod.endpoint, add_options)
+            else:
+                self.dba_cluster.add_instance(pod.endpoint_co, add_options)
 
             logger.debug("add_instance OK")
         except  (mysqlsh.Error, RuntimeError) as e:

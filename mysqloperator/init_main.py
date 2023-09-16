@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -22,7 +22,7 @@ k8sobject.g_host = os.getenv("HOSTNAME")
 mysql = mysqlsh.mysql
 
 
-def init_conf(datadir, pod, cluster, logger):
+def init_conf(datadir: str, pod: MySQLPod, cluster, logger: logging.Logger):
     """
     Initialize MySQL configuration files and init scripts, which must be mounted
     in /mnt/mycnfdata.
@@ -31,8 +31,18 @@ def init_conf(datadir, pod, cluster, logger):
     Init scripts are executed by the mysql container entrypoint when it's
     initializing for the 1st time.
     """
-    server_id = pod.index + cluster.parsed_spec.baseServerId
-    report_host = f"{pod.name}.{cluster.name}-instances.{cluster.namespace}.svc.{k8s_cluster_domain(logger, ns = cluster.namespace)}"
+    if pod.instance_type == "read-replica":
+        read_replica_name = pod.read_replica_name
+        [rr_spec] = filter(lambda rr: rr.name == read_replica_name,
+                           cluster.parsed_spec.readReplicas)
+        server_id = pod.index + rr_spec.baseServerId
+    elif pod.instance_type == "group-member":
+        server_id = pod.index + cluster.parsed_spec.baseServerId
+    else:
+        raise RuntimeError(f"Invalid instance type: {pod.instance_type}")
+
+    subdomain = pod.spec.subdomain
+    report_host = f"{pod.name}.{subdomain}.{cluster.namespace}.svc.{k8s_cluster_domain(logger, ns = cluster.namespace)}"
     logger.info(
         f"Setting up configurations for {pod.name}  server_id={server_id}  report_host={report_host}")
 
@@ -95,11 +105,12 @@ def main(argv):
 
     utils.log_banner(__file__, logger)
 
-    logger.debug(f"Initial contents of {datadir}:")
-    subprocess.run(["ls", "-l", datadir])
+    if logger.level == logging.DEBUG:
+        logger.debug(f"Initial contents of {datadir}:")
+        subprocess.run(["ls", "-l", datadir])
 
-    logger.debug("Initial contents of /mnt:")
-    subprocess.run(["ls", "-lR", "/mnt"])
+        logger.debug("Initial contents of /mnt:")
+        subprocess.run(["ls", "-lR", "/mnt"])
 
     try:
         pod = MySQLPod.read(name, namespace)

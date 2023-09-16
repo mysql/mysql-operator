@@ -465,7 +465,7 @@ def bootstrap(pod: MySQLPod, datadir: str, logger: Logger) -> int:
 
     return 1
 
-def ensure_correct_tls_sysvars(session, enabled: bool, caller: str, logger: Logger) -> None:
+def ensure_correct_tls_sysvars(pod: MySQLPod, session, enabled: bool, caller: str, logger: Logger) -> None:
     has_crl = os.path.exists("/etc/mysql-ssl/crl.pem")
 
     logger.info(f"Ensuring custom TLS certificates are {'enabled' if enabled else 'disabled'} {'(with crl)' if has_crl else ''} caller={caller}")
@@ -485,31 +485,33 @@ def ensure_correct_tls_sysvars(session, enabled: bool, caller: str, logger: Logg
     # first ensure configured paths are correct
     if enabled:
         ensure_sysvar("ssl_ca", "/etc/mysql-ssl/ca.pem")
-        ensure_sysvar("group_replication_recovery_ssl_verify_server_cert", "ON")
         ensure_sysvar("ssl_crl", "/etc/mysql-ssl/crl.pem" if has_crl else "")
-        ensure_sysvar("group_replication_ssl_mode", "VERIFY_IDENTITY")
         ensure_sysvar("ssl_cert", "/etc/mysql-ssl/tls.crt")
-        ensure_sysvar("group_replication_recovery_ssl_ca", "/etc/mysql-ssl/ca.pem")
         ensure_sysvar("ssl_key", "/etc/mysql-ssl/tls.key")
-        ensure_sysvar("group_replication_recovery_ssl_cert", "/etc/mysql-ssl/tls.crt")
-        ensure_sysvar("group_replication_recovery_ssl_key", "/etc/mysql-ssl/tls.key")
+        if pod.instance_type == "group-member":
+            ensure_sysvar("group_replication_recovery_ssl_verify_server_cert", "ON")
+            ensure_sysvar("group_replication_ssl_mode", "VERIFY_IDENTITY")
+            ensure_sysvar("group_replication_recovery_ssl_ca", "/etc/mysql-ssl/ca.pem")
+            ensure_sysvar("group_replication_recovery_ssl_cert", "/etc/mysql-ssl/tls.crt")
+            ensure_sysvar("group_replication_recovery_ssl_key", "/etc/mysql-ssl/tls.key")
     else:
         ensure_sysvar("ssl_ca", "ca.pem")
         ensure_sysvar("ssl_crl", "")
         ensure_sysvar("ssl_cert", "server-cert.pem")
         ensure_sysvar("ssl_key", "server-key.pem")
-        ensure_sysvar("group_replication_recovery_ssl_verify_server_cert", "OFF")
-        ensure_sysvar("group_replication_ssl_mode", "REQUIRED")
-        ensure_sysvar("group_replication_recovery_ssl_ca", "")
-        ensure_sysvar("group_replication_recovery_ssl_cert", "")
-        ensure_sysvar("group_replication_recovery_ssl_key", "")
+        if pod.instance_type == "group-member":
+            ensure_sysvar("group_replication_recovery_ssl_verify_server_cert", "OFF")
+            ensure_sysvar("group_replication_ssl_mode", "REQUIRED")
+            ensure_sysvar("group_replication_recovery_ssl_ca", "")
+            ensure_sysvar("group_replication_recovery_ssl_cert", "")
+            ensure_sysvar("group_replication_recovery_ssl_key", "")
 
 
-def reconfigure_tls(enabled: bool, caller: str, logger: Logger) -> None:
+def reconfigure_tls(pod: MySQLPod, enabled: bool, caller: str, logger: Logger) -> None:
 
     session = connect("localroot", "", logger, timeout=None)
 
-    ensure_correct_tls_sysvars(session, enabled, caller, logger)
+    ensure_correct_tls_sysvars(pod, session, enabled, caller, logger)
 
     try:
         logger.info("Reloading TLS")
@@ -544,6 +546,9 @@ def check_secret_mounted(secrets: dict, paths: list, logger: Logger) -> bool:
 
 
 def on_ca_secret_create_or_change(value: dict, useSelfSigned: bool, router_deployment: Optional[api_client.V1Deployment], logger: Logger) -> None:
+    global g_pod_name
+    global g_pod_namespace
+
     logger.info("on_ca_secret_create_or_change")
 
     ca_pem = utils.b64decode(value['data']['ca.pem']) if 'ca.pem' in value['data'] else None
@@ -558,7 +563,8 @@ def on_ca_secret_create_or_change(value: dict, useSelfSigned: bool, router_deplo
                                  "/etc/mysql-ssl/crl.pem"],
                                 logger):
             logger.info(f"TLS CA file change detected, reloading TLS configurations")
-            reconfigure_tls(False if useSelfSigned else True, "on_ca_secret_create_or_change", logger)
+            pod = MySQLPod.read(g_pod_name, g_pod_namespace)
+            reconfigure_tls(pod, False if useSelfSigned else True, "on_ca_secret_create_or_change", logger)
 
             if router_deployment:
                 # give time to all other sidecars to reload the TLS and then restart the router deployment from -0
@@ -575,7 +581,12 @@ def on_ca_secret_create_or_change(value: dict, useSelfSigned: bool, router_deplo
 
 
 def on_tls_secret_create_or_change(value: dict, useSelfSigned: bool, router_deployment: Optional[api_client.V1Deployment], logger: Logger) -> None:
+    global g_pod_name
+    global g_pod_namespace
+
     logger.info("on_tls_secret_create_or_change")
+
+    pod = MySQLPod.read(g_pod_name, g_pod_namespace)
 
     tls_crt = utils.b64decode(value['data']['tls.crt']) if 'tls.crt' in value['data'] else None
     tls_key = utils.b64decode(value['data']['tls.key']) if 'tls.key' in value['data'] else None
@@ -589,7 +600,7 @@ def on_tls_secret_create_or_change(value: dict, useSelfSigned: bool, router_depl
                                  "/etc/mysql-ssl/tls.key"],
                                 logger):
             logger.info(f"TLS certificate file change detected, reloading TLS configurations")
-            reconfigure_tls(False if useSelfSigned else True, "on_tls_secret_create_or_change", logger)
+            reconfigure_tls(pod, False if useSelfSigned else True, "on_tls_secret_create_or_change", logger)
             break
         else:
             logger.info("Waiting for mounted TLS files to refresh...")
@@ -762,7 +773,7 @@ def main(argv):
 
     if r == 0:
         # refresh TLS settings if we're restarting in case something changed
-        reconfigure_tls(False if cluster.parsed_spec.tlsUseSelfSigned else True, "main", logger)
+        reconfigure_tls(pod, False if cluster.parsed_spec.tlsUseSelfSigned else True, "main", logger)
 
     logger.info("Starting Operator request handler...")
     try:

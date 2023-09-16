@@ -864,8 +864,8 @@ class AbstractServerSetSpec(abc.ABC):
             self.load_initdb(dget_dict(spec_root, section, "spec"))
 
         # TODO keep a list of base_server_id in the operator to keep things globally unique?
-        if "baseServerId" in spec_root:
-            self.baseServerId = dget_int(spec_root, "baseServerId", "spec")
+        if "baseServerId" in spec_specific:
+            self.baseServerId = dget_int(spec_specific, "baseServerId", "spec")
 
 
     def print_backup_schedules(self) -> None:
@@ -1121,6 +1121,22 @@ class AbstractServerSetSpec(abc.ABC):
 
 
 
+class ReadReplicaSpec(AbstractServerSetSpec):
+    def __init__(self, namespace: str, cluster_name: str, spec_root: dict,
+                 spec_specific: dict, where_specific: str):
+        name = f"{cluster_name}-{dget_str(spec_specific, 'name', where_specific)}"
+        super().__init__(namespace, name, spec_root)
+        self.cluster_name = cluster_name
+        self.load(spec_root, spec_specific, where_specific)
+
+    def load(self, spec_root: dict, spec_specific: dict, where_specific: str):
+        self._load(spec_root, spec_specific, where_specific)
+
+    @property
+    def service_account_name(self) -> str:
+        saName = f"{self.serviceAccountName}" if self.serviceAccountName else f"{self.cluster_name}-sidecar-sa"
+        return f"serviceAccountName: {saName}"
+
 
 class InnoDBClusterSpec(AbstractServerSetSpec):
     # Initialize DB
@@ -1131,6 +1147,8 @@ class InnoDBClusterSpec(AbstractServerSetSpec):
     # Backup info
     backupProfiles: List[BackupProfile] = []
 
+    # ReadReplica
+    readReplicas: List[ReadReplicaSpec] = []
 
     def __init__(self, namespace: str, name: str, spec: dict):
         self.namespace = namespace
@@ -1170,6 +1188,14 @@ class InnoDBClusterSpec(AbstractServerSetSpec):
             for schedule in schedules:
                 self.backupSchedules.append(self.parse_backup_schedule(schedule))
 
+        self.readReplicas = []
+        if "readReplicas" in spec:
+            read_replicas = dget_list(spec, "readReplicas", "spec", [], content_type=dict)
+            i = 0
+            for replica in read_replicas:
+                self.readReplicas.append(self.parse_read_replica(spec, replica, f"spec.readReplicas[{i}]"))
+                i += 1
+
     def validate(self, logger: Logger) -> None:
         super().validate(logger)
 
@@ -1191,6 +1217,11 @@ class InnoDBClusterSpec(AbstractServerSetSpec):
         schedule = BackupSchedule(self)
         schedule.parse(spec, "spec.backupSchedules")
         return schedule
+
+    def parse_read_replica(self, spec_root: dict, spec_specific: dict, where_specific: str):
+        replica = ReadReplicaSpec(self.namespace, self.name, spec_root,
+                                  spec_specific, where_specific)
+        return replica
 
     def print_backup_schedules(self) -> None:
         for schedule in self.backupSchedules:
@@ -1420,6 +1451,14 @@ class InnoDBCluster(K8sInterfaceObject):
                 return None
             raise
 
+    def get_read_replica_service(self, name: str) -> typing.Optional[api_client.V1Service]:
+        try:
+            return cast(api_client.V1Service,
+                        api_core.read_namespaced_service(name+"-instances", self.namespace))
+        except ApiException as e:
+            if e.status == 404:
+                return None
+            raise
     # As of K8s 1.21 this is no more beta.
     # Thus, eventually this needs to be upgraded to V1PodDisruptionBudget and api_policy to PolicyV1Api
     def get_disruption_budget(self) -> typing.Optional[api_client.V1PodDisruptionBudget]:
@@ -1435,6 +1474,15 @@ class InnoDBCluster(K8sInterfaceObject):
         try:
             return cast(api_client.V1StatefulSet,
                         api_apps.read_namespaced_stateful_set(self.name, self.namespace))
+        except ApiException as e:
+            if e.status == 404:
+                return None
+            raise
+
+    def get_read_replica_stateful_set(self, name: str) -> typing.Optional[api_client.V1StatefulSet]:
+        try:
+            return cast(api_client.V1StatefulSet,
+                        api_apps.read_namespaced_stateful_set(name, self.namespace))
         except ApiException as e:
             if e.status == 404:
                 return None
@@ -1632,6 +1680,15 @@ class InnoDBCluster(K8sInterfaceObject):
         try:
             return cast(api_client.V1ConfigMap,
                         api_core.read_namespaced_config_map(f"{self.name}-initconf", self.namespace))
+        except ApiException as e:
+            if e.status == 404:
+                return None
+            raise
+
+    def get_read_replica_initconf(self, name: str) -> typing.Optional[api_client.V1ConfigMap]:
+        try:
+            return cast(api_client.V1ConfigMap,
+                        api_core.read_namespaced_config_map(f"{name}-initconf", self.namespace))
         except ApiException as e:
             if e.status == 404:
                 return None
@@ -1943,7 +2000,19 @@ class MySQLPod(K8sInterfaceObject):
 
     @property
     def cluster_name(self) -> str:
-        return self.name.rpartition("-")[0]
+        return self.pod.metadata.labels["mysql.oracle.com/cluster"]
+
+    @property
+    def instance_type(self) -> str:
+        if "mysql.oracle.com/cluster" in self.pod.metadata.labels:
+            return self.pod.metadata.labels["mysql.oracle.com/instance-type"]
+        else:
+            # With old clusters the label may be missing
+            return "group-member"
+
+    @property
+    def read_replica_name(self) -> str:
+        return self.pod.metadata.labels["mysql.oracle.com/read-replica"]
 
     @property
     def address(self) -> str:

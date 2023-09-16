@@ -773,6 +773,47 @@ spec:
                                   rawConfig:
                                     type: "string"
                                     description: "Raw configuration of the sink"
+
+                readReplicas:
+                  type: array
+                  items:
+                    type: object
+                    required: ["name", "baseServerId"]
+                    properties:
+                      name:
+                        type: string
+                      version:
+                        type: string
+                        pattern: '^\d+\.\d+\.\d+(-.+)?'
+                        description: "MySQL Server version"
+                      baseServerId:
+                        type: integer
+                        minimum: 0
+                        maximum: 4294967195
+                        default: 0
+                        description: "Base value for MySQL server_id for instances of the readReplica, if 0 it will be assigned automatically"
+                      datadirVolumeClaimTemplate:
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+                        description: "Template for a PersistentVolumeClaim, to be used as datadir"
+                      mycnf:
+                        type: string
+                        description: "Custom configuration additions for my.cnf"
+                      instances:
+                        type: integer
+                        minimum: 1
+                        maximum: 999
+                        default: 1
+                        description: "Number of MySQL instances for the set of read replica"
+                      podSpec:
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+                      podAnnotations:
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+                      podLabels:
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
             status:
               type: object
               x-kubernetes-preserve-unknown-fields: true

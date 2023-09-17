@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -149,12 +149,20 @@ def diagnose_instance(pod: MySQLPod, logger, dba: 'Dba' = None) -> InstanceStatu
             members = {}
             mystate = None
             for member, info in mstatus["defaultReplicaSet"]["topology"].items():
-                state = info["status"]
-                members[member] = state
-                if member == pod.endpoint:
-                    mystate = state
-                    if state == "ONLINE":
-                        status.is_primary = info["memberRole"] == "PRIMARY"
+                if pod.instance_type == "group-member":
+                    state = info["status"]
+                    members[member] = state
+                    if member == pod.endpoint:
+                        mystate = state
+                        if state == "ONLINE":
+                            status.is_primary = info["memberRole"] == "PRIMARY"
+                elif pod.instance_type == "read-replica":
+                    if "readReplicas" in info:
+                        for rr_member, rr_info in info["readReplicas"].items():
+                            if rr_member == pod.endpoint:
+                                mystate = rr_info["status"]
+                else:
+                    raise Exception(f"Unknown instance type for {pod.name}: {pod.instance_type}")
 
             if not mystate:
                 # TODO

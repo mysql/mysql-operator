@@ -304,6 +304,15 @@ class ClusterController:
                                 "GR already running while creating cluster but could not stop it", delay=3)
                     raise
 
+            routing_options = self.cluster.parsed_spec.router.routingOptions
+            for routing_option in routing_options:
+                try:
+                    routing_value = routing_options[routing_option]
+                    self.dba_cluster.set_routing_option(routing_option, routing_value)
+                except mysqlsh.Error as e:
+                    # We don't fail when setting an option fails
+                    logger.warn(f"Failed setting routing option {routing_option} to {routing_value}: {e}")
+
             self.probe_member_status(seed_pod, dba.session, True, logger)
 
             logger.debug("Cluster created %s" % self.dba_cluster.status())
@@ -841,3 +850,23 @@ class ClusterController:
 
         mysqlutils.setup_metrics_user(self.dba.session, user, grants,
                                       max_connections)
+
+    def on_router_routing_option_chahnge(self, old: dict, new: dict, logger: 'Logger') -> None:
+        self.connect_to_primary(None, logger)
+
+        # Unset removed entries
+        for key in old:
+            if key not in new:
+                try:
+                    self.dba_cluster.set_routing_option(key, None)
+                except mysqlsh.Error as e:
+                    # We don't fail when setting an option fails
+                    logger.warn(f"Failed unsetting routing option {routing_option}: {e}")
+
+        # Set new values, this resets existing values
+        for key in new:
+            try:
+                self.dba_cluster.set_routing_option(key, new[key])
+            except mysqlsh.Error as e:
+                # We don't fail when setting an option fails
+                logger.warn(f"Failed setting routing option {routing_option} to {routing_value}: {e}")

@@ -544,6 +544,32 @@ def on_innodbcluster_field_router_options(old: str, new: str, body: Body,
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.router.routingOptions")  # type: ignore
+def on_innodbcluster_field_router_options(old: dict, new: dict, body: Body,
+                                          logger: Logger, **kwargs):
+    if old == new:
+        return
+
+    cluster = InnoDBCluster(body)
+
+    # ignore spec changes if the cluster is still being initialized
+    if not cluster.get_create_time():
+        logger.debug(
+            "Ignoring spec.router.routingOptions change for unready cluster")
+        return
+
+    cluster.parsed_spec.validate(logger)
+    with ClusterMutex(cluster):
+        if old is None:
+            old = {}
+        if new is None:
+            new = {}
+
+        c = ClusterController(cluster)
+        c.on_router_routing_option_chahnge(old, new, logger)
+
+
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
                field="spec.backupSchedules")  # type: ignore
 def on_innodbcluster_field_backup_schedules(old: str, new: str, body: Body,
                                           logger: Logger, **kwargs):

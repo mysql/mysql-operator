@@ -661,6 +661,8 @@ class RouterSpec:
     bootstrapOptions: list =  []
     options: list = []
 
+    routingOptions: dict = {}
+
     tlsSecretName: str = ""
 
     def parse(self, spec: dict, prefix: str) -> None:
@@ -687,6 +689,9 @@ class RouterSpec:
 
         if "options" in spec:
             self.options = dget_list(spec, "options", prefix)
+
+        if "routingOptions" in spec:
+            self.routingOptions = dget_dict(spec, "routingOptions", prefix)
 
 
 # Must correspond to the names in the CRD

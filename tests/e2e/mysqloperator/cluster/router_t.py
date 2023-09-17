@@ -3,6 +3,7 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
+import json
 import requests
 
 from time import sleep
@@ -18,6 +19,13 @@ def check_sidecar_health(test, ns, pod):
     logs = kutil.logs(ns, [pod, "sidecar"])
     # check that the sidecar is running and waiting for events
     test.assertIn("Starting Operator request handler...", logs)
+
+def get_routing_options(ns, pod) -> dict:
+        result = kutil.execp(ns, [pod, "sidecar"],
+                             ["mysqlsh", "root:sakila@localhost", "-e",
+                              "print(dba.getCluster().routingOptions())",
+                              "--quiet-start=2"])
+        return json.loads(result)
 
 
 # Test 1 member cluster with all default configs
@@ -352,6 +360,8 @@ spec:
     - --conf-set-option=DEFAULT.name=somename
     options:
     - "--pid-file=/tmp/it's e$caping properly"
+    routingOptions:
+      read_only_targets: read_replicas
   secretName: mypwds
   tlsUseSelfSigned: true
 """
@@ -417,6 +427,44 @@ spec:
 
         [new_pod] = kutil.ls_po(self.ns, pattern="mycluster-router-.*")
         self.assertTrue(kutil.file_exists(self.ns, new_pod["NAME"], "/tmp/with`backtick"))
+
+    def test_4_initial_routing_options(self):
+        routing_options = get_routing_options(self.ns, "mycluster-0")
+        global_options = routing_options["global"]
+        self.assertEqual(global_options["read_only_targets"], "read_replicas")
+        # stats_updates_frequencies is set as it has a default value in the CRD,
+        # which matches router's default
+        self.assertEqual(global_options["stats_updates_frequency"], 0)
+
+    def test_5_add_routing_options(self):
+        patch = {
+            "spec": {
+                "router": {
+                    "routingOptions": {
+                        "stats_updates_frequency": 10
+                    }
+                }
+            }
+        }
+        kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
+        routing_options = get_routing_options(self.ns, "mycluster-0")
+        global_options = routing_options["global"]
+        self.assertEqual(global_options["read_only_targets"], "read_replicas")
+        self.assertEqual(global_options["stats_updates_frequency"], 10)
+
+    def test_6_remove_routing_options(self):
+        patch = {
+            "spec": {
+                "router": {
+                    "routingOptions": None
+                }
+            }
+        }
+        kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
+        routing_options = get_routing_options(self.ns, "mycluster-0")
+        global_options = routing_options["global"]
+        self.assertEqual(global_options["read_only_targets"], "secondaries")
+        self.assertEqual(global_options["stats_updates_frequency"], None)
 
     def test_9_destroy(self):
         kutil.delete_ic(self.ns, "mycluster")

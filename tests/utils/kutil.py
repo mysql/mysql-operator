@@ -709,7 +709,8 @@ class StoreTimeoutDiagnostics:
 
         index = 0
         while True:
-            work_dir = base_work_dir + f"-{str(index)}" if index > 0 else ""
+            suffix = f"-{str(index)}" if index > 0 else ""
+            work_dir = base_work_dir + f"{suffix}"
             if not os.path.exists(work_dir):
                 return work_dir
             index += 1
@@ -823,7 +824,7 @@ class StoreTimeoutDiagnostics:
 
     def run(self, rsrc, name):
         self.create_work_dir()
-        logger.info(f"storing diagnostics for {rsrc} {self.ns}/{name} into {self.work_dir} ...")
+        logger.info(f"storing timeout diagnostics for {rsrc} {self.ns}/{name} into {self.work_dir} ...")
 
         if rsrc == "operator" or self.ns == self.operator_ns:
             self.process_operators()
@@ -845,7 +846,7 @@ class StoreTimeoutDiagnostics:
             self.process_all_clusters()
             self.process_operators()
 
-        logger.info(f"storing diagnostics for {rsrc} {self.ns}/{name} completed")
+        logger.info(f"storing timeout diagnostics for {rsrc} {self.ns}/{name} completed")
 
 
 def store_diagnostics(ns, rsrc, name):

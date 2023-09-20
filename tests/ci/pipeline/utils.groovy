@@ -73,6 +73,8 @@ def yesOrNo(boolean flag) {
 def initEnv() {
 	env.WORKERS_FOLDER = 'Shell/KubernetesOperator/' + "${isCIExperimentalBuild() ? 'sandbox' : 'workers'}"
 	env.BUILD_TRIGGERED_BY = getTriggeredBy(params.OPERATOR_TRIGGERED_BY)
+	env.TESTS_DIR = "${WORKSPACE}/tests"
+	env.CI_DIR = "${env.TESTS_DIR}/ci"
 	env.LOG_SUBDIR = "build-${BUILD_NUMBER}"
 	env.LOG_DIR = "${WORKSPACE}/${LOG_SUBDIR}"
 	env.ARTIFACT_FILENAME = "${JOB_BASE_NAME}-${BUILD_NUMBER}-result.tar.bz2"
@@ -96,6 +98,16 @@ def initEnv() {
 	env.TEST_RESULTS_UNAVAILABLE = 'UNAVAILABLE'
 	env.TEST_RESULTS_SOME_AVAILABLE = 'SOME_AVAILABLE'
 	env.TEST_RESULTS_ALL_AVAILABLE = 'ALL_AVAILABLE'
+
+	// can't use enum type, see eventum ticket #79024: jenkins: problem with enum type in groovy code
+	// enum TestSuiteReportPart {
+	// 	Summary,
+	// 	Failures,
+	// 	Skipped
+	// }
+	env.REPORT_PART_SUMMARY = 'SUMMARY'
+	env.REPORT_PART_FAILURES = 'FAILURES'
+	env.REPORT_PART_SKIPPED = 'SKIPPED'
 }
 
 def getIntroHeader() {
@@ -218,15 +230,75 @@ def getTestSuiteReport() {
 		return ""
 	}
 
-	testSuiteReport = "Test suite (<${env.RUN_TESTS_DISPLAY_URL}|Open>)\n"
-
-	def briefReportPath = "${env.LOG_DIR}/test_suite_brief_report.txt"
-	def ReportedErrorsMaxCount = 40
-	sh "cat $reportPath | sed -ne '1,$ReportedErrorsMaxCount p' -e '${ReportedErrorsMaxCount+1} iand more...' > $briefReportPath"
-	testSuiteReport += readFile(file: briefReportPath)
+	testSuiteReport = readFile(file: reportPath)
 
 	echo testSuiteReport
 	return testSuiteReport
+}
+
+def parseTestSuiteReport() {
+	def reportPath = "${env.LOG_DIR}/test_suite_report.txt"
+	def reportExists = fileExists reportPath
+	if (!reportExists) {
+		return
+	}
+
+	def splitReportScript = "${env.CI_DIR}/pipeline/auxiliary/split_test_suite_report.sh"
+	sh "$splitReportScript $reportPath"
+}
+
+def getTestSuitePartPath(String tsPart) {
+	switch(tsPart) {
+		case env.REPORT_PART_SUMMARY:
+			return "${env.LOG_DIR}/test_suite_report_summary.txt"
+
+		case env.REPORT_PART_FAILURES:
+			return "${env.LOG_DIR}/test_suite_report_failures.txt"
+
+		case env.REPORT_PART_SKIPPED:
+			return "${env.LOG_DIR}/test_suite_report_skipped.txt"
+
+		default:
+			return "unknown test suite report part"
+	}
+}
+
+def hasTestSuiteReportPart(String tsPart) {
+	def testSuiteReportPartExists = fileExists getTestSuitePartPath(tsPart)
+	return testSuiteReportPartExists
+}
+
+def getTestSuiteReportPart(String tsPart) {
+	def reportPartPath = getTestSuitePartPath(tsPart)
+	return readFile(file: reportPartPath)
+}
+
+def hasTestSuiteSummary() {
+	return hasTestSuiteReportPart(env.REPORT_PART_SUMMARY)
+}
+
+def getTestSuiteSummary() {
+	testSuiteSummary = "Test suite (<${env.RUN_TESTS_DISPLAY_URL}|Open>)\n"
+
+	testSuiteSummary += getTestSuiteReportPart(env.REPORT_PART_SUMMARY)
+
+	return testSuiteSummary
+}
+
+def hasTestSuiteFailures() {
+	return hasTestSuiteReportPart(env.REPORT_PART_FAILURES)
+}
+
+def getTestSuiteFailures() {
+	return getTestSuiteReportPart(env.REPORT_PART_FAILURES)
+}
+
+def hasTestSuiteSkipped() {
+	return hasTestSuiteReportPart(env.REPORT_PART_SKIPPED)
+}
+
+def getTestSuiteSkipped() {
+	return getTestSuiteReportPart(env.REPORT_PART_SKIPPED)
 }
 
 def anyResultsAvailable() {
@@ -328,7 +400,7 @@ def modifyBuildStatus(String status) {
 	}
 }
 
-def getTestResults() {
+def getTestSuiteResult() {
 	if (!env.INIT_STAGE_SUCCEEDED) {
 		return "Init (local registry) stage failed!"
 	}
@@ -339,8 +411,8 @@ def getTestResults() {
 
 	def testsSuiteIssues = "${env.TESTS_SUITE_ISSUES ? env.TESTS_SUITE_ISSUES + '\n' : ''}"
 
-	if (env.TEST_SUITE_REPORT) {
-		return testsSuiteIssues + env.TEST_SUITE_REPORT
+	if (hasTestSuiteSummary()) {
+		return testsSuiteIssues + getTestSuiteSummary()
 	}
 
 	return testsSuiteIssues + "Test stage failed!"
@@ -379,7 +451,10 @@ def getBuildStats() {
 }
 
 def getBuildSummary() {
+	parseTestSuiteReport()
+
 	def summaryColor = getBuildResultColor()
+
 	def attachments = [
 		[
 			text: getBuildSummaryHeader(),
@@ -390,14 +465,30 @@ def getBuildSummary() {
 			color: summaryColor
 		],
 		[
-			text: getTestResults(),
+			text: getTestSuiteResult(),
 			color: summaryColor
 		],
-		[
-			text: getBuildStats(),
-			color: summaryColor
-		]
 	]
+
+	if (hasTestSuiteFailures()) {
+		attachments.add([
+			text: getTestSuiteFailures(),
+			color: summaryColor
+		])
+	}
+
+	if (hasTestSuiteSkipped()) {
+		attachments.add([
+			text: getTestSuiteSkipped(),
+			color: summaryColor
+		])
+	}
+
+	attachments.add([
+		text: getBuildStats(),
+		color: summaryColor
+	])
+
 	return attachments
 }
 

@@ -16,11 +16,14 @@ if [[ ! -f $TEST_SUITE_REPORT_PATH ]]; then
     exit
 fi
 
+cd ${TEST_SUITE_REPORT_DIR}
+
 csplit \
     --quiet \
-    --prefix=test_suite_report_part_ \
+    --prefix=${TEST_SUITE_REPORT_DIR}/test_suite_report_part_ \
     --suffix-format=%01d.txt \
     --suppress-matched \
+    --elide-empty-files \
     ${TEST_SUITE_REPORT_PATH} /^$/ {*}
 
 function recognize_test_suite_report_part() {

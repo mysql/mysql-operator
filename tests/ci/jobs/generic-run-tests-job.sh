@@ -103,7 +103,7 @@ touch $TESTS_LOG
 tail -f "$TESTS_LOG" &
 
 # a patch to avoid timeout ("FATAL: command execution failed") for long-lasting operations
-"$CI_DIR/jobs/auxiliary/show-progress.sh" 240 60 &
+"$CI_DIR/jobs/auxiliary/show-progress.sh" 480 30 &
 
 # by default TEST_SUITE is not defined, it means to run all tests
 if test $OPERATOR_WORKERS_COUNT == 1; then
@@ -149,7 +149,6 @@ function extract_test_suite_stat() {
 }
 
 function extract_execution_time() {
-	STAT_LABEL=$1
 	echo $(tac ${TESTS_LOG} | egrep -m 1 '^execution time\s*: .+ \([0-9.]+s\)$' | sed 's/.*:\s*//')
 }
 
@@ -161,7 +160,13 @@ EXECUTION_TIME=$(extract_execution_time)
 
 if [[ -n $TESTS_COUNT && $TESTS_COUNT -gt 0 && -n $FAILURES_COUNT && -n $ERRORS_COUNT && -n $SKIPPED_COUNT && -n $EXECUTION_TIME ]]; then
 	FAILED_TESTS=$(expr $FAILURES_COUNT + $ERRORS_COUNT)
+	if [[ $FAILED_TESTS -gt $TESTS_COUNT ]]; then
+		FAILED_TESTS=$TESTS_COUNT
+	fi
 	PASSED_TESTS=$(expr $TESTS_COUNT - $FAILED_TESTS - $SKIPPED_COUNT)
+	if [[ $PASSED_TESTS -lt 0 ]]; then
+		PASSED_TESTS=0
+	fi
 	STATS_MSG="${JOB_BADGE}: $TESTS_COUNT tests, $PASSED_TESTS passed, $FAILED_TESTS failed, $SKIPPED_COUNT skipped [$EXECUTION_TIME]"
 	STATS_LOG=$LOG_DIR/${OTE_LOG_PREFIX}-stats.log
 	echo ${STATS_MSG} > ${STATS_LOG}

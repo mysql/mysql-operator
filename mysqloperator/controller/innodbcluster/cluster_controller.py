@@ -493,7 +493,6 @@ class ClusterController:
 
         try:
             if pod.instance_type == "read-replica":
-                #self.dba_cluster.add_replica_instance(pod.endpoint_co, add_options)
                 self.dba_cluster.add_replica_instance(pod.endpoint, add_options)
             else:
                 self.dba_cluster.add_instance(pod.endpoint_co, add_options)
@@ -507,15 +506,23 @@ class ClusterController:
             add_options["recoveryMethod"] = "clone"
             logger.warning(f"trying add_instance with clone")
             try:
-                self.dba_cluster.add_instance(pod.endpoint_co, add_options)
+                if pod.instance_type == "read-replica":
+                    self.dba_cluster.add_replica_instance(pod.endpoint, add_options)
+                else:
+                    self.dba_cluster.add_instance(pod.endpoint_co, add_options)
             except (mysqlsh.Error, RuntimeError) as e:
                 logger.warning(f"add_instance failed second time: error={e}")
                 raise
 
-        minfo = self.probe_member_status(pod, pod_dba_session.session, True, logger)
+        if pod.instance_type == "read-replica":
+            # This is not perfect, as we don't track this further, but async
+            # replication gives us limited information only
+            pod.update_member_readiness_gate("ready", True)
+        else:
+            minfo = self.probe_member_status(pod, pod_dba_session.session, True, logger)
 
-        member_id, role, status, view_id, version, member_count, reachable_member_count = minfo
-        logger.info(f"JOINED {pod.name}: {minfo}")
+            member_id, role, status, view_id, version, member_count, reachable_member_count = minfo
+            logger.info(f"JOINED {pod.name}: {minfo}")
 
         # if the cluster size is complete, ensure routers are deployed
         if not router_objects.get_size(self.cluster) and member_count == self.cluster.parsed_spec.instances:
@@ -559,7 +566,8 @@ class ClusterController:
         logger.info(f"Removing {pod.endpoint} from cluster")
 
         # TODO improve this check
-        if len(self.cluster.get_pods()) > 1:
+        other_pods = self.cluster.get_pods()
+        if len(other_pods) > 1 or (len(other_pods) > 0 and pod.instance_type == 'read-replica'):
             try:
                 peer_pod = self.connect_to_cluster(logger)
             except mysqlsh.Error as e:
@@ -716,6 +724,7 @@ class ClusterController:
         else:
             raise kopf.PermanentError(
                 f"Invalid cluster state {diagnostic.status}")
+
 
     def on_router_tls_changed(self) -> None:
         """

@@ -294,9 +294,11 @@ class PodHelper:
         return get_pod_container(self._state, cont)
 
     def wait_ready(self):
-        self.owner.assertNotEqual(kutil.wait_pod(self.ns, self.name, "Running",
-                                           checkabort=self.owner.check_operator_exceptions), None,
-                                           f"timeout waiting for pod {self.name}")
+        self.owner.assertNotEqual(
+            kutil.wait_pod(self.ns, self.name, "Running",
+                           checkabort=self.owner.check_operator_exceptions,
+                           checkready=True),
+            None, f"timeout waiting for pod {self.name}")
 
     def wait_restart(self):
         restarts0 = self.get_container_status("mysql")["restartCount"]
@@ -602,13 +604,14 @@ class OperatorTest(unittest.TestCase):
                 return s in states
             self.wait(check, timeout=timeout)
 
-    def wait_pod(self, name, status_list, ns=None, ready=None):
+    def wait_pod(self, name, status_list, ns=None, ready=False):
         """
         Wait for given pod object to reach one of the states in the list.
         Aborts on timeout or when an unexpected error is detected in the operator.
         """
         self.assertNotEqual(kutil.wait_pod(ns or self.ns, name, status_list,
-                                           checkabort=self.check_operator_exceptions),
+                                           checkabort=self.check_operator_exceptions,
+                                           checkready=ready),
                             None, "timeout waiting for pod")
 
     def wait_routers(self, name_pattern, num_online, awaited_status=["Running"], awaited_ready="1/1", ns=None, timeout=60):

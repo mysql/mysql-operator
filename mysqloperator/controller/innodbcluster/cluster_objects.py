@@ -161,13 +161,12 @@ def prepare_cluster_stateful_set(spec: AbstractServerSetSpec, logger: Logger) ->
     if type(spec) is InnoDBClusterSpec:
         instance_type = "group-member"
         cluster_name = spec.name
-        instances = spec.instances
     elif type(spec) is ReadReplicaSpec:
         instance_type = "read-replica"
         cluster_name = spec.cluster_name
         extra_label = f"mysql.oracle.com/read-replica: {spec.name}"
         # initial startup no replica, we scale up once the group is running
-        instances = 0
+        # spec.instances therefore will be reduced by the caller!
     else:
         raise NotImplementedError(f"Unknown subtype {type(spec)} for creating StatefulSet")
 
@@ -190,7 +189,7 @@ metadata:
     app.kubernetes.io/created-by: mysql-operator
 spec:
   serviceName: {spec.name}-instances
-  replicas: {instances}
+  replicas: {spec.instances}
   podManagementPolicy: Parallel
   selector:
     matchLabels:
@@ -1006,6 +1005,24 @@ def update_objects_for_logs(sts: api_client.V1StatefulSet, cluster: InnoDBCluste
         sts.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = utils.isotime()
         print("\t\tReplacing STS")
         api_apps.replace_namespaced_stateful_set(sts.metadata.name, sts.metadata.namespace, body=sts)
+
+
+def remove_read_replica(cluster: InnoDBCluster, name: str):
+    try:
+        api_core.delete_namespaced_config_map(f"{cluster.name}-{name}-initconf", cluster.namespace)
+    except Exception as exc:
+        print(f"ConfigMap for ReadReplica {name} was not removed. This is usually ok. Reason: {exc}")
+
+    try:
+        api_core.delete_namespaced_service(f"{cluster.name}-{name}-instances", cluster.namespace)
+    except Exception as exc:
+        print(f"Service for ReadReplica {name} was not removed. This is usually ok. Reason: {exc}")
+
+    try:
+        api_apps.delete_namespaced_stateful_set(f"{cluster.name}-{name}", cluster.namespace)
+    except Exception as exc:
+        print(f"StatefulSet for ReadReplica  {name} was not removed. This is usually ok. Reason: {exc}")
+
 
 
 def on_first_cluster_pod_created(cluster: InnoDBCluster, logger: Logger) -> None:

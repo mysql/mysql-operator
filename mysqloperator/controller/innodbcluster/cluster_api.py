@@ -1243,6 +1243,13 @@ class InnoDBClusterSpec(AbstractServerSetSpec):
                     return profile
         return None
 
+    def get_read_replica(self, name: str) -> Optional[ReadReplicaSpec]:
+        if self.readReplicas:
+            for rr in self.readReplicas:
+                if rr.name ==  rr.cluster_name + '-' + name:
+                    return rr
+        return None
+
     @property
     def extra_router_volumes_no_cert(self) -> str:
         volumes = []
@@ -1464,6 +1471,7 @@ class InnoDBCluster(K8sInterfaceObject):
             if e.status == 404:
                 return None
             raise
+
     # As of K8s 1.21 this is no more beta.
     # Thus, eventually this needs to be upgraded to V1PodDisruptionBudget and api_policy to PolicyV1Api
     def get_disruption_budget(self) -> typing.Optional[api_client.V1PodDisruptionBudget]:

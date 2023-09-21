@@ -915,7 +915,7 @@ def wait_pod_gone(ns, name, timeout=120, checkabort=lambda: None):
     raise Exception(f"Timeout waiting for pod {ns}/{name}")
 
 
-def wait_pod(ns, name, status="Running", timeout=150, checkabort=lambda: None):
+def wait_pod(ns, name, status="Running", timeout=150, checkabort=lambda: None, checkready:bool=False):
     if type(status) not in (tuple, list):
         status = [status]
 
@@ -926,7 +926,7 @@ def wait_pod(ns, name, status="Running", timeout=150, checkabort=lambda: None):
             store_pod_diagnostics(ns, name)
             raise Exception(f"Pod error: {line['STATUS']}")
         logger.debug(line)
-        return line["STATUS"] in status
+        return (line["STATUS"] in status) and (checkready == False or line["READY"] == "True")
 
     wait_pod_exists(ns, name, timeout, checkabort)
 
@@ -934,7 +934,7 @@ def wait_pod(ns, name, status="Running", timeout=150, checkabort=lambda: None):
 
     checkabort()
     r = watch(ns, "pod", name, check_status, timeout,
-              format="custom-columns=NAME:.metadata.name,STATUS:.status.phase")
+              format="custom-columns=NAME:.metadata.name,STATUS:.status.phase,READY:.status.conditions[?(@.type==\"mysql.oracle.com/ready\")].status")
 
     logger.info(f"{r}")
 

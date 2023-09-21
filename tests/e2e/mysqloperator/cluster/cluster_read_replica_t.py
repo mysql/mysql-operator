@@ -22,13 +22,11 @@ def check_all(test, ns, cluster_name, rr_name, instances, user="root", password=
         test.assertEqual(replica["STATUS"], "Running", replica["NAME"])
 
         replica_pod = kutil.get_po(ns, replica["NAME"])
-        # TODO need to wait for readiness instead of sleep for replica to be ready
-        sleep(5)
         check_sidecar_health(test, ns, replica_pod["metadata"]["name"])
 
     with mutil.MySQLPodSession(ns, f"{cluster_name}-0", user, password) as s:
         res = s.query_sql(f"select count(*) from mysql_innodb_cluster_metadata.v2_instances where instance_type = 'read-replica' and label like '{cluster_name}-{rr_name}-%'")
-        test.assertEqual(res.fetch_one()[0], 1)
+        test.assertEqual(res.fetch_one()[0], instances)
 
 
 class ClusterReadReplicaDefaults(tutil.OperatorTest):
@@ -99,7 +97,7 @@ spec:
 
         self.wait_ic("mycluster", "ONLINE")
 
-        self.wait_pod("mycluster-trr-0", "Running")
+        self.wait_pod("mycluster-trr-0", "Running", ready=True)
 
         check_all(self, self.ns, "mycluster", "trr", instances=1)
 
@@ -122,10 +120,46 @@ spec:
             self.assertEqual(pod['metadata']['annotations']['mycluster.example.com/rr-ann1'], 'ann1-value')
             self.assertEqual(pod['metadata']['annotations']['mycluster.example.com/rr-ann2'], 'ann2-value')
 
+    def test_02_renaming_read_replica_leads_to_recreation(self):
+        patch = {
+                    "spec": {
+                        "readReplicas": [{
+                            "name": "trr2",
+                            "baseServerId": 510
+                        }]
+                    }
+        }
+        kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
+        self.wait_pod_gone("mycluster-trr-0")
+        self.wait_pod("mycluster-trr2-0", "Running", ready=True)
+
+        check_all(self, self.ns, "mycluster", "trr", instances=0)
+        check_all(self, self.ns, "mycluster", "trr2", instances=1)
+
+    def test_03_chages_to_read_replica_respected(self):
+        patch = {
+                    "spec": {
+                        "readReplicas": [{
+                            "name": "trr2",
+                            "baseServerId": 510,
+                            "instances": 2
+                        }]
+                    }
+        }
+        kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
+        self.wait_pod("mycluster-trr2-1", "Running", ready=True)
+
+        check_all(self, self.ns, "mycluster", "trr2", instances=2)
+
+    def test_04_remove_read_replica(self):
+        patch = [{"op": "remove", "path": "/spec/readReplicas"}]
+        kutil.patch_ic(self.ns, "mycluster", patch, type="json", data_as_type="json")
+        self.wait_pods_gone("mycluster-trr2-*")
+
+        check_all(self, self.ns, "mycluster", "trr2", instances=0)
+
     def test_99_destroy(self):
         kutil.delete_ic(self.ns, "mycluster")
 
         self.wait_pod_gone("mycluster-0")
         self.wait_ic_gone("mycluster")
-
-

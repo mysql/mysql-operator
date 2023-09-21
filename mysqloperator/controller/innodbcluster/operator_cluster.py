@@ -55,6 +55,54 @@ def ensure_backup_schedules_use_current_image(clusters: List[InnoDBCluster], log
             logger.warn(f"Error while ensuring {cluster.namespace}/{cluster.name} uses current operator version for scheduled backups: {exc}")
 
 
+def ignore_404(f) -> Any:
+    try:
+        return f()
+    except ApiException as e:
+        if e.status == 404:
+            return None
+        raise
+
+
+def do_create_read_replica(cluster: InnoDBCluster, rr: cluster_objects.ReadReplicaSpec,
+                           set_replicas_to_zero: bool,
+                           indention: str, logger: Logger) -> None:
+    namespace = cluster.namespace
+    if not ignore_404(lambda: cluster.get_read_replica_initconf(rr.name)):
+        print(f"{indention}Preparing... {rr.name} initconf")
+        configs = cluster_objects.prepare_initconf(cluster, rr, logger)
+        print(f"{indention}Creating...")
+        kopf.adopt(configs)
+        api_core.create_namespaced_config_map(namespace, configs)
+    if not ignore_404(lambda: cluster.get_read_replica_service(rr.name)):
+        print(f"{indention}Preparing... {rr.name} Service")
+        service = cluster_objects.prepare_cluster_service(rr)
+        print(f"{indention}Creating...")
+        kopf.adopt(service)
+        api_core.create_namespaced_service(namespace=namespace, body=service)
+    if not ignore_404(lambda: cluster.get_read_replica_stateful_set(rr.name)):
+        print(f"{indention}Preparing {rr.name} StatefulSet")
+        statefulset = cluster_objects.prepare_cluster_stateful_set(rr, logger)
+        if set_replicas_to_zero:
+            # This is initial startup where scaling the read reaplica is delayed
+            # till the clsuter is read
+            statefulset['spec']['replicas'] = 0
+        print(f"{indention}Creating...{statefulset}")
+        kopf.adopt(statefulset)
+        api_apps.create_namespaced_stateful_set(namespace=namespace,
+                                                body=statefulset)
+
+def do_reconcile_read_replica(cluster: InnoDBCluster,
+                              rr: cluster_objects.ReadReplicaSpec,
+                              logger: Logger) -> None:
+    statefulset = cluster_objects.prepare_cluster_stateful_set(rr, logger)
+    kopf.adopt(statefulset)
+    api_apps.patch_namespaced_stateful_set(namespace=cluster.namespace,
+                                           name=rr.name,
+                                           body=statefulset)
+
+
+
 @kopf.on.create(consts.GROUP, consts.VERSION,
                 consts.INNODBCLUSTER_PLURAL)  # type: ignore
 def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
@@ -89,14 +137,6 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
         raise kopf.TemporaryError(f"Error in InnoDBCluster spec: {e}")
 
     icspec = cluster.parsed_spec
-
-    def ignore_404(f) -> Any:
-        try:
-            return f()
-        except ApiException as e:
-            if e.status == 404:
-                return None
-            raise
 
     #print(f"Default operator IC edition: {config.MYSQL_OPERATOR_DEFAULT_IC_EDITION} Edition")
     cluster.log_cluster_info(logger)
@@ -195,25 +235,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             if len(icspec.readReplicas) > 0:
                 print(f"\t{len(icspec.readReplicas)} Read Replicas ...")
                 for rr in icspec.readReplicas:
-                    if not ignore_404(lambda: cluster.get_read_replica_initconf(rr.name)):
-                        print(f"\t\tPreparing... {rr.name} initconf")
-                        configs = cluster_objects.prepare_initconf(cluster, rr, logger)
-                        print("\t\tCreating...")
-                        kopf.adopt(configs)
-                        api_core.create_namespaced_config_map(namespace, configs)
-                    if not ignore_404(lambda: cluster.get_read_replica_service(rr.name)):
-                        print(f"\t\tPreparing... {rr.name} Service")
-                        service = cluster_objects.prepare_cluster_service(rr)
-                        print("\t\tCreating...")
-                        kopf.adopt(service)
-                        api_core.create_namespaced_service(namespace=namespace, body=service)
-                    if not ignore_404(lambda: cluster.get_read_replica_stateful_set(rr.name)):
-                        print(f"\t\tPreparing {rr.name} StatefulSet")
-                        statefulset = cluster_objects.prepare_cluster_stateful_set(rr, logger)
-                        print(f"\t\tCreating...{statefulset}")
-                        kopf.adopt(statefulset)
-
-                        api_apps.create_namespaced_stateful_set(namespace=namespace, body=statefulset)
+                    do_create_read_replica(cluster, rr, True, "\t\t", logger)
             else:
                 print("\tNo Read Replica")
 
@@ -642,6 +664,55 @@ def on_innodbcluster_field_tls_ca_secret_name(body: Body,
                                               logger: Logger, **kwargs):
     logger.info("on_innodbcluster_field_tls_ca_secret_name")
     on_sts_field_update(body, "spec.tlsCASecretName", logger)
+
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.readReplicas")  # type: ignore
+def on_innodbcluster_read_replicas_changed(body: Body, old: list, new: list,
+                                           logger: Logger, **kwargs):
+    logger.info("on_innodbcluster_read_replicas_changed")
+
+    if old == new:
+        return
+
+    cluster = InnoDBCluster(body)
+    if not cluster.get_create_time():
+        raise kopf.TemporaryError("The cluster is not ready. Will retry", delay=30)
+
+    cluster.parsed_spec.validate(logger)
+
+    if old is None:
+        old = []
+    if new is None:
+        new = []
+
+    with ClusterMutex(cluster):
+        # Remove read replica sets which were removed
+        for rr in old:
+            if rr['name'] not in map(lambda nrr: nrr['name'], new):
+                cluster_objects.remove_read_replica(cluster, rr['name'])
+
+        # Add or update read replica sets
+        for rr in new:
+            old_rr = next(filter(lambda orr: orr['name'] == rr['name'], old), None)
+
+            rrspec = cluster.parsed_spec.get_read_replica(rr['name'])
+            if rrspec is None:
+                # This should never happen except maybe a very short race
+                # when user adds it and immediateyl removes or in a retry
+                # loop. But in all those cases its removed after adding,
+                # thus not creating is fine
+                logger.warn(f"Could not find Spec for ReadReplica {rr['name']} in InnoDBCluster")
+                continue
+
+            if old_rr == rr:
+                # no change
+                pass
+            elif old_rr:
+                # Old Read Replica -> Update
+                do_reconcile_read_replica(cluster, rrspec, logger)
+            else:
+                # New Read Replica -> Create it
+                do_create_read_replica(cluster, rrspec, False, "", logger)
 
 
 @kopf.on.create("", "v1", "pods",

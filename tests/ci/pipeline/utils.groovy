@@ -71,6 +71,17 @@ def yesOrNo(boolean flag) {
 }
 
 def initEnv() {
+	env.INIT_STAGE_SUCCEEDED = false
+	env.BUILD_STAGE_SUCCEEDED = false
+	env.MINIKUBE_RESULT_STATUS = env.TEST_RESULTS_UNAVAILABLE
+	env.K3D_RESULT_STATUS = env.TEST_RESULTS_UNAVAILABLE
+	env.KIND_RESULT_STATUS = env.TEST_RESULTS_UNAVAILABLE
+	env.TEST_SUITE_REPORT = ""
+	env.TESTS_SUITE_ISSUES = ""
+	env.BUILD_DURATION = ""
+	env.CHANGE_LOG = ""
+	env.BUILD_STATUS = ""
+
 	env.WORKERS_FOLDER = 'Shell/KubernetesOperator/' + "${isCIExperimentalBuild() ? 'sandbox' : 'workers'}"
 	env.BUILD_TRIGGERED_BY = getTriggeredBy(params.OPERATOR_TRIGGERED_BY)
 	env.TESTS_DIR = "${WORKSPACE}/tests"
@@ -395,7 +406,7 @@ def getChangeLog() {
 def modifyBuildStatus(String status) {
 	if (!env.BUILD_STATUS) {
 		env.BUILD_STATUS = status
-	} else {
+	} else if (!env.BUILD_STATUS.contains(status)) {
 		env.BUILD_STATUS += ", " + status
 	}
 }

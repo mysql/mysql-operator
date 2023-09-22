@@ -206,12 +206,11 @@ if [[ -n ${OPERATOR_IP_FAMILY} ]]; then
 	echo "IP family: ${OPERATOR_IP_FAMILY}" >> $RUNTIME_ENV_LOG
 fi
 # kubectl (client, server, path)
-KUBECTL_VERSION=$(${KUBECTL_PATH} version --client -o json | jq '.clientVersion.gitVersion')
-echo "kubectl client: ${KUBECTL_VERSION}" >> $RUNTIME_ENV_LOG
-KUBECTL_VERSION=$(${KUBECTL_PATH} version -o json | jq '.serverVersion.gitVersion')
-echo "kubectl server: ${KUBECTL_VERSION}" >> $RUNTIME_ENV_LOG
-KUBECTL_FULL_PATH=$(which ${KUBECTL_PATH})
-echo "path: ${KUBECTL_FULL_PATH}" >> $RUNTIME_ENV_LOG
+KUBECTL_INFO_LOG='kubectl-info.log'
+if [[ -f ${KUBECTL_INFO_LOG} ]]; then
+	cat ${KUBECTL_INFO_LOG} >> $RUNTIME_ENV_LOG
+	rm ${KUBECTL_INFO_LOG}
+fi
 cat ${RUNTIME_ENV_LOG}
 
 # archive all logs and auxiliary files

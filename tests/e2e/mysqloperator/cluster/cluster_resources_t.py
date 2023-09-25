@@ -46,7 +46,6 @@ spec:
   tlsUseSelfSigned: true
   router:
     instances: 1
-    version: "{g_ts_cfg.version_tag}"
     podSpec:
       affinity:
         podAntiAffinity:

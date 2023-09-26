@@ -614,7 +614,7 @@ spec:
                           default: 3
                           minimum: 1
                           maximum: 3
-                          description: "Log error verbosity. See documentation of --log-error-verbosity of MySQL Server"
+                          description: "Log error verbosity. For details, see the MySQL Server --log-error-verbosity documentation."
                     slowQuery:
                       type: object
                       properties:
@@ -638,7 +638,7 @@ spec:
                       properties:
                         image:
                           type: string
-                          description: "Name of an image, incl. registry and repository, to be used for the log collector sidecar. If provided needs to be an image for the collector type configured"
+                          description: "Name of an image, including registry and repository, to be used for the log collector sidecar. If provided it needs to be an image for the configured collector type."
                         containerName:
                           type: string
                           default: "logcollector"
@@ -686,7 +686,7 @@ spec:
                                   description: "Tag for the slow log records"
                                 options:
                                   type: object
-                                  description: "fluentd specific options for the error log"
+                                  description: "fluentd specific options for the slow log"
                                   x-kubernetes-preserve-unknown-fields: true
                             recordAugmentation:
                               type: object

@@ -8,7 +8,7 @@ from .cluster_api import InnoDBCluster, InnoDBClusterSpec
 from ..kubeutils import client as api_client, ApiException
 from .. import config, utils
 import yaml
-from ..kubeutils import api_apps, k8s_cluster_domain
+from ..kubeutils import api_apps, api_core, k8s_cluster_domain
 import kopf
 from logging import Logger
 from typing import Optional
@@ -29,7 +29,7 @@ spec:
   - name: mysql
     port: {spec.mysql_port}
     protocol: TCP
-    targetPort: {spec.router_rwport}
+    targetPort: {spec.service.get_default_port_number(spec)}
   - name: mysqlx
     port: {spec.mysql_xport}
     protocol: TCP
@@ -50,6 +50,10 @@ spec:
     port: {spec.router_roxport}
     protocol: TCP
     targetPort: {spec.router_roxport}
+  - name: mysql-rw-split
+    port: {spec.router_rwsplitport}
+    protocol: TCP
+    targetPort: {spec.router_rwsplitport}
   - name: router-rest
     port: {spec.router_httpport}
     protocol: TCP
@@ -58,9 +62,17 @@ spec:
     component: mysqlrouter
     tier: mysql
     mysql.oracle.com/cluster: {spec.name}
-  type: ClusterIP
+  type: {spec.service.type}
 """
-    return yaml.safe_load(tmpl)
+    service = yaml.safe_load(tmpl)
+
+    if spec.service.annotations:
+        service['metadata']['annotations'] = spec.service.annotations
+
+    if spec.service.labels:
+        service['metadata']['labels'] = spec.service.labels | service['metadata']['labels']
+
+    return service
 
 
 def prepare_router_secrets(spec: InnoDBClusterSpec) -> dict:
@@ -198,6 +210,8 @@ spec:
           name: mysqlrw
         - containerPort: {spec.router_rwxport}
           name: mysqlxrw
+        - containerPort: {spec.router_rwsplitport}
+          name: mysqlrwsplit
         - containerPort: {spec.router_roport}
           name: mysqlro
         - containerPort: {spec.router_roxport}
@@ -368,6 +382,13 @@ def update_bootstrap_options(dpl: api_client.V1Deployment, cluster: InnoDBCluste
 def update_options(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, logger: Logger) -> None:
     router_command = ["mysqlrouter", *spec.router.options]
     update_router_container_template_property(dpl, "args", router_command, logger)
+
+def update_service(svc: api_client.V1Deployment, spec: InnoDBClusterSpec,
+                   logger: Logger) -> None:
+    body = prepare_router_service(spec)
+    print(body)
+    api_core.patch_namespaced_service(
+        svc.metadata.name, svc.metadata.namespace, body=body)
 
 def get_update_deployment_template_metadata_annotation(dpl: api_client.V1Deployment, annotation_name: str, annotation_value: str) -> str:
     patch = {"spec": {"template": {"metadata": { "annotations": { annotation_name: annotation_value }}}}}

@@ -302,6 +302,27 @@ spec:
                       type: array
                       items:
                         type: string
+                service:
+                  type: object
+                  description: "Configuration of the Serivice used by applications connecting to the InnoDB Cluster"
+                  properties:
+                    type:
+                      type: string
+                      enum: ["ClusterIP", "NodePort", "LoadBalancer"]
+                      default: ClusterIP
+                    annotations:
+                      type: object
+                      description: "Custom annotations for the Service"
+                      x-kubernetes-preserve-unknown-fields: true
+                    labels:
+                      type: object
+                      description: "Custom labels for the Service"
+                      x-kubernetes-preserve-unknown-fields: true
+                    defaultPort:
+                      type: string
+                      description: "Target for the Service's default (3306) port. If mysql-rw traffic will go to the primary and allow read and write operations, with mysql-ro traffic goes to the replica and allows only read operations, with mysql-rw-split the router's read-write-splitting will be targeted"
+                      enum: ["mysql-rw", "mysql-ro", "mysql-rw-split"]
+                      default: "mysql-rw"
 
                 metrics:
                   type: object

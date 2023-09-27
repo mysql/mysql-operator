@@ -960,6 +960,19 @@ def on_innodbcluster_field_metrics(old: str, new: str, body: Body,
         cluster_objects.update_metrics(sts, service, cluster, logger)
 
 
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.service")  # type: ignore
+def on_innodbcluster_field_service_type(old: str, new: str, body: Body,
+                                       logger: Logger, **kwargs):
+    if old == new:
+        return
+
+    cluster = InnoDBCluster(body)
+    with ClusterMutex(cluster):
+        svc = cluster.get_router_service()
+        router_objects.update_service(svc, cluster.parsed_spec, logger)
+
+
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL, field="spec.logs")  # type: ignore
 def on_innodbcluster_field_logs(old: str, new: str, body: Body, logger: Logger, **kwargs):
     if old == new:

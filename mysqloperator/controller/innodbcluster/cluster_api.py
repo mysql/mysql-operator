@@ -693,9 +693,38 @@ class RouterSpec:
         if "routingOptions" in spec:
             self.routingOptions = dget_dict(spec, "routingOptions", prefix)
 
+class ServiceSpec:
+    type: str = "ClusterIP"
+    annotations: dict = {}
+    labels: dict = {}
+    defaultPort: str = "mysql-rw"
+
+
+    def parse(self, spec: dict, prefix: str) -> None:
+        if "type" in spec:
+            self.type = dget_str(spec, "type", prefix)
+
+        if "annotations" in spec:
+            self.annotations = dget_dict(spec, "annotations", prefix)
+
+        if "labels" in spec:
+            self.labels = dget_dict(spec, "labels", prefix)
+
+        if "defaultPort" in spec:
+            self.defaultPort = dget_str(spec, "defaultPort", prefix)
+
+    def get_default_port_number(self, spec: 'InnoDBClusterSpec') -> int:
+        ports = {
+            "mysql-ro": spec.router_roport,
+            "mysql-rw": spec.router_rwport,
+            "mysql-rw-split": spec.router_rwsplitport
+        }
+        return ports[self.defaultPort]
+
 
 # Must correspond to the names in the CRD
 class InnoDBClusterSpecProperties(Enum):
+    SERVICE = "service"
     LOGS = "logs"
     ROUTER = "router"
     BACKUP_PROFILES = "backupProfiles"
@@ -755,6 +784,8 @@ class AbstractServerSetSpec(abc.ABC):
     router_roport: int = 6447
     router_rwxport: int = 6448
     router_roxport: int = 6449
+    router_rwsplitport: int = 6450
+
     router_httpport: int = 8443
 
 
@@ -1144,6 +1175,8 @@ class ReadReplicaSpec(AbstractServerSetSpec):
 
 
 class InnoDBClusterSpec(AbstractServerSetSpec):
+    service: ServiceSpec = ServiceSpec()
+
     # Initialize DB
     initDB: Optional[InitDB] = None
 
@@ -1164,6 +1197,11 @@ class InnoDBClusterSpec(AbstractServerSetSpec):
 
     def load(self, spec: dict) -> None:
         self._load(spec, spec, "spec")
+
+        self.service = ServiceSpec()
+        section = InnoDBClusterSpecProperties.SERVICE.value
+        if section in spec:
+            self.service.parse(dget_dict(spec, section, "spec"), "spec.service")
 
         # Router Options
         self.router = RouterSpec()

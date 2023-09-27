@@ -51,12 +51,14 @@ class MySQLDbSession:
 
 
 class MySQLPodSession:
-    def __init__(self, ns, podname, user, password, port=3306, **kwargs):
+    def __init__(self, ns, podname, user, password, port=3306,
+                 target_type="pod", **kwargs):
         self.session = None
         self.proc = None
         for retries in range(6):
             try:
-                self.proc, self.port = kutil.portfw(ns, podname, port)
+                self.proc, self.port = kutil.portfw(ns, podname, port,
+                                                    target_type)
                 self.session = MySQLDbSession(user=user, password=password,
                                 host='127.0.0.1',
                                 port=self.port,

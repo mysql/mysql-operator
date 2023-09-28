@@ -321,7 +321,7 @@ spec:
                           enum: ["all", "read_replicas", "secondaries"]
                 service:
                   type: object
-                  description: "Configuration of the Serivice used by applications connecting to the InnoDB Cluster"
+                  description: "Configuration of the Service used by applications connecting to the InnoDB Cluster"
                   properties:
                     type:
                       type: string

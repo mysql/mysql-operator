@@ -302,6 +302,23 @@ spec:
                       type: array
                       items:
                         type: string
+                    routingOptions:
+                      description: "Set routing options for the cluster"
+                      type: object
+                      properties:
+                        # naming pattern follows Shell's naming documented at
+                        # https://dev.mysql.com/doc/mysql-shell/8.1/en/innodb-clusterset-router-setroutingoption.html
+                        # ClusterSet-related options and tags currently not supported
+                        invalidated_cluster_policy:
+                          type: string
+                          enum: ["drop_all", "accept_ro"]
+                        stats_updates_frequency:
+                          type: integer
+                          default: 0
+                          minimum: 0
+                        read_only_targets:
+                          type: string
+                          enum: ["all", "read_replicas", "secondaries"]
                 service:
                   type: object
                   description: "Configuration of the Service used by applications connecting to the InnoDB Cluster"

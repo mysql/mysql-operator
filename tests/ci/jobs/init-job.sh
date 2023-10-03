@@ -55,3 +55,4 @@ if [[ $OPERATOR_BUILD_IMAGES == 'false' ]]; then
 fi
 
 docker images --digests
+docker images | wc -l

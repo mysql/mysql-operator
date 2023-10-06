@@ -51,7 +51,7 @@ class MinikubeEnvironment(BaseEnvironment):
             print(f"{name}/{version}:{image}")
 
     def get_images(self, filter="", node="minikube"):
-        cmd = f"{g_ts_cfg.env_binary_path} --profile={g_ts_cfg.k8s_context} ssh -n{node} docker image ls {filter}"
+        cmd = [g_ts_cfg.env_binary_path, f"--profile={g_ts_cfg.k8s_context}", "ssh", f"-n{node}", "docker", "image", "ls", filter]
         p = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE)
         return p.stdout.decode("utf8").strip().split("\n")
 

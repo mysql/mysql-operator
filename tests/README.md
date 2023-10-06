@@ -116,7 +116,7 @@ set the kubernetes version to use, if not set, the default depends on the instal
     by default, it is empty and corresponding test case(s) are skipped
 
 --use-current-context\
-    tests will run in the current context (returned with ```kubectl config current-context```);
+    tests will run in the current context (returned with ```{kubectl-path} config current-context```);
     no setup will be performed (similarly as for --no-setup flag)
 
 --load\

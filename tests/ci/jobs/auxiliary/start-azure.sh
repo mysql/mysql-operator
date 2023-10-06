@@ -4,7 +4,8 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 # script meant to perform Azure set up and start a related container
-# usage: <k8s-context> <registry-url> <azure-config-file> <azure-container-name>
+# usage: <kubectl-path> <k8s-context> <registry-url> <azure-config-file> <azure-container-name>
+# kubectl-path - path to the kubectl binary (it can be just 'kubectl' too, if available)
 # k8s-context - k8s context used to run kubectl commands
 # registry-url - url of a registry to pull azure images from, it may be a local registry, or a remote one
 # azure-config-file - path to the config file, if it doesn't exist it will be generated
@@ -12,19 +13,20 @@
 
 set -vx
 
-if [ "$#" -ne 4 ]; then
-	echo "usage: <k8s-context> <registry-url> <azure-config-file> <azure-container-name>"
+if [ "$#" -ne 5 ]; then
+	echo "usage: <kubectl-path> <k8s-context> <registry-url> <azure-config-file> <azure-container-name>"
 	exit 1
 fi
 
-K8S_CONTEXT=$1
-REGISTRY_URL=$2
-AZURE_CONFIG_FILE=$3
-AZURE_CONTAINER_NAME=$4
+KUBECTL_PATH=$1
+K8S_CONTEXT=$2
+REGISTRY_URL=$3
+AZURE_CONFIG_FILE=$4
+AZURE_CONTAINER_NAME=$5
 
 AZURITE_IMAGE=${REGISTRY_URL}/mcr.microsoft.com/azure-storage/azurite
 for i in $(eval echo "{1..180}"); do
-    kubectl --context=${K8S_CONTEXT} run --image=${AZURITE_IMAGE} azurite -- azurite --blobHost 0.0.0.0
+    ${KUBECTL_PATH} --context=${K8S_CONTEXT} run --image=${AZURITE_IMAGE} azurite -- azurite --blobHost 0.0.0.0
     if [[ $? -eq 0 ]]; then
         break
     fi
@@ -32,14 +34,14 @@ for i in $(eval echo "{1..180}"); do
 done
 
 for i in $(eval echo "{1..180}"); do
-    AZURE_POD_IP=$(kubectl --context=${K8S_CONTEXT} get pod azurite -o=jsonpath='{.status.podIP}')
+    AZURE_POD_IP=$(${KUBECTL_PATH} --context=${K8S_CONTEXT} get pod azurite -o=jsonpath='{.status.podIP}')
     if [[ -n "$AZURE_POD_IP" ]]; then
         break
     fi
     sleep 1
 done
 
-kubectl --context=${K8S_CONTEXT} run \
+${KUBECTL_PATH} --context=${K8S_CONTEXT} run \
     --attach \
     --image=${REGISTRY_URL}/mcr.microsoft.com/azure-cli \
     --restart=Never \
@@ -58,4 +60,4 @@ connection_string=BlobEndpoint=http://${AZURE_POD_IP}:10000/devstoreaccount1
 EOC
 fi
 
-kubectl --context=${K8S_CONTEXT} create secret generic azure-config --from-file=config=${AZURE_CONFIG_FILE}
+${KUBECTL_PATH} --context=${K8S_CONTEXT} create secret generic azure-config --from-file=config=${AZURE_CONFIG_FILE}

@@ -24,8 +24,7 @@ class K3dEnvironment(BaseEnvironment):
 
     def load_image(self, repo_tag, id):
         print(f"Loading image {repo_tag} ({id})")
-        cmd = f"{g_ts_cfg.env_binary_path} image import {repo_tag} -c {g_ts_cfg.k8s_cluster}"
-        print(cmd)
+        cmd = [g_ts_cfg.env_binary_path, "image", "import", repo_tag, "-c", g_ts_cfg.k8s_cluster]
         subprocess.check_call(cmd, shell=True)
 
     def resolve_context(self, cluster_name):

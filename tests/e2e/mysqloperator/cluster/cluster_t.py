@@ -924,7 +924,7 @@ spec:
                     communicated = True
                     break
             except BaseException as err:
-                self.logger.error(f"Unexpected {err=}, {type(err)=}")
+                self.logger.error("Unexpected err={}, type(err)={}".format(err, type(err)))
 
         self.assertTrue(communicated, f"couldn't communicate with the host {address}")
 

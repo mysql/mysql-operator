@@ -8,6 +8,7 @@
     * kubernetes-client
     * pyyaml
     * mysql-connector-python (**CAUTION!** NOT mysql-connector)
+    * xmlrunner
     * unittest-xml-reporting (optional, to generate JUnit xml reports)
 
 They can be installed with pip and [requirements.txt](requirements.txt), e.g.

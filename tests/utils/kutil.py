@@ -167,7 +167,7 @@ def kubectl(cmd, rsrc=None, args=None, timeout=None, check=True, ignore=[], time
         logger.debug("run %s", " ".join(argv))
     try:
         r = subprocess.run(argv, timeout=timeout,
-                           check=check, capture_output=True)
+            check=check, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except subprocess.TimeoutExpired as e:
         logger.error("kubectl failed: %s:\n    stderr=%s\n    stdout=%s",
                         e, decode_stream(e.stderr), decode_stream(e.stdout))

@@ -24,7 +24,7 @@ def ocicli(profile, cmd, subcmd=None, args=None, timeout=None, check=True, ignor
         logger.debug("run %s", " ".join(argv))
     try:
         r = subprocess.run(argv, timeout=timeout,
-                           check=check, capture_output=True)
+            check=check, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except subprocess.CalledProcessError as e:
         for ig in ignore:
             if "(%s)" % ig in e.stderr.decode("utf8"):

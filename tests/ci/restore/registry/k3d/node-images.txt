@@ -11,3 +11,5 @@ rancher/k3s:v1.26.1-k3s1
 rancher/k3s:v1.26.5-k3s1
 rancher/k3s:v1.27.1-k3s1
 rancher/k3s:v1.27.2-k3s1
+rancher/k3s:v1.27.4-k3s1
+rancher/k3s:v1.28.2-k3s1

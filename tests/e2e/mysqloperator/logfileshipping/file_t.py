@@ -282,7 +282,7 @@ spec:
   logs:
     slowQuery:
       enabled: true
-      longQueryTime: 1.8
+      longQueryTime: 2.8
 """
 
     def _00_create(self):
@@ -316,15 +316,15 @@ spec:
             self.assertFalse("logcollector" in container_names)
 
             with mutil.MySQLPodSession(self.ns, pod_name, self.root_user, self.root_pass) as s:
-                s.query_sql("SELECT SLEEP(1.98)").fetch_all()
-            sleep(8)
+                s.query_sql("SELECT SLEEP(2.98)").fetch_all()
+            sleep(15)
             # Slow Log should exist
             out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
             line = out.strip().decode("utf-8")
             self.assertEqual(f"/var/lib/mysql/{self.slow_query_log_file_name} mysql 640", line)
             slow_log_contents = kutil.cat(self.ns, (pod_name, "mysql"), f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
             print(slow_log_contents)
-            self.assertTrue(slow_log_contents.find("SELECT SLEEP(1.98)") != -1)
+            self.assertTrue(slow_log_contents.find("SELECT SLEEP(2.98)") != -1)
 
             # General Log should NOT exist
             out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
@@ -358,15 +358,15 @@ spec:
             self.assertFalse("logcollector" in container_names)
 
             with mutil.MySQLPodSession(self.ns, pod_name, self.root_user, self.root_pass) as s:
-                s.query_sql("SELECT SLEEP(2.39)").fetch_all()
-            sleep(8)
+                s.query_sql("SELECT SLEEP(3.39)").fetch_all()
+            sleep(15)
             # Slow Log should exist
             out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
             line = out.strip().decode("utf-8")
             self.assertEqual(f"/var/lib/mysql/{self.slow_query_log_file_name} mysql 640", line)
             slow_log_contents = kutil.cat(self.ns, (pod_name, "mysql"), f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
             print(slow_log_contents)
-            self.assertEqual(slow_log_contents.find("SELECT SLEEP(2.39)"), -1)
+            self.assertEqual(slow_log_contents.find("SELECT SLEEP(3.39)"), -1)
 
             out = kutil.execp(self.ns, (pod_name, "mysql"), ["rm", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
             print(out.strip().decode("utf-8"))
@@ -399,17 +399,17 @@ spec:
             self.assertFalse("logcollector" in container_names)
 
             with mutil.MySQLPodSession(self.ns, pod_name, self.root_user, self.root_pass) as s:
-                s.query_sql("SELECT SLEEP(2.49)").fetch_all()
-            sleep(8)
+                s.query_sql("SELECT SLEEP(3.49)").fetch_all()
+            sleep(15)
             # Slow Log should exist
             out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
             line = out.strip().decode("utf-8")
             self.assertEqual(f"/var/lib/mysql/{self.slow_query_log_file_name} mysql 640", line)
             slow_log_contents = kutil.cat(self.ns, (pod_name, "mysql"), f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
             print(slow_log_contents)
-            self.assertEqual(slow_log_contents.find("SELECT SLEEP(1.89)"), -1)
-            self.assertEqual(slow_log_contents.find("SELECT SLEEP(2.39)"), -1)
-            self.assertTrue(slow_log_contents.find("SELECT SLEEP(2.49)") > 0)
+            self.assertEqual(slow_log_contents.find("SELECT SLEEP(2.89)"), -1)
+            self.assertEqual(slow_log_contents.find("SELECT SLEEP(3.39)"), -1)
+            self.assertTrue(slow_log_contents.find("SELECT SLEEP(3.49)") > 0)
 
             # General Log should NOT exist
             out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
@@ -434,8 +434,8 @@ spec:
             self.assertFalse("logcollector" in container_names)
 
             with mutil.MySQLPodSession(self.ns, pod_name, self.root_user, self.root_pass) as s:
-                s.query_sql("SELECT SLEEP(2.19)").fetch_all()
-            sleep(8)
+                s.query_sql("SELECT SLEEP(3.19)").fetch_all()
+            sleep(15)
             # Slow Log should exist
             out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
             line = out.strip().decode("utf-8")
@@ -443,11 +443,11 @@ spec:
             slow_log_contents = kutil.cat(self.ns, (pod_name, "mysql"), f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
             print(slow_log_contents)
             # Queries from the removed slow log should not exists any more
-            self.assertEqual(slow_log_contents.find("SELECT SLEEP(1.89)"), -1)
-            self.assertEqual(slow_log_contents.find("SELECT SLEEP(2.39)"), -1)
+            self.assertEqual(slow_log_contents.find("SELECT SLEEP(2.89)"), -1)
+            self.assertEqual(slow_log_contents.find("SELECT SLEEP(3.39)"), -1)
             # Queries from the new slow log should be there
-            self.assertTrue(slow_log_contents.find("SELECT SLEEP(2.49)") != -1)
-            self.assertTrue(slow_log_contents.find("SELECT SLEEP(2.19)") != -1)
+            self.assertTrue(slow_log_contents.find("SELECT SLEEP(3.49)") != -1)
+            self.assertTrue(slow_log_contents.find("SELECT SLEEP(3.19)") != -1)
 
             # General Log should exist
             out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
@@ -543,7 +543,7 @@ spec:
     slowQuery:
       collect: true
       enabled: true
-      longQueryTime: 2.0
+      longQueryTime: 3.0
     collector:
       image: {g_ts_cfg.get_fluentd_image()}
       containerName: "{cls.collector_container_name}"
@@ -654,9 +654,9 @@ spec:
             self.assertTrue("logcollector" in container_names)
 
             with mutil.MySQLPodSession(self.ns, pod_name, self.root_user, self.root_pass) as s:
-                s.query_sql("SELECT SLEEP(2.2)").fetch_all()
-                s.query_sql("SELECT SLEEP(2.5)").fetch_all()
-            sleep(8)
+                s.query_sql("SELECT SLEEP(3.2)").fetch_all()
+                s.query_sql("SELECT SLEEP(3.5)").fetch_all()
+            sleep(15)
 
             # Slow Log should exist
             out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
@@ -664,8 +664,8 @@ spec:
             self.assertEqual(f"/var/lib/mysql/{self.slow_query_log_file_name} mysql 640", line)
             slow_log_contents = kutil.cat(self.ns, (pod_name, "mysql"), f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
             print(slow_log_contents)
-            self.assertTrue(slow_log_contents.find("SELECT SLEEP(2.2)") != -1)
-            self.assertTrue(slow_log_contents.find("SELECT SLEEP(2.5)") != -1)
+            self.assertTrue(slow_log_contents.find("SELECT SLEEP(3.2)") != -1)
+            self.assertTrue(slow_log_contents.find("SELECT SLEEP(3.5)") != -1)
 
             log_file_name = kutil.execp(self.ns, (pod_name, self.collector_container_name), ["bash", "-c", f"ls {self.collector_container_fluentd_path}/{self.slow_log_tag}/"]).decode().strip()
             log_file_name = log_file_name.split("\n", 1)[0]
@@ -689,13 +689,13 @@ spec:
                   "host":"localhost",
                   "ip":"127.0.0.1",
                   "id":"44",
-                  "query_time":"2.200602",
+                  "query_time":"3.200602",
                   "lock_time":"0.000000",
                   "rows_sent":"1",
                   "rows_examined":"1",
                   "schema":"mysql",
                   "timestamp":"1684958481",
-                  "query":"SELECT SLEEP(2.2);",
+                  "query":"SELECT SLEEP(3.2);",
                   "log_type":1,
                   "pod_name": "mycluster-0",
                   "ann1":"ann1-value",
@@ -706,11 +706,11 @@ spec:
                   "slowLogField":"XYZT2"
                 }"""
                 if line_no == 0:
-                    self.assertTrue(slow_log_contents["query_time"] >= 2.2)
-                    self.assertEqual(slow_log_contents["query"], "SELECT SLEEP(2.2);")
+                    self.assertTrue(slow_log_contents["query_time"] >= 3.2)
+                    self.assertEqual(slow_log_contents["query"], "SELECT SLEEP(3.2);")
                 elif line_no == 1:
-                    self.assertTrue(slow_log_contents["query_time"] >= 3.1)
-                    self.assertEqual(slow_log_contents["query"], "SELECT SLEEP(2.5);")
+                    self.assertTrue(slow_log_contents["query_time"] >= 3.5)
+                    self.assertEqual(slow_log_contents["query"], "SELECT SLEEP(3.5);")
                 self.assertEqual(slow_log_contents["user"], "root")
                 self.assertEqual(slow_log_contents["current_user"], "root")
                 self.assertEqual(slow_log_contents["host"], "localhost")
@@ -741,7 +741,7 @@ spec:
 
     def runit(self):
         self._00_create()
-        self._02_check_slow_log
+        self._02_check_slow_log()
         self._99_destroy()
 
 
@@ -805,7 +805,7 @@ spec:
       enabled: true
     slowQuery:
       enabled: false
-      longQueryTime: 1.7
+      longQueryTime: 2.7
 """
 
     def _00_create(self):
@@ -841,8 +841,8 @@ spec:
             self.assertFalse("logcollector" in container_names)
 
             with mutil.MySQLPodSession(self.ns, pod_name, self.root_user, self.root_pass) as s:
-                s.query_sql("SELECT SLEEP(1.9)").fetch_all()
-            sleep(5)
+                s.query_sql("SELECT SLEEP(2.9)").fetch_all()
+            sleep(15)
             # General Log should exist
             out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
             line = out.strip().decode("utf-8")
@@ -871,8 +871,8 @@ spec:
             self.assertFalse("logcollector" in container_names)
 
             with mutil.MySQLPodSession(self.ns, pod_name, self.root_user, self.root_pass) as s:
-                s.query_sql("SELECT SLEEP(1.89)").fetch_all()
-            sleep(5)
+                s.query_sql("SELECT SLEEP(2.89)").fetch_all()
+            sleep(15)
 
             # General Log should exist
             out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
@@ -933,8 +933,9 @@ spec:
             self.assertFalse("logcollector" in container_names)
 
             with mutil.MySQLPodSession(self.ns, pod_name, self.root_user, self.root_pass) as s:
+                # should be less than the longquerytime
                 s.query_sql("SELECT SLEEP(1.9)").fetch_all()
-            sleep(5)
+            sleep(15)
             # General Log not should exist
             out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
             line = out.strip().decode("utf-8")
@@ -1048,7 +1049,7 @@ spec:
       collect: true
     slowQuery:
       enabled: false
-      longQueryTime: 1.8
+      longQueryTime: 2.5
     collector:
       image: {g_ts_cfg.get_fluentd_image()}
       env:
@@ -1148,8 +1149,8 @@ spec:
             self.assertTrue("logcollector" in container_names)
 
             with mutil.MySQLPodSession(self.ns, pod_name, self.root_user, self.root_pass) as s:
-                s.query_sql("SELECT SLEEP(2.05)").fetch_all()
-            sleep(10) # let the error log accumulate some entries
+                s.query_sql("SELECT SLEEP(3.05)").fetch_all()
+            sleep(15) # let the error log accumulate some entries
 
             # Slow Log should NOT exist
             out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
@@ -1291,7 +1292,7 @@ spec:
       collect: true
     slowQuery:
       enabled: false
-      longQueryTime: 1.8
+      longQueryTime: 2.5
     collector:
       image: {g_ts_cfg.get_fluentd_image()}
       containerName: {cls.collector_container_name}
@@ -1395,8 +1396,8 @@ spec:
             self.assertTrue(self.collector_container_name in container_names)
 
             with mutil.MySQLPodSession(self.ns, pod_name, self.root_user, self.root_pass) as s:
-                s.query_sql("SELECT SLEEP(1.92)").fetch_all()
-            sleep(10) # let the error log accumulate quite some entries
+                s.query_sql("SELECT SLEEP(2.92)").fetch_all()
+            sleep(15) # let the error log accumulate quite some entries
 
             # General Log should MOT exist
             out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
@@ -1510,5 +1511,316 @@ class Cluster1LFSErrorLogCollect(LFSErrorLogCollectBase):
 class Cluster3LFSErrorLogCollect(LFSErrorLogCollectBase):
     instances = 3
 
+    def testit(self):
+        self.runit()
+
+
+class LFSSlowAndGeneralLogEnableAndCollectBase(tutil.OperatorTest):
+    default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    root_user = "root"
+    root_host = "%"
+    root_pass = "sakila"
+    collector_container_name = "logcollector"
+    general_log_file_name = "general_query.log"
+    general_log_tag = "genLogTag"
+    slow_query_log_file_name = "slow_query.log"
+    collector_container_fluentd_path = "/tmp/fluent"
+    slow_log_tag = "slowLogTag"
+    instances = 1
+
+    @classmethod
+    def setUpClass(cls):
+        cls.logger = logging.getLogger(__name__+":"+cls.__name__)
+        super().setUpClass()
+
+        for instance in range(0, cls.instances):
+            g_full_log.watch_mysql_pod(cls.ns, f"mycluster-{instance}")
+
+    @classmethod
+    def tearDownClass(cls):
+        for instance in reversed(range(0, cls.instances)):
+            g_full_log.stop_watch(cls.ns, f"mycluster-{instance}")
+
+        super().tearDownClass()
+
+    @classmethod
+    def cluster_definition(cls) -> str:
+        return f"""
+apiVersion: mysql.oracle.com/v2
+kind: InnoDBCluster
+metadata:
+  name: mycluster
+spec:
+  instances: {cls.instances}
+  router:
+    instances: 0
+  secretName: mypwds
+  edition: community
+  tlsUseSelfSigned: true
+  podLabels:
+    server-label1: "mycluster-server-label1-value"
+  podAnnotations:
+    server.mycluster.example.com/ann1: "ann1-value"
+  podSpec:
+    terminationGracePeriodSeconds: 4
+  logs:
+    error:
+      collect: false
+    general:
+      collect: true
+      enabled: true
+    slowQuery:
+      collect: true
+      enabled: true
+      longQueryTime: 2.9
+    collector:
+      image: {g_ts_cfg.get_fluentd_image()}
+      containerName: "{cls.collector_container_name}"
+      env:
+      - name: FLUENTD_OPT
+        value: -c /tmp/fluent.conf
+      fluentd:
+        errorLog:
+          tag: errLogTag
+          options:
+            ELoption11: ELoption11Value
+            ELoption22: ELoption22Value
+        generalLog:
+          tag: genLogTag
+          options:
+            GLoption1: GLoption1Value
+            GLoption2: GLoption2Value
+        slowQueryLog:
+          options:
+            SLoption55: SLoption55Value
+            SLoption66: SLoption66Value
+          tag: {cls.slow_log_tag}
+        recordAugmentation:
+          enabled: true
+          annotations:
+          - fieldName: ann1
+            annotationName: server.mycluster.example.com/ann1
+          labels:
+          - fieldName: pod_name
+            labelName: statefulset.kubernetes.io/pod-name
+          - fieldName: server-label1
+            labelName: server-label1
+          podFields:
+          - fieldName: pod_ip
+            fieldPath: status.podIP
+          - fieldName: host_ip
+            fieldPath: status.hostIP
+          resourceFields:
+          - containerName: mysql
+            fieldName: mysql_requests_memory
+            resource: requests.memory
+          staticFields:
+          - fieldName: static_field_1
+            fieldValue: static_field_1_value
+        additionalFilterConfiguration: |
+          <filter slowLogTag>
+            @type record_transformer
+            <record>
+              slowLogField XYZT2
+            </record>
+          </filter>
+        sinks:
+        - name: stdout
+          rawConfig: |
+            <store>
+              @type stdout
+            </store>
+        - name: file
+          rawConfig: |
+            <store>
+              @type file
+              append true
+              add_path_suffix false
+              path {cls.collector_container_fluentd_path}/${{tag}}/${{tag}}
+              <buffer tag,time>
+                @type file
+                path {cls.collector_container_fluentd_path}/buffer
+                timekey 1 # 10s partition
+                timekey_wait 1s
+                timekey_use_utc true # use utc
+                flush_interval 1s
+              </buffer>
+              <format>
+                @type json
+              </format>
+            </store>
+"""
+
+    def _00_create(self):
+        """
+        Create cluster, check posted events.
+        """
+        kutil.create_user_secrets(self.ns, "mypwds", root_user=self.root_user, root_host=self.root_host, root_pass=self.root_pass)
+
+        apply_time = isotime()
+        kutil.apply(self.ns, self.cluster_definition())
+
+        self.wait_ic("mycluster", ["PENDING", "INITIALIZING", "ONLINE"])
+
+        for instance in range(0, self.instances):
+            self.wait_pod(f"mycluster-{instance}", "Running")
+
+        self.wait_ic("mycluster", "ONLINE")
+
+        self.assertGotClusterEvent(
+            "mycluster", after=apply_time, type="Normal",
+            reason="ResourcesCreated",
+            msg="Dependency resources created, switching status to PENDING")
+        self.assertGotClusterEvent(
+            "mycluster", after=apply_time, type="Normal",
+            reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
+
+    def _02_check_slow_log(self):
+        server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
+        pod_names = [server["NAME"] for server in server_pods]
+        for pod_name in pod_names:
+            container_names = [container['name'] for container in kutil.get_po(self.ns, pod_name)['spec']['containers']]
+            self.assertTrue("logcollector" in container_names)
+
+            with mutil.MySQLPodSession(self.ns, pod_name, self.root_user, self.root_pass) as s:
+                s.query_sql("SELECT SLEEP(3.2)").fetch_all()
+                s.query_sql("SELECT SLEEP(3.5)").fetch_all()
+            sleep(15)
+
+            # Slow Log should exist
+            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
+            line = out.strip().decode("utf-8")
+            self.assertEqual(f"/var/lib/mysql/{self.slow_query_log_file_name} mysql 640", line)
+            slow_log_contents = kutil.cat(self.ns, (pod_name, "mysql"), f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
+            print(slow_log_contents)
+            self.assertTrue(slow_log_contents.find("SELECT SLEEP(3.2)") != -1)
+            self.assertTrue(slow_log_contents.find("SELECT SLEEP(3.5)") != -1)
+
+            log_file_name = kutil.execp(self.ns, (pod_name, self.collector_container_name), ["bash", "-c", f"ls {self.collector_container_fluentd_path}/{self.slow_log_tag}/"]).decode().strip()
+            log_file_name = log_file_name.split("\n", 1)[0]
+            slow_log_contents_js = kutil.cat(self.ns, (pod_name, self.collector_container_name), f"{self.collector_container_fluentd_path}/{self.slow_log_tag}/{log_file_name}").decode().strip()
+            first_lines_js = slow_log_contents_js.split("\n", 2 + 1)[0:2:1]
+            line_no = 0
+            for log_line_js in first_lines_js:
+                try:
+                    slow_log_contents = json.loads(log_line_js)
+                except json.JSONDecodeError as exc:
+                    print(exc)
+                    print(log_line_js)
+                    print(container_names)
+                    print(kutil.get_po(self.ns, pod_name))
+                    for container_name in container_names:
+                        print(kutil.logs(self.ns, [pod_name, container_name]))
+                    raise
+                """ {
+                  "user":"root",
+                  "current_user":"root",
+                  "host":"localhost",
+                  "ip":"127.0.0.1",
+                  "id":"44",
+                  "query_time":"3.200602",
+                  "lock_time":"0.000000",
+                  "rows_sent":"1",
+                  "rows_examined":"1",
+                  "schema":"mysql",
+                  "timestamp":"1684958481",
+                  "query":"SELECT SLEEP(2.2);",
+                  "log_type":1,
+                  "pod_name": "mycluster-0",
+                  "ann1":"ann1-value",
+                  "static_field_1":"static_field_1_value",
+                  "pod_ip":"10.42.2.6",
+                  "host_ip":"172.24.0.2",
+                  "mysql_requests_memory":"0",
+                  "slowLogField":"XYZT2"
+                }"""
+                if line_no == 0:
+                    self.assertTrue(slow_log_contents["query_time"] >= 3.2)
+                    self.assertEqual(slow_log_contents["query"], "SELECT SLEEP(3.2);")
+                elif line_no == 1:
+                    self.assertTrue(slow_log_contents["query_time"] >= 3.5)
+                    self.assertEqual(slow_log_contents["query"], "SELECT SLEEP(3.5);")
+                self.assertEqual(slow_log_contents["user"], "root")
+                self.assertEqual(slow_log_contents["current_user"], "root")
+                self.assertEqual(slow_log_contents["host"], "localhost")
+                self.assertTrue("id" in slow_log_contents)
+                self.assertTrue("lock_time" in slow_log_contents)
+                self.assertEqual(slow_log_contents["rows_sent"], 1)
+                self.assertEqual(slow_log_contents["rows_examined"], 1)
+                self.assertEqual(slow_log_contents["schema"], "mysql")
+                self.assertTrue("timestamp" in slow_log_contents)
+                self.assertEqual(slow_log_contents["log_type"], 1)
+                self.assertEqual(slow_log_contents["pod_name"], pod_name)
+                self.assertEqual(slow_log_contents["ann1"], "ann1-value")
+                self.assertEqual(slow_log_contents["static_field_1"], "static_field_1_value")
+                self.assertTrue("pod_ip" in slow_log_contents)
+                self.assertTrue("host_ip" in slow_log_contents)
+                self.assertTrue("mysql_requests_memory" in slow_log_contents)
+                self.assertEqual(slow_log_contents["slowLogField"], "XYZT2")
+                line_no = line_no + 1
+
+    def _04_check_general_log_exists(self):
+        server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
+        pod_names = [server["NAME"] for server in server_pods]
+        for pod_name in pod_names:
+            container_names = [container['name'] for container in kutil.get_po(self.ns, pod_name)['spec']['containers']]
+            self.assertTrue("logcollector" in container_names)
+
+            with mutil.MySQLPodSession(self.ns, pod_name, self.root_user, self.root_pass) as s:
+                s.query_sql("SELECT SLEEP(2.05)").fetch_all()
+            sleep(15)
+
+            # General Log should exist
+            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
+            line = out.strip().decode("utf-8")
+            self.assertEqual(f"/var/lib/mysql/{self.general_log_file_name} mysql 640", line)
+
+            out = kutil.execp(self.ns, (pod_name, "mysql"), ["ls", "-l", f"/var/lib/mysql/{self.general_log_file_name}"])
+            line = out.strip().decode("utf-8")
+            print(line)
+
+            line = kutil.execp(self.ns, (pod_name, self.collector_container_name), ["bash", "-c", f"ls -l {self.collector_container_fluentd_path}/{self.general_log_tag}/"]).decode().strip()
+            print(line)
+
+            log_file_name = kutil.execp(self.ns, (pod_name, self.collector_container_name), ["bash", "-c", f"ls {self.collector_container_fluentd_path}/{self.general_log_tag}/"]).decode().strip()
+            log_file_name = log_file_name.split("\n")[-1]
+            print(f"log_file_name={log_file_name}")
+
+            general_log_contents_js = kutil.cat(self.ns, (pod_name, self.collector_container_name), f"{self.collector_container_fluentd_path}/{self.general_log_tag}/{log_file_name}").decode().strip()
+
+    def _06_disable_general_log(self):
+        patch = {"spec": { "logs" : { "general" : { "enabled": False, "collect": False }}}}
+        waiter = get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
+        start_time = time()
+        kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
+
+        waiter()
+        self.wait_ic("mycluster", "ONLINE")
+        print("[06_disable_general_log] Cluster ONLINE after %.2f seconds " % (time() - start_time))
+
+    def _99_destroy(self):
+        kutil.delete_ic(self.ns, "mycluster")
+
+        self.wait_pods_gone("mycluster-*")
+        self.wait_routers_gone("mycluster-router-*")
+        self.wait_ic_gone("mycluster")
+
+        kutil.delete_default_secret(self.ns)
+
+    def runit(self):
+        self._00_create()
+        self._02_check_slow_log()
+        self._04_check_general_log_exists()
+        self._06_disable_general_log()
+        self._99_destroy()
+
+
+class Cluster1LFSSlowAndGeneralLogEnableAndCollect(LFSSlowAndGeneralLogEnableAndCollectBase):
+    instances = 1
+    def testit(self):
+        self.runit()
+
+class Cluster3LFSSlowAndGeneralLogEnableAndCollect(LFSSlowLogEnableAndCollectBase):
+    instances = 3
     def testit(self):
         self.runit()

@@ -13,6 +13,13 @@ import yaml
 import os
 
 
+def get_volume_name(volume) -> Optional[str]:
+    return volume.get('name') if type(volume) == dict else volume.name #V1Volume
+
+def get_container_name(container) -> Optional[str]:
+    return container.get('name') if type(container) == dict else container.name #V1Container
+
+
 class FluentdMysqlLogSpec:
     def __init__(self, tag: str = None):
         self.tag = tag
@@ -277,20 +284,20 @@ class FluentdSpec:
                                          logger: Logger) -> None:
         if isinstance(sts, dict):
             containers = sts["spec"]["template"]["spec"]["containers"]
-            sts["spec"]["template"]["spec"]["containers"] = [container for container in containers if container.name != container_name]
+            sts["spec"]["template"]["spec"]["containers"] = [container for container in containers if get_container_name(container) != container_name]
         elif isinstance(sts, api_client.V1StatefulSet):
             containers = sts.spec.template.spec.containers
-            sts.spec.template.spec.containers = [container for container in containers if container.name != container_name]
+            sts.spec.template.spec.containers = [container for container in containers if get_container_name(container) != container_name]
 
     def _remove_volumes_from_sts_spec(self, sts: Union[dict, api_client.V1StatefulSet],
                                       logger: Logger) -> None:
         volume_name = self.fluentd_configmap_volume_mount_name
         if isinstance(sts, dict):
             volumes = sts["spec"]["template"]["spec"]["volumes"]
-            sts["spec"]["template"]["spec"]["volumes"] = [volume for volume in volumes if volumes.name != volume_name]
+            sts["spec"]["template"]["spec"]["volumes"] = [volume for volume in volumes if get_volume_name(volume) != volume_name]
         elif isinstance(sts, api_client.V1StatefulSet):
             volumes = sts.spec.template.spec.volumes
-            sts.spec.template.spec.volumes = [volume for volume in volumes if volumes.name != volume_name]
+            sts.spec.template.spec.volumes = [volume for volume in volumes if get_volume_name(volume) != volume_name]
 
     def remove_from_sts_spec(self, sts: Union[dict, api_client.V1StatefulSet],
                              container_name: str,
@@ -332,7 +339,7 @@ class FluentdSpec:
         elif isinstance(sts, api_client.V1StatefulSet):
             # first filter out our old logs container spec
             containers = sts.spec.template.spec.containers
-            sts.spec.template.spec.containers = [container for container in containers if container.name != container_name]
+            sts.spec.template.spec.containers = [container for container in containers if get_container_name(container) != container_name]
             sts.spec.template.spec.containers += yaml.safe_load(patch)
 
 
@@ -354,7 +361,7 @@ class FluentdSpec:
             sts["spec"]["template"]["spec"]["volumes"] += yaml.safe_load(patch)
         elif isinstance(sts, api_client.V1StatefulSet):
             # first filter out our old logs volumes spec
-            sts.spec.template.spec.volumes = [volume for volume in sts.spec.template.spec.volumes if volume and volume.name != volume_name]
+            sts.spec.template.spec.volumes = [volume for volume in sts.spec.template.spec.volumes if volume and get_volume_name(volume) != volume_name]
             sts.spec.template.spec.volumes += yaml.safe_load(patch)
 
     def add_to_sts_spec(self, sts: Union[dict, api_client.V1StatefulSet],

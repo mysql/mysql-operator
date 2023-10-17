@@ -2055,7 +2055,7 @@ class MySQLPod(K8sInterfaceObject):
 
     @property
     def instance_type(self) -> str:
-        if "mysql.oracle.com/cluster" in self.pod.metadata.labels:
+        if "mysql.oracle.com/instance-type" in self.pod.metadata.labels:
             return self.pod.metadata.labels["mysql.oracle.com/instance-type"]
         else:
             # With old clusters the label may be missing

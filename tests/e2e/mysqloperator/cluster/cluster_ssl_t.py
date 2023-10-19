@@ -38,7 +38,7 @@ def check_connect_via_operator_pod(self, address, ca, ssl_mode):
 
     # create a tmpfile with the CA in the operator pod
     if ca:
-        kutil.cat_in("mysql-operator", operator_pod, "/tmp/testca.pem", open(ca).read())
+        kutil.cat_in("mysql-operator", [operator_pod, "mysql-operator"], "/tmp/testca.pem", open(ca).read())
 
     cmd = ['env', 'MYSQLSH_PROMPT_THEME=', 'mysqlsh', '--sql', '--tabbed',
             f'root:sakila@{address}', '--mysql',

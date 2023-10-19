@@ -142,7 +142,7 @@ def wipe_pv():
 def run_from_operator_pod(uri, script):
     podname = kutil.ls_po("mysql-operator")[0]["NAME"]
 
-    kutil.cat_in("mysql-operator", podname, "/tmp/script.py", "print('##########')\n" + script + "\n")
+    kutil.cat_in("mysql-operator", [podname, "mysql-operator"], "/tmp/script.py", "print('##########')\n" + script + "\n")
 
     api_core = client.CoreV1Api()
 
@@ -152,6 +152,7 @@ def run_from_operator_pod(uri, script):
     r = stream(api_core.connect_get_namespaced_pod_exec,
                         podname,
                         "mysql-operator",
+                        container="mysql-operator",
                         command=["mysqlsh", uri, "-f", "/tmp/script.py"],
                         stderr=True, stdin=False,
                         stdout=True, tty=False,

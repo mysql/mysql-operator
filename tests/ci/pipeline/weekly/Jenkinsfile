@@ -101,13 +101,13 @@ pipeline {
 					// 					 'minikube-v1.25.2;v1.23.4;kubectl-v1.23.4;3;2;4096;ipv4' - 3 workers with 2 nodes each, 4GB limit per node
 					axis {
 						name 'K8S_VERSION'
-						values 'minikube-v1.22.0;v1.21.5;kubectl-v1.21.14;5;1;8192;ipv4',
-							'minikube-v1.24.0;v1.22.5;kubectl-v1.22.17;5;1;8192;ipv4',
-							'minikube-v1.25.2;v1.23.4;kubectl-v1.23.4;5;1;8192;ipv4',
-							'minikube-v1.26.1;v1.24.1;kubectl-v1.24.8;4;1;8192;ipv4',
-							'minikube-v1.28.0;v1.25.5;kubectl-v1.25.6;4;1;8192;ipv4',
-							'minikube-v1.29.0;v1.26.1;kubectl-v1.26.1;4;1;8192;ipv4',
-							'minikube-v1.30.1;v1.27.0;kubectl-v1.27.0;4;1;8192;ipv4'
+						values 'minikube-v1.31.2;v1.21.5;kubectl-v1.21.14;4;1;8192;ipv4',
+							'minikube-v1.31.2;v1.22.5;kubectl-v1.22.17;4;1;8192;ipv4',
+							'minikube-v1.31.2;v1.23.4;kubectl-v1.23.4;4;1;8192;ipv4',
+							'minikube-v1.31.2;v1.24.1;kubectl-v1.24.8;4;1;8192;ipv4',
+							'minikube-v1.31.2;v1.25.5;kubectl-v1.25.6;4;1;8192;ipv4',
+							'minikube-v1.31.2;v1.26.1;kubectl-v1.26.1;4;1;8192;ipv4',
+							'minikube-v1.31.2;v1.27.0;kubectl-v1.27.0;4;1;8192;ipv4'
 							'minikube-v1.31.2;v1.27.4;kubectl-v1.28.2;4;1;8192;ipv4'
 							// 'minikube-v1.27.1;v1.25.2;kubectl-v1.25.5;2;2;8192;'
 							// 'minikube-v1.28.0;v1.26.0;kubectl-v1.26.0;3;1',
@@ -180,15 +180,15 @@ pipeline {
 					// 					 'k3d-v5.4.4;rancher/k3s:v1.23.5-k3s1;kubectl-v1.23.14;5;1;8192;ipv4' - 5 workers with 1 node each, 8GB limit per node
 					axis {
 						name 'K8S_VERSION'
-						values 'k3d-v5.2.2;rancher/k3s:v1.21.11-k3s1;kubectl-v1.21.14;12;1;8192;ipv4',
-							'k3d-v5.4.1;rancher/k3s:v1.22.7-k3s1;kubectl-v1.22.17;12;1;8192;ipv4',
-							'k3d-v5.4.4;rancher/k3s:v1.23.5-k3s1;kubectl-v1.23.14;6;1;8192;ipv4',
-							'k3d-v5.4.6;rancher/k3s:v1.24.7-k3s1;kubectl-v1.24.4;6;1;8192;ipv4',
-							'k3d-v5.4.6;rancher/k3s:v1.25.3-k3s1;kubectl-v1.25.4;6;1;8192;ipv4',
-							'k3d-v5.4.6;rancher/k3s:v1.26.0-k3s2;kubectl-v1.25.6;6;1;8192;ipv4',
-							'k3d-v5.4.6;rancher/k3s:v1.26.0-k3s1;kubectl-v1.26.0;2;3;8192;ipv4',
-							'k3d-v5.4.7;rancher/k3s:v1.26.1-k3s1;kubectl-v1.26.1;6;1;8192;ipv4',
-							'k3d-v5.5.1;rancher/k3s:v1.27.1-k3s1;kubectl-v1.27.2;6;1;8192;ipv4'
+						values 'k3d-v5.6.0;rancher/k3s:v1.21.11-k3s1;kubectl-v1.21.14;6;1;8192;ipv4',
+							'k3d-v5.6.0;rancher/k3s:v1.22.7-k3s1;kubectl-v1.22.17;6;1;8192;ipv4',
+							'k3d-v5.6.0;rancher/k3s:v1.23.5-k3s1;kubectl-v1.23.14;6;1;8192;ipv4',
+							'k3d-v5.6.0;rancher/k3s:v1.24.7-k3s1;kubectl-v1.24.4;6;1;8192;ipv4',
+							'k3d-v5.6.0;rancher/k3s:v1.25.3-k3s1;kubectl-v1.25.4;6;1;8192;ipv4',
+							'k3d-v5.6.0;rancher/k3s:v1.26.0-k3s2;kubectl-v1.25.6;6;1;8192;ipv4',
+							'k3d-v5.6.0;rancher/k3s:v1.26.0-k3s1;kubectl-v1.26.0;2;3;8192;ipv4',
+							'k3d-v5.6.0;rancher/k3s:v1.26.1-k3s1;kubectl-v1.26.1;6;1;8192;ipv4',
+							'k3d-v5.6.0;rancher/k3s:v1.27.1-k3s1;kubectl-v1.27.2;6;1;8192;ipv4'
 							'k3d-v5.6.0;rancher/k3s:v1.27.4-k3s1;kubectl-v1.28.2;6;1;8192;ipv4'
 					}
 				}
@@ -258,8 +258,8 @@ pipeline {
 					// 					 'kind-v0.17.0;;kubectl-v1.26.1;1;2;4096;dual' - 1 workers with 2 nodes each, 4GB limit per node
 					axis {
 						name 'K8S_VERSION'
-						values 'kind-v0.18.0;;kubectl-v1.26.1;2;1;8192;ipv6',
-							'kind-v0.19.0;;kubectl-v1.27.0;2;1;8192;dual',
+						values 'kind-v0.20.0;;kubectl-v1.26.1;2;1;8192;ipv6',
+							'kind-v0.20.0;;kubectl-v1.27.0;2;1;8192;dual',
 							'kind-v0.20.0;;kubectl-v1.27.2;2;1;8192;ipv6'
 					}
 				}

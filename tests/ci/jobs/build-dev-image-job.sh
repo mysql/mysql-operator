@@ -31,4 +31,4 @@ if [ $? -ne 0 ]; then
 fi
 docker push ${LOCAL_REGISTRY_ENTERPRISE_OPERATOR_IMAGE}
 
-docker images --digests
+docker images --digests | grep ${OPERATOR_TEST_VERSION_TAG}

@@ -20,7 +20,7 @@ curl -X GET -u $JENKINS_USER_CRED ${TEST_RESULT_BUILD_URL}/testReport/api/json?p
 TEST_SUITE_REPORT_FNAME=test_suite_report.txt
 TEST_SUITE_REPORT_PATH=$LOG_DIR/$TEST_SUITE_REPORT_FNAME
 "$CI_DIR/jobs/auxiliary/parse_job_test_result.py" $JOB_RESULT_PATH > $TEST_SUITE_REPORT_PATH
-cat $TEST_SUITE_REPORT_PATH
+cat $TEST_SUITE_REPORT_PATH | head -15
 
 cd $LOG_DIR
-tar cvjf ../test_suite_report_$BUILD_NUMBER.tar.bz2 $TEST_SUITE_REPORT_FNAME
+tar cjf ../test_suite_report_$BUILD_NUMBER.tar.bz2 $TEST_SUITE_REPORT_FNAME

@@ -214,7 +214,7 @@ fi
 cat ${RUNTIME_ENV_LOG}
 
 # archive all logs and auxiliary files
-tar cvjf ../$OTE_LOG_PREFIX-result.tar.bz2 *
+tar cjf ../$OTE_LOG_PREFIX-result.tar.bz2 *
 df -lh | grep /sd
 
 exit $TESTS_RESULT

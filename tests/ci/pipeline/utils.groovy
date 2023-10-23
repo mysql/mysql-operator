@@ -183,7 +183,7 @@ def getIntroContents() {
 }
 
 def addTestResults(String k8s_env, int expectedResultsCount) {
-	sh "ls ${env.LOG_DIR}"
+	sh "ls ${env.LOG_DIR} | wc -l"
 	def testResultsPattern = "$k8s_env-*-result.tar.bz2"
 	def testResults = findFiles glob: "**/${env.LOG_SUBDIR}/$testResultsPattern"
 	if (testResults.length == 0) {
@@ -191,7 +191,7 @@ def addTestResults(String k8s_env, int expectedResultsCount) {
 	}
 
 	def resultPattern = "${env.LOG_DIR}/$testResultsPattern"
-	sh "cat $resultPattern | tar jxvf - -i -C ${env.LOG_DIR} && rm $resultPattern"
+	sh "cat $resultPattern | tar jxf - -i -C ${env.LOG_DIR} && rm $resultPattern"
 
 	// uncomment during Jenkins refactorings when some jobs are intentionally skipped
 	// sh "touch ${LOG_DIR}/xml/*.xml"
@@ -225,7 +225,7 @@ def getMergedStatsReports() {
 }
 
 def getTestSuiteReport() {
-	sh "ls ${env.LOG_DIR}"
+	sh "ls ${env.LOG_DIR} | wc -l"
 	def testSuiteReportPattern = 'test_suite_report_*.tar.bz2'
 	def testSuiteReportFiles = findFiles glob: "**/${env.LOG_SUBDIR}/$testSuiteReportPattern"
 	if (testSuiteReportFiles.length == 0) {
@@ -233,7 +233,7 @@ def getTestSuiteReport() {
 	}
 
 	def reportPattern = "${env.LOG_DIR}/$testSuiteReportPattern"
-	sh "cat $reportPattern | tar jxvf - -i -C ${env.LOG_DIR} && rm $reportPattern"
+	sh "cat $reportPattern | tar jxf - -i -C ${env.LOG_DIR} && rm $reportPattern"
 
 	def reportPath = "${env.LOG_DIR}/test_suite_report.txt"
 	def reportExists = fileExists reportPath
@@ -242,8 +242,6 @@ def getTestSuiteReport() {
 	}
 
 	testSuiteReport = readFile(file: reportPath)
-
-	echo testSuiteReport
 	return testSuiteReport
 }
 
@@ -338,7 +336,7 @@ def getTestsSuiteIssuesByEnv(String k8s_env, String result) {
 }
 
 def getTestsSuiteIssues(boolean kindEnabled) {
-	sh 'ls -lRF ${LOG_DIR}'
+	sh 'ls -lR ${LOG_DIR} | wc -l'
 	def testSuiteIssues = ""
 	if (anyResultsAvailable()) {
 		testSuiteIssues += getTestsSuiteIssuesByEnv("minikube", env.MINIKUBE_RESULT_STATUS)

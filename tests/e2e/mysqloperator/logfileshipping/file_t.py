@@ -516,6 +516,12 @@ class LFSSlowLogEnableAndCollectBase(tutil.OperatorTest):
 
     @classmethod
     def cluster_definition(cls) -> str:
+        # big longQueryTime due to the following or "START GROUP_REPLICATION" taking long time
+        #  # User@Host: mysql_innodb_cluster_1002[mysql_innodb_cluster_1002] @ mycluster-2.mycluster-instances.cluster3-lfsslow-and-general-log-enable-and-collect.svc.cluster.local [10.42.3.6]  Id:    66
+        #  # Query_time: 3.645823  Lock_time: 0.000000 Rows_sent: 0  Rows_examined: 0
+        #  #SET timestamp=1698163172;
+        #  # administrator command: Binlog Dump GTID;
+
         return f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
@@ -543,7 +549,7 @@ spec:
     slowQuery:
       collect: true
       enabled: true
-      longQueryTime: 3.0
+      longQueryTime: 13.0 #Test fails with k3d on slow systems when the long query time is high one digit seconds
     collector:
       image: {g_ts_cfg.get_fluentd_image()}
       containerName: "{cls.collector_container_name}"
@@ -654,8 +660,8 @@ spec:
             self.assertTrue("logcollector" in container_names)
 
             with mutil.MySQLPodSession(self.ns, pod_name, self.root_user, self.root_pass) as s:
-                s.query_sql("SELECT SLEEP(3.2)").fetch_all()
-                s.query_sql("SELECT SLEEP(3.5)").fetch_all()
+                s.query_sql("SELECT SLEEP(13.2)").fetch_all()
+                s.query_sql("SELECT SLEEP(13.5)").fetch_all()
             sleep(15)
 
             # Slow Log should exist
@@ -664,8 +670,8 @@ spec:
             self.assertEqual(f"/var/lib/mysql/{self.slow_query_log_file_name} mysql 640", line)
             slow_log_contents = kutil.cat(self.ns, (pod_name, "mysql"), f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
             print(slow_log_contents)
-            self.assertTrue(slow_log_contents.find("SELECT SLEEP(3.2)") != -1)
-            self.assertTrue(slow_log_contents.find("SELECT SLEEP(3.5)") != -1)
+            self.assertTrue(slow_log_contents.find("SELECT SLEEP(13.2)") != -1)
+            self.assertTrue(slow_log_contents.find("SELECT SLEEP(13.5)") != -1)
 
             log_file_name = kutil.execp(self.ns, (pod_name, self.collector_container_name), ["bash", "-c", f"ls {self.collector_container_fluentd_path}/{self.slow_log_tag}/"]).decode().strip()
             log_file_name = log_file_name.split("\n", 1)[0]
@@ -689,13 +695,13 @@ spec:
                   "host":"localhost",
                   "ip":"127.0.0.1",
                   "id":"44",
-                  "query_time":"3.200602",
+                  "query_time":"13.200602",
                   "lock_time":"0.000000",
                   "rows_sent":"1",
                   "rows_examined":"1",
                   "schema":"mysql",
                   "timestamp":"1684958481",
-                  "query":"SELECT SLEEP(3.2);",
+                  "query":"SELECT SLEEP(13.2);",
                   "log_type":1,
                   "pod_name": "mycluster-0",
                   "ann1":"ann1-value",
@@ -706,11 +712,11 @@ spec:
                   "slowLogField":"XYZT2"
                 }"""
                 if line_no == 0:
-                    self.assertTrue(slow_log_contents["query_time"] >= 3.2)
-                    self.assertEqual(slow_log_contents["query"], "SELECT SLEEP(3.2);")
+                    self.assertTrue(slow_log_contents["query_time"] >= 13.2)
+                    self.assertEqual(slow_log_contents["query"], "SELECT SLEEP(13.2);")
                 elif line_no == 1:
-                    self.assertTrue(slow_log_contents["query_time"] >= 3.5)
-                    self.assertEqual(slow_log_contents["query"], "SELECT SLEEP(3.5);")
+                    self.assertTrue(slow_log_contents["query_time"] >= 13.5)
+                    self.assertEqual(slow_log_contents["query"], "SELECT SLEEP(13.5);")
                 self.assertEqual(slow_log_contents["user"], "root")
                 self.assertEqual(slow_log_contents["current_user"], "root")
                 self.assertEqual(slow_log_contents["host"], "localhost")
@@ -1572,7 +1578,7 @@ spec:
     slowQuery:
       collect: true
       enabled: true
-      longQueryTime: 2.9
+      longQueryTime: 12.9 #Test fails with k3d on slow systems when the long query time is high one digit seconds
     collector:
       image: {g_ts_cfg.get_fluentd_image()}
       containerName: "{cls.collector_container_name}"
@@ -1683,8 +1689,8 @@ spec:
             self.assertTrue("logcollector" in container_names)
 
             with mutil.MySQLPodSession(self.ns, pod_name, self.root_user, self.root_pass) as s:
-                s.query_sql("SELECT SLEEP(3.2)").fetch_all()
-                s.query_sql("SELECT SLEEP(3.5)").fetch_all()
+                s.query_sql("SELECT SLEEP(13.2)").fetch_all()
+                s.query_sql("SELECT SLEEP(13.5)").fetch_all()
             sleep(15)
 
             # Slow Log should exist
@@ -1693,8 +1699,8 @@ spec:
             self.assertEqual(f"/var/lib/mysql/{self.slow_query_log_file_name} mysql 640", line)
             slow_log_contents = kutil.cat(self.ns, (pod_name, "mysql"), f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
             print(slow_log_contents)
-            self.assertTrue(slow_log_contents.find("SELECT SLEEP(3.2)") != -1)
-            self.assertTrue(slow_log_contents.find("SELECT SLEEP(3.5)") != -1)
+            self.assertTrue(slow_log_contents.find("SELECT SLEEP(13.2)") != -1)
+            self.assertTrue(slow_log_contents.find("SELECT SLEEP(13.5)") != -1)
 
             log_file_name = kutil.execp(self.ns, (pod_name, self.collector_container_name), ["bash", "-c", f"ls {self.collector_container_fluentd_path}/{self.slow_log_tag}/"]).decode().strip()
             log_file_name = log_file_name.split("\n", 1)[0]
@@ -1718,13 +1724,13 @@ spec:
                   "host":"localhost",
                   "ip":"127.0.0.1",
                   "id":"44",
-                  "query_time":"3.200602",
+                  "query_time":"13.200602",
                   "lock_time":"0.000000",
                   "rows_sent":"1",
                   "rows_examined":"1",
                   "schema":"mysql",
                   "timestamp":"1684958481",
-                  "query":"SELECT SLEEP(2.2);",
+                  "query":"SELECT SLEEP(13.2);",
                   "log_type":1,
                   "pod_name": "mycluster-0",
                   "ann1":"ann1-value",
@@ -1735,11 +1741,11 @@ spec:
                   "slowLogField":"XYZT2"
                 }"""
                 if line_no == 0:
-                    self.assertTrue(slow_log_contents["query_time"] >= 3.2)
-                    self.assertEqual(slow_log_contents["query"], "SELECT SLEEP(3.2);")
+                    self.assertTrue(slow_log_contents["query_time"] >= 13.2)
+                    self.assertEqual(slow_log_contents["query"], "SELECT SLEEP(13.2);")
                 elif line_no == 1:
-                    self.assertTrue(slow_log_contents["query_time"] >= 3.5)
-                    self.assertEqual(slow_log_contents["query"], "SELECT SLEEP(3.5);")
+                    self.assertTrue(slow_log_contents["query_time"] >= 13.5)
+                    self.assertEqual(slow_log_contents["query"], "SELECT SLEEP(13.5);")
                 self.assertEqual(slow_log_contents["user"], "root")
                 self.assertEqual(slow_log_contents["current_user"], "root")
                 self.assertEqual(slow_log_contents["host"], "localhost")

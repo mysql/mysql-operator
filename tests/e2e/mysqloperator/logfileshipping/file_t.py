@@ -319,15 +319,15 @@ spec:
                 s.query_sql("SELECT SLEEP(2.98)").fetch_all()
             sleep(15)
             # Slow Log should exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
             line = out.strip().decode("utf-8")
             self.assertEqual(f"/var/lib/mysql/{self.slow_query_log_file_name} mysql 640", line)
-            slow_log_contents = kutil.cat(self.ns, (pod_name, "mysql"), f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
+            slow_log_contents = kutil.cat(self.ns, [pod_name, "mysql"], f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
             print(slow_log_contents)
             self.assertTrue(slow_log_contents.find("SELECT SLEEP(2.98)") != -1)
 
             # General Log should NOT exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
             line = out.strip().decode("utf-8")
             self.assertTrue(f"stat: cannot statx '/var/lib/mysql/{self.general_log_file_name}': No such file or directory" in line)
 
@@ -361,23 +361,23 @@ spec:
                 s.query_sql("SELECT SLEEP(3.39)").fetch_all()
             sleep(15)
             # Slow Log should exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
             line = out.strip().decode("utf-8")
             self.assertEqual(f"/var/lib/mysql/{self.slow_query_log_file_name} mysql 640", line)
-            slow_log_contents = kutil.cat(self.ns, (pod_name, "mysql"), f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
+            slow_log_contents = kutil.cat(self.ns, [pod_name, "mysql"], f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
             print(slow_log_contents)
             self.assertEqual(slow_log_contents.find("SELECT SLEEP(3.39)"), -1)
 
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["rm", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["rm", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
             print(out.strip().decode("utf-8"))
             # Now slow log should not exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
             line = out.strip().decode("utf-8")
             print(line)
             self.assertTrue(f"stat: cannot statx '/var/lib/mysql/{self.slow_query_log_file_name}': No such file or directory" in line)
 
             # General Log should NOT exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
             line = out.strip().decode("utf-8")
             print(line)
             self.assertTrue(f"stat: cannot statx '/var/lib/mysql/{self.general_log_file_name}': No such file or directory" in line)
@@ -402,17 +402,17 @@ spec:
                 s.query_sql("SELECT SLEEP(3.49)").fetch_all()
             sleep(15)
             # Slow Log should exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
             line = out.strip().decode("utf-8")
             self.assertEqual(f"/var/lib/mysql/{self.slow_query_log_file_name} mysql 640", line)
-            slow_log_contents = kutil.cat(self.ns, (pod_name, "mysql"), f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
+            slow_log_contents = kutil.cat(self.ns, [pod_name, "mysql"], f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
             print(slow_log_contents)
             self.assertEqual(slow_log_contents.find("SELECT SLEEP(2.89)"), -1)
             self.assertEqual(slow_log_contents.find("SELECT SLEEP(3.39)"), -1)
             self.assertTrue(slow_log_contents.find("SELECT SLEEP(3.49)") > 0)
 
             # General Log should NOT exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
             line = out.strip().decode("utf-8")
             print(line)
             self.assertTrue(f"stat: cannot statx '/var/lib/mysql/{self.general_log_file_name}': No such file or directory" in line)
@@ -437,10 +437,10 @@ spec:
                 s.query_sql("SELECT SLEEP(3.19)").fetch_all()
             sleep(15)
             # Slow Log should exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
             line = out.strip().decode("utf-8")
             self.assertEqual(f"/var/lib/mysql/{self.slow_query_log_file_name} mysql 640", line)
-            slow_log_contents = kutil.cat(self.ns, (pod_name, "mysql"), f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
+            slow_log_contents = kutil.cat(self.ns, [pod_name, "mysql"], f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
             print(slow_log_contents)
             # Queries from the removed slow log should not exists any more
             self.assertEqual(slow_log_contents.find("SELECT SLEEP(2.89)"), -1)
@@ -450,7 +450,7 @@ spec:
             self.assertTrue(slow_log_contents.find("SELECT SLEEP(3.19)") != -1)
 
             # General Log should exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
             line = out.strip().decode("utf-8")
             print(line)
             self.assertEqual(f"/var/lib/mysql/{self.general_log_file_name} mysql 640", line)
@@ -665,17 +665,17 @@ spec:
             sleep(15)
 
             # Slow Log should exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
             line = out.strip().decode("utf-8")
             self.assertEqual(f"/var/lib/mysql/{self.slow_query_log_file_name} mysql 640", line)
-            slow_log_contents = kutil.cat(self.ns, (pod_name, "mysql"), f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
+            slow_log_contents = kutil.cat(self.ns, [pod_name, "mysql"], f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
             print(slow_log_contents)
             self.assertTrue(slow_log_contents.find("SELECT SLEEP(13.2)") != -1)
             self.assertTrue(slow_log_contents.find("SELECT SLEEP(13.5)") != -1)
 
-            log_file_name = kutil.execp(self.ns, (pod_name, self.collector_container_name), ["bash", "-c", f"ls {self.collector_container_fluentd_path}/{self.slow_log_tag}/"]).decode().strip()
+            log_file_name = kutil.execp(self.ns, [pod_name, self.collector_container_name], ["bash", "-c", f"ls {self.collector_container_fluentd_path}/{self.slow_log_tag}/"]).decode().strip()
             log_file_name = log_file_name.split("\n", 1)[0]
-            slow_log_contents_js = kutil.cat(self.ns, (pod_name, self.collector_container_name), f"{self.collector_container_fluentd_path}/{self.slow_log_tag}/{log_file_name}").decode().strip()
+            slow_log_contents_js = kutil.cat(self.ns, [pod_name, self.collector_container_name], f"{self.collector_container_fluentd_path}/{self.slow_log_tag}/{log_file_name}").decode().strip()
             first_lines_js = slow_log_contents_js.split("\n", 2 + 1)[0:2:1]
             line_no = 0
             for log_line_js in first_lines_js:
@@ -850,12 +850,12 @@ spec:
                 s.query_sql("SELECT SLEEP(2.9)").fetch_all()
             sleep(15)
             # General Log should exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
             line = out.strip().decode("utf-8")
             self.assertEqual(f"/var/lib/mysql/{self.general_log_file_name} mysql 640", line)
 
             # Slow Log should NOT exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
             line = out.strip().decode("utf-8")
             self.assertTrue(line.find(f"stat: cannot statx '/var/lib/mysql/{self.slow_query_log_file_name}': No such file or directory") != -1)
 
@@ -881,23 +881,23 @@ spec:
             sleep(15)
 
             # General Log should exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
             line = out.strip().decode("utf-8")
             print(line)
             self.assertEqual(f"/var/lib/mysql/{self.general_log_file_name} mysql 640", line)
 
             print(f"Deleting /var/lib/mysql/{self.general_log_file_name} on ({pod_name}::mysql)")
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["rm", f"/var/lib/mysql/{self.general_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["rm", f"/var/lib/mysql/{self.general_log_file_name}"])
             print(out.strip().decode("utf-8"))
 
             # General Log should be gone
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
             line = out.strip().decode("utf-8")
             print(line)
             self.assertTrue(line.find(f"stat: cannot statx '/var/lib/mysql/{self.general_log_file_name}': No such file or directory") != -1)
 
             # Slow Log should NOT exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
             line = out.strip().decode("utf-8")
             print(line)
             self.assertTrue(line.find(f"stat: cannot statx '/var/lib/mysql/{self.slow_query_log_file_name}': No such file or directory") != -1)
@@ -943,16 +943,16 @@ spec:
                 s.query_sql("SELECT SLEEP(1.9)").fetch_all()
             sleep(15)
             # General Log not should exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
             line = out.strip().decode("utf-8")
             print(line)
             if not f"stat: cannot statx '/var/lib/mysql/{self.general_log_file_name}': No such file or directory" in line:
-                log_contents = kutil.cat(self.ns, (pod_name, "mysql"), f"/var/lib/mysql/{self.general_log_file_name}").decode().strip()
+                log_contents = kutil.cat(self.ns, [pod_name, "mysql"], f"/var/lib/mysql/{self.general_log_file_name}").decode().strip()
                 print(log_contents[0:400])
             self.assertTrue(f"stat: cannot statx '/var/lib/mysql/{self.general_log_file_name}': No such file or directory" in line)
 
             # Slow Log should NOT exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
             line = out.strip().decode("utf-8")
             self.assertTrue(line.find(f"stat: cannot statx '/var/lib/mysql/{self.slow_query_log_file_name}': No such file or directory") != -1)
 
@@ -1159,19 +1159,19 @@ spec:
             sleep(15) # let the error log accumulate some entries
 
             # Slow Log should NOT exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
             line = out.strip().decode("utf-8")
             self.assertTrue(line.find(f"stat: cannot statx '/var/lib/mysql/{self.slow_query_log_file_name}': No such file or directory") != -1)
 
             # General Log should exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
             line = out.strip().decode("utf-8")
             self.assertEqual(f"/var/lib/mysql/{self.general_log_file_name} mysql 640", line)
 
-            log_file_name = kutil.execp(self.ns, (pod_name, self.collector_container_name), ["bash", "-c", f"ls {self.collector_container_fluentd_path}/{self.general_log_tag}/"]).decode().strip()
+            log_file_name = kutil.execp(self.ns, [pod_name, self.collector_container_name], ["bash", "-c", f"ls {self.collector_container_fluentd_path}/{self.general_log_tag}/"]).decode().strip()
             log_file_name = log_file_name.split("\n", 1)[0]
 
-            general_log_contents_js = kutil.cat(self.ns, (pod_name, self.collector_container_name), f"{self.collector_container_fluentd_path}/{self.general_log_tag}/{log_file_name}").decode().strip()
+            general_log_contents_js = kutil.cat(self.ns, [pod_name, self.collector_container_name], f"{self.collector_container_fluentd_path}/{self.general_log_tag}/{log_file_name}").decode().strip()
             first_lines_js = general_log_contents_js.split("\n",self.max_log_lines_to_be_tested+1)[0:self.max_log_lines_to_be_tested:1]
             line_no = 0
             for log_line_js in first_lines_js:
@@ -1406,20 +1406,20 @@ spec:
             sleep(15) # let the error log accumulate quite some entries
 
             # General Log should MOT exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
             line = out.strip().decode("utf-8")
             self.assertTrue(line.find(f"stat: cannot statx '/var/lib/mysql/{self.general_log_file_name}': No such file or directory") != -1)
 
             # Slow Log should NOT exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
             line = out.strip().decode("utf-8")
             self.assertTrue(line.find(f"stat: cannot statx '/var/lib/mysql/{self.slow_query_log_file_name}': No such file or directory") != -1)
 
             # Error Log should exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.error_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.error_log_file_name}"])
             line = out.strip().decode("utf-8")
             self.assertEqual(f"/var/lib/mysql/{self.error_log_file_name} mysql 640", line)
-            error_log_contents_js = kutil.cat(self.ns, (pod_name, "mysql"), f"/var/lib/mysql/{self.error_log_file_name}.00.json").decode().strip()
+            error_log_contents_js = kutil.cat(self.ns, [pod_name, "mysql"], f"/var/lib/mysql/{self.error_log_file_name}.00.json").decode().strip()
             try:
                 self.assertTrue(len(json.loads(error_log_contents_js.split("\n", 1)[0])) > 0)
             except json.JSONDecodeError as exc:
@@ -1431,7 +1431,7 @@ spec:
                     print(kutil.logs(self.ns, [pod_name, container_name]))
                 raise
 
-            log_file_name = kutil.execp(self.ns, (pod_name, self.collector_container_name), ["bash", "-c", f"ls {self.collector_container_fluentd_path}/{self.error_log_tag}/"]).decode().strip()
+            log_file_name = kutil.execp(self.ns, [pod_name, self.collector_container_name], ["bash", "-c", f"ls {self.collector_container_fluentd_path}/{self.error_log_tag}/"]).decode().strip()
             log_file_name = log_file_name.split("\n", 1)[0]
 
             error_log_contents_js = kutil.cat(self.ns, (pod_name, self.collector_container_name), f"{self.collector_container_fluentd_path}/{self.error_log_tag}/{log_file_name}").decode().strip()
@@ -1694,17 +1694,17 @@ spec:
             sleep(15)
 
             # Slow Log should exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
             line = out.strip().decode("utf-8")
             self.assertEqual(f"/var/lib/mysql/{self.slow_query_log_file_name} mysql 640", line)
-            slow_log_contents = kutil.cat(self.ns, (pod_name, "mysql"), f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
+            slow_log_contents = kutil.cat(self.ns, [pod_name, "mysql"], f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
             print(slow_log_contents)
             self.assertTrue(slow_log_contents.find("SELECT SLEEP(13.2)") != -1)
             self.assertTrue(slow_log_contents.find("SELECT SLEEP(13.5)") != -1)
 
-            log_file_name = kutil.execp(self.ns, (pod_name, self.collector_container_name), ["bash", "-c", f"ls {self.collector_container_fluentd_path}/{self.slow_log_tag}/"]).decode().strip()
+            log_file_name = kutil.execp(self.ns, [pod_name, self.collector_container_name], ["bash", "-c", f"ls {self.collector_container_fluentd_path}/{self.slow_log_tag}/"]).decode().strip()
             log_file_name = log_file_name.split("\n", 1)[0]
-            slow_log_contents_js = kutil.cat(self.ns, (pod_name, self.collector_container_name), f"{self.collector_container_fluentd_path}/{self.slow_log_tag}/{log_file_name}").decode().strip()
+            slow_log_contents_js = kutil.cat(self.ns, [pod_name, self.collector_container_name], f"{self.collector_container_fluentd_path}/{self.slow_log_tag}/{log_file_name}").decode().strip()
             first_lines_js = slow_log_contents_js.split("\n", 2 + 1)[0:2:1]
             line_no = 0
             for log_line_js in first_lines_js:
@@ -1777,22 +1777,22 @@ spec:
             sleep(15)
 
             # General Log should exist
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
             line = out.strip().decode("utf-8")
             self.assertEqual(f"/var/lib/mysql/{self.general_log_file_name} mysql 640", line)
 
-            out = kutil.execp(self.ns, (pod_name, "mysql"), ["ls", "-l", f"/var/lib/mysql/{self.general_log_file_name}"])
+            out = kutil.execp(self.ns, [pod_name, "mysql"], ["ls", "-l", f"/var/lib/mysql/{self.general_log_file_name}"])
             line = out.strip().decode("utf-8")
             print(line)
 
-            line = kutil.execp(self.ns, (pod_name, self.collector_container_name), ["bash", "-c", f"ls -l {self.collector_container_fluentd_path}/{self.general_log_tag}/"]).decode().strip()
+            line = kutil.execp(self.ns, [pod_name, self.collector_container_name], ["bash", "-c", f"ls -l {self.collector_container_fluentd_path}/{self.general_log_tag}/"]).decode().strip()
             print(line)
 
-            log_file_name = kutil.execp(self.ns, (pod_name, self.collector_container_name), ["bash", "-c", f"ls {self.collector_container_fluentd_path}/{self.general_log_tag}/"]).decode().strip()
+            log_file_name = kutil.execp(self.ns, [pod_name, self.collector_container_name], ["bash", "-c", f"ls {self.collector_container_fluentd_path}/{self.general_log_tag}/"]).decode().strip()
             log_file_name = log_file_name.split("\n")[-1]
             print(f"log_file_name={log_file_name}")
 
-            general_log_contents_js = kutil.cat(self.ns, (pod_name, self.collector_container_name), f"{self.collector_container_fluentd_path}/{self.general_log_tag}/{log_file_name}").decode().strip()
+            general_log_contents_js = kutil.cat(self.ns, [pod_name, self.collector_container_name], f"{self.collector_container_fluentd_path}/{self.general_log_tag}/{log_file_name}").decode().strip()
 
     def _06_disable_general_log(self):
         patch = {"spec": { "logs" : { "general" : { "enabled": False, "collect": False }}}}

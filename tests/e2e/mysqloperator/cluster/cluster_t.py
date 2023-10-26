@@ -515,14 +515,14 @@ spec:
             self.assertEqual(process, out.split(b"\0")[0].decode("utf-8"))
 
             # /proc/1 is owned by (runs as) uid=mysql/27, gid=mysql/27
-            out = kutil.execp(self.ns, pod, ["stat", "/proc/1"])
+            out = kutil.execp(self.ns, pod,  ["stat", "/proc/1"])
             access = [line for line in out.split(b"\n") if line.startswith(b"Access")][0].strip().decode("utf-8")
             self.assertEqual(f"Access: (0555/dr-xr-xr-x)  Uid: ({uid:5}/{user:>8})   Gid: ({uid:5}/{user:>8})", access)
 
         def check_mysql_pod(pod, uid, user, process):
             check_pod(pod, uid, user, process)
 
-            out = kutil.execp(self.ns, pod, ["stat", "-c%n %U %a", "/var/lib/mysql"])
+            out = kutil.execp(self.ns, pod,  ["stat", "-c%n %U %a", "/var/lib/mysql"])
             line = out.strip().decode("utf-8")
             self.assertEqual(f"/var/lib/mysql {user} 700", line)
 

@@ -102,7 +102,7 @@ spec:
             install_script_dir = s.query_sql("SHOW VARIABLES LIKE 'lc_messages_dir'").fetch_one()[1]
             install_script_path = os.path.join(install_script_dir, 'audit_log_filter_linux_install.sql')
             cmd = ['mysql', '-u', self.user, f"--password={self.password}", '-e', f"source {install_script_path}"]
-            kutil.exec(self.ns, (instance, "mysql"), cmd)
+            kutil.exec(self.ns, [instance, "mysql"], cmd)
 
 
     def install_plugin_on_secondary(self, instance):
@@ -178,7 +178,7 @@ spec:
 
     def get_rotated_log_data(self, instance):
         cmd = ['cat', self.__class__.rotated_audit_log_path]
-        return str(kutil.execp(self.ns, (instance, "mysql"), cmd))
+        return str(kutil.execp(self.ns, [instance, "mysql"], cmd))
 
 
     def get_log_path(self, instance):
@@ -195,11 +195,11 @@ spec:
         if not audit_log_path:
             return False
         cmd = ['ls', '-l', audit_log_path]
-        ls_res = kutil.execp(self.ns, (instance, "mysql"), cmd)
+        ls_res = kutil.execp(self.ns, [instance, "mysql"], cmd)
         self.logger.info(str(ls_res))
 
         # cmd = ['cat', audit_log_path]
-        # cat_res = kutil.execp(self.ns, (instance, "mysql"), cmd)
+        # cat_res = kutil.execp(self.ns, [instance, "mysql"], cmd)
         # self.logger.debug(str(cat_res))
 
         return self.audit_log_filename in str(ls_res)

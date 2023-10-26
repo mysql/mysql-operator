@@ -37,16 +37,16 @@ class OperatorTest(tutil.OperatorTest):
 
         def check_pod(pod, process):
             # kubectl exec runs as the mysql user
-            out = kutil.execp("mysql-operator", pod, ["id"])
+            out = kutil.execp("mysql-operator", [pod, "mysql-operator"], ["id"])
             self.assertTrue(out.startswith(b"uid="))
             self.assertNotEqual(f"uid=0(root) gid=0(root) groups=0(root)", out.strip().decode("utf-8"))
 
             # cmdline of process 1 is mysqld
-            out = kutil.execp("mysql-operator", pod, ["cat", "/proc/1/cmdline"])
+            out = kutil.execp("mysql-operator", [pod, "mysql-operator"], ["cat", "/proc/1/cmdline"])
             self.assertEqual(process, out.split(b"\0")[0].decode("utf-8"))
 
             # /proc/1 is owned by (runs as) uid=mysql/27, gid=mysql/27
-            out = kutil.execp("mysql-operator", pod, ["stat", "/proc/1"])
+            out = kutil.execp("mysql-operator", [pod, "mysql-operator"], ["stat", "/proc/1"])
             access = [line for line in out.split(b"\n") if line.startswith(b"Access")][0].strip().decode("utf-8")
             self.assertTrue(access)
             self.assertNotEqual(f"Access: (0555/dr-xr-xr-x)  Uid: ({0:5}/{'root':>8})   Gid: ({0:5}/{'root':>8})", access)

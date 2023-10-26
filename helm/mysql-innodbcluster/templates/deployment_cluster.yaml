@@ -207,7 +207,7 @@ spec:
       donorUrl: {{ required "initDB.clone.donorUrl is required" .donorUrl }}
       rootUser: {{ .rootUser | default "root" }}
       secretKeyRef:
-        name: {{ required "initDB.clone.credentials is required" .credentials }}
+        name: {{ required "initDB.clone.secretKeyRef.name is required" .secretKeyRef.name }}
     {{- end }}
   {{- end }}
 

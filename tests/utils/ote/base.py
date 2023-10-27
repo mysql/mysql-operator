@@ -14,7 +14,6 @@ from setup.config import g_ts_cfg
 # Operator Test Environment
 
 
-
 def wait_operator(ns):
     def check_ready():
         for po in kutil.ls_po(ns, pattern="mysql-operator-.*"):
@@ -171,6 +170,14 @@ class BaseEnvironment:
 
             if f.endswith("deploy-operator.yaml"):
                 arr = list(yaml.safe_load_all(y))
+                for el in arr:
+                    if el["kind"] == "Namespace":
+                        custom_labels = g_ts_cfg.get_custom_operator_ns_labels()
+                        if len(custom_labels):
+                            print(f"Patching namespace {el['metadata']['name']} with custom labels")
+                            if "labels" not in el["metadata"]:
+                                el["metadata"]["labels"] = {}
+                            el["metadata"]["labels"].update(custom_labels)
                 operator = arr[-1]
                 if override_deployment:
                     # strip last object (the operator Deployment), since we'll

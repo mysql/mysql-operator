@@ -77,7 +77,7 @@ spec:
 
     def test_1_create_clone(self):
         # TODO add support for using different root password between clusters
-        kutil.create_ns("clone")
+        kutil.create_ns("clone", g_ts_cfg.get_custom_test_ns_labels())
         kutil.create_user_secrets(
             "clone", "pwds", root_user="root", root_host="%", root_pass="sakila")
         kutil.create_user_secrets(

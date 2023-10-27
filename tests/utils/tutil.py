@@ -418,7 +418,7 @@ class OperatorTest(unittest.TestCase):
             cls.logger.error("Namespace %s not empty before test: %s", cls.ns, leftovers)
             raise Exception(f"Namespace {cls.ns} not empty")
 
-        kutil.create_ns(cls.ns)
+        kutil.create_ns(cls.ns, g_ts_cfg.get_custom_test_ns_labels())
 
         # stdout from operator
         cls.op_stdout = []

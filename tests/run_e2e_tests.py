@@ -237,6 +237,12 @@ if __name__ == '__main__':
             g_ts_cfg.work_dir = arg.split("=")[-1]
         elif arg == "--store-operator-log":
             g_ts_cfg.store_operator_log = True
+        elif arg.startswith("--test-ns-label"):
+            label_kv = (arg.split("=", 1)[1]).split("=")
+            g_ts_cfg.custom_test_ns_labels[label_kv[0]] = label_kv[1]
+        elif arg.startswith("--operator-ns-label"):
+            label_kv = (arg.split("=", 1)[1]).split("=")
+            g_ts_cfg.custom_operator_ns_labels[label_kv[0]] = label_kv[1]
         elif arg.startswith("-"):
             print(f"Invalid option {arg}")
             sys.exit(1)
@@ -254,6 +260,8 @@ if __name__ == '__main__':
         with open(opt_suite_path, 'r') as f:
             opt_include += f.read().splitlines()
     print(f"opt_include: {opt_include}")
+    print(f"Custom test ns labels: {g_ts_cfg.get_custom_test_ns_labels()}")
+    print(f"Custom operator ns labels: {g_ts_cfg.get_custom_operator_ns_labels()}")
 
     image_dir = os.getenv("DOCKER_IMAGE_DIR") or "/tmp/docker-images"
     images = ["mysql-server:8.0.25", "mysql-router:8.0.25",

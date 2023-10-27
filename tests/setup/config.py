@@ -8,6 +8,7 @@ import pathlib
 from utils import auxutil
 from setup import defaults
 import tempfile
+from typing import Dict
 
 class Config:
     # k8s environment
@@ -85,6 +86,9 @@ class Config:
     # an optional custom secret to be copied to each test-case namespace at the startup
     custom_secret_ns = None
     custom_secret_name = None
+
+    custom_operator_ns_labels: Dict[str, str] = {}
+    custom_test_ns_labels: Dict[str, str] = {}
 
     @property
     def operator_shell_version_num(self):
@@ -181,6 +185,12 @@ class Config:
 
     def get_fluentd_image(self) -> str:
         return f"{self.image_registry}{'/' if self.image_registry else ''}{self.fluentd_image_name}"
+
+    def get_custom_operator_ns_labels(self) -> Dict[str, str]:
+        return self.custom_operator_ns_labels
+
+    def get_custom_test_ns_labels(self) -> Dict[str, str]:
+        return self.custom_test_ns_labels
 
 
 # test-suite configuration

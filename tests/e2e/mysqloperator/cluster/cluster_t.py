@@ -61,8 +61,11 @@ def check_all(test, ns, name, instances, routers=None, primary=None, count_sessi
                 num_sessions = 0
 
         if version:
-            test.assertTrue(pod["status"]["containerStatuses"][0]["image"].endswith(
-                version), pod["metadata"]["name"]+"="+pod["status"]["containerStatuses"][0]["image"])
+            for pod_status in pod["status"]["containerStatuses"]:
+                if pod_status["name"] == "mysql":
+                    test.assertTrue(pod_status["image"].endswith(version),
+                                    pod["metadata"]["name"]+"="+pod_status["image"])
+
 
         check_group.check_instance(test, icobj, all_pods, pod, i == primary,
                                    num_sessions=num_sessions, user=user, password=password)
@@ -948,7 +951,7 @@ spec:
         - name: MYSQLSH_USER_CONFIG_HOME
           value: /tmp
 """
-        kutil.create_ns("appns")
+        kutil.create_ns("appns", g_ts_cfg.get_custom_test_ns_labels())
 
         kutil.apply("appns", yaml)
         self.wait_pod("testpod", "Running", ns="appns")

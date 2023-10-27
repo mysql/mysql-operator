@@ -1051,8 +1051,11 @@ class PortForward:
 #
 
 
-def create_ns(ns):
+def create_ns(ns, labels = {}):
     kubectl("create", "namespace", [ns], ignore=["AlreadyExists"])
+    if len(labels):
+        labels_kv = [ f"{key}={value}" for key, value in labels.items()]
+        kubectl("label", "namespace", [ns, *labels_kv])
 
 
 def create_testpv(ns, name):

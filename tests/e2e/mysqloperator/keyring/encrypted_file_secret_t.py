@@ -1,4 +1,4 @@
-# Copyright (c) 2022, Oracle and/or its affiliates.
+# Copyright (c) 2022, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -20,8 +20,8 @@ class KeyRingEncryptedFileSecret(KeyRingBase):
         keyring_spec = f"""
   keyring:
     encryptedFile:
-      fileName: "/tmp/component_keyring_encrypted_file"
-      readOnly: false
+      fileName: "component_keyring_encrypted_file"
+      readOnly: true
       password: {encrypted_file_secret_name}
       storage:
         secret:
@@ -29,8 +29,7 @@ class KeyRingEncryptedFileSecret(KeyRingBase):
 """
 
         self.create_cluster(keyring_spec)
-        self.create_keyring()
-        self.encrypt_tables()
+        self.read_key("test-key-name")
         self.check_variables()
 
     def test_9_destroy(self):

@@ -1,4 +1,4 @@
-# Copyright (c) 2022, Oracle and/or its affiliates.
+# Copyright (c) 2022, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -96,26 +96,10 @@ spec:
     def create_volume(self, volume_name):
         yaml = f"""
 apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: {volume_name}
-  labels:
-    type: local
-spec:
-  storageClassName: manual
-  capacity:
-    storage: 2Gi
-  accessModes:
-    - ReadWriteOnce
-  hostPath:
-    path: "/"
----
-apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: {volume_name}
 spec:
-  storageClassName: manual
   accessModes:
     - ReadWriteOnce
   resources:
@@ -130,6 +114,10 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: {secret_name}
+stringData:
+  component_keyring_encrypted_file: 1B9CD7A23C7CF1EB4DFEF748716A8271A13797FD300A3D5B187837B5E7097B0946E7C23F405B89410DF21DB0503A38B68E47F5B15AF3A7969DE53BE9F1EFBBC963287BE00CCE388B5E7931648E90E8F79C20042D1F6FD1BF6CC26E6657E056371D5C4C1B30F210846A9DF2A91633689466EDBA519659983F64A253D917E01DE1E84B372D050728C9F1A7706358BFF370A4D71735A076036582B663C4A00411D8973D40DD65781E3FDADB1353746765B8
+  component_keyring_file: |
+   {{"version":"1.0","elements":[{{"user":"root@localhost","data_id":"test-key-name","data_type":"AES","data":"53656372657420737472696E67","extension":[]}}]}}
 """
         kutil.apply(self.ns, yaml)
 
@@ -152,21 +140,54 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {cm_name}
+data:
+  component_keyring_encrypted_file: 1B9CD7A23C7CF1EB4DFEF748716A8271A13797FD300A3D5B187837B5E7097B0946E7C23F405B89410DF21DB0503A38B68E47F5B15AF3A7969DE53BE9F1EFBBC963287BE00CCE388B5E7931648E90E8F79C20042D1F6FD1BF6CC26E6657E056371D5C4C1B30F210846A9DF2A91633689466EDBA519659983F64A253D917E01DE1E84B372D050728C9F1A7706358BFF370A4D71735A076036582B663C4A00411D8973D40DD65781E3FDADB1353746765B8
+  component_keyring_file: |
+   {{"version":"1.0","elements":[{{"user":"root@localhost","data_id":"test-key-name","data_type":"AES","data":"53656372657420737472696E67","extension":[]}}]}}
 """
         kutil.apply(self.ns, yaml)
 
-    def create_keyring(self):
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", self.user, self.password) as s:
-            self.__class__.keyring_name = self.generate_keyring_name()
-            keyring_name = self.__class__.keyring_name
+    def create_keyring(self, check_all_pods=True):
+        self.__class__.keyring_name = self.generate_keyring_name()
+        keyring_name = self.__class__.keyring_name
 
-            self.logger.debug(s.query_sql(f"SELECT keyring_key_store('{keyring_name}', 'AES', 'Secret string')").fetch_one())
-            self.logger.debug(s.query_sql("SELECT space, name, space_Type, encryption FROM information_Schema.innodb_tablespaces").fetch_all())
-            self.logger.debug(s.query_sql(f"SELECT keyring_key_fetch('{keyring_name}')").fetch_one())
+        with mutil.MySQLPodSession(self.ns, "mycluster-0", self.user, self.password) as s:
+            self.assertTupleEqual(
+                s.query_sql(f"SELECT keyring_key_store('{keyring_name}', 'AES', 'Secret string')").fetch_one(),
+                (1,))
+
+        pods_to_check = ['mycluster-0']
+        if check_all_pods:
+            pods_to_check += ['mycluster-1', 'mycluster-2']
+            # On keyring_file/keyring_encrypted_file the values are cached, by
+            # restarting we can read them from other nodes
+            with mutil.MySQLPodSession(self.ns, "mycluster-1", self.user, self.password) as s:
+                s.exec_sql("SHUTDOWN")
+                kutil.wait_pod(self.ns, "mycluster-1", "NotReady")
+            with mutil.MySQLPodSession(self.ns, "mycluster-2", self.user, self.password) as s:
+                s.exec_sql("SHUTDOWN")
+                kutil.wait_pod(self.ns, "mycluster-2", "NotReady")
+
+            kutil.wait_pod(self.ns, "mycluster-1", checkready=True)
+            kutil.wait_pod(self.ns, "mycluster-2", checkready=True)
+
+
+        self.read_key(keyring_name, pods_to_check)
+
+    def read_key(self, keyring_name,
+                 pods_to_check=("mycluster-0", "mycluster-1", "mycluster-2")):
+        for pod_name in pods_to_check:
+            with self.subTest(pod_name=pod_name):
+                with mutil.MySQLPodSession(self.ns, pod_name, self.user, self.password) as s:
+                    self.assertTupleEqual(
+                        s.query_sql(f"SELECT CAST(keyring_key_fetch('{keyring_name}') AS CHAR(255))").fetch_one(),
+                        ('Secret string', ))
 
     def check_variables(self):
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", self.user, self.password) as s:
-            self.check_variable(s, 'keyring_operations', 'ON')
+        for podname in ("mycluster-0", "mycluster-1", "mycluster-2"):
+            with self.subTest(podname=podname):
+                with mutil.MySQLPodSession(self.ns, podname, self.user, self.password) as s:
+                    self.check_variable(s, 'keyring_operations', 'ON')
 
     def encrypt_tables(self):
         with mutil.MySQLPodSession(self.ns, "mycluster-0", self.user, self.password) as s:

@@ -94,11 +94,12 @@ spec:
                     file:
                       type: object
                       description: "Keyring 'File' specification"
-                      required: ["fileName", "storage"]
+                      required: ["storage"]
                       properties:
                         fileName:
                           type: string
-                          description: "Full path to the keyring file name inside the storage volume"
+                          default: "mysql_keyring"
+                          description: "Path to the keyring file name inside the storage volume (will be prefixed by mount path)"
                         readOnly:
                           type: boolean
                           default: false
@@ -110,11 +111,12 @@ spec:
                     encryptedFile:
                       type: object
                       description: "Keyring 'Encrypted File' specification"
-                      required: ["fileName", "storage", "password"]
+                      required: ["storage", "password"]
                       properties:
                         fileName:
                           type: string
-                          description: "Full path to the keyring file name inside the storage volume"
+                          default: "mysql_keyring"
+                          description: "Path to the keyring file name inside the storage volume (will be prefixed by mount path)"
                         readOnly:
                           type: boolean
                           default: false

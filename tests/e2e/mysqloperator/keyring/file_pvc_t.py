@@ -1,4 +1,4 @@
-# Copyright (c) 2022, Oracle and/or its affiliates.
+# Copyright (c) 2022, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -19,7 +19,7 @@ class KeyRingFilePvc(KeyRingBase):
         keyring_spec = f"""
   keyring:
     file:
-      fileName: "/tmp/component_keyring_file"
+      fileName: "component_keyring_file"
       readOnly: false
       storage:
         persistentVolumeClaim:

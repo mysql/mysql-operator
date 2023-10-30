@@ -4,6 +4,7 @@
 #
 
 from enum import Enum
+from pathlib import PurePosixPath
 import typing, abc
 from typing import Optional, Union, List, Tuple, Dict, Callable, cast, overload
 
@@ -246,7 +247,8 @@ spec:
     def add_component_manifest(self, data: dict, storage_type: KeyringConfigStorage) -> None:
         if storage_type == KeyringConfigStorage.CONFIGMAP:
             data[self.component_manifest_name] = {
-                "path": self.fileName,
+                "path": str(PurePosixPath(self.keyring_mount_path)
+                            .joinpath(self.fileName)),
                 "read_only": self.readOnly,
             }
 
@@ -373,7 +375,8 @@ spec:
     def add_component_manifest(self, data: dict, storage_type: KeyringConfigStorage) -> None:
         if storage_type == KeyringConfigStorage.SECRET:
             data[self.component_manifest_name] = {
-                "path": self.fileName,
+                "path": str(PurePosixPath(self.keyring_mount_path)
+                            .joinpath(self.fileName)),
                 "read_only": self.readOnly,
                 "password": self.password,
             }

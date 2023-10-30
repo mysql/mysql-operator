@@ -366,9 +366,17 @@ def initialize(session, datadir: str, pod: MySQLPod, cluster: InnoDBCluster, log
 
     configure_for_innodb_cluster(mysqlsh.globals.dba, logger)
 
-    # if this is the 1st pod of the cluster, then initialize it and create default accounts
     if pod.index == 0 and cluster.get_create_time() is None:
+        # if this is the 1st pod of the cluster, then initialize it and create default accounts
         session = populate_db(datadir, session, cluster, pod, logger)
+
+    session.run_sql("SET sql_log_bin=0")
+    old_read_only = session.run_sql("SELECT @@super_read_only").fetch_one()[0]
+    session.run_sql("SET GLOBAL super_read_only=0")
+
+    try:
+        # Some commands like INSTALL [PLUGIN|COMPONENT] are not being
+        # replicated we run them on any restart, those have to be idempotent
 
         # With enterprise edition activate enterprise plugins
         if cluster.parsed_spec.edition == Edition.enterprise:
@@ -378,24 +386,9 @@ def initialize(session, datadir: str, pod: MySQLPod, cluster: InnoDBCluster, log
         if "keyring" in cluster.spec:
             print(f"KEYRING: {cluster.spec['keyring']}")
             install_keyring_udf(cluster.parsed_spec.version, session, logger)
-
-    elif pod.index > 0 and cluster.parsed_spec.edition == Edition.enterprise:
-        # We only have to install the encryption plugin here, as
-        # the INSTALL COMPONENT command is not being replicated
-        try:
-            # In rare cases this might throw, we need to reset readonly mode in any case, the error however my bubble up
-            session.run_sql("SET sql_log_bin=0")
-            session.run_sql("SET GLOBAL super_read_only=off")
-
-            install_enterprise_encryption(cluster.parsed_spec.version, session, logger)
-        finally:
-            session.run_sql("SET GLOBAL super_read_only=on")
-            session.run_sql("SET sql_log_bin=1")
-
-
-    # # shutdown mysqld to let the definitive container start it back
-    # logger.info("Shutting down mysql...")
-    # session.run_sql("shutdown")
+    finally:
+        session.run_sql("SET GLOBAL super_read_only=?", [old_read_only])
+        session.run_sql("SET sql_log_bin=1")
 
 
 def metadata_schema_version(session: 'ClassicSession', logger: Logger) -> Optional[str]:

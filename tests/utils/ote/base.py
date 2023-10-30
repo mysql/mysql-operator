@@ -183,7 +183,7 @@ class BaseEnvironment:
                     # strip last object (the operator Deployment), since we'll
                     # create it separately below
                     arr = arr[:-1]
-                    y = yaml.safe_dump_all(arr)
+                y = yaml.safe_dump_all(arr)
 
             subprocess.run(args,
                        input=y.encode("utf8"), check=True)

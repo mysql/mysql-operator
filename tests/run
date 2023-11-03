@@ -10,5 +10,5 @@ NAMESPACE=mysql-operator
 
 export PYTHONPATH=`dirname $PWD`
 
-python3 ./run_e2e_tests.py run $*
+python3 ./run_e2e_tests.py run "$@"
 echo "Tests finished. rc=$?"

@@ -329,7 +329,14 @@ if __name__ == '__main__':
                         with open(opt_xml_report_path, 'wb') as xml_report:
                            xml_report.write(transform(xml_report_output.getvalue()))
                     else:
-                        runner = unittest.TextTestRunner(stream=sys.stdout,verbosity=opt_verbosity)
+                        runnerClass = unittest.TextTestRunner
+                        if sys.stdout.isatty():
+                            try:
+                                from colour_runner.runner import ColourTextTestRunner
+                                runnerClass = ColourTextTestRunner
+                            except ImportError:
+                                pass
+                        runner = runnerClass(stream=sys.stdout,verbosity=opt_verbosity)
                         runner.run(suites)
             except:
                 tutil.g_full_log.shutdown()

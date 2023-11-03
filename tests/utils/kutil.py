@@ -647,10 +647,65 @@ def kill(ns, name, sig, pid):
 
 #
 
+def _preprocess_yaml(y) -> str:
+    to_apply = []
+    #el = yaml.safe_load(y)
+    arr = list(yaml.safe_load_all(y))
+    for el in arr:
+        if "kind" in el and el["kind"].lower() == "innodbcluster" and "spec" in el:
+            custom_sts_labels = g_ts_cfg.get_custom_sts_labels()
+            if len(custom_sts_labels):
+                if not "podLabels" in el["spec"]:
+                    el["spec"]["podLabels"] = {}
+                el["spec"]["podLabels"].update(custom_sts_labels)
+                recreate = True
 
-def apply(ns, yaml, *, check=True):
+            custom_sts_podspec = g_ts_cfg.get_custom_sts_podspec()
+            if custom_sts_podspec:
+                if not "podSpec" in el["spec"]:
+                    el["spec"]["podSpec"] = {}
+                el["spec"]["podSpec"].update(yaml.safe_load(custom_sts_podspec))
+                recreate = True
+
+            custom_server_version_override = g_ts_cfg.get_custom_ic_server_version()
+            if custom_server_version_override:
+                el["spec"]["version"] = custom_server_version_override
+                if "readReplicas" in el["spec"]:
+                    el["spec"]["readReplicas"]["version"] = custom_server_version_override
+            else:
+                custom_server_version = g_ts_cfg.get_custom_ic_server_version()
+                if custom_server_version:
+                    if not "version" in el["spec"]:
+                        el["spec"]["version"] = custom_server_version
+                    if "readReplicas" in el["spec"] and not "version" in el["spec"]["readReplicas"]:
+                        el["spec"]["readReplicas"]["version"] = custom_server_version
+
+            custom_router_version_override = g_ts_cfg.get_custom_ic_router_version_override()
+            if custom_router_version_override:
+                if not "router" in el["spec"]:
+                    el["spec"]["router"] = {}
+                el["spec"]["router"]["version"]  = custom_router_version_override
+            else:
+                custom_router_version = g_ts_cfg.get_custom_ic_router_version()
+                if custom_router_version:
+                    if not "router" in el["spec"]:
+                        el["spec"]["router"] = {}
+                    if not "version" in el["spec"]["router"]:
+                        el["spec"]["router"]["version"] = custom_router_version
+
+        to_apply.append(yaml.safe_dump(el))
+
+    return "---\n".join(to_apply)
+
+
+def apply(ns, y, *, check=True):
+    stripped = strip_blanks(y)
+    to_apply = _preprocess_yaml(stripped)
+    if not to_apply:
+        to_apply = stripped
+
     try:
-        return feed_kubectl(strip_blanks(yaml), "apply", args=[
+        return feed_kubectl(to_apply, "apply", args=[
             "-n", ns, "-f", "-"], check=check)
     except subprocess.CalledProcessError as e:
         if debug_kubectl:

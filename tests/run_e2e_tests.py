@@ -16,6 +16,7 @@ import os
 import sys
 import logging
 import io
+import base64
 
 
 def setup_k8s():
@@ -243,6 +244,18 @@ if __name__ == '__main__':
         elif arg.startswith("--operator-ns-label"):
             label_kv = (arg.split("=", 1)[1]).split("=")
             g_ts_cfg.custom_operator_ns_labels[label_kv[0]] = label_kv[1]
+        elif arg.startswith("--sts-label"):
+            label_kv = (arg.split("=", 1)[1]).split("=")
+            g_ts_cfg.custom_sts_labels[label_kv[0]] = label_kv[1]
+        elif arg.startswith("--sts-podspec"):
+            g_ts_cfg.custom_sts_podspec = base64.b64decode(arg.partition("=")[-1]).decode("utf8")
+        elif arg.startswith("--ic-server-version"):
+            g_ts_cfg.custom_ic_server_version = arg.partition("=")[-1]
+        elif arg.startswith("--ic-server-version-override"):
+            g_ts_cfg.custom_ic_server_version = arg.partition("=")[-1]
+            g_ts_cfg.custom_ic_server_version_override = arg.partition("=")[-1]
+        elif arg.startswith("--ic-router-version"):
+            g_ts_cfg.custom_ic_router_version = arg.partition("=")[-1]
         elif arg.startswith("-"):
             print(f"Invalid option {arg}")
             sys.exit(1)
@@ -262,6 +275,11 @@ if __name__ == '__main__':
     print(f"opt_include: {opt_include}")
     print(f"Custom test ns labels: {g_ts_cfg.get_custom_test_ns_labels()}")
     print(f"Custom operator ns labels: {g_ts_cfg.get_custom_operator_ns_labels()}")
+    print(f"Custom STS podspec: {g_ts_cfg.get_custom_sts_podspec()}")
+    print(f"Custom IC Server version: {g_ts_cfg.get_custom_ic_server_version()}")
+    print(f"Custom IC Server version override all: {g_ts_cfg.get_custom_ic_server_version_override()}")
+    print(f"Custom IC Router version: {g_ts_cfg.get_custom_ic_router_version()}")
+    print(f"Custom IC Router version override all: {g_ts_cfg.get_custom_ic_server_version_override()}")
 
     image_dir = os.getenv("DOCKER_IMAGE_DIR") or "/tmp/docker-images"
     images = ["mysql-server:8.0.25", "mysql-router:8.0.25",

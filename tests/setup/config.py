@@ -89,6 +89,12 @@ class Config:
 
     custom_operator_ns_labels: Dict[str, str] = {}
     custom_test_ns_labels: Dict[str, str] = {}
+    custom_sts_labels: Dict[str, str] = {}
+    custom_sts_podspec: str = ""
+    custom_ic_server_version: str = ""
+    custom_ic_server_version_override: str = ""
+    custom_ic_router_version: str = ""
+    custom_ic_router_version_override: str = ""
 
     @property
     def operator_shell_version_num(self):
@@ -192,6 +198,23 @@ class Config:
     def get_custom_test_ns_labels(self) -> Dict[str, str]:
         return self.custom_test_ns_labels
 
+    def get_custom_sts_labels(self) -> Dict[str, str]:
+        return self.custom_sts_labels
+
+    def get_custom_sts_podspec(self) -> str:
+        return self.custom_sts_podspec
+
+    def get_custom_ic_server_version(self) -> str:
+        return self.custom_ic_server_version
+
+    def get_custom_ic_server_version_override(self) -> str:
+        return self.custom_ic_server_version_override
+
+    def get_custom_ic_router_version(self) -> str:
+        return self.custom_ic_router_version
+
+    def get_custom_ic_router_version_override(self) -> str:
+        return self.custom_ic_router_version_override
 
 # test-suite configuration
 g_ts_cfg = Config()

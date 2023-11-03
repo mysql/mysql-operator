@@ -216,5 +216,9 @@ class Config:
     def get_custom_ic_router_version_override(self) -> str:
         return self.custom_ic_router_version_override
 
+    def get_routers_awaited_status(self) -> str:
+        return f"{defaults.ROUTER_POD_CONTAINER_COUNT}/{defaults.ROUTER_POD_CONTAINER_COUNT}"
+
+
 # test-suite configuration
 g_ts_cfg = Config()

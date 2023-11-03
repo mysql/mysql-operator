@@ -248,7 +248,11 @@ if __name__ == '__main__':
             label_kv = (arg.split("=", 1)[1]).split("=")
             g_ts_cfg.custom_sts_labels[label_kv[0]] = label_kv[1]
         elif arg.startswith("--sts-podspec"):
-            g_ts_cfg.custom_sts_podspec = base64.b64decode(arg.partition("=")[-1]).decode("utf8")
+            g_ts_cfg.custom_sts_podspec = arg.partition("=")[-1]
+            try:
+                g_ts_cfg.custom_sts_podspec = base64.b64decode(arg.partition("=")[-1]).decode("utf8")
+            except:
+                pass
         elif arg.startswith("--ic-server-version"):
             g_ts_cfg.custom_ic_server_version = arg.partition("=")[-1]
         elif arg.startswith("--ic-server-version-override"):

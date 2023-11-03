@@ -615,7 +615,7 @@ class OperatorTest(unittest.TestCase):
                                            checkready=ready),
                             None, "timeout waiting for pod")
 
-    def wait_routers(self, name_pattern, num_online, awaited_status=["Running"], awaited_ready="1/1", ns=None, timeout=60):
+    def wait_routers(self, name_pattern, num_online, awaited_status=["Running"], awaited_ready = None, awaited_ready_status_getter = g_ts_cfg.get_routers_awaited_status, ns=None, timeout=60):
         """
         Wait for routers matching the name-pattern to reach one of the states in the awaited status list.
         Aborts on timeout or when an unexpected error is detected in the operator.
@@ -627,6 +627,9 @@ class OperatorTest(unittest.TestCase):
             f"Waiting for routers {ns}/{name_pattern} to become {awaited_status}, num_online={num_online}")
 
         router_names = []
+
+        if not awaited_ready:
+            awaited_ready = awaited_ready_status_getter()
 
         def routers_ready():
             pods = kutil.ls_po(ns or self.ns, pattern=name_pattern)

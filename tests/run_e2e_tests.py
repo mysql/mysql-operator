@@ -260,6 +260,8 @@ if __name__ == '__main__':
             g_ts_cfg.custom_ic_server_version_override = arg.partition("=")[-1]
         elif arg.startswith("--ic-router-version"):
             g_ts_cfg.custom_ic_router_version = arg.partition("=")[-1]
+        elif arg.startswith("--router-extra-containers-per-pod"):
+            g_ts_cfg.router_extra_containers_per_pod = int(arg.partition("=")[-1])
         elif arg.startswith("-"):
             print(f"Invalid option {arg}")
             sys.exit(1)
@@ -284,6 +286,7 @@ if __name__ == '__main__':
     print(f"Custom IC Server version override all: {g_ts_cfg.get_custom_ic_server_version_override()}")
     print(f"Custom IC Router version: {g_ts_cfg.get_custom_ic_router_version()}")
     print(f"Custom IC Router version override all: {g_ts_cfg.get_custom_ic_server_version_override()}")
+    print(f"Total containers per router pod: {g_ts_cfg.get_router_total_containers_per_pod()}")
 
     image_dir = os.getenv("DOCKER_IMAGE_DIR") or "/tmp/docker-images"
     images = ["mysql-server:8.0.25", "mysql-router:8.0.25",

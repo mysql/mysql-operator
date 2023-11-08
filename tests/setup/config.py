@@ -96,6 +96,8 @@ class Config:
     custom_ic_router_version: str = ""
     custom_ic_router_version_override: str = ""
 
+    router_extra_containers_per_pod = 0
+
     @property
     def operator_shell_version_num(self):
         a,b,c = self.operator_version_tag.split("-")[0].split(".")
@@ -216,8 +218,8 @@ class Config:
     def get_custom_ic_router_version_override(self) -> str:
         return self.custom_ic_router_version_override
 
-    def get_routers_awaited_status(self) -> str:
-        return f"{defaults.ROUTER_POD_CONTAINER_COUNT}/{defaults.ROUTER_POD_CONTAINER_COUNT}"
+    def get_router_total_containers_per_pod(self) -> str:
+        return 1 + self.router_extra_containers_per_pod
 
 
 # test-suite configuration

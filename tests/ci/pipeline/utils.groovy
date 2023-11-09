@@ -194,7 +194,7 @@ def addTestResults(String k8s_env, int expectedResultsCount) {
 	sh "cat $resultPattern | tar jxf - -i -C ${env.LOG_DIR} && rm $resultPattern"
 
 	// uncomment during Jenkins refactorings when some jobs are intentionally skipped
-	// sh "touch ${LOG_DIR}/xml/*.xml"
+	// sh "touch ${env.LOG_DIR}/xml/*.xml"
 
 	def summary = junit allowEmptyResults: true, testResults: "${env.LOG_SUBDIR}/xml/*$k8s_env-*.xml"
 	echo "${summary.totalCount} tests, ${summary.passCount} passed, ${summary.failCount} failed, ${summary.skipCount} skipped"
@@ -320,8 +320,8 @@ def anyResultsAvailable() {
 }
 
 def getMergedIssuesReports() {
-	statsPattern = "*-build-*-issues.log"
-	return getMergedReports(statsPattern)
+	issuesPattern = "*-build-*-issues.log"
+	return getMergedReports(issuesPattern)
 }
 
 def getTestsSuiteIssuesByEnv(String k8s_env, String result) {
@@ -336,7 +336,8 @@ def getTestsSuiteIssuesByEnv(String k8s_env, String result) {
 }
 
 def getTestsSuiteIssues(boolean kindEnabled) {
-	sh 'ls -lR ${LOG_DIR} | wc -l'
+	sh "du -hs ${env.LOG_DIR}"
+
 	def testSuiteIssues = ""
 	if (anyResultsAvailable()) {
 		testSuiteIssues += getTestsSuiteIssuesByEnv("minikube", env.MINIKUBE_RESULT_STATUS)
@@ -353,6 +354,8 @@ def getTestsSuiteIssues(boolean kindEnabled) {
 	if (testSuiteIssues) {
 		testSuiteIssues = "Issues:\n$testSuiteIssues"
 	}
+
+	echo testSuiteIssues
 
 	return testSuiteIssues
 }

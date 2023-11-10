@@ -12,15 +12,20 @@ from setup.config import g_ts_cfg
 
 class KindEnvironment(BaseEnvironment):
     name = "kind"
+    cluster_config_path = None
+
+    def __del__(self):
+        if self.cluster_config_path:
+            os.remove(self.cluster_config_path)
 
     def resolve_context(self, cluster_name):
         return f"{self.name}-{cluster_name}"
 
     def start_cluster(self, nodes, node_memory, version, registry_cfg_path, ip_family):
         cfgBuilder = KindConfigBuilder()
-        cluster_config_path = cfgBuilder.run(nodes, node_memory, version, ip_family)
+        self.cluster_config_path = cfgBuilder.run(nodes, node_memory, version, ip_family)
 
-        args = [g_ts_cfg.env_binary_path, "create", "cluster", "--name", g_ts_cfg.k8s_cluster, "--config", cluster_config_path]
+        args = [g_ts_cfg.env_binary_path, "create", "cluster", "--name", g_ts_cfg.k8s_cluster, "--config", self.cluster_config_path]
         if not self._cleanup:
             args.append(f"--retain")
 

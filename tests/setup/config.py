@@ -5,6 +5,7 @@
 
 import os
 import pathlib
+import shutil
 from utils import auxutil
 from setup import defaults
 import tempfile
@@ -62,6 +63,7 @@ class Config:
     azure_skip = defaults.AZURE_SKIP
     start_azure = False
     azure_config_file = defaults.AZURE_CONFIG_FILE
+    azure_config_file_is_tmp = False
     azure_container_name = defaults.AZURE_CONTAINER_NAME
 
     fluentd_image_name = defaults.FLUENTD_IMAGE_NAME
@@ -77,6 +79,7 @@ class Config:
 
     # diagnostics
     work_dir = None
+    work_dir_is_tmp = False
     store_operator_log = False
     current_test_name = None
 
@@ -97,6 +100,14 @@ class Config:
     custom_ic_router_version_override: str = ""
 
     router_extra_containers_per_pod = 0
+
+    def __del__(self):
+        if self.azure_config_file_is_tmp:
+             os.remove(self.azure_config_file)
+
+        if self.work_dir_is_tmp:
+            shutil.rmtree(self.work_dir)
+
 
     @property
     def operator_shell_version_num(self):
@@ -137,10 +148,12 @@ class Config:
 
         if not self.work_dir:
             self.work_dir = tempfile.mkdtemp()
+            self.work_dir_is_tmp = True
 
         if self.start_azure:
             if not g_ts_cfg.azure_config_file:
                 g_ts_cfg.azure_config_file = tempfile.mktemp('.cfg','azure-')
+                g_ts_cfg.azure_config_file_is_tmp = True
             if not g_ts_cfg.azure_container_name:
                 g_ts_cfg.azure_container_name = f'azure-{g_ts_cfg.k8s_cluster}'
 

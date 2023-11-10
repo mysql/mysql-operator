@@ -19,6 +19,7 @@ class DistTestSuiteRunner:
 	def __init__(self):
 		self.base_dir = os.path.dirname(os.path.abspath(__file__))
 		self.work_dir = None
+		self.work_dir_is_tmp = False
 		self.workers_subdir = "workers"
 		self.xml_subdir = "xml"
 
@@ -34,6 +35,10 @@ class DistTestSuiteRunner:
 		self.pattern_exclude = []
 
 		self.worker_argv = []
+
+	def __del__(self):
+		if self.perform_purge or self.work_dir_is_tmp:
+			shutil.rmtree(self.work_dir)
 
 	def parse_cmdline(self, argv):
 		os.chdir(self.base_dir)
@@ -115,6 +120,7 @@ class DistTestSuiteRunner:
 		if not self.work_dir:
 			work_dir_prefix = f"{self.tag}-env-{self.env_name}-"
 			self.work_dir = tempfile.mkdtemp(prefix=work_dir_prefix)
+			self.work_dir_is_tmp = True
 		self.ensure_dir_exists(self.work_dir)
 
 	def prepare_work_subdir(self, subdir):
@@ -230,9 +236,6 @@ class DistTestSuiteRunner:
 
 		return process_workers_logs.run(self.expected_failures_path, log_paths, execution_time)
 
-	def purge(self):
-		shutil.rmtree(self.work_dir)
-
 	def run(self, argv):
 		self.parse_cmdline(argv)
 
@@ -252,9 +255,6 @@ class DistTestSuiteRunner:
 		self.print_logs(worker_count)
 
 		result = self.process_result(worker_count, execution_time)
-
-		if self.perform_purge:
-			self.purge()
 
 		return result
 

@@ -15,7 +15,7 @@ source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || exit 10
 # set our temporary kubeconfig, because the default one may contain unrelated data that could fail the build
 export KUBECONFIG=$(mktemp /tmp/kubeconfig.$K8S_DRIVER-XXXXXX)
 
-trap 'kill $(jobs -p)' EXIT
+trap 'kill $(jobs -p); rm $KUBECONFIG' EXIT
 cd "$TESTS_DIR"
 
 if test -z ${TEST_OPTIONS+x}; then

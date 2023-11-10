@@ -13,6 +13,12 @@ from setup.config import g_ts_cfg
 
 class K3dEnvironment(BaseEnvironment):
     name = "k3d"
+    config_path = None
+    config_path_is_tmp = False
+
+    def __del__(self):
+        if self.config_path_is_tmp:
+            os.remove(self.config_path)
 
     def load_images(self, images):
         loaded = []
@@ -45,10 +51,14 @@ class K3dEnvironment(BaseEnvironment):
         if version:
             args.append(f"--image={version}")
 
-        if g_ts_cfg.image_registry:
-            if not registry_cfg_path:
-                registry_cfg_path = self.prepare_registry_cfg()
-            args.extend(["--registry-config", registry_cfg_path])
+        if registry_cfg_path:
+            self.config_path = registry_cfg_path
+        elif g_ts_cfg.image_registry:
+            self.config_path = self.prepare_registry_cfg()
+            self.config_path_is_tmp = True
+
+        if self.config_path:
+            args.extend(["--registry-config", self.config_path])
 
         if self.operator_mount_path:
             args += ["--volume", f"{self.operator_mount_path}:{self.operator_host_path}"]

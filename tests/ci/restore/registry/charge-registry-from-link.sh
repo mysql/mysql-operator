@@ -37,6 +37,7 @@ if [[ "$#" -eq 3 || "$#" -eq 4 ]]; then
 	ARCHIVES_DIR=$3
 else
 	ARCHIVES_DIR=$(mktemp -d)
+	ARCHIVES_DIR_IS_TMP=1
 fi
 ARCHIVE_SUFFIX=$4
 
@@ -52,3 +53,7 @@ fi
 curl -L ${ARCHIVE_LINK} -o ${ARCHIVE_PATH} --time-cond ${ARCHIVE_PATH}
 
 $SCRIPT_DIR/charge-registry-from-archive.sh $ARCHIVE_PATH $REGISTRY_URL
+
+if [[ -v ARCHIVES_DIR_IS_TMP ]]; then
+	rm -rfd $ARCHIVES_DIR
+fi

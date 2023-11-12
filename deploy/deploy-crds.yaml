@@ -626,6 +626,9 @@ spec:
                         type: boolean
                         default: true
                         description: "Whether the schedule is enabled or not"
+                      timeZone:
+                        type: string
+                        description: "Enable timezone to the backup schedule, example: 'America/New_York'"
                 logs:
                   type: object
                   properties:

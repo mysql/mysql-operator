@@ -103,6 +103,8 @@ class BackupProfile:
         return f"Object BackupProfile name={self.name} dumpInstance={self.dumpInstance} snapshot={self.snapshot} podAnnotations={self.podAnnotations} podLabels={self.podLabels}"
 
     def __eq__(self, other: 'BackupProfile') -> bool:
+        if other is None:
+            return False
         assert isinstance(other, BackupProfile)
         return (self.name == other.name and \
                 self.dumpInstance == other.dumpInstance and \

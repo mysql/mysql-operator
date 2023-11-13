@@ -3,6 +3,7 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
+from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import PurePosixPath
 import typing, abc
@@ -153,7 +154,52 @@ class KeyringConfigStorage(Enum):
     CONFIGMAP = 1
     SECRET = 2
 
-class KeyringFileSpec:
+class KeyringSpecBase(ABC):
+    @abstractmethod
+    def parse(self, spec: dict, prefix: str) -> None:
+        ...
+
+    @abstractmethod
+    def add_to_sts_spec(self, statefulset: dict) -> None:
+        ...
+
+    @abstractmethod
+    def add_to_global_manifest(self, manifest: dict) -> dict:
+        ...
+
+    @abstractmethod
+    def add_component_manifest(self, data: dict, storage_type: KeyringConfigStorage) -> None:
+        ...
+
+    @property
+    @abstractmethod
+    def component_manifest_name(self) -> str:
+        ...
+
+    # TODO [compat8.3.0] remove this when compatibility pre 8.3.0 isn't needed anymore
+    def upgrade_to_component(self, sts: api_client.V1StatefulSet, spec, logger: Logger) -> None:
+        # only exists for OCI keyring
+        pass
+
+class KeyringNoneSpec(KeyringSpecBase):
+    def parse(self, spec: dict, prefix: str) -> None:
+        ...
+
+    def add_to_sts_spec(self, statefulset: dict) -> None:
+        ...
+
+    def add_to_global_manifest(self, manifest: dict) -> dict:
+        ...
+
+    def add_component_manifest(self, data: dict, storage_type: KeyringConfigStorage) -> None:
+        ...
+
+    @property
+    def component_manifest_name(self) -> str:
+        return "invalid-component-manifest-name-call"
+
+
+class KeyringFileSpec(KeyringSpecBase):
     fileName: Optional[str] = None
     readOnly: Optional[bool] = False
     storage: Optional[dict] = None
@@ -168,10 +214,6 @@ class KeyringFileSpec:
         self.fileName = dget_str(spec, "fileName", prefix)
         self.readOnly = dget_bool(spec, "readOnly", prefix, default_value=False)
         self.storage = dget_dict(spec, "storage", prefix)
-
-    @property
-    def is_component(self) -> bool:
-        return True
 
     def add_to_sts_spec(self, statefulset: dict) -> None:
         self.add_conf_to_sts_spec(statefulset)
@@ -257,7 +299,7 @@ spec:
         return "component_keyring_file.cnf"
 
 
-class KeyringEncryptedFileSpec:
+class KeyringEncryptedFileSpec(KeyringSpecBase):
     # TODO: Storage must be mounted
     fileName: Optional[str] = None
     readOnly: Optional[bool] = False
@@ -296,10 +338,6 @@ class KeyringEncryptedFileSpec:
         self.password = get_password_from_secret(dget_str(spec, "password", prefix))
 
         self.storage = dget_dict(spec, "storage", prefix)
-
-    @property
-    def is_component(self) -> bool:
-        return True
 
     def add_to_sts_spec(self, statefulset: dict) -> None:
         self.add_conf_to_sts_spec(statefulset)
@@ -386,7 +424,7 @@ spec:
         return "component_keyring_encrypted_file.cnf"
 
 
-class KeyringOciSpec:
+class KeyringOciSpec(KeyringSpecBase):
     user: Optional[str] = None
     keySecret: Optional[str] = None
     keyFingerprint: Optional[str] = None
@@ -399,6 +437,12 @@ class KeyringOciSpec:
     endpointManagement: Optional[str] = None
     endpointVaults: Optional[str] = None
     endpointSecrets: Optional[str] = None
+
+    def __init__(self, namespace: str, global_manifest_name: str, component_config_configmap_name: str, keyring_mount_path: str):
+        self.namespace = namespace
+        self.global_manifest_name = global_manifest_name
+        self.component_config_configmap_name = component_config_configmap_name
+        self.keyring_mount_path = keyring_mount_path
 
     def parse(self, spec: dict, prefix: str) -> None:
         self.user = dget_str(spec, "user", prefix)
@@ -417,18 +461,11 @@ class KeyringOciSpec:
             self.endpointSecrets = dget_str(endpoints, "secrets", prefix)
 
     @property
-    def is_component(self) -> bool:
-        return False
-
-    @property
     def component_manifest_name(self) -> str:
-        raise Exception("NOT IMPLEMENTED YET")
-
-    @property
-    def component_manifest(self) -> dict:
-        raise Exception("NOT IMPLEMENTED YET")
+        return "component_keyring_oci.cnf"
 
     def add_to_sts_spec(self, statefulset: dict):
+        cm_mount_name = "keyringfile-conf"
         patch = f"""
 spec:
   initContainers:
@@ -436,15 +473,27 @@ spec:
     volumeMounts:
     - name: ocikey
       mountPath: /.oci
+    - name: {cm_mount_name}
+      mountPath: "/usr/lib64/mysql/plugin/{self.component_manifest_name}"
+      subPath: "{self.component_manifest_name}"     #should be the same as the volume.items.path
   containers:
   - name: mysql
     volumeMounts:
     - name: ocikey
       mountPath: /.oci
+    - name: {cm_mount_name}
+      mountPath: "/usr/lib64/mysql/plugin/{self.component_manifest_name}"
+      subPath: "{self.component_manifest_name}"     #should be the same as the volume.items.path
   volumes:
   - name: ocikey
     secret:
       secretName: {self.keySecret}
+  - name: {cm_mount_name}
+    configMap:
+      name: {self.component_config_configmap_name}
+      items:
+      - key: "{self.component_manifest_name}"
+        path: "{self.component_manifest_name}"
 """
         utils.merge_patch_object(statefulset["spec"]["template"], yaml.safe_load(patch))
 
@@ -468,37 +517,110 @@ spec:
 """
             utils.merge_patch_object(statefulset["spec"]["template"], yaml.safe_load(patch))
 
-    def add_to_initconf(self, configmap: dict):
-        # TODO: move to component ....
-        esc = escape_value_for_mycnf
+    def add_to_global_manifest(self, manifest: dict) -> dict:
+        component_name = "file://component_keyring_oci"
+        if not manifest.get("components"):
+            manifest["components"] = f"{component_name}"
+        else:
+            manifest["components"] = manifest["components"] + f",{component_name}"  # no space allowed after comma
 
-        mycnf = f"""
-# Do not edit.
-[mysqld]
-early-plugin-load=keyring_oci.so
-keyring_oci_user={esc(self.user)}
-keyring_oci_tenancy={esc(self.tenancy)}
-keyring_oci_compartment={esc(self.compartment)}
-keyring_oci_virtual_vault={esc(self.virtualVault)}
-keyring_oci_master_key={esc(self.masterKey)}
-keyring_oci_encryption_endpoint={esc(self.endpointEncryption)}
-keyring_oci_management_endpoint={esc(self.endpointManagement)}
-keyring_oci_vaults_endpoint={esc(self.endpointVaults)}
-keyring_oci_secrets_endpoint={esc(self.endpointSecrets)}
-keyring_oci_key_file=/.oci/privatekey
-keyring_oci_key_fingerprint={esc(self.keyFingerprint)}
-        """
+    def add_component_manifest(self, data: dict, storage_type: KeyringConfigStorage) -> None:
+        if storage_type == KeyringConfigStorage.CONFIGMAP:
+            data[self.component_manifest_name] = {
+                "user": self.user,
+                "tenancy": self.tenancy,
+                "compartment": self.compartment,
+                "virtual_vault": self.virtualVault,
+                "master_key": self.masterKey,
+                "encryption_endpoint": self.endpointEncryption,
+                "management_endpoint": self.endpointManagement,
+                "vaults_endpoint": self.endpointVaults,
+                "secrets_endpoint": self.endpointSecrets,
+                "key_file": "/.oci/privatekey",
+                "key_fingerprint": self.keyFingerprint
+            }
+
+            if self.caCertificate:
+               data[self.component_manifest_name]["keyring_oci_ca_certificate"] = "/etc/mysql-keyring-ca/certificate"
+
+    # TODO [compat8.3.0] remove this when compatibility pre 8.3.0 isn't needed anymore
+    def upgrade_to_component(self, sts: api_client.V1StatefulSet, spec, logger: Logger):
+        cm_mount_name = "keyringfile-conf"
+        if any(v.name == cm_mount_name for v in sts.spec.template.spec.volumes):
+            # we already mount config map for component - nothign to do
+            return
+
+        patch = f"""
+spec:
+  initContainers:
+  - name: initmysql
+    volumeMounts:
+    - name: ocikey
+      mountPath: /.oci
+    - name: globalcomponentconf
+      mountPath: /usr/sbin/{self.global_manifest_name}
+      subPath: {self.global_manifest_name}                #should be the same as the volume.items.path
+    - name: {cm_mount_name}
+      mountPath: "/usr/lib64/mysql/plugin/{self.component_manifest_name}"
+      subPath: "{self.component_manifest_name}"     #should be the same as the volume.items.path
+  containers:
+  - name: mysql
+    volumeMounts:
+    - name: ocikey
+      mountPath: /.oci
+    - name: globalcomponentconf
+      mountPath: /usr/sbin/{self.global_manifest_name}
+      subPath: {self.global_manifest_name}                #should be the same as the volume.items.path
+    - name: {cm_mount_name}
+      mountPath: "/usr/lib64/mysql/plugin/{self.component_manifest_name}"
+      subPath: "{self.component_manifest_name}"     #should be the same as the volume.items.path
+  volumes:
+  - name: ocikey
+    secret:
+      secretName: {self.keySecret}
+  - name: globalcomponentconf
+    configMap:
+      name: {self.component_config_configmap_name}
+      items:
+      - key: {self.global_manifest_name}
+        path: {self.global_manifest_name}
+  - name: {cm_mount_name}
+    configMap:
+      name: {self.component_config_configmap_name}
+      items:
+      - key: "{self.component_manifest_name}"
+        path: "{self.component_manifest_name}"
+"""
+        sts_patch = yaml.safe_load(patch)
 
         if self.caCertificate:
-            mycnf = f"{mycnf}\nkeyring_oci_ca_certificate=/etc/mysql-keyring-ca/certificate"
+            patch = f"""
+spec:
+  initContainers:
+  - name: initmysql
+    volumeMounts:
+    - name: oci-keyring-ca
+      mountPath: /etc/mysql-keyring-ca
+  containers:
+  - name: mysql
+    volumeMounts:
+    - name: oci-keyring-ca
+      mountPath: /etc/mysql-keyring-ca
+  volumes:
+  - name: oci-keyring-ca
+    secret:
+      secretName: {self.caCertificate}
+"""
+            utils.merge_patch_object(sts_patch, yaml.safe_load(patch))
 
-        configmap["data"]["03-keyring-oci.cnf"] = mycnf
+        cm = spec.keyring.get_component_config_configmap_manifest()
+
+        return (cm, sts_patch)
 
 
+# TODO: merge this with KeyringSpecBase
 class KeyringSpec:
-    keyringFile: Optional[KeyringFileSpec] = None
-    keyringEncryptedFile: Optional[KeyringEncryptedFileSpec] = None
-    keyringOci: Optional[KeyringOciSpec] = None
+    keyring: Optional[KeyringSpecBase] = KeyringNoneSpec()
     global_manifest_name: str = 'mysqld.my'
     keyring_mount_path: str = '/keyring'
 
@@ -518,26 +640,16 @@ class KeyringSpec:
                 "One of file, encryptedFile or oci must be specified in spec.keyring")
 
         if krFile:
-            self.keyringFile = KeyringFileSpec(self.namespace, self.global_manifest_name, self.component_config_configmap_name, self.keyring_mount_path)
-            self.keyringFile.parse(krFile, "spec.keyring.file")
+            self.keyring = KeyringFileSpec(self.namespace, self.global_manifest_name, self.component_config_configmap_name, self.keyring_mount_path)
+            self.keyring.parse(krFile, "spec.keyring.file")
         elif krEncryptedFile:
-            self.keyringEncryptedFile = KeyringEncryptedFileSpec(self.namespace, self.global_manifest_name, self.component_config_configmap_name, self.keyring_mount_path)
-            self.keyringEncryptedFile.parse(krEncryptedFile, "spec.keyring.encryptedFile")
+            self.keyring = KeyringEncryptedFileSpec(self.namespace, self.global_manifest_name, self.component_config_configmap_name, self.keyring_mount_path)
+            self.keyring.parse(krEncryptedFile, "spec.keyring.encryptedFile")
         elif krOci:
-            self.keyringOci = KeyringOciSpec()
-            self.keyringOci.parse(krOci, "spec.keyring.oci")
-
-    @property
-    def is_component(self) -> bool:
-        if self.keyringFile:
-            return self.keyringFile.is_component
-        elif self.keyringEncryptedFile:
-            return self.keyringEncryptedFile.is_component
-        elif self.keyringOci:
-            return self.keyringOci.is_component
+            self.keyring = KeyringOciSpec(self.namespace, self.global_manifest_name, self.component_config_configmap_name, self.keyring_mount_path)
+            self.keyring.parse(krOci, "spec.keyring.oci")
         else:
-            return False
-            #raise Exception("NEEDS IMPLEMENTATION")
+            self.keyring = KeyringNoneSpec()
 
     @property
     def component_config_configmap_name(self) -> str:
@@ -548,20 +660,12 @@ class KeyringSpec:
         return f"{self.cluster_name}-componentconf"
 
     def get_component_config_configmap_manifest(self) -> dict:
-        if not self.is_component:
-            raise Exception("NOT IMPLEMENTED YET")
-
         data = {
             self.global_manifest_name : {}
         }
-        if self.keyringFile:
-            self.keyringFile.add_to_global_manifest(data[self.global_manifest_name])
-            self.keyringFile.add_component_manifest(data, KeyringConfigStorage.CONFIGMAP)
-        elif self.keyringEncryptedFile:
-            self.keyringEncryptedFile.add_to_global_manifest(data[self.global_manifest_name])
-            self.keyringEncryptedFile.add_component_manifest(data, KeyringConfigStorage.CONFIGMAP)
-        else:
-            raise Exception("NEEDS IMPLEMENTATION")
+
+        self.keyring.add_to_global_manifest(data[self.global_manifest_name])
+        self.keyring.add_component_manifest(data, KeyringConfigStorage.CONFIGMAP)
 
         cm =  {
             'apiVersion' : "v1",
@@ -575,17 +679,10 @@ class KeyringSpec:
 
 
     def get_component_config_secret_manifest(self) -> Optional[Dict]:
-        if not self.is_component:
-            raise Exception("NOT IMPLEMENTED YET")
-
         data = {
         }
-        if self.keyringFile:
-            self.keyringFile.add_component_manifest(data, KeyringConfigStorage.SECRET)
-        elif self.keyringEncryptedFile:
-            self.keyringEncryptedFile.add_component_manifest(data, KeyringConfigStorage.SECRET)
-        else:
-            raise Exception("NEEDS IMPLEMENTATION")
+
+        self.keyring.add_component_manifest(data, KeyringConfigStorage.SECRET)
 
         if len(data) == 0:
             return None
@@ -602,6 +699,10 @@ class KeyringSpec:
 
 
     def add_to_sts_spec_component_global_manifest(self, statefulset: dict):
+        if isinstance(self.keyring, KeyringNoneSpec):
+            # this is slight misuse of a NullObject type ...
+            return
+
         mounts = f"""
 - name: globalcomponentconf
   mountPath: /usr/sbin/{self.global_manifest_name}
@@ -634,21 +735,15 @@ spec:
 
 
     def add_to_sts_spec(self, statefulset: dict):
-        if self.is_component:
-            self.add_to_sts_spec_component_global_manifest(statefulset)
+        self.add_to_sts_spec_component_global_manifest(statefulset)
 
-        if self.keyringFile:
-             self.keyringFile.add_to_sts_spec(statefulset)
-        elif self.keyringEncryptedFile:
-            self.keyringEncryptedFile.add_to_sts_spec(statefulset)
-        elif self.keyringOci:
-            self.keyringOci.add_to_sts_spec(statefulset)
+        self.keyring.add_to_sts_spec(statefulset)
 
-    def add_to_initconf(self, configmap: dict):
-        if self.keyringOci:
-            self.keyringOci.add_to_initconf(configmap)
-
-
+    # TODO [compat8.3.0] remove this when compatibility pre 8.3.0 isn't needed anymore
+    def upgrade_to_component(self, sts: api_client.V1StatefulSet, spec, logger: Logger):
+        # only exists for OCI keyring
+        if self.keyring:
+            return self.keyring.upgrade_to_component(sts, spec, logger)
 
 class RouterSpec:
     # number of Router instances (optional)

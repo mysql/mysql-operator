@@ -57,8 +57,17 @@ class KeyRingBase(tutil.OperatorTest):
         var_value = var_row[1]
         self.assertEqual(var_value, expected_value)
 
+    def create_cluster(self, keyring_spec, no_check: bool = False):
+        """
+        Create an InnoDB Cluster with kering
 
-    def create_cluster(self, keyring_spec):
+        By default this will check everything through, but in OCI Keyring tests
+        we test upgrades, there the full check won't see the pod definition
+        it expects with newer operators
+
+        :param keyring_spec: spec to be injected in shared spec
+        :param no_check: whether to check or not
+        """
         yaml = f"""apiVersion: v1
 kind: Secret
 metadata:
@@ -90,8 +99,9 @@ spec:
 
         self.wait_routers("mycluster-router-*", self.routers_count)
 
-        check_all(self, self.ns, "mycluster",
-            instances=self.cluster_size, routers=self.routers_count, primary=0)
+        if not no_check:
+            check_all(self, self.ns, "mycluster",
+                instances=self.cluster_size, routers=self.routers_count, primary=0)
 
     def create_volume(self, volume_name):
         yaml = f"""

@@ -609,20 +609,18 @@ def prepare_additional_configmaps(spec: AbstractServerSetSpec, logger: Logger) -
 
 
 def prepare_component_config_configmaps(spec: AbstractServerSetSpec, logger: Logger) -> List[Dict]:
-    configmaps = []
-    if spec.keyring.is_component:
-        cm = spec.keyring.get_component_config_configmap_manifest()
-        configmaps.append(cm)
+    configmaps = [
+        spec.keyring.get_component_config_configmap_manifest()
+    ]
 
     return configmaps
 
 
 def prepare_component_config_secrets(spec: AbstractServerSetSpec, logger: Logger) -> List[Dict]:
     secrets = []
-    if spec.keyring.is_component:
-        cm = spec.keyring.get_component_config_secret_manifest()
-        if cm:
-            secrets.append(cm)
+    cm = spec.keyring.get_component_config_secret_manifest()
+    if cm:
+        secrets.append(cm)
 
     return secrets
 
@@ -787,10 +785,6 @@ data:
 
     cm = yaml.safe_load(tmpl)
 
-    # At some point wrap this as a function and add it to spec.add_to_initconf_cbs
-    if spec.keyring and not spec.keyring.is_component:
-        spec.keyring.add_to_initconf(cm)
-
     prefix = 5
     for subsystem in spec.add_to_initconf_cbs:
         for add_to_initconf_cb in spec.add_to_initconf_cbs[subsystem]:
@@ -879,6 +873,26 @@ def update_mysql_image(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec, l
                               },
                           ]}
                        }}}
+
+    # TODO [compat8.3.0] remove this when compatibility pre 8.3.0 isn't needed anymore
+    keyring_update = spec.keyring.upgrade_to_component(sts, spec, logger)
+
+    if keyring_update:
+        (cm, key_sts_patch) = keyring_update
+        utils.merge_patch_object(patch["spec"]["template"], key_sts_patch)
+
+        kopf.adopt(cm)
+        api_core.create_namespaced_config_map(spec.namespace, cm)
+
+        initconf_patch = [{"op": "remove", "path": "/data/03-keyring-oci.cnf"}]
+        try:
+            api_core.patch_namespaced_config_map(f"{spec.name}-initconf",
+                                                    spec.namespace, initconf_patch)
+        except ApiException as exc:
+            # This might happen during a retry or some other case where it was
+            # removed already
+            logger.info(f"Failed to remove keyring config from initconf, ignoring: {exc}")
+            pass
 
     update_stateful_set_spec(sts, patch)
 

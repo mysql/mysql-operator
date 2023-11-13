@@ -127,7 +127,7 @@ if __name__ == '__main__':
     opt_mounts = []
     opt_custom_dns = None
     opt_cleanup = True
-    opt_registry_cfg_path = None
+    opt_cfg_path = None
     opt_ip_family = None
     opt_xml_report_path = None
 
@@ -198,8 +198,8 @@ if __name__ == '__main__':
             opt_custom_dns = arg.partition("=")[-1]
         elif arg.startswith("--registry="):
             g_ts_cfg.image_registry = arg.partition("=")[-1]
-        elif arg.startswith("--registry-cfg="):
-            opt_registry_cfg_path = arg.partition("=")[-1]
+        elif arg.startswith("--cfg-path="):
+            opt_cfg_path = arg.partition("=")[-1]
         elif arg.startswith("--repository="):
             g_ts_cfg.image_repository = arg.partition("=")[-1]
         elif arg.startswith("--operator-tag="):
@@ -323,7 +323,7 @@ if __name__ == '__main__':
                 driver.mount_operator_path(opt_mount_operator_path)
 
             driver.setup_cluster(
-                nodes=opt_nodes, node_memory=opt_node_memory, version=opt_kube_version, registry_cfg_path=opt_registry_cfg_path,
+                nodes=opt_nodes, node_memory=opt_node_memory, version=opt_kube_version, cfg_path=opt_cfg_path,
                 perform_setup=opt_setup, mounts=opt_mounts, custom_dns=opt_custom_dns, cleanup=opt_cleanup, ip_family=opt_ip_family)
 
             if opt_load_images:

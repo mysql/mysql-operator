@@ -36,7 +36,7 @@ class K3dEnvironment(BaseEnvironment):
     def resolve_context(self, cluster_name):
         return f"k3d-{cluster_name}"
 
-    def start_cluster(self, nodes, node_memory, version, registry_cfg_path, ip_family):
+    def start_cluster(self, nodes, node_memory, version, cfg_path, ip_family):
         args = [g_ts_cfg.env_binary_path, "cluster", "create", g_ts_cfg.k8s_cluster, "--timeout", "5m", "--no-lb"]
 
         if nodes and nodes > 1:
@@ -51,8 +51,8 @@ class K3dEnvironment(BaseEnvironment):
         if version:
             args.append(f"--image={version}")
 
-        if registry_cfg_path:
-            self.config_path = registry_cfg_path
+        if cfg_path:
+            self.config_path = cfg_path
         elif g_ts_cfg.image_registry:
             self.config_path = self.prepare_registry_cfg()
             self.config_path_is_tmp = True
@@ -102,6 +102,9 @@ class K3dEnvironment(BaseEnvironment):
     def prepare_registry_cfg(self):
         cfg_template = f"""mirrors:
   "docker.io":
+    endpoint:
+      - http://$registry
+  "ghcr.io":
     endpoint:
       - http://$registry
   "$registry":

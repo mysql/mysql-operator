@@ -13,17 +13,22 @@ from setup.config import g_ts_cfg
 class KindEnvironment(BaseEnvironment):
     name = "kind"
     cluster_config_path = None
+    cluster_config_path_is_tmp = False
 
     def __del__(self):
-        if self.cluster_config_path:
+        if self.cluster_config_path_is_tmp:
             os.remove(self.cluster_config_path)
 
     def resolve_context(self, cluster_name):
         return f"{self.name}-{cluster_name}"
 
-    def start_cluster(self, nodes, node_memory, version, registry_cfg_path, ip_family):
-        cfgBuilder = KindConfigBuilder()
-        self.cluster_config_path = cfgBuilder.run(nodes, node_memory, version, ip_family)
+    def start_cluster(self, nodes, node_memory, version, cfg_path, ip_family):
+        if cfg_path:
+            self.cluster_config_path = cfg_path
+        else:
+            cfgBuilder = KindConfigBuilder()
+            self.cluster_config_path = cfgBuilder.run(nodes, node_memory, version, ip_family)
+            self.cluster_config_path_is_tmp = True
 
         args = [g_ts_cfg.env_binary_path, "create", "cluster", "--name", g_ts_cfg.k8s_cluster, "--config", self.cluster_config_path]
         if not self._cleanup:
@@ -102,6 +107,10 @@ apiVersion: kind.x-k8s.io/v1alpha4
     insecure_skip_verify = true
 - |-
   [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
+    endpoint = ["http://{g_ts_cfg.image_registry_host}:{g_ts_cfg.image_registry_port}"]
+    insecure_skip_verify = true
+- |-
+  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."ghcr.io"]
     endpoint = ["http://{g_ts_cfg.image_registry_host}:{g_ts_cfg.image_registry_port}"]
     insecure_skip_verify = true
 """

@@ -60,7 +60,7 @@ class BaseEnvironment:
     def __exit__(self, type, value, tb):
         self.destroy()
 
-    def setup_cluster(self, nodes=None, node_memory=None, version=None, registry_cfg_path=None, perform_setup=True,
+    def setup_cluster(self, nodes=None, node_memory=None, version=None, cfg_path=None, perform_setup=True,
       mounts=None, custom_dns=None, cleanup=False, ip_family=None):
         self._setup = perform_setup
         self._mounts = mounts
@@ -72,7 +72,7 @@ class BaseEnvironment:
         if self._setup:
           self.delete_cluster()
 
-          self.start_cluster(nodes, node_memory, version, registry_cfg_path, ip_family)
+          self.start_cluster(nodes, node_memory, version, cfg_path, ip_family)
 
           if custom_dns:
             self.add_custom_dns(custom_dns)
@@ -152,7 +152,7 @@ class BaseEnvironment:
     def resolve_context(self, cluster_name):
         return cluster_name
 
-    def start_cluster(self, nodes, node_memory, version, registry_cfg_path, ip_family):
+    def start_cluster(self, nodes, node_memory, version, cfg_path, ip_family):
         pass
 
     def stop_cluster(self):

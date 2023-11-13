@@ -152,25 +152,14 @@ set the kubernetes version to use, if not set, the default depends on the instal
 --registry={url}\
     set the images registry, e.g. `registry.localhost:5000`
 
---registry-cfg={path}\
-    supported only for k3d, the path to a registry config\
-    if k3d is used and a registry is set, but this path is not set, then the cfg file will
-    be generated according to the following template:
-
-```cfg
-mirrors:
-  $registry:
-    endpoint:
-      - http://$registry
-```
-
-e.g.
-```cfg
-mirrors:
-  registry.localhost:5000:
-    endpoint:
-      - http://registry.localhost:5000
-```
+--cfg-path={path}
+* for minikube it is not supported
+* for k3d it is the path to a registry config\
+    if the path is not passed, and `--registry` was set then the registry config file
+    will be auto-generated
+* for kind it is the path to a cluster config file\
+    if the path is not passed, then the file will be generated\
+    if `--registry` was set then it will be used in the auto-generated config file
 
 --repository={name}\
     the image repository, the default value is "mysql"
@@ -372,7 +361,7 @@ It will set up a brand new minikube cluster (the previous one will be deleted) a
 cluster. The operator will pull images from `registry.localhost:5000/qa`.
 
 ```sh
-./run --env=k3d --registry=local.registry:5005 --registry-cfg=~/mycfg/k3d-registries.yaml --noclean \
+./run --env=k3d --registry=local.registry:5005 --cfg-path=~/mycfg/k3d-registries.yaml --noclean \
     e2e.mysqloperator.cluster.cluster_enterprise_t.ClusterEnterprise
 ```
 

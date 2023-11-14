@@ -290,8 +290,8 @@ def client_version() -> str:
     return f"{cv['major']}.{cv['minor']}"
 
 
-def __ls(ns, rsrc, ignore=[]):
-    return split_table(kubectl("get", rsrc, args=["-n", ns], ignore=ignore).stdout.decode("utf8"))
+def __ls(ns, rsrc, ignore=[], w_ns = True):
+    return split_table(kubectl("get", rsrc, args=["-n", ns] if w_ns else [], ignore=ignore).stdout.decode("utf8"))
 
 
 def ls_ic(ns, ignore=[]):
@@ -304,6 +304,11 @@ def ls_mbk(ns):
 
 def ls_sts(ns):
     return __ls(ns, "sts")
+
+def ls_sc(pattern=".*"):
+    scs = __ls(None, rsrc="sc", w_ns=False)
+    r = re.compile(pattern)
+    return [sc for sc in scs if r.match(sc["NAME"])]
 
 
 def ls_rs(ns, *, pattern=".*"):
@@ -378,6 +383,18 @@ def ls_all_raw(ns):
 def ls_ns():
     return split_table(kubectl("get", "namespace").stdout.decode("utf8"))
 
+def set_new_default_storage_class(new_default_sc: str):
+    default_scs = default_scs = ls_sc(".*\(default\)")
+    if len(default_scs) == 0:
+        return None
+    if len(default_scs) > 1:
+        raise Exception(f"Too many default storage classes")
+    current_default_sc = default_scs[0]["NAME"].split(" ", 1)[0]
+
+    disable_default_sc = {"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}
+    enable_default_sc = {"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}
+    patch_sc(current_default_sc, disable_default_sc, type="merge", data_as_type='json')
+    patch_sc(new_default_sc, enable_default_sc, type="merge", data_as_type='json')
 #
 
 def get_raw(ns, rsrc, name, format="yaml", check=True, cmd_output_log=KubectlCmdOutputLogging.DIAGNOSTICS, **kwargs):
@@ -714,11 +731,12 @@ def apply(ns, y, *, check=True):
         raise
 
 
-def patch(ns, rsrc, name, changes, type=None, data_as_type='yaml'):
+def patch(ns, rsrc, name, changes, type=None, data_as_type='yaml', w_ns = True):
     data_processor = json.dumps if data_as_type and str(data_as_type).lower() =='json' else yaml.dump
     patch_data = data_processor(changes)
     type_param = ["--type=%s" % type] if type else []
-    kubectl("patch", rsrc, [name, "-p", patch_data, "-n", ns, *type_param])
+    ns_arg = ["-n", ns] if w_ns else []
+    kubectl("patch", rsrc, [name, "-p", patch_data, *ns_arg, *type_param])
 
 
 def patch_pod(ns, name, changes, type=None, data_as_type='yaml'):
@@ -731,6 +749,9 @@ def patch_ic(ns, name, changes, type=None, data_as_type='yaml'):
 
 def patch_dp(ns, name, change, type=None, data_as_type='yaml'):
     patch(ns, "deployment", name, change, type, data_as_type)
+
+def patch_sc(name, change, type=None, data_as_type='yaml'):
+    patch(None, "sc", name, change, type, data_as_type, w_ns=False)
 
 #
 

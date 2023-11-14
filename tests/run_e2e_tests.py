@@ -262,6 +262,12 @@ if __name__ == '__main__':
             g_ts_cfg.custom_ic_router_version = arg.partition("=")[-1]
         elif arg.startswith("--router-extra-containers-per-pod"):
             g_ts_cfg.router_extra_containers_per_pod = int(arg.partition("=")[-1])
+        elif arg.startswith("--local-path-provisioner"):
+            g_ts_cfg.local_path_provisioner_install = arg.partition("=")[-1].lower() in ['true', '1', 'on']
+        elif arg.startswith("--local-path-provisioner-shared-path"):
+            g_ts_cfg.local_path_provisioner_shared_path = arg.partition("=")[-1]
+        elif arg.startswith("--local-path-provisioner-manifest-url"):
+            g_ts_cfg.local_path_provisioner_manifest_url = arg.partition("=")[-1]
         elif arg.startswith("-"):
             print(f"Invalid option {arg}")
             sys.exit(1)
@@ -279,14 +285,7 @@ if __name__ == '__main__':
         with open(opt_suite_path, 'r') as f:
             opt_include += f.read().splitlines()
     print(f"opt_include: {opt_include}")
-    print(f"Custom test ns labels: {g_ts_cfg.get_custom_test_ns_labels()}")
-    print(f"Custom operator ns labels: {g_ts_cfg.get_custom_operator_ns_labels()}")
-    print(f"Custom STS podspec: {g_ts_cfg.get_custom_sts_podspec()}")
-    print(f"Custom IC Server version: {g_ts_cfg.get_custom_ic_server_version()}")
-    print(f"Custom IC Server version override all: {g_ts_cfg.get_custom_ic_server_version_override()}")
-    print(f"Custom IC Router version: {g_ts_cfg.get_custom_ic_router_version()}")
-    print(f"Custom IC Router version override all: {g_ts_cfg.get_custom_ic_server_version_override()}")
-    print(f"Total containers per router pod: {g_ts_cfg.get_router_total_containers_per_pod()}")
+    print(g_ts_cfg)
 
     image_dir = os.getenv("DOCKER_IMAGE_DIR") or "/tmp/docker-images"
     images = ["mysql-server:8.0.25", "mysql-router:8.0.25",

@@ -109,6 +109,10 @@ class Config:
             shutil.rmtree(self.work_dir)
 
 
+    local_path_provisioner_install = True
+    local_path_provisioner_manifest_url = "https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.24/deploy/local-path-storage.yaml"
+    local_path_provisioner_shared_path = "/tmp/local-path-shared"
+
     @property
     def operator_shell_version_num(self):
         a,b,c = self.operator_version_tag.split("-")[0].split(".")
@@ -234,6 +238,30 @@ class Config:
     def get_router_total_containers_per_pod(self) -> str:
         return 1 + self.router_extra_containers_per_pod
 
+    def get_local_path_provisioner_shared_path(self) -> str:
+        return self.local_path_provisioner_shared_path
+
+    def get_local_path_provisioner_manifest_url(self) -> str:
+        return self.local_path_provisioner_manifest_url
+
+    def __str__(self):
+        return f"""
+Image registry:                      : {g_ts_cfg.get_image_registry_repository()}
+Operator image                       : {g_ts_cfg.get_operator_image()}
+Server image / old image             : {g_ts_cfg.get_server_image()} / {g_ts_cfg.get_old_server_image()}
+Router image / old image             : {g_ts_cfg.get_router_image()} / {g_ts_cfg.get_old_router_image()}
+Fluentd image                        : {g_ts_cfg.get_fluentd_image()}
+Custom test ns labels                : {g_ts_cfg.get_custom_test_ns_labels()}
+Custom operator ns labels            : {g_ts_cfg.get_custom_operator_ns_labels()}
+Custom STS podspec                   : {g_ts_cfg.get_custom_sts_podspec()}
+Custom IC Server version             : {g_ts_cfg.get_custom_ic_server_version()}
+Custom IC Server version override all: {g_ts_cfg.get_custom_ic_server_version_override()}
+Custom IC Router version             : {g_ts_cfg.get_custom_ic_router_version()}
+Custom IC Router version override all: {g_ts_cfg.get_custom_ic_server_version_override()}
+Total containers per router pod      : {g_ts_cfg.get_router_total_containers_per_pod()}
+Local path provisioner install       : {g_ts_cfg.local_path_provisioner_install}
+Local path provisioner shared path   : {g_ts_cfg.get_local_path_provisioner_shared_path()}
+Local path provisioner manifest URL  : {g_ts_cfg.get_local_path_provisioner_manifest_url()}"""
 
 # test-suite configuration
 g_ts_cfg = Config()

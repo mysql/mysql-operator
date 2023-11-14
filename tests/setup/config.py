@@ -101,17 +101,16 @@ class Config:
 
     router_extra_containers_per_pod = 0
 
+    local_path_provisioner_install = False
+    local_path_provisioner_manifest_url = "https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.24/deploy/local-path-storage.yaml"
+    local_path_provisioner_shared_path = "/tmp/local-path-shared"
+
     def __del__(self):
         if self.azure_config_file_is_tmp:
              os.remove(self.azure_config_file)
 
         if self.work_dir_is_tmp:
             shutil.rmtree(self.work_dir)
-
-
-    local_path_provisioner_install = True
-    local_path_provisioner_manifest_url = "https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.24/deploy/local-path-storage.yaml"
-    local_path_provisioner_shared_path = "/tmp/local-path-shared"
 
     @property
     def operator_shell_version_num(self):

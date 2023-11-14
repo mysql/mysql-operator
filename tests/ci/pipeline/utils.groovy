@@ -336,7 +336,7 @@ def getTestsSuiteIssuesByEnv(String k8s_env, String result) {
 }
 
 def getTestsSuiteIssues(boolean kindEnabled) {
-	sh "du -hs ${env.LOG_DIR}"
+	sh "ls -lFh ${env.LOG_DIR}"
 
 	def testSuiteIssues = ""
 	if (anyResultsAvailable()) {

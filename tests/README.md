@@ -76,7 +76,7 @@ set the kubernetes version to use, if not set, the default depends on the instal
     should return `0`
 
 --nodes={number}\
-    sets the number of nodes to use
+    sets the number of nodes per cluster
 
 --node-memory={limit-in-MB}\
     sets the amount of memory per node, limit is expressed in mega-bytes\
@@ -416,9 +416,8 @@ It supports the following command-line options:
 * --tag={name}\
     it should be a unique tag as the created instances will contain it, e.g. `build-246`, `ote-mysql`, etc.
 
-* --workers={number}\
-    the number of instances to create and run the tests on\
-    default is 2
+* --clusters={number}\
+    the number of clusters per a given execution instance to create and run the tests on\
 
 * --defer={number}\
     interval (in seconds) between starting instances\

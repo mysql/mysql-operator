@@ -49,7 +49,7 @@ class DistTestSuiteRunner:
 				self.worker_argv.append(arg)
 			elif arg.startswith("--tag="):
 				self.tag = arg.partition("=")[-1]
-			elif arg.startswith("--workers="):
+			elif arg.startswith("--clusters="):
 				self.default_worker_count = int(arg.split("=")[-1])
 			elif arg.startswith("--defer="):
 				self.defer_worker_start = int(arg.split("=")[-1])

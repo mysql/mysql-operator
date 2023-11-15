@@ -21,6 +21,7 @@ pipeline {
 		string(name: 'OPERATOR_IMAGE', description: 'an image related to the aforementioned git revision', trim: true)
 		string(name: 'OPERATOR_ENTERPRISE_IMAGE', description: '...and a related enterprise image, it can be empty, then it will be built locally', trim: true)
 		string(name: 'OPERATOR_TRIGGERED_BY', defaultValue: 'concourse', description: 'how the build was triggered - the following flows are supported: concourse, internal, or gerrit', trim: true)
+		string(name: 'OPERATOR_EXECUTION_ENVIRONMENT', defaultValue: 'local', description: 'where workers should run - locally or on the OCI instances - the following values are supported: local, oci', trim: true)
 		booleanParam(name: 'OPERATOR_BUILD_IMAGES', defaultValue: false, description: 'indicates whether the images should be built locally by us (e.g. in case of a push to a dev branch) or use ones delivered externally (e.g. from the concourse)')
 		booleanParam(name: 'OPERATOR_ALLOW_WEEKLY_IMAGES', defaultValue: true, description: 'allows to use the not-so-stable router and server weekly images')
 		string(name: 'OPERATOR_GERRIT_CHANGE_URL', description: 'link to gerrit Code Review', trim: true)
@@ -44,7 +45,7 @@ pipeline {
 						color: utils.getIntroColor(),
 						attachments: utils.getIntroContents()
 
-					sh 'mkdir -p ${LOG_DIR}'
+					sh "mkdir -p ${env.LOG_DIR}"
 
 					build job: "${env.WORKERS_FOLDER}/init", parameters: [
 						string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
@@ -85,19 +86,25 @@ pipeline {
 			parallel {
 				stage('minikube') {
 					steps {
-						echo "minikube"
-						catchError {
-							build job: "${env.WORKERS_FOLDER}/minikube", parameters: [
-								string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
-								string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
-								string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
-								string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
-								string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
-								string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
-								string(name: 'OPERATOR_WORKERS_COUNT', value: '3'),
-								string(name: 'OPERATOR_NODE_MEMORY', value: '8192'),
-								string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY)
-							]
+						script {
+							def (executionInstance, clustersCount, nodesPerCluster, nodeMemory) =
+								utils.getExecutionInstance('minikube', '3', '1')
+							echo "[$executionInstance, $clustersCount, $nodesPerCluster, $nodeMemory]"
+							catchError {
+								build job: utils.getWorkerJobPath('minikube'), parameters: [
+									string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
+									string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
+									string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+									string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
+									string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
+									string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
+									string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
+									[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstance],
+									string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersCount),
+									string(name: 'OPERATOR_NODES_PER_CLUSTER', value: nodesPerCluster),
+									string(name: 'OPERATOR_NODE_MEMORY', value: nodeMemory)
+								]
+							}
 						}
 					}
 					post {
@@ -105,9 +112,9 @@ pipeline {
 							echo "copy minikube results"
 							catchError {
 								copyArtifacts fingerprintArtifacts: true,
-									projectName: "${env.WORKERS_FOLDER}/minikube",
+									projectName: utils.getWorkerJobPath('minikube'),
 									selector: lastCompleted(),
-									target: "${LOG_SUBDIR}"
+									target: "${env.LOG_SUBDIR}"
 							}
 						}
 						cleanup {
@@ -123,23 +130,31 @@ pipeline {
 					// 	label "operator-ci"
 					// }
 					steps {
-						echo "k3d"
+						script {
+							// in case the test suite runs on local execution environment (operator-ci), run k3d
+							// clusters with some delay (in seconds), after all minikube clusters already
+							// have started
+							// when clusters start at the same moment, they may fail randomly
+							utils.delayLocalJob(300)
 
-						// run k3d clusters with some delay (in seconds), after all minikube clusters already
-						// have started when clusters start at the same moment, they may fail randomly
-						sleep 300
-						catchError {
-							build job: "${env.WORKERS_FOLDER}/k3d", parameters: [
-								string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
-								string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
-								string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
-								string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
-								string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
-								string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
-								string(name: 'OPERATOR_WORKERS_COUNT', value: '4'),
-								string(name: 'OPERATOR_NODE_MEMORY', value: '8192'),
-								string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY)
-							]
+							def (executionInstance, clustersCount, nodesPerCluster, nodeMemory) =
+								utils.getExecutionInstance('k3d', '4', '1')
+							echo "[$executionInstance, $clustersCount, $nodesPerCluster, $nodeMemory]"
+							catchError {
+								build job: utils.getWorkerJobPath('k3d'), parameters: [
+									string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
+									string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
+									string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+									string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
+									string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
+									string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
+									string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
+									[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstance],
+									string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersCount),
+									string(name: 'OPERATOR_NODES_PER_CLUSTER', value: nodesPerCluster),
+									string(name: 'OPERATOR_NODE_MEMORY', value: nodeMemory)
+								]
+							}
 						}
 					}
 					post {
@@ -147,9 +162,9 @@ pipeline {
 							echo "copy k3d results"
 							catchError {
 								copyArtifacts fingerprintArtifacts: true,
-									projectName: "${env.WORKERS_FOLDER}/k3d",
+									projectName: utils.getWorkerJobPath('k3d'),
 									selector: lastCompleted(),
-									target: "${LOG_SUBDIR}"
+									target: "${env.LOG_SUBDIR}"
 							}
 						}
 						cleanup {
@@ -175,7 +190,7 @@ pipeline {
 							copyArtifacts fingerprintArtifacts: true,
 								projectName: "${env.WORKERS_FOLDER}/prepare-test-suite-report",
 								selector: lastCompleted(),
-								target: "${LOG_SUBDIR}"
+								target: "${env.LOG_SUBDIR}"
 
 							env.TEST_SUITE_REPORT = utils.getTestSuiteReport()
 						} else {
@@ -197,9 +212,9 @@ pipeline {
 				env.BUILD_DURATION = utils.getBuildDuration()
 				env.CHANGE_LOG = utils.getChangeLog()
 
-				sh 'ls -lR ${LOG_DIR} | wc -l'
+				sh "ls -lFh ${env.LOG_DIR}"
 				if (utils.anyResultsAvailable()) {
-					sh "cd ${LOG_DIR} && tar cjf ${ARTIFACT_PATH} *"
+					sh "cd ${env.LOG_DIR} && tar cjf ${ARTIFACT_PATH} *"
 					archiveArtifacts artifacts: "${ARTIFACT_FILENAME}", fingerprint: true
 				}
 			}

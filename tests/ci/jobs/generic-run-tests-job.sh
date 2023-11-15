@@ -44,22 +44,22 @@ else
 	KUBECTL_PATH="kubectl"
 fi
 
-if ! [[ -n ${OPERATOR_WORKERS_COUNT} && ${OPERATOR_WORKERS_COUNT} -gt 0 ]]; then
+if ! [[ -n ${OPERATOR_CLUSTERS_COUNT} && ${OPERATOR_CLUSTERS_COUNT} -gt 0 ]]; then
 	if [[ $K8S_DRIVER == "minikube" ]]; then
-		OPERATOR_WORKERS_COUNT=3
+		OPERATOR_CLUSTERS_COUNT=3
 	elif [[ $K8S_DRIVER == "k3d" ]]; then
-		OPERATOR_WORKERS_COUNT=4
+		OPERATOR_CLUSTERS_COUNT=4
 	else
-		OPERATOR_WORKERS_COUNT=1
+		OPERATOR_CLUSTERS_COUNT=1
 	fi
 fi
 
-if [[ -n ${OPERATOR_NODES_COUNT} && ${OPERATOR_NODES_COUNT} -gt 1 ]]; then
+if [[ -n ${OPERATOR_NODES_PER_CLUSTER} && ${OPERATOR_NODES_PER_CLUSTER} -gt 1 ]]; then
 	OTE_MULTIPLE_NODES=true
 fi
 
 if [[ -n ${OTE_MULTIPLE_NODES} ]]; then
-	TEST_OPTIONS="$TEST_OPTIONS --nodes=$OPERATOR_NODES_COUNT"
+	TEST_OPTIONS="$TEST_OPTIONS --nodes=$OPERATOR_NODES_PER_CLUSTER"
 fi
 
 if [[ -n ${OPERATOR_NODE_MEMORY} ]]; then
@@ -96,7 +96,7 @@ TESTS_XML=$XML_DIR/$OTE_LOG_PREFIX-tests.xml
 SINGLE_WORKER_OPTIONS="--xml=${TESTS_XML} --cluster=$OTE_BUILD_TAG ${TEST_OPTIONS}"
 
 
-DIST_RUN_OPTIONS="--workers=$OPERATOR_WORKERS_COUNT --defer=$WORKERS_DEFER --tag=$OTE_BUILD_TAG --xml"
+DIST_RUN_OPTIONS="--clusters=$OPERATOR_CLUSTERS_COUNT --defer=$WORKERS_DEFER --tag=$OTE_BUILD_TAG --xml"
 DIST_RUN_OPTIONS="--expected-failures=$EXPECTED_FAILURES_PATH ${DIST_RUN_OPTIONS} ${TEST_OPTIONS}"
 
 touch $TESTS_LOG
@@ -106,7 +106,7 @@ tail -f "$TESTS_LOG" &
 "$CI_DIR/jobs/auxiliary/show-progress.sh" 480 30 &
 
 # by default TEST_SUITE is not defined, it means to run all tests
-if test $OPERATOR_WORKERS_COUNT == 1; then
+if test $OPERATOR_CLUSTERS_COUNT == 1; then
 	mkdir -p $XML_DIR
 	./run --env=$K8S_DRIVER $SINGLE_WORKER_OPTIONS ${TEST_SUITE} > "$TESTS_LOG" 2>&1
 	TMP_SUMMARY_PATH=$(mktemp)
@@ -128,7 +128,7 @@ if [[ -n ${OPERATOR_K8S_VERSION} ]]; then
 	JOB_BADGE="${JOB_BADGE}_${OPERATOR_K8S_VERSION}"
 fi
 if [[ -n ${OTE_MULTIPLE_NODES} ]]; then
-	JOB_BADGE="${JOB_BADGE}-${OPERATOR_NODES_COUNT}_nodes"
+	JOB_BADGE="${JOB_BADGE}-${OPERATOR_NODES_PER_CLUSTER}_nodes"
 fi
 if [[ -n ${OPERATOR_IP_FAMILY} && ${OPERATOR_IP_FAMILY} != "ipv4" ]]; then
 	JOB_BADGE="${JOB_BADGE}-${OPERATOR_IP_FAMILY}"
@@ -193,11 +193,11 @@ if [[ -n ${OPERATOR_K8S_VERSION} ]]; then
 	echo "custom k8s version: ${OPERATOR_K8S_VERSION}" >> $RUNTIME_ENV_LOG
 fi
 # workers / nodes
-if [[ -n ${OPERATOR_WORKERS_COUNT} ]]; then
-	echo "workers: ${OPERATOR_WORKERS_COUNT}" >> $RUNTIME_ENV_LOG
+if [[ -n ${OPERATOR_CLUSTERS_COUNT} ]]; then
+	echo "clusters per execution instance: ${OPERATOR_CLUSTERS_COUNT}" >> $RUNTIME_ENV_LOG
 fi
 if [[ -n ${OTE_MULTIPLE_NODES} ]]; then
-	echo "nodes per worker: ${OPERATOR_NODES_COUNT}" >> $RUNTIME_ENV_LOG
+	echo "nodes per cluster: ${OPERATOR_NODES_PER_CLUSTER}" >> $RUNTIME_ENV_LOG
 fi
 if [[ -n ${OPERATOR_NODE_MEMORY} ]]; then
 	echo "memory per node: ${OPERATOR_NODE_MEMORY}MB" >> $RUNTIME_ENV_LOG

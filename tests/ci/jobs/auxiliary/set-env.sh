@@ -48,6 +48,19 @@ export OPERATOR_TEST_VAULT_CONFIG_PATH=${CREDENTIALS_DIR}/vault.cfg
 export OPERATOR_BASE_VERSION_TAG=$(grep -m 1 OPERATOR_TEST_VERSION_TAG $WORKSPACE/tests/setup/defaults.py \
 	| sed 's/[[:blank:]]*"OPERATOR_TEST_VERSION_TAG", default="\([0-9.-]*\)")/\1/')
 
+# to enable OCI builds
+# - set it here explicitly to apply it globally
+# - define it in a given trigger job
+# - modify a given pipeline (regular | weekly) in src or through Jenkins UI
+# OTE_RUN_ON_OCI=1
+
+# execution environment
+if [[ -v OTE_RUN_ON_OCI && $OTE_RUN_ON_OCI -eq 1 ]]; then
+	OTE_DEFAULT_EXECUTION_ENVIRONMENT='oci'
+else
+	OTE_DEFAULT_EXECUTION_ENVIRONMENT='local'
+fi
+
 # log some infos
 pwd
 python3 --version

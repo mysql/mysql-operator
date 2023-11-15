@@ -55,6 +55,13 @@ def getGitBranchName() {
 	return env.GIT_BRANCH
 }
 
+def getExecutionEnvironment(String defaultExecEnv) {
+	if (hasValue(params.OPERATOR_EXECUTION_ENVIRONMENT)) {
+		return params.OPERATOR_EXECUTION_ENVIRONMENT
+	}
+	return defaultExecEnv
+}
+
 def prepareCommunityImage(String operatorImage) {
 	return operatorImage.replace("mysql-operator", "community-operator")
 }
@@ -106,6 +113,11 @@ def initEnv() {
 	env.COMMUNITY_IMAGE_INFO = getImageInfo("${env.OPERATOR_COMMUNITY_IMAGE}")
 	env.ENTERPRISE_IMAGE_INFO = getImageInfo("${params.OPERATOR_ENTERPRISE_IMAGE}")
 
+	env.EXECUTION_ENVIRONMENT_LOCAL = 'local'
+	env.EXECUTION_ENVIRONMENT_OCI = 'oci'
+	// for backward compatibility, if params.OPERATOR_EXECUTION_ENVIRONMENT is not set then treat it as 'local'
+	env.EXECUTION_ENVIRONMENT = getExecutionEnvironment(env.EXECUTION_ENVIRONMENT_LOCAL)
+
 	env.TEST_RESULTS_UNAVAILABLE = 'UNAVAILABLE'
 	env.TEST_RESULTS_SOME_AVAILABLE = 'SOME_AVAILABLE'
 	env.TEST_RESULTS_ALL_AVAILABLE = 'ALL_AVAILABLE'
@@ -121,9 +133,21 @@ def initEnv() {
 	env.REPORT_PART_SKIPPED = 'SKIPPED'
 }
 
+def isExecutionEnvironment(String execEnvType) {
+	return env.EXECUTION_ENVIRONMENT == execEnvType
+}
+
+def isLocalExecutionEnvironment() {
+	return isExecutionEnvironment(env.EXECUTION_ENVIRONMENT_LOCAL)
+}
+
+def isOciExecutionEnvironment() {
+	return isExecutionEnvironment(env.EXECUTION_ENVIRONMENT_OCI)
+}
+
 def getIntroHeader() {
 	return """${env.BUILD_NOTIFICATION_HEADER}
-${currentBuild.getBuildCauses().shortDescription} (flow: ${env.BUILD_TRIGGERED_BY})
+${currentBuild.getBuildCauses().shortDescription} (flow: ${env.BUILD_TRIGGERED_BY}, execution: ${env.EXECUTION_ENVIRONMENT})
 Branch: ${env.GIT_BRANCH_NAME}
 Revision: ${params.OPERATOR_GIT_REVISION}"""
 }
@@ -180,6 +204,51 @@ def getIntroContents() {
 	}
 
 	return attachments
+}
+
+def getWorkerJobPath(String projectName) {
+	def workerJobPath = "${env.WORKERS_FOLDER}/${projectName}"
+	if (isOciExecutionEnvironment()) {
+		workerJobPath += "-oci"
+	}
+	return workerJobPath
+}
+
+// function returns a tuple [executionInstanceName, clustersCount, nodesPerCluster, nodeMemory]
+def getExecutionInstance(String k8sEnv, String defaultClustersCount, String defaultNodesPerCluster) {
+	// currently, on OCI, we do support minikube only
+	if (isLocalExecutionEnvironment() || (k8sEnv != 'minikube')) {
+		def defaultLocalInstanceNodeMemory = '8192'
+		return [
+			'operator-ci',
+			defaultClustersCount,
+			defaultNodesPerCluster,
+			defaultLocalInstanceNodeMemory
+		]
+	}
+
+	// OCI VM: ['nodes count'] => ['agent template label', 'memory per node in MB']
+	// by default we assume, number of nodes is equal to number of cores
+	def nodesToVM = [
+		'1': ['Shell_VM_1core_OL9_IAD', '4096'],
+		'2': ['Shell_VM_8core_OL9_IAD', '4096'],
+		'8': ['Shell_VM_8core_OL9_IAD', '4096']
+	]
+	def (instanceName, nodeMemory) = nodesToVM[defaultNodesPerCluster]
+
+	def clustersPerOciInstance = '1'
+	return [
+		instanceName,
+		clustersPerOciInstance,
+		defaultNodesPerCluster,
+		nodeMemory
+	]
+}
+
+def delayLocalJob(int interval) {
+	if (isLocalExecutionEnvironment()) {
+		sleep interval
+	}
 }
 
 def addTestResults(String k8s_env, int expectedResultsCount) {
@@ -336,8 +405,6 @@ def getTestsSuiteIssuesByEnv(String k8s_env, String result) {
 }
 
 def getTestsSuiteIssues(boolean kindEnabled) {
-	sh "ls -lFh ${env.LOG_DIR}"
-
 	def testSuiteIssues = ""
 	if (anyResultsAvailable()) {
 		testSuiteIssues += getTestsSuiteIssuesByEnv("minikube", env.MINIKUBE_RESULT_STATUS)

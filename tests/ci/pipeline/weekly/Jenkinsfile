@@ -11,6 +11,9 @@ def minikubeRuns = 0
 def k3dRuns = 0
 def kindRuns = 0
 
+// job ids to copy proper artifact for a given build
+def jobIds = [:];
+
 pipeline {
 	agent {
 		node {
@@ -133,8 +136,9 @@ pipeline {
 									${nodeMemory}, \
 									${ipFamily} \
 								]"
+								def k8sJob = null
 								catchError {
-									build job: utils.getWorkerJobPath(K8S_ENVIRONMENT), parameters: [
+									k8sJob = build job: utils.getWorkerJobPath(K8S_ENVIRONMENT), parameters: [
 										string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
 										string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
 										string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
@@ -150,19 +154,29 @@ pipeline {
 										string(name: 'OPERATOR_NODES_PER_CLUSTER', value: nodesPerCluster),
 										string(name: 'OPERATOR_NODE_MEMORY', value: nodeMemory),
 										string(name: 'OPERATOR_IP_FAMILY', value: ipFamily)
-									]
+									], propagate: false
 								}
-								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) completed"
+								if (k8sJob != null) {
+									jobIds[K8S_VERSION] = k8sJob.getNumber()
+									echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) completed (build #${k8sJob.getNumber()})"
+								}
 							}
 						}
 						post {
 							always {
-								echo "copy ${K8S_ENVIRONMENT}(${K8S_VERSION}) results"
-								catchError {
-									copyArtifacts fingerprintArtifacts: true,
-										projectName: utils.getWorkerJobPath(K8S_ENVIRONMENT),
-										selector: lastCompleted(),
-										target: "${env.LOG_SUBDIR}"
+								script {
+									def k8sJob = jobIds[K8S_VERSION]
+									if (k8sJob) {
+										echo "copy ${K8S_ENVIRONMENT}(${K8S_VERSION}) results for build #${k8sJob}"
+										catchError {
+											copyArtifacts fingerprintArtifacts: true,
+												projectName: utils.getWorkerJobPath(K8S_ENVIRONMENT),
+												selector: specific(buildNumber: "${k8sJob}"),
+												target: "${env.LOG_SUBDIR}"
+										}
+									} else {
+										echo "no results for ${K8S_ENVIRONMENT}(${K8S_VERSION}), job id not found"
+									}
 								}
 							}
 						}
@@ -226,8 +240,9 @@ pipeline {
 									${nodeMemory}, \
 									${ipFamily} \
 								]"
+								def k8sJob = null
 								catchError {
-									build job: utils.getWorkerJobPath(K8S_ENVIRONMENT), parameters: [
+									k8sJob = build job: utils.getWorkerJobPath(K8S_ENVIRONMENT), parameters: [
 										string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
 										string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
 										string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
@@ -243,19 +258,29 @@ pipeline {
 										string(name: 'OPERATOR_NODES_PER_CLUSTER', value: nodesPerCluster),
 										string(name: 'OPERATOR_NODE_MEMORY', value: nodeMemory),
 										string(name: 'OPERATOR_IP_FAMILY', value: ipFamily)
-									]
+									], propagate: false
 								}
-								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) completed"
+								if (k8sJob != null) {
+									jobIds[K8S_VERSION] = k8sJob.getNumber()
+									echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) completed (build #${k8sJob.getNumber()})"
+								}
 							}
 						}
 						post {
 							always {
-								echo "copy ${K8S_ENVIRONMENT}(${K8S_VERSION}) results"
-								catchError {
-									copyArtifacts fingerprintArtifacts: true,
-										projectName: utils.getWorkerJobPath(K8S_ENVIRONMENT),
-										selector: lastCompleted(),
-										target: "${env.LOG_SUBDIR}"
+								script {
+									def k8sJob = jobIds[K8S_VERSION]
+									if (k8sJob) {
+										echo "copy ${K8S_ENVIRONMENT}(${K8S_VERSION}) results for build #${k8sJob}"
+										catchError {
+											copyArtifacts fingerprintArtifacts: true,
+												projectName: utils.getWorkerJobPath(K8S_ENVIRONMENT),
+												selector: specific(buildNumber: "${k8sJob}"),
+												target: "${env.LOG_SUBDIR}"
+										}
+									} else {
+										echo "no results for ${K8S_ENVIRONMENT}(${K8S_VERSION}), job id not found"
+									}
 								}
 							}
 						}
@@ -312,8 +337,9 @@ pipeline {
 									${nodeMemory}, \
 									${ipFamily} \
 								]"
+								def k8sJob = null
 								catchError {
-									build job: utils.getWorkerJobPath(K8S_ENVIRONMENT), parameters: [
+									k8sJob = build job: utils.getWorkerJobPath(K8S_ENVIRONMENT), parameters: [
 										string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
 										string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
 										string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
@@ -329,19 +355,29 @@ pipeline {
 										string(name: 'OPERATOR_NODES_PER_CLUSTER', value: nodesPerCluster),
 										string(name: 'OPERATOR_NODE_MEMORY', value: nodeMemory),
 										string(name: 'OPERATOR_IP_FAMILY', value: ipFamily)
-									]
+									], propagate: false
 								}
-								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) completed"
+								if (k8sJob != null) {
+									jobIds[K8S_VERSION] = k8sJob.getNumber()
+									echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) completed (build #${k8sJob.getNumber()})"
+								}
 							}
 						}
 						post {
 							always {
-								echo "copy ${K8S_ENVIRONMENT}(${K8S_VERSION}) results"
-								catchError {
-									copyArtifacts fingerprintArtifacts: true,
-										projectName: utils.getWorkerJobPath(K8S_ENVIRONMENT),
-										selector: lastCompleted(),
-										target: "${env.LOG_SUBDIR}"
+								script {
+									def k8sJob = jobIds[K8S_VERSION]
+									if (k8sJob) {
+										echo "copy ${K8S_ENVIRONMENT}(${K8S_VERSION}) results for build #${k8sJob}"
+										catchError {
+											copyArtifacts fingerprintArtifacts: true,
+												projectName: utils.getWorkerJobPath(K8S_ENVIRONMENT),
+												selector: specific(buildNumber: "${k8sJob}"),
+												target: "${env.LOG_SUBDIR}"
+										}
+									} else {
+										echo "no results for ${K8S_ENVIRONMENT}(${K8S_VERSION}), job id not found"
+									}
 								}
 							}
 						}

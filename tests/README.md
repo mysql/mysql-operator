@@ -47,6 +47,7 @@ The following envars are supported:
 * OPERATOR_TEST_SKIP_AZURE
 * OPERATOR_TEST_AZURE_CONFIG_FILE
 * OPERATOR_TEST_AZURE_CONTAINER_NAME
+* OPERATOR_TEST_FLUENTD_IMAGE_NAME
 
 ## Command-line options
 --env=[k3d|kind|minikube]\

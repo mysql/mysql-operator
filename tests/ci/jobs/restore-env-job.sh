@@ -24,5 +24,5 @@ echo """
         sudo chown james:common $ARCHIVES_DIR/*
     1. after executing this job, copy all binaries from $BINARIES_DIR to a reachable path, e.g.
         sudo chmod +x $BINARIES_DIR/*
-        sudo cp -ruv $BINARIES_DIR /usr/local/bin
+        sudo cp -ruv $BINARIES_DIR/* /usr/local/bin
 """

@@ -79,7 +79,7 @@ AZURE_CONTAINER_NAME = os.getenv(
     "OPERATOR_TEST_AZURE_CONTAINER_NAME", default=None)
 
 FLUENTD_IMAGE_NAME= os.getenv(
-    "OPERATOR_TEST_FLUENTD_IMAGE_NAME", default="fluent/fluentd-kubernetes-daemonset:v1-debian-s3")
+    "OPERATOR_TEST_FLUENTD_IMAGE_NAME", default="fluent/fluentd-kubernetes-daemonset:v1.16-debian-s3-amd64-1")
 
 # metrics sidecar
 METRICS_IMAGE_NAME = os.getenv(

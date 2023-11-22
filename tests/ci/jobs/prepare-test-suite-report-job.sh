@@ -24,3 +24,7 @@ cat $TEST_SUITE_REPORT_PATH | head -15
 
 cd $LOG_DIR
 tar cjf ../test_suite_report_$BUILD_NUMBER.tar.bz2 $TEST_SUITE_REPORT_FNAME
+
+# prune old builds
+find $WORKSPACE/ -maxdepth 1 -type d -name 'build-*' -mtime +30 -exec rm -rf {} \;
+find $WORKSPACE/ -maxdepth 1 -type f -name 'test_suite_report_*.tar.bz2' -mtime +30 -delete

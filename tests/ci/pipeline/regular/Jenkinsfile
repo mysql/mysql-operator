@@ -264,6 +264,8 @@ pipeline {
 				slackSend channel: "${env.SLACK_CHANNEL}",
 					color: utils.getBuildResultColor(),
 					attachments: utils.getBuildSummary()
+
+				utils.pruneOldBuilds()
 			}
 		}
 	}

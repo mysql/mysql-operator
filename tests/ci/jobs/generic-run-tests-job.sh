@@ -215,6 +215,10 @@ cat ${RUNTIME_ENV_LOG}
 
 # archive all logs and auxiliary files
 tar cjf ../$OTE_LOG_PREFIX-result.tar.bz2 *
+
+# prune old builds
+find $WORKSPACE/ -maxdepth 1 -type d -name 'build-*' -mtime +30 -exec rm -rf {} \;
+find $WORKSPACE/ -maxdepth 1 -type f -name "$K8S_DRIVER-build-*-result.tar.bz2" -mtime +30 -delete
 df -lh | grep /sd
 
 exit $TESTS_RESULT

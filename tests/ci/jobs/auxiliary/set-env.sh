@@ -65,5 +65,7 @@ fi
 pwd
 python3 --version
 df -lh | grep /sd
+free -h
+nproc --all
 
 echo "NODE_NAME: $NODE_NAME"

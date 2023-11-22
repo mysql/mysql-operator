@@ -571,4 +571,9 @@ def getBuildSummary() {
 	return attachments
 }
 
+def pruneOldBuilds() {
+	sh "find ${WORKSPACE}/ -maxdepth 1 -type d -name 'build-*' -mtime +30 -exec rm -rf {} \\;"
+	sh "find ${WORKSPACE}/ -maxdepth 1 -type f -name '${JOB_BASE_NAME}-*-result.tar.bz2' -mtime +30 -delete"
+}
+
 return this

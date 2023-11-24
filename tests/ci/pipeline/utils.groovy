@@ -214,34 +214,38 @@ def getWorkerJobPath(String projectName) {
 	return workerJobPath
 }
 
-// function returns a tuple [executionInstanceName, clustersCount, nodesPerCluster, nodeMemory]
-def getExecutionInstance(String k8sEnv, String defaultClustersCount, String defaultNodesPerCluster) {
+// function returns a tuple [executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory]
+def getExecutionParams(String k8sEnv, String maxClustersPerInstance, String nodesPerCluster) {
 	// currently, on OCI, we do support minikube only
 	if (isLocalExecutionEnvironment() || (k8sEnv != 'minikube')) {
-		def defaultLocalInstanceNodeMemory = '8192'
+		def localInstanceLabel = 'operator-ci'
+		def localInstanceCount = 1
+		def localInstanceNodeMemory = '8192'
 		return [
-			'operator-ci',
-			defaultClustersCount,
-			defaultNodesPerCluster,
-			defaultLocalInstanceNodeMemory
+			localInstanceLabel,
+			localInstanceCount,
+			maxClustersPerInstance,
+			nodesPerCluster,
+			localInstanceNodeMemory
 		]
 	}
 
-	// OCI VM: ['nodes count'] => ['agent template label', 'memory per node in MB']
+	// OCI VM: ['nodes count'] => ['agent template label', 'count of instances', 'memory per node in MB']
 	// by default we assume, number of nodes is equal to number of cores
 	def nodesToVM = [
-		'1': ['Shell_VM_1core_OL9_IAD', '4096'],
-		'2': ['Shell_VM_8core_OL9_IAD', '4096'],
-		'8': ['Shell_VM_8core_OL9_IAD', '4096']
+		'1': ['Shell_VM_1core_OL9_IAD', 4, '4096'],
+		'2': ['Shell_VM_8core_OL9_IAD', 4, '4096'],
+		'8': ['Shell_VM_8core_OL9_IAD', 4, '4096']
 	]
-	def (instanceName, nodeMemory) = nodesToVM[defaultNodesPerCluster]
+	def (ociInstanceLabel, ociInstanceCount, ociInstanceNodeMemory) = nodesToVM[nodesPerCluster]
 
 	def clustersPerOciInstance = '1'
 	return [
-		instanceName,
+		ociInstanceLabel,
+		ociInstanceCount,
 		clustersPerOciInstance,
-		defaultNodesPerCluster,
-		nodeMemory
+		nodesPerCluster,
+		ociInstanceNodeMemory
 	]
 }
 

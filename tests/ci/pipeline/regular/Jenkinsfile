@@ -91,9 +91,9 @@ pipeline {
 					steps {
 						script {
 							def k8sEnv = 'minikube'
-							def (executionInstance, clustersCount, nodesPerCluster, nodeMemory) =
-								utils.getExecutionInstance(k8sEnv, '3', '1')
-							echo "[$executionInstance, $clustersCount, $nodesPerCluster, $nodeMemory]"
+							def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory) =
+								utils.getExecutionParams(k8sEnv, maxClustersPerInstance='3', nodesPerCluster='1')
+							echo "[$k8sEnv, $executionInstanceLabel, $executionInstanceCount, $clustersPerInstance, $nodesPerCluster, $nodeMemory]"
 							def k8sJob = null
 							catchError {
 								k8sJob = build job: utils.getWorkerJobPath(k8sEnv), parameters: [
@@ -104,8 +104,8 @@ pipeline {
 									string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
 									string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
 									string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
-									[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstance],
-									string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersCount),
+									[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstanceLabel],
+									string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersPerInstance),
 									string(name: 'OPERATOR_NODES_PER_CLUSTER', value: nodesPerCluster),
 									string(name: 'OPERATOR_NODE_MEMORY', value: nodeMemory)
 								], propagate: false
@@ -151,9 +151,9 @@ pipeline {
 							utils.delayLocalJob(300)
 
 							def k8sEnv = 'k3d'
-							def (executionInstance, clustersCount, nodesPerCluster, nodeMemory) =
-								utils.getExecutionInstance(k8sEnv, '4', '1')
-							echo "[$executionInstance, $clustersCount, $nodesPerCluster, $nodeMemory]"
+							def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory) =
+								utils.getExecutionParams(k8sEnv, maxClustersPerInstance='4', nodesPerCluster='1')
+							echo "[$k8sEnv, $executionInstanceLabel, $clustersPerInstance, $nodesPerCluster, $nodeMemory]"
 							def k8sJob = null
 							catchError {
 								k8sJob = build job: utils.getWorkerJobPath(k8sEnv), parameters: [
@@ -164,8 +164,8 @@ pipeline {
 									string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
 									string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
 									string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
-									[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstance],
-									string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersCount),
+									[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstanceLabel],
+									string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersPerInstance),
 									string(name: 'OPERATOR_NODES_PER_CLUSTER', value: nodesPerCluster),
 									string(name: 'OPERATOR_NODE_MEMORY', value: nodeMemory)
 								], propagate: false
@@ -239,7 +239,7 @@ pipeline {
 				env.BUILD_DURATION = utils.getBuildDuration()
 				env.CHANGE_LOG = utils.getChangeLog()
 
-				sh "ls -lFh ${env.LOG_DIR}"
+				sh script: "ls -lFh ${env.LOG_DIR}", returnStatus: true
 				if (utils.anyResultsAvailable()) {
 					sh "cd ${env.LOG_DIR} && tar cjf ${ARTIFACT_PATH} *"
 					archiveArtifacts artifacts: "${ARTIFACT_FILENAME}", fingerprint: true

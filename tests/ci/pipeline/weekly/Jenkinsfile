@@ -120,18 +120,18 @@ pipeline {
 						steps {
 							script {
 								minikubeRuns++
-								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, defaultClustersCount, defaultNodesPerCluster, ipFamily) =
+								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, maxClustersPerInstance, nodesPerCluster, ipFamily) =
 									K8S_VERSION.split(';')
-								def (executionInstance, clustersCount, nodesPerCluster, nodeMemory) =
-									utils.getExecutionInstance(K8S_ENVIRONMENT, defaultClustersCount, defaultNodesPerCluster)
+								def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory) =
+									utils.getExecutionParams(K8S_ENVIRONMENT, maxClustersPerInstance, nodesPerCluster)
 								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [ \
-									${executionInstance}, \
+									${executionInstanceLabel}, \
 									${k8sEnvBinaryPath}, \
 									${k8sVersion}, \
 									${kubectlPath}, \
-									${defaultClustersCount}, \
-									${clustersCount}, \
-									${defaultNodesPerCluster}, \
+									${maxClustersPerInstance}, \
+									${clustersPerInstance}, \
+									${nodesPerCluster}, \
 									${nodesPerCluster}, \
 									${nodeMemory}, \
 									${ipFamily} \
@@ -147,10 +147,10 @@ pipeline {
 										string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
 										string(name: 'OPERATOR_ENV_BINARY_PATH', value: k8sEnvBinaryPath),
 										string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
-										[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstance],
+										[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstanceLabel],
 										string(name: 'OPERATOR_K8S_VERSION', value: k8sVersion),
 										string(name: 'OPERATOR_KUBECTL_PATH', value: kubectlPath),
-										string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersCount),
+										string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersPerInstance),
 										string(name: 'OPERATOR_NODES_PER_CLUSTER', value: nodesPerCluster),
 										string(name: 'OPERATOR_NODE_MEMORY', value: nodeMemory),
 										string(name: 'OPERATOR_IP_FAMILY', value: ipFamily)
@@ -224,18 +224,18 @@ pipeline {
 						steps {
 							script {
 								k3dRuns++
-								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, defaultClustersCount, defaultNodesPerCluster, ipFamily) =
+								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, maxClustersPerInstance, nodesPerCluster, ipFamily) =
 									K8S_VERSION.split(';')
-								def (executionInstance, clustersCount, nodesPerCluster, nodeMemory) =
-									utils.getExecutionInstance(K8S_ENVIRONMENT, defaultClustersCount, defaultNodesPerCluster)
+								def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory) =
+									utils.getExecutionParams(K8S_ENVIRONMENT, maxClustersPerInstance, nodesPerCluster)
 								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [ \
-									${executionInstance}, \
+									${executionInstanceLabel}, \
 									${k8sEnvBinaryPath}, \
 									${k8sVersion}, \
 									${kubectlPath}, \
-									${defaultClustersCount}, \
-									${clustersCount}, \
-									${defaultNodesPerCluster}, \
+									${maxClustersPerInstance}, \
+									${clustersPerInstance}, \
+									${nodesPerCluster}, \
 									${nodesPerCluster}, \
 									${nodeMemory}, \
 									${ipFamily} \
@@ -251,10 +251,10 @@ pipeline {
 										string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
 										string(name: 'OPERATOR_ENV_BINARY_PATH', value: k8sEnvBinaryPath),
 										string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
-										[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstance],
+										[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstanceLabel],
 										string(name: 'OPERATOR_K8S_VERSION', value: k8sVersion),
 										string(name: 'OPERATOR_KUBECTL_PATH', value: kubectlPath),
-										string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersCount),
+										string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersPerInstance),
 										string(name: 'OPERATOR_NODES_PER_CLUSTER', value: nodesPerCluster),
 										string(name: 'OPERATOR_NODE_MEMORY', value: nodeMemory),
 										string(name: 'OPERATOR_IP_FAMILY', value: ipFamily)
@@ -321,18 +321,18 @@ pipeline {
 						steps {
 							script {
 								kindRuns++
-								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, defaultClustersCount, defaultNodesPerCluster, ipFamily) =
+								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, maxClustersPerInstance, nodesPerCluster, ipFamily) =
 									K8S_VERSION.split(';')
-								def (executionInstance, clustersCount, nodesPerCluster, nodeMemory) =
-									utils.getExecutionInstance(K8S_ENVIRONMENT, defaultClustersCount, defaultNodesPerCluster)
+								def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory) =
+									utils.getExecutionParams(K8S_ENVIRONMENT, maxClustersPerInstance, nodesPerCluster)
 								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [ \
-									${executionInstance}, \
+									${executionInstanceLabel}, \
 									${k8sEnvBinaryPath}, \
 									${k8sVersion}, \
 									${kubectlPath}, \
-									${defaultClustersCount}, \
-									${clustersCount}, \
-									${defaultNodesPerCluster}, \
+									${maxClustersPerInstance}, \
+									${clustersPerInstance}, \
+									${nodesPerCluster}, \
 									${nodesPerCluster}, \
 									${nodeMemory}, \
 									${ipFamily} \
@@ -348,10 +348,10 @@ pipeline {
 										string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
 										string(name: 'OPERATOR_ENV_BINARY_PATH', value: k8sEnvBinaryPath),
 										string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
-										[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstance],
+										[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstanceLabel],
 										string(name: 'OPERATOR_K8S_VERSION', value: k8sVersion),
 										string(name: 'OPERATOR_KUBECTL_PATH', value: kubectlPath),
-										string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersCount),
+										string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersPerInstance),
 										string(name: 'OPERATOR_NODES_PER_CLUSTER', value: nodesPerCluster),
 										string(name: 'OPERATOR_NODE_MEMORY', value: nodeMemory),
 										string(name: 'OPERATOR_IP_FAMILY', value: ipFamily)
@@ -430,7 +430,7 @@ pipeline {
 				env.BUILD_DURATION = utils.getBuildDuration()
 				env.CHANGE_LOG = utils.getChangeLog()
 
-				sh "ls -lFh ${env.LOG_DIR}"
+				sh script: "ls -lFh ${env.LOG_DIR}", returnStatus: true
 				if (utils.anyResultsAvailable()) {
 					sh "cd ${env.LOG_DIR} && tar cjf ${ARTIFACT_PATH} *"
 					archiveArtifacts artifacts: "${ARTIFACT_FILENAME}", fingerprint: true

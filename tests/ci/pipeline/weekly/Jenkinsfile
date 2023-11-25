@@ -120,10 +120,10 @@ pipeline {
 						steps {
 							script {
 								minikubeRuns++
-								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, maxClustersPerInstance, nodesPerCluster, ipFamily) =
+								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, maxClustersPerInstance, expectedNodesPerCluster, ipFamily) =
 									K8S_VERSION.split(';')
 								def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory) =
-									utils.getExecutionParams(K8S_ENVIRONMENT, maxClustersPerInstance, nodesPerCluster)
+									utils.getExecutionParams(K8S_ENVIRONMENT, maxClustersPerInstance, expectedNodesPerCluster)
 								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [ \
 									${executionInstanceLabel}, \
 									${k8sEnvBinaryPath}, \
@@ -131,7 +131,7 @@ pipeline {
 									${kubectlPath}, \
 									${maxClustersPerInstance}, \
 									${clustersPerInstance}, \
-									${nodesPerCluster}, \
+									${expectedNodesPerCluster}, \
 									${nodesPerCluster}, \
 									${nodeMemory}, \
 									${ipFamily} \
@@ -224,10 +224,10 @@ pipeline {
 						steps {
 							script {
 								k3dRuns++
-								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, maxClustersPerInstance, nodesPerCluster, ipFamily) =
+								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, maxClustersPerInstance, expectedNodesPerCluster, ipFamily) =
 									K8S_VERSION.split(';')
 								def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory) =
-									utils.getExecutionParams(K8S_ENVIRONMENT, maxClustersPerInstance, nodesPerCluster)
+									utils.getExecutionParams(K8S_ENVIRONMENT, maxClustersPerInstance, expectedNodesPerCluster)
 								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [ \
 									${executionInstanceLabel}, \
 									${k8sEnvBinaryPath}, \
@@ -235,7 +235,7 @@ pipeline {
 									${kubectlPath}, \
 									${maxClustersPerInstance}, \
 									${clustersPerInstance}, \
-									${nodesPerCluster}, \
+									${expectedNodesPerCluster}, \
 									${nodesPerCluster}, \
 									${nodeMemory}, \
 									${ipFamily} \
@@ -321,10 +321,10 @@ pipeline {
 						steps {
 							script {
 								kindRuns++
-								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, maxClustersPerInstance, nodesPerCluster, ipFamily) =
+								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, maxClustersPerInstance, expectedNodesPerCluster, ipFamily) =
 									K8S_VERSION.split(';')
 								def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory) =
-									utils.getExecutionParams(K8S_ENVIRONMENT, maxClustersPerInstance, nodesPerCluster)
+									utils.getExecutionParams(K8S_ENVIRONMENT, maxClustersPerInstance, expectedNodesPerCluster)
 								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [ \
 									${executionInstanceLabel}, \
 									${k8sEnvBinaryPath}, \
@@ -332,7 +332,7 @@ pipeline {
 									${kubectlPath}, \
 									${maxClustersPerInstance}, \
 									${clustersPerInstance}, \
-									${nodesPerCluster}, \
+									${expectedNodesPerCluster}, \
 									${nodesPerCluster}, \
 									${nodeMemory}, \
 									${ipFamily} \

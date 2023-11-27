@@ -101,7 +101,7 @@ class Config:
 
     router_extra_containers_per_pod = 0
 
-    local_path_provisioner_install = False
+    local_path_provisioner_install = True
     local_path_provisioner_manifest_url = "https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.24/deploy/local-path-storage.yaml"
     local_path_provisioner_shared_path = "/tmp/local-path-shared"
 

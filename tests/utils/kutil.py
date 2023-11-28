@@ -503,6 +503,10 @@ def describe_po(ns, name, jpath=None, cmd_output_log=KubectlCmdOutputLogging.DIA
     return describe_rsrc(ns, "po", name, jpath, cmd_output_log=cmd_output_log)
 
 
+def describe_sts(ns, name, cmd_output_log=KubectlCmdOutputLogging.DIAGNOSTICS):
+    return describe_rsrc(ns, "sts", name, cmd_output_log=cmd_output_log)
+
+
 def describe_ic(ns, name, cmd_output_log=KubectlCmdOutputLogging.DIAGNOSTICS):
     return describe_rsrc(ns, "ic", name, cmd_output_log=cmd_output_log)
 
@@ -814,6 +818,9 @@ class StoreTimeoutDiagnostics:
     def describe_rsrc(self, rsrc, name):
         self.store_log(rsrc, name, "describe", lambda: describe_rsrc(self.ns, rsrc, name, cmd_output_log=KubectlCmdOutputLogging.MUTE))
 
+    def describe_sts(self, sts):
+        self.store_log("sts", sts, "describe", lambda: describe_sts(self.ns, sts, cmd_output_log=KubectlCmdOutputLogging.MUTE))
+
     def describe_ic(self, ic):
         self.store_log("ic", ic, "describe", lambda: describe_ic(self.ns, ic, cmd_output_log=KubectlCmdOutputLogging.MUTE))
 
@@ -859,6 +866,7 @@ class StoreTimeoutDiagnostics:
         self.describe_ic(cluster_name)
 
     def process_ic(self, cluster_name):
+        self.describe_sts(cluster_name)
         self.describe_ic(cluster_name)
 
     def process_pod(self, pod):
@@ -914,6 +922,9 @@ class StoreTimeoutDiagnostics:
             self.process_cluster(name)
             self.process_operators()
         elif rsrc == "po" or rsrc == "pod":
+            # this assumes each pod has a corresponding IC, this might not be
+            # the case. For example readReplica pods only got an stateful set,
+            # which will however be processed as well.
             cluster_name = self.extract_cluster_name_from_pod(name)
             self.process_cluster(cluster_name)
             self.process_operators()

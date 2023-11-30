@@ -105,11 +105,8 @@ pipeline {
 					// 					 'minikube-v1.25.2;v1.23.4;kubectl-v1.23.4;3;2;ipv4' - 3 clusters per execution instance with 2 nodes each
 					axis {
 						name 'K8S_VERSION'
-						values 'minikube-v1.31.2;v1.22.5;kubectl-v1.22.17;4;1;ipv4',
-							'minikube-v1.31.2;v1.23.4;kubectl-v1.23.4;4;1;ipv4',
-							'minikube-v1.31.2;v1.24.1;kubectl-v1.24.8;4;1;ipv4',
+						values 'minikube-v1.31.2;v1.23.4;kubectl-v1.23.4;4;1;ipv4',
 							'minikube-v1.31.2;v1.25.5;kubectl-v1.25.6;4;1;ipv4',
-							'minikube-v1.31.2;v1.26.1;kubectl-v1.26.1;4;1;ipv4',
 							'minikube-v1.31.2;v1.27.0;kubectl-v1.27.0;4;1;ipv4',
 							'minikube-v1.31.2;v1.27.4;kubectl-v1.28.2;4;1;ipv4'
 					}
@@ -207,13 +204,8 @@ pipeline {
 					axis {
 						name 'K8S_VERSION'
 						values 'k3d-v5.6.0;rancher/k3s:v1.22.7-k3s1;kubectl-v1.22.17;6;1;ipv4',
-							'k3d-v5.6.0;rancher/k3s:v1.23.5-k3s1;kubectl-v1.23.14;6;1;ipv4',
 							'k3d-v5.6.0;rancher/k3s:v1.24.7-k3s1;kubectl-v1.24.4;6;1;ipv4',
-							'k3d-v5.6.0;rancher/k3s:v1.25.3-k3s1;kubectl-v1.25.4;6;1;ipv4',
-							'k3d-v5.6.0;rancher/k3s:v1.26.0-k3s2;kubectl-v1.25.6;6;1;ipv4',
 							'k3d-v5.6.0;rancher/k3s:v1.26.0-k3s1;kubectl-v1.26.0;2;3;ipv4',
-							'k3d-v5.6.0;rancher/k3s:v1.26.1-k3s1;kubectl-v1.26.1;6;1;ipv4',
-							'k3d-v5.6.0;rancher/k3s:v1.27.1-k3s1;kubectl-v1.27.2;6;1;ipv4',
 							'k3d-v5.6.0;rancher/k3s:v1.27.4-k3s1;kubectl-v1.28.2;6;1;ipv4'
 					}
 				}

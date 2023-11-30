@@ -419,7 +419,7 @@ pipeline {
 				env.BUILD_DURATION = utils.getBuildDuration()
 				env.CHANGE_LOG = utils.getChangeLog()
 
-				sh script: "ls -lFh ${env.LOG_DIR}", returnStatus: true
+				utils.listFilesInSubdir(env.LOG_SUBDIR)
 				if (utils.anyResultsAvailable()) {
 					sh "cd ${env.LOG_DIR} && tar cjf ${ARTIFACT_PATH} *"
 					archiveArtifacts artifacts: "${ARTIFACT_FILENAME}", fingerprint: true

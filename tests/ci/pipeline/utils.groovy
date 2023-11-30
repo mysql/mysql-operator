@@ -77,6 +77,20 @@ def yesOrNo(boolean flag) {
 	return flag ? "yes" : "no"
 }
 
+def countFilesInSubdir(String subdir) {
+	def files = findFiles glob: "**/${subdir}/*"
+	echo "${subdir} contains ${files.length} file(s)"
+}
+
+def listFilesInSubdir(String subdir) {
+	def files = findFiles glob: "**/${subdir}/*"
+	def dirContents = "${subdir} contains ${files.length} file(s):\n"
+	files.each { file ->
+		dirContents += "${file.name} ${file.length}\n"
+	}
+	echo dirContents
+}
+
 def initEnv() {
 	env.INIT_STAGE_SUCCEEDED = false
 	env.BUILD_STAGE_SUCCEEDED = false
@@ -91,8 +105,11 @@ def initEnv() {
 
 	env.WORKERS_FOLDER = 'Shell/KubernetesOperator/' + "${isCIExperimentalBuild() ? 'sandbox' : 'workers'}"
 	env.BUILD_TRIGGERED_BY = getTriggeredBy(params.OPERATOR_TRIGGERED_BY)
+
 	env.TESTS_DIR = "${WORKSPACE}/tests"
 	env.CI_DIR = "${env.TESTS_DIR}/ci"
+	env.TESTS_SUBDIR = "./tests"
+	env.CI_SUBDIR = "${env.TESTS_SUBDIR}/ci"
 	env.LOG_SUBDIR = "build-${BUILD_NUMBER}"
 	env.LOG_DIR = "${WORKSPACE}/${LOG_SUBDIR}"
 	env.ARTIFACT_FILENAME = "${JOB_BASE_NAME}-${BUILD_NUMBER}-result.tar.bz2"
@@ -256,7 +273,7 @@ def delayLocalJob(int interval) {
 }
 
 def addTestResults(String k8s_env, int expectedResultsCount) {
-	sh "ls ${env.LOG_DIR} | wc -l"
+	countFilesInSubdir(env.LOG_SUBDIR)
 	def testResultsPattern = "$k8s_env-*-result.tar.bz2"
 	def testResults = findFiles glob: "**/${env.LOG_SUBDIR}/$testResultsPattern"
 	if (testResults.length == 0) {
@@ -287,8 +304,14 @@ def getMergedReports(String reportPattern) {
 		return ""
 	}
 
-	reportSummary = sh (script: "cat ${env.LOG_DIR}/$reportPattern | sort", returnStdout: true)
-	echo reportSummary
+	def reportSummaryRaw = ''
+	reports.each { reportFile ->
+		def report = readFile(file: reportFile.path)
+		reportSummaryRaw += report.trim() + '\n'
+	}
+
+	def reportSummary = reportSummaryRaw.split('\n').sort().join('\n')
+	echo "report summary:\n${reportSummary}"
 	return reportSummary
 }
 
@@ -298,7 +321,7 @@ def getMergedStatsReports() {
 }
 
 def getTestSuiteReport() {
-	sh "ls ${env.LOG_DIR} | wc -l"
+	countFilesInSubdir(env.LOG_SUBDIR)
 	def testSuiteReportPattern = 'test_suite_report_*.tar.bz2'
 	def testSuiteReportFiles = findFiles glob: "**/${env.LOG_SUBDIR}/$testSuiteReportPattern"
 	if (testSuiteReportFiles.length == 0) {
@@ -322,10 +345,11 @@ def parseTestSuiteReport() {
 	def reportPath = "${env.LOG_DIR}/test_suite_report.txt"
 	def reportExists = fileExists reportPath
 	if (!reportExists) {
+		echo "${reportPath} does not exist!"
 		return
 	}
 
-	def splitReportScript = "${env.CI_DIR}/pipeline/auxiliary/split_test_suite_report.sh"
+	def splitReportScript = "${env.CI_SUBDIR}/pipeline/auxiliary/split_test_suite_report.sh"
 	sh "$splitReportScript $reportPath"
 }
 

@@ -553,7 +553,7 @@ def update_stateful_set_size(cluster: InnoDBCluster, rr_spec: ReadReplicaSpec, l
             sts.metadata.name, sts.metadata.namespace, body=patch)
 
 
-def prepare_service_account(spec: InnoDBClusterSpec) -> dict:
+def prepare_service_account(spec: AbstractServerSetSpec) -> dict:
     account = f"""
 apiVersion: v1
 kind: ServiceAccount
@@ -568,7 +568,7 @@ metadata:
     return account
 
 
-def prepare_service_account_patch_for_image_pull_secrets(spec: InnoDBClusterSpec) -> Optional[Dict]:
+def prepare_service_account_patch_for_image_pull_secrets(spec: AbstractServerSetSpec) -> Optional[Dict]:
     if not spec.imagePullSecrets:
         return None
     return {
@@ -576,12 +576,12 @@ def prepare_service_account_patch_for_image_pull_secrets(spec: InnoDBClusterSpec
     }
 
 
-def prepare_role_binding(spec: InnoDBClusterSpec) -> dict:
+def prepare_role_binding(spec: AbstractServerSetSpec) -> dict:
     rolebinding = f"""
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: {spec.name}-sidecar-rb
+  name: {spec.roleBindingName}
   namespace: {spec.namespace}
 subjects:
   - kind: ServiceAccount
@@ -596,8 +596,7 @@ roleRef:
     return rolebinding
 
 
-def prepare_additional_configmaps(cluster: InnoDBCluster, logger: Logger) -> List[Dict]:
-    spec = cluster.parsed_spec
+def prepare_additional_configmaps(spec: AbstractServerSetSpec, logger: Logger) -> List[Dict]:
     configmaps = []
     prefix = ''
     for subsystem in spec.get_configmap_cbs:
@@ -609,8 +608,7 @@ def prepare_additional_configmaps(cluster: InnoDBCluster, logger: Logger) -> Lis
     return configmaps
 
 
-def prepare_component_config_configmaps(cluster: InnoDBCluster, logger: Logger) -> List[Dict]:
-    spec = cluster.parsed_spec
+def prepare_component_config_configmaps(spec: AbstractServerSetSpec, logger: Logger) -> List[Dict]:
     configmaps = []
     if spec.keyring.is_component:
         cm = spec.keyring.get_component_config_configmap_manifest()
@@ -619,8 +617,7 @@ def prepare_component_config_configmaps(cluster: InnoDBCluster, logger: Logger) 
     return configmaps
 
 
-def prepare_component_config_secrets(cluster: InnoDBCluster, logger: Logger) -> List[Dict]:
-    spec = cluster.parsed_spec
+def prepare_component_config_secrets(spec: AbstractServerSetSpec, logger: Logger) -> List[Dict]:
     secrets = []
     if spec.keyring.is_component:
         cm = spec.keyring.get_component_config_secret_manifest()
@@ -629,7 +626,7 @@ def prepare_component_config_secrets(cluster: InnoDBCluster, logger: Logger) -> 
 
     return secrets
 
-def prepare_initconf(cluster:  InnoDBCluster, spec: AbstractServerSetSpec, logger: Logger) -> dict:
+def prepare_initconf(cluster: InnoDBCluster, spec: AbstractServerSetSpec, logger: Logger) -> dict:
 
     liveness_probe = """#!/bin/bash
 # Copyright (c) 2020, 2021, Oracle and/or its affiliates.

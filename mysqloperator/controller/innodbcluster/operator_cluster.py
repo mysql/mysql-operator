@@ -68,29 +68,69 @@ def do_create_read_replica(cluster: InnoDBCluster, rr: cluster_objects.ReadRepli
                            set_replicas_to_zero: bool,
                            indention: str, logger: Logger) -> None:
     namespace = cluster.namespace
-    if not ignore_404(lambda: cluster.get_read_replica_initconf(rr.name)):
-        print(f"{indention}Preparing... {rr.name} initconf")
+    print(f"{indention}Components ConfigMaps and Secrets")
+    for cm in cluster_objects.prepare_component_config_configmaps(rr, logger):
+        if not cluster.get_configmap(cm['metadata']['name']):
+            print(f"{indention}\tCreating CM {cm['metadata']['name']} ...")
+            kopf.adopt(cm)
+            api_core.create_namespaced_config_map(namespace, cm)
+    for secret in cluster_objects.prepare_component_config_secrets(rr, logger):
+        if not cluster.get_secret(secret['metadata']['name']):
+            print(f"{indention}\tCreating Secret {secret['metadata']['name']} ...")
+            kopf.adopt(secret)
+            api_core.create_namespaced_secret(namespace, secret)
+
+    print(f"{indention}Initconf")
+    if not ignore_404(lambda: cluster.get_initconf(rr)):
+        print(f"{indention}\tPreparing... {rr.name}")
         configs = cluster_objects.prepare_initconf(cluster, rr, logger)
-        print(f"{indention}Creating...")
+        print(f"{indention}\tCreating...")
         kopf.adopt(configs)
         api_core.create_namespaced_config_map(namespace, configs)
+
+    print(f"{indention}RR ServiceAccount")
+    existing_sa = ignore_404(lambda: cluster.get_service_account(rr))
+    print(f"{indention}\tExisting SA: {existing_sa}")
+    print(f"{indention}\tImagePullSecrets: {rr.imagePullSecrets}")
+    if not existing_sa:
+        print("{indention}\tPreparing...")
+        sa = cluster_objects.prepare_service_account(rr)
+        print(f"{indention}\tCreating...{sa}")
+        kopf.adopt(sa)
+        api_core.create_namespaced_service_account(namespace=namespace, body=sa)
+    elif rr.imagePullSecrets:
+        patch = cluster_objects.prepare_service_account_patch_for_image_pull_secrets(rr)
+        print(f"{indention}\tPatching existing SA with {patch}")
+        api_core.patch_namespaced_service_account(name=existing_sa.metadata.name, namespace=namespace, body=patch)
+
+    print(f"{indention}RR RoleBinding")
+    if not ignore_404(lambda: cluster.get_role_binding(rr)):
+        print("{indention}\tPreparing...")
+        rb = cluster_objects.prepare_role_binding(rr)
+        print(f"{indention}\tCreating RoleBinding {rb['metadata']['name']} {rb}...")
+        kopf.adopt(rb)
+        api_rbac.create_namespaced_role_binding(namespace=namespace, body=rb)
+
+    print(f"{indention}RR Service")
     if not ignore_404(lambda: cluster.get_read_replica_service(rr.name)):
-        print(f"{indention}Preparing... {rr.name} Service")
+        print(f"{indention}\tPreparing... {rr.name} Service")
         service = cluster_objects.prepare_cluster_service(rr)
-        print(f"{indention}Creating...")
+        print(f"{indention}\tCreating...")
         kopf.adopt(service)
         api_core.create_namespaced_service(namespace=namespace, body=service)
+
+    print(f"{indention}RR STS")
     if not ignore_404(lambda: cluster.get_read_replica_stateful_set(rr.name)):
-        print(f"{indention}Preparing {rr.name} StatefulSet")
+        print(f"{indention}\tPreparing {rr.name} StatefulSet")
         statefulset = cluster_objects.prepare_cluster_stateful_set(rr, logger)
         if set_replicas_to_zero:
             # This is initial startup where scaling the read reaplica is delayed
             # till the clsuter is read
             statefulset['spec']['replicas'] = 0
-        print(f"{indention}Creating...{statefulset}")
+        print(f"{indention}\tCreating...{statefulset}")
         kopf.adopt(statefulset)
-        api_apps.create_namespaced_stateful_set(namespace=namespace,
-                                                body=statefulset)
+        api_apps.create_namespaced_stateful_set(namespace=namespace, body=statefulset)
+
 
 def do_reconcile_read_replica(cluster: InnoDBCluster,
                               rr: cluster_objects.ReadReplicaSpec,
@@ -144,27 +184,27 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
     if not cluster.ready:
         try:
             print("0. Components ConfigMaps and Secrets")
-            for cm in cluster_objects.prepare_component_config_configmaps(cluster, logger):
+            for cm in cluster_objects.prepare_component_config_configmaps(icspec, logger):
                 if not cluster.get_configmap(cm['metadata']['name']):
                     print(f"\tCreating CM {cm['metadata']['name']} ...")
                     kopf.adopt(cm)
                     api_core.create_namespaced_config_map(namespace, cm)
 
-            for secret in cluster_objects.prepare_component_config_secrets(cluster, logger):
+            for secret in cluster_objects.prepare_component_config_secrets(icspec, logger):
                 if not cluster.get_secret(secret['metadata']['name']):
                     print(f"\tCreating Secret {secret['metadata']['name']} ...")
                     kopf.adopt(secret)
                     api_core.create_namespaced_secret(namespace, secret)
 
             print("0.5. Additional ConfigMaps")
-            for cm in cluster_objects.prepare_additional_configmaps(cluster, logger):
+            for cm in cluster_objects.prepare_additional_configmaps(icspec, logger):
                 if not cluster.get_configmap(cm['metadata']['name']):
                     print(f"\tCreating CM {cm['metadata']['name']} ...")
                     kopf.adopt(cm)
                     api_core.create_namespaced_config_map(namespace, cm)
 
             print("1. Initial Configuration ConfigMap and Container Probes")
-            if not ignore_404(cluster.get_initconf):
+            if not ignore_404(lambda: cluster.get_initconf(icspec)):
                 print("\tPreparing...")
                 configs = cluster_objects.prepare_initconf(cluster, icspec, logger)
                 print("\tCreating...")
@@ -196,7 +236,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 api_core.create_namespaced_service(namespace=namespace, body=service)
 
             print("5. Cluster ServiceAccount")
-            existing_sa = ignore_404(cluster.get_service_account)
+            existing_sa = ignore_404(lambda: cluster.get_service_account(icspec))
             print(f"\tExisting SA: {existing_sa}")
             print(f"\tImagePullSecrets: {icspec.imagePullSecrets}")
             if not existing_sa:
@@ -211,7 +251,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 api_core.patch_namespaced_service_account(name=existing_sa.metadata.name, namespace=namespace, body=patch)
 
             print("6. Cluster RoleBinding")
-            if not ignore_404(cluster.get_role_binding):
+            if not ignore_404(lambda: cluster.get_role_binding(icspec)):
                 print("\tPreparing...")
                 rb = cluster_objects.prepare_role_binding(icspec)
                 print(f"\tCreating RoleBinding {rb['metadata']['name']} ...")
@@ -237,7 +277,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
 
             print("9. Read Replica StatefulSets")
             if len(icspec.readReplicas) > 0:
-                print(f"\t{len(icspec.readReplicas)} Read Replicas ...")
+                print(f"\t{len(icspec.readReplicas)} Read Replica STS ...")
                 for rr in icspec.readReplicas:
                     do_create_read_replica(cluster, rr, True, "\t\t", logger)
             else:

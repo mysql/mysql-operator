@@ -758,6 +758,7 @@ class AbstractServerSetSpec(abc.ABC):
     imageRepository: str = config.DEFAULT_IMAGE_REPOSITORY
 
     serviceAccountName: Optional[str] = None
+    roleBindingName: Optional[str] = None
 
     # number of MySQL instances (required)
     instances: int = 1
@@ -849,6 +850,7 @@ class AbstractServerSetSpec(abc.ABC):
                 spec_root, "imagePullSecrets", "spec", content_type=dict)
 
         self.serviceAccountName = dget_str(spec_root, "serviceAccountName", "spec", default_value=f"{self.name}-sidecar-sa")
+        self.roleBindingName = f"{self.name}-sidecar-rb"
 
         if "imageRepository" in spec_root:
             self.imageRepository = dget_str(spec_root, "imageRepository", "spec")
@@ -1676,14 +1678,15 @@ class InnoDBCluster(K8sInterfaceObject):
         return (utils.b64decode(secrets.data["clusterAdminUsername"]),
                 utils.b64decode(secrets.data["clusterAdminPassword"]))
 
-    def get_service_account(self) -> api_client.V1ServiceAccount:
+    @classmethod
+    def get_service_account(cls, spec: AbstractServerSetSpec) -> api_client.V1ServiceAccount:
         return cast(api_client.V1ServiceAccount,
-                    api_core.read_namespaced_service_account(self.parsed_spec.serviceAccountName, self.namespace))
+                    api_core.read_namespaced_service_account(spec.serviceAccountName, spec.namespace))
 
-    def get_role_binding(self) -> api_client.V1RoleBinding:
+    @classmethod
+    def get_role_binding(cls, spec: AbstractServerSetSpec) -> api_client.V1RoleBinding:
         return cast(api_client.V1RoleBinding,
-                    api_rbac.read_namespaced_role_binding(f"{self.name}-sidecar-rb", self.namespace))
-
+                    api_rbac.read_namespaced_role_binding(spec.roleBindingName, spec.namespace))
 
     def delete_configmap(self, cm_name: str) -> typing.Optional[api_client.V1Status]:
         try:
@@ -1699,7 +1702,7 @@ class InnoDBCluster(K8sInterfaceObject):
     def get_configmap(self, cm_name: str) -> typing.Optional[api_client.V1ConfigMap]:
         try:
             cm = cast(api_client.V1ConfigMap,
-                      api_core.read_namespaced_config_map(f"{cm_name}", self.namespace))
+                      api_core.read_namespaced_config_map(cm_name, self.namespace))
             return cm
         except ApiException as e:
             if e.status == 404:
@@ -1709,26 +1712,18 @@ class InnoDBCluster(K8sInterfaceObject):
     def get_secret(self, s_name: str) -> typing.Optional[api_client.V1Secret]:
         try:
             cm = cast(api_client.V1Secret,
-                      api_core.read_namespaced_secret(f"{s_name}", self.namespace))
+                      api_core.read_namespaced_secret(s_name, self.namespace))
             return cm
         except ApiException as e:
             if e.status == 404:
                 return None
             raise
 
-    def get_initconf(self) -> typing.Optional[api_client.V1ConfigMap]:
+    @classmethod
+    def get_initconf(cls, spec: AbstractServerSetSpec) -> typing.Optional[api_client.V1ConfigMap]:
         try:
             return cast(api_client.V1ConfigMap,
-                        api_core.read_namespaced_config_map(f"{self.name}-initconf", self.namespace))
-        except ApiException as e:
-            if e.status == 404:
-                return None
-            raise
-
-    def get_read_replica_initconf(self, name: str) -> typing.Optional[api_client.V1ConfigMap]:
-        try:
-            return cast(api_client.V1ConfigMap,
-                        api_core.read_namespaced_config_map(f"{name}-initconf", self.namespace))
+                        api_core.read_namespaced_config_map(f"{spec.name}-initconf", spec.namespace))
         except ApiException as e:
             if e.status == 404:
                 return None

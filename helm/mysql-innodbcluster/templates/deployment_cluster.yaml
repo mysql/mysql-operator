@@ -417,3 +417,7 @@ spec:
 {{ if ((.Values).logs) }}
   logs: {{ toYaml ((.Values).logs) | nindent 4 }}
 {{ end }}
+
+{{ if ((.Values).readReplicas) }}
+  readReplicas: {{ toYaml ((.Values).readReplicas) | nindent 2 }}
+{{ end }}

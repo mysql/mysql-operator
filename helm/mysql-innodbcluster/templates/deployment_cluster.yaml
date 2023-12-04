@@ -88,7 +88,7 @@ spec:
   {{- end }}
   tlsSecretName: {{ $secret_name }}
 {{- end }}
-
+  # mycnf
 {{- if ((.Values).serverConfig) }}
   {{- if (((.Values).serverConfig).mycnf) }}
   mycnf: |
@@ -98,7 +98,7 @@ spec:
 {{ (((.Values).serverConfig).mycnf) | indent 4 }}
   {{- end }}
 {{- end }}
-
+  # datadirVolumeClaimTemplate
 {{- if .Values.datadirVolumeClaimTemplate }}
   {{- with .Values.datadirVolumeClaimTemplate }}
   datadirVolumeClaimTemplate:
@@ -115,7 +115,7 @@ spec:
     {{- end }}
   {{- end }}
 {{- end }}
-
+  # Keyring
 {{- if (or (((.Values).keyring).file) (((.Values).keyring).encryptedFile) (((.Values).keyring).oci) ) }}
   keyring:
 {{- $keyringAlreadySpecified := "" }}
@@ -194,12 +194,11 @@ spec:
     {{- end }}
   {{- end }}
 {{- end }}
-
+  # Init DB
 {{- if .Values.initDB }}
   {{- if and (and .Values.initDB.dump .Values.initDB.dump.name) (and .Values.initDB.clone .Values.initDB.donorUrl) }}
     {{- fail "Dump and Clone are mutually exclusive" }}
   {{- end }}
-
   {{- if (((.Values).initDB).clone) }}
     {{- with .Values.initDB.clone }}
   initDB:
@@ -210,17 +209,16 @@ spec:
         name: {{ required "initDB.clone.credentials is required" .credentials }}
     {{- end }}
   {{- end }}
-
   {{- if (((.Values).initDB).dump) }}
     {{- with .Values.initDB.dump }}
       {{- if and .name (or .ociObjectStorage .s3 .azure .persistentVolumeClaim .options) }}
   initDB:
     dump:
         {{- if .name }}
-      name: {{ .name }}
+      name: {{ .name | quote }}
         {{- end }}
         {{- if .path }}
-      path: {{ .path }}
+      path: {{ .path | quote }}
         {{- end }}
         {{- if .options }}
       options: {{ toYaml .options | nindent 8 }}
@@ -257,14 +255,14 @@ spec:
     {{- end }}
   {{- end }}
 {{- end }}
-
+  # Backup Profiles
 {{- if .Values.backupProfiles }}
   backupProfiles:
   {{- $isDumpInstance := false }}
   {{- $isSnapshot := false }}
   {{- range $_, $profile := .Values.backupProfiles }}
     {{- if $profile.name }}
-  - name: {{ $profile.name -}}
+  - name: {{ $profile.name | quote -}}
       {{- if hasKey $profile "podAnnotations" }}
     podAnnotations: {{ toYaml $profile.podAnnotations | nindent 6 }}
       {{- end }}
@@ -326,13 +324,13 @@ spec:
     {{- end }}
   {{- end }}
 {{- end }}
-
+  # Backup Schedules
 {{- if .Values.backupSchedules }}
   backupSchedules:
   {{- $isDumpInstance := false }}
   {{- $isSnapshot := false }}
   {{- range $_, $schedule := .Values.backupSchedules }}
-  - name: {{ $schedule.name }}
+  - name: {{ $schedule.name | quote }}
     schedule: {{ quote $schedule.schedule }}
     deleteBackupData: {{ $schedule.deleteBackupData }}
     enabled: {{ $schedule.enabled }}
@@ -402,22 +400,60 @@ spec:
     {{- end }}
   {{- end }}
 {{- end }}
-
-{{ if ((.Values).podSpec) }}
+  # Pod Spec
+{{- if ((.Values).podSpec) }}
   podSpec: {{ toYaml ((.Values).podSpec) | nindent 4 }}
-{{ end }}
+{{- end }}
+  # Pod Labels
 {{- if ((.Values).podLabels) }}
   podLabels: {{ toYaml ((.Values).podLabels) | nindent 4 }}
 {{- end }}
+  # Pod Annotations
 {{- if ((.Values).podAnnotations) }}
   podAnnotations: {{ toYaml ((.Values).podAnnotations) | nindent 4 }}
 {{- end }}
-
-
-{{ if ((.Values).logs) }}
+  # Logs
+{{- if ((.Values).logs) }}
   logs: {{ toYaml ((.Values).logs) | nindent 4 }}
-{{ end }}
-
-{{ if ((.Values).readReplicas) }}
-  readReplicas: {{ toYaml ((.Values).readReplicas) | nindent 2 }}
-{{ end }}
+{{- end }}
+  # Read Replicas
+{{- if ((.Values).readReplicas) }}
+  readReplicas:
+  {{- range $_, $replica := ((.Values).readReplicas) }}
+  - name: {{ $replica.name | quote }}
+    {{- if hasKey $replica "version" }}
+    version: {{ $replica.version | quote }}
+    {{- end }}
+    baseServerId: {{ $replica.baseServerId }}
+    {{- if hasKey $replica "datadirVolumeClaimTemplate" }}
+      {{- with $replica.datadirVolumeClaimTemplate }}
+    datadirVolumeClaimTemplate:
+        {{- if .storageClassName }}
+      storageClassName: {{ .storageClassName | quote }}
+        {{- end}}
+        {{- if .accessModes }}
+      accessModes: [ "{{ .accessModes }}" ]
+        {{- end }}
+        {{- if .resources.requests.storage }}
+      resources:
+        requests:
+          storage: "{{ .resources.requests.storage }}"
+        {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- if hasKey $replica "mycnf" }}
+    mycnf: | {{- if not (hasPrefix "[mysqld]" (($replica).mycnf) ) }}{{- "[mysqld]" | nindent 6 }}{{- end }}{{ (($replica).mycnf) | nindent 6 }}{{- end }}
+    {{- if hasKey $replica "instances" }}
+    instances: {{ $replica.instances }}
+    {{- end }}
+    {{- if hasKey $replica "podSpec" }}
+    podSpec: {{ toYaml $replica.podSpec | nindent 6 }}
+    {{- end }}
+    {{- if (($replica).podAnnotations) }}
+    podAnnotations: {{ toYaml $replica.podAnnotations | nindent 6 }}
+    {{- end }}
+    {{- if (($replica).podLabels) }}
+    podLabels: {{ toYaml $replica.podLabels | nindent 6 }}
+    {{- end }}
+  {{- end }}
+{{- end }}

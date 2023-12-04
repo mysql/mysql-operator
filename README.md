@@ -30,13 +30,13 @@ and attribution notices for these materials, please refer to the `LICENSE` file.
 First deploy the Custom Resource Definition (CRDs):
 
 ```sh
-$> kubectl apply -f https://raw.githubusercontent.com/mysql/mysql-operator/trunk/deploy/deploy-crds.yaml
+$> kubectl apply -f https://raw.githubusercontent.com/mysql/mysql-operator/8.3.0-2.1.2/deploy/deploy-crds.yaml
 ```
 
 Then deploy MySQL Operator for Kubernetes:
 
 ```sh
-$> kubectl apply -f https://raw.githubusercontent.com/mysql/mysql-operator/trunk/deploy/deploy-operator.yaml
+$> kubectl apply -f https://raw.githubusercontent.com/mysql/mysql-operator/8.3.0-2.1.2/deploy/deploy-operator.yaml
 ```
 
 Verify the operator is running by checking the deployment inside the `mysql-operator` namespace:
@@ -144,8 +144,8 @@ A MySQL InnoDB Cluster `Service` is created inside the Kubernetes cluster:
 ```sh
 $> kubectl get service mycluster
 
-NAME        TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                                                  AGE
-mycluster   ClusterIP   10.110.228.51   <none>        3306/TCP,33060/TCP,6446/TCP,6448/TCP,6447/TCP,6449/TCP   26h
+NAME        TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                                                           AGE
+mycluster   ClusterIP   10.110.228.51   <none>        3306/TCP,33060/TCP,6446/TCP,6448/TCP,6447/TCP,6449/TCP,6450/TCP   26h
 ```
 
 The ports represent read-write and read-only ports for the MySQL Protocol and the X Protocol. 

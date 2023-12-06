@@ -9,11 +9,11 @@ import shutil
 import multiprocessing
 import tempfile
 import time
-from unittest.util import strclass
-from run_e2e_tests import load_test_suite, parse_filter
+from run_e2e_tests import parse_filter
 import os
 import sys
 from ci.jobs.auxiliary import process_workers_logs
+from utils import testsuite
 
 class DistTestSuiteRunner:
 	def __init__(self):
@@ -25,12 +25,13 @@ class DistTestSuiteRunner:
 
 		self.env_name = "minikube"
 		self.tag = "ote-mysql"
-		self.default_worker_count = 2
+		self.max_worker_count = 2
 		self.defer_worker_start = 60
 		self.sort_cases = False
 		self.expected_failures_path = None
 		self.generate_xml = False
 		self.perform_purge = False
+		self.custom_suite_path = None
 		self.pattern_include = []
 		self.pattern_exclude = []
 
@@ -50,7 +51,7 @@ class DistTestSuiteRunner:
 			elif arg.startswith("--tag="):
 				self.tag = arg.partition("=")[-1]
 			elif arg.startswith("--clusters="):
-				self.default_worker_count = int(arg.split("=")[-1])
+				self.max_worker_count = int(arg.split("=")[-1])
 			elif arg.startswith("--defer="):
 				self.defer_worker_start = int(arg.split("=")[-1])
 			elif arg == "--sort":
@@ -63,6 +64,8 @@ class DistTestSuiteRunner:
 				self.work_dir = arg.split("=")[-1]
 			elif arg == "--purge":
 				self.perform_purge = True
+			elif arg.startswith("--suite="):
+				self.custom_suite_path = arg.split("=")[-1]
 			elif arg.startswith("-"):
 				self.worker_argv.append(arg)
 			else:
@@ -70,39 +73,16 @@ class DistTestSuiteRunner:
 				self.pattern_include += inc
 				self.pattern_exclude += exc
 
-	def prepare_test_suite(self):
-		suites = load_test_suite(self.base_dir, self.pattern_include, self.pattern_exclude)
-		if not suites or suites.countTestCases() == 0:
+	def prepare_test_portions_for_workers(self):
+		if self.custom_suite_path:
+			with open(self.custom_suite_path, 'r') as f:
+				self.pattern_include += f.read().splitlines()
+
+		test_suite = testsuite.prepare_test_suite(self.base_dir, self.pattern_include, self.pattern_exclude, self.sort_cases)
+		if not test_suite or len(test_suite) == 0:
 			return None
 
-		testset = set()
-		for suite in suites:
-			for subtest in suite:
-				testset.add(strclass(subtest.__class__))
-
-		test_suite = list(testset)
-		if self.sort_cases:
-			test_suite.sort()
-		return test_suite
-
-	def divide_test_suite(self, test_suite):
-		tests_count = len(test_suite)
-		tests_per_worker, tests_remainder = divmod(tests_count, self.default_worker_count)
-
-		worker_index = 0
-		test_index = 0
-		portions = []
-		while worker_index < self.default_worker_count and test_index < tests_count:
-			begin = test_index
-			end = begin + tests_per_worker
-			if worker_index < tests_remainder:
-				end += 1
-			portion = test_suite[begin:end]
-			portions.append(portion)
-			worker_index += 1
-			test_index = end
-
-		return portions
+		return testsuite.divide_test_suite(test_suite, self.max_worker_count)
 
 	def ensure_dir_exists(self, dir):
 		if not os.path.exists(dir):
@@ -239,12 +219,10 @@ class DistTestSuiteRunner:
 	def run(self, argv):
 		self.parse_cmdline(argv)
 
-		test_suite = self.prepare_test_suite()
-		if not test_suite or len(test_suite) == 0:
+		portions = self.prepare_test_portions_for_workers()
+		if not portions:
 			print("No tests matched")
 			return
-
-		portions = self.divide_test_suite(test_suite)
 
 		self.prepare_workspace()
 

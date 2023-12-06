@@ -111,7 +111,10 @@ def initEnv() {
 	env.TESTS_SUBDIR = "./tests"
 	env.CI_SUBDIR = "${env.TESTS_SUBDIR}/ci"
 	env.LOG_SUBDIR = "build-${BUILD_NUMBER}"
-	env.LOG_DIR = "${WORKSPACE}/${LOG_SUBDIR}"
+	env.LOG_DIR = "${WORKSPACE}/${env.LOG_SUBDIR}"
+	env.INSTANCES_SUBDIR = "${env.LOG_SUBDIR}/instances"
+	env.INSTANCES_DIR = "${WORKSPACE}/${env.INSTANCES_SUBDIR}"
+	env.INSTANCE_TESTSUITE_PREFIX = "instance-suite"
 	env.ARTIFACT_FILENAME = "${JOB_BASE_NAME}-${BUILD_NUMBER}-result.tar.bz2"
 	env.ARTIFACT_PATH = "${WORKSPACE}/${ARTIFACT_FILENAME}"
 
@@ -264,6 +267,23 @@ def getExecutionParams(String k8sEnv, String maxClustersPerInstance, String node
 		nodesPerCluster,
 		ociInstanceNodeMemory
 	]
+}
+
+def generateTestSuiteSubsets(int executionInstanceCount) {
+	sh "mkdir -p ${env.INSTANCES_DIR}"
+
+	def testSuiteBaseDir = env.TESTS_DIR
+	def subsetCount = executionInstanceCount
+	def outputDir = env.INSTANCES_DIR
+	def subsetFilePrefix = env.INSTANCE_TESTSUITE_PREFIX
+	def testSuiteSubsets = \
+		sh script: "cd $testSuiteBaseDir && python3 -c \"from utils.testsuite import generate_test_suite_subsets; " + \
+		"print(generate_test_suite_subsets('$testSuiteBaseDir', $subsetCount, '$outputDir', '$subsetFilePrefix'))\"", \
+		returnStdout: true
+
+	echo "number of generated test suite subsets: $testSuiteSubsets"
+	listFilesInSubdir(INSTANCES_SUBDIR)
+	return testSuiteSubsets.toInteger()
 }
 
 def delayLocalJob(int interval) {

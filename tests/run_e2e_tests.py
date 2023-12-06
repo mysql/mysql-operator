@@ -17,6 +17,7 @@ import sys
 import logging
 import io
 import base64
+from utils import testsuite
 
 
 def setup_k8s():
@@ -32,44 +33,6 @@ def setup_k8s():
         except config.config_exception.ConfigException:
             raise Exception(
                 "Could not configure kubernetes python client")
-
-
-def load_test_suite(basedir: str, include: list, exclude: list):
-    loader = unittest.TestLoader()
-
-    tests = loader.discover("e2e", pattern="*_t.py", top_level_dir=basedir)
-    if loader.errors:
-        print("Errors found loading tests:")
-        for err in loader.errors:
-            print(err)
-        sys.exit(1)
-
-    suite = unittest.TestSuite()
-
-    def strclass(cls):
-        return "%s.%s" % (cls.__module__, cls.__qualname__)
-
-    def match_any(name, patterns):
-        import re
-        for p in patterns:
-            p = p.replace("*", ".*")
-            if re.match(f"^{p}$", name):
-                return True
-        return False
-
-    for ts in tests:
-        for test in ts:
-            for case in test:
-                name = strclass(case.__class__)
-                if ((not include or match_any(name, include)) and
-                        (not exclude or not match_any(name, exclude))):
-                    suite.addTest(test)
-                else:
-                    print("skipping", name)
-                break
-
-    if suite.countTestCases() > 0:
-        return suite
 
 
 def list_tests(suites):
@@ -292,7 +255,7 @@ if __name__ == '__main__':
               "mysql-server:8.0.24", "mysql-router:8.0.24",
               "mysql-operator:8.0.25-2.0.1", "mysql-operator-commercial:8.0.25-2.0.1"]
 
-    suites = load_test_suite(basedir, opt_include, opt_exclude)
+    suites = testsuite.load_test_suite(basedir, opt_include, opt_exclude)
     if not suites or suites.countTestCases() == 0:
         print("No tests matched")
         sys.exit(0)

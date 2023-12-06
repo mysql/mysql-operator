@@ -476,6 +476,8 @@ class ClusterController:
             "recoveryMethod": recovery_method,
         }
 
+        # TODO : # add_replica_instance doesn't support cert base auth, thus certSubject works only for group-member-s - WL15056
+        # If a cluster was created with cert based auth between the group members no replica can join the cluster
         for option in self.dba_cluster.options()["defaultReplicaSet"]["globalOptions"]:
             if option["option"] == "memberAuthType" and option["value"] in ["CERT_SUBJECT", "CERT_SUBJECT_PASSWORD"]:
                 rdns = pod.get_cluster().get_tls_issuer_and_subject_rdns()

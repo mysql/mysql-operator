@@ -891,9 +891,10 @@ class AbstractServerSetSpec(abc.ABC):
     # TODO resource allocation for server, router and sidecar
     # TODO recommendation is that sidecar has 500MB RAM if MEB is used
 
-    def __init__(self, namespace: str, name: str, spec: dict):
+    def __init__(self, namespace: str, name: str, cluster_name: str, spec: dict):
         self.namespace = namespace
         self.name = name
+        self.cluster_name = cluster_name
         self.backupSchedules: List[BackupSchedule] = []
 
     #@abc .abstracmethod
@@ -973,7 +974,7 @@ class AbstractServerSetSpec(abc.ABC):
             self.metrics = MetriscSpec()
             self.metrics.parse(dget_dict(spec_root, "metrics", "spec"), "spec.metrics")
 
-        self.logs = LogsSpec(self.namespace, self.name)
+        self.logs = LogsSpec(self.namespace, self.cluster_name)
         section = InnoDBClusterSpecProperties.LOGS.value
         if section in spec_root:
             self.logs.parse(dget_dict(spec_root, section, "spec"), f"spec.{section}", getLogger())
@@ -1252,8 +1253,7 @@ class ReadReplicaSpec(AbstractServerSetSpec):
     def __init__(self, namespace: str, cluster_name: str, spec_root: dict,
                  spec_specific: dict, where_specific: str):
         name = f"{cluster_name}-{dget_str(spec_specific, 'name', where_specific)}"
-        super().__init__(namespace, name, spec_root)
-        self.cluster_name = cluster_name
+        super().__init__(namespace, name, cluster_name, spec_root)
         self.load(spec_root, spec_specific, where_specific)
 
     def load(self, spec_root: dict, spec_specific: dict, where_specific: str):
@@ -1275,11 +1275,8 @@ class InnoDBClusterSpec(AbstractServerSetSpec):
     readReplicas: List[ReadReplicaSpec] = []
 
     def __init__(self, namespace: str, name: str, spec: dict):
-        self.namespace = namespace
-        self.name = name
-        self.backupSchedules: List[BackupSchedule] = []
+        super().__init__(namespace, name, name, spec)
         self.load(spec)
-
 
     def load(self, spec: dict) -> None:
         self._load(spec, spec, "spec")
@@ -1308,7 +1305,6 @@ class InnoDBClusterSpec(AbstractServerSetSpec):
             profiles = dget_list(spec, section, "spec", [], content_type=dict)
             for profile in profiles:
                 self.backupProfiles.append(self.parse_backup_profile(profile))
-
 
         self.backupSchedules = []
         section = InnoDBClusterSpecProperties.BACKUP_SCHEDULES.value

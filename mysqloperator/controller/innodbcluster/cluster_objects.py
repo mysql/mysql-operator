@@ -23,11 +23,9 @@ def prepare_cluster_service(spec: AbstractServerSetSpec) -> dict:
     extra_label = ""
     if type(spec) is InnoDBClusterSpec:
         instance_type = "group-member"
-        cluster_name = spec.name
         instances = spec.instances
     elif type(spec) is ReadReplicaSpec:
         instance_type = "read-replica"
-        cluster_name = spec.cluster_name
         extra_label = f"mysql.oracle.com/read-replica: {spec.name}"
     else:
         raise NotImplementedError(f"Unknown subtype {type(spec)} for creating StatefulSet")
@@ -39,7 +37,7 @@ metadata:
   namespace: {spec.namespace}
   labels:
     tier: mysql
-    mysql.oracle.com/cluster: {spec.name}
+    mysql.oracle.com/cluster: {spec.cluster_name}
     mysql.oracle.com/instance-type: {instance_type}
     {extra_label}
   annotations:
@@ -61,7 +59,7 @@ spec:
   selector:
     component: mysqld
     tier: mysql
-    mysql.oracle.com/cluster: {cluster_name}
+    mysql.oracle.com/cluster: {spec.cluster_name}
     mysql.oracle.com/instance-type: {instance_type}
     {extra_label}
   type: ClusterIP
@@ -160,10 +158,8 @@ def prepare_cluster_stateful_set(spec: AbstractServerSetSpec, logger: Logger) ->
     extra_label = ""
     if type(spec) is InnoDBClusterSpec:
         instance_type = "group-member"
-        cluster_name = spec.name
     elif type(spec) is ReadReplicaSpec:
         instance_type = "read-replica"
-        cluster_name = spec.cluster_name
         extra_label = f"mysql.oracle.com/read-replica: {spec.name}"
         # initial startup no replica, we scale up once the group is running
         # spec.instances therefore will be reduced by the caller!
@@ -179,7 +175,7 @@ metadata:
   name: {spec.name}
   labels:
     tier: mysql
-    mysql.oracle.com/cluster: {cluster_name}
+    mysql.oracle.com/cluster: {spec.cluster_name}
     mysql.oracle.com/instance-type: {instance_type}
     {extra_label}
     app.kubernetes.io/name: mysql-innodbcluster
@@ -195,7 +191,7 @@ spec:
     matchLabels:
       component: mysqld
       tier: mysql
-      mysql.oracle.com/cluster: {cluster_name}
+      mysql.oracle.com/cluster: {spec.cluster_name}
       mysql.oracle.com/instance-type: {instance_type}
       {extra_label}
       app.kubernetes.io/name: mysql-innodbcluster-mysql-server
@@ -208,7 +204,7 @@ spec:
       labels:
         component: mysqld
         tier: mysql
-        mysql.oracle.com/cluster: {cluster_name}
+        mysql.oracle.com/cluster: {spec.cluster_name}
         mysql.oracle.com/instance-type: {instance_type}
         {extra_label}
         app.kubernetes.io/name: mysql-innodbcluster-mysql-server
@@ -886,7 +882,7 @@ def update_mysql_image(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec, l
 
         initconf_patch = [{"op": "remove", "path": "/data/03-keyring-oci.cnf"}]
         try:
-            api_core.patch_namespaced_config_map(f"{spec.name}-initconf",
+            api_core.patch_namespaced_config_map(f"{spec.cluster_name}-initconf",
                                                     spec.namespace, initconf_patch)
         except ApiException as exc:
             # This might happen during a retry or some other case where it was
@@ -976,7 +972,7 @@ def update_metrics(sts: api_client.V1StatefulSet,
 
     try:
         api_customobj.delete_namespaced_custom_object(
-            "monitoring.coreos.com", "v1", spec.namespace, "servicemonitors", spec.name)
+            "monitoring.coreos.com", "v1", spec.namespace, "servicemonitors", spec.cluster_name)
     except Exception as exc:
         # This may fail for a variety of reasons
         # Most likely: It wasn't enabled before, but might also have failed to

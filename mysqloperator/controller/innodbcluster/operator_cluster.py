@@ -93,7 +93,7 @@ def do_create_read_replica(cluster: InnoDBCluster, rr: cluster_objects.ReadRepli
     print(f"{indention}\tExisting SA: {existing_sa}")
     print(f"{indention}\tImagePullSecrets: {rr.imagePullSecrets}")
     if not existing_sa:
-        print("{indention}\tPreparing...")
+        print(f"{indention}\tPreparing...")
         sa = cluster_objects.prepare_service_account(rr)
         print(f"{indention}\tCreating...{sa}")
         kopf.adopt(sa)
@@ -105,7 +105,7 @@ def do_create_read_replica(cluster: InnoDBCluster, rr: cluster_objects.ReadRepli
 
     print(f"{indention}RR RoleBinding")
     if not ignore_404(lambda: cluster.get_role_binding(rr)):
-        print("{indention}\tPreparing...")
+        print(f"{indention}\tPreparing...")
         rb = cluster_objects.prepare_role_binding(rr)
         print(f"{indention}\tCreating RoleBinding {rb['metadata']['name']} {rb}...")
         kopf.adopt(rb)

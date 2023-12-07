@@ -6,9 +6,12 @@
 from utils import tutil
 from utils import kutil
 from utils import mutil
+import unittest
 import logging
 from utils.tutil import g_full_log
 from utils.optesting import COMMON_OPERATOR_ERRORS
+import os
+from .cluster_ssl_t import CLUSTER_SSL_NAMESPACE
 
 def check_sidecar_health(test, ns, pod):
     logs = kutil.logs(ns, [pod, "sidecar"])
@@ -29,13 +32,17 @@ def check_all(test, ns, cluster_name, rr_name, instances, user="root", password=
         test.assertEqual(res.fetch_one()[0], instances)
 
 
-class ClusterReadReplicaDefaults(tutil.OperatorTest):
+class ClusterReadReplicaDefaultsBase(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    use_self_signed = True
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
-        super().setUpClass()
+        # The certificates the test uses are created for CLUSTER_SSL_NAMESPACE and they won't work
+        # for the namespace generated from the name of the test. Thus, we need to overwrite the NS
+        # see cluster_ssl_t.py for more examples
+        super().setUpClass(CLUSTER_SSL_NAMESPACE if cls.use_self_signed else None)
 
         g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
 
@@ -45,15 +52,22 @@ class ClusterReadReplicaDefaults(tutil.OperatorTest):
 
         super().tearDownClass()
 
-    def test_00_create(self):
+    def _00_create(self):
         """
         Create cluster, check posted events.
         """
         kutil.create_user_secrets(
             self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
 
+        if not self.use_self_signed:
+            kutil.create_ssl_ca_secret(self.ns, "mycluster-ca",
+                os.path.join(tutil.g_test_data_dir, "ssl/out/ca.pem"))
+            kutil.create_ssl_cert_secret(self.ns, "mycluster-tls",
+                os.path.join(tutil.g_test_data_dir, "ssl/out/server-cert.pem"),
+                os.path.join(tutil.g_test_data_dir, "ssl/out/server-key.pem"))
+
         # create cluster with mostly default configs
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
@@ -70,7 +84,7 @@ spec:
       router.mycluster.example.com/ann42: "ann42-value"
   secretName: mypwds
   edition: community
-  tlsUseSelfSigned: true
+  tlsUseSelfSigned: {self.use_self_signed}
   podLabels:
     mycluster-label1: "mycluster-label1-value"
     mycluster-label2: "mycluster-label2-value"
@@ -101,7 +115,7 @@ spec:
 
         check_all(self, self.ns, "mycluster", "trr", instances=1)
 
-    def test_01_check_labels_and_annotations(self):
+    def _02_check_labels_and_annotations(self):
         server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
         pod_names = [server["NAME"] for server in server_pods]
         for pod_name in pod_names:
@@ -120,7 +134,7 @@ spec:
             self.assertEqual(pod['metadata']['annotations']['mycluster.example.com/rr-ann1'], 'ann1-value')
             self.assertEqual(pod['metadata']['annotations']['mycluster.example.com/rr-ann2'], 'ann2-value')
 
-    def test_02_renaming_read_replica_leads_to_recreation(self):
+    def _04_renaming_read_replica_leads_to_recreation(self):
         patch = {
                     "spec": {
                         "readReplicas": [{
@@ -136,7 +150,7 @@ spec:
         check_all(self, self.ns, "mycluster", "trr", instances=0)
         check_all(self, self.ns, "mycluster", "trr2", instances=1)
 
-    def test_03_chages_to_read_replica_respected(self):
+    def _06_chages_to_read_replica_respected(self):
         patch = {
                     "spec": {
                         "readReplicas": [{
@@ -151,15 +165,36 @@ spec:
 
         check_all(self, self.ns, "mycluster", "trr2", instances=2)
 
-    def test_04_remove_read_replica(self):
+    def _08_remove_read_replica(self):
         patch = [{"op": "remove", "path": "/spec/readReplicas"}]
         kutil.patch_ic(self.ns, "mycluster", patch, type="json", data_as_type="json")
         self.wait_pods_gone("mycluster-trr2-*")
 
         check_all(self, self.ns, "mycluster", "trr2", instances=0)
 
-    def test_99_destroy(self):
+    def _99_destroy(self):
         kutil.delete_ic(self.ns, "mycluster")
 
         self.wait_pod_gone("mycluster-0")
         self.wait_ic_gone("mycluster")
+
+    def runit(self):
+        self._00_create()
+        self._02_check_labels_and_annotations()
+        self._04_renaming_read_replica_leads_to_recreation()
+        self._06_chages_to_read_replica_respected()
+        self._08_remove_read_replica()
+        self._99_destroy()
+
+
+class ClusterReadReplicaDefaultsSelfSigned(ClusterReadReplicaDefaultsBase):
+    use_self_signed = True
+    def testit(self):
+        self.runit()
+
+@unittest.skip("Needs WL16123 - GR cert auth support for RR")
+class ClusterReadReplicaDefaultsSSL(ClusterReadReplicaDefaultsBase):
+    use_self_signed = False
+
+    def testit(self):
+        self.runit()

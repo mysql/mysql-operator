@@ -204,7 +204,7 @@ pipeline {
 					axis {
 						name 'K8S_VERSION'
 						values 'k3d-v5.6.0;rancher/k3s:v1.22.7-k3s1;kubectl-v1.22.17;6;1;ipv4',
-							'k3d-v5.6.0;rancher/k3s:v1.24.7-k3s1;kubectl-v1.24.4;6;1;ipv4',
+							'k3d-v5.6.0;rancher/k3s:v1.24.7-k3s1;kubectl-v1.24.4;2;4;ipv4',
 							'k3d-v5.6.0;rancher/k3s:v1.26.0-k3s1;kubectl-v1.26.0;2;3;ipv4',
 							'k3d-v5.6.0;rancher/k3s:v1.27.4-k3s1;kubectl-v1.28.2;6;1;ipv4'
 					}
@@ -302,7 +302,7 @@ pipeline {
 					axis {
 						name 'K8S_VERSION'
 						values 'kind-v0.20.0;;kubectl-v1.26.1;2;1;ipv6',
-							'kind-v0.20.0;;kubectl-v1.27.2;2;1;dual'
+							'kind-v0.20.0;;kubectl-v1.27.2;2;2;dual'
 					}
 				}
 				stages {

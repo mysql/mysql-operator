@@ -240,7 +240,7 @@ def getExecutionParams(String k8sEnv, String maxClustersPerInstance, String node
 	if (isLocalExecutionEnvironment() || (k8sEnv != 'minikube')) {
 		def localInstanceLabel = 'operator-ci'
 		def localInstanceCount = 1
-		def localInstanceNodeMemory = ''
+		def localInstanceNodeMemory = '8192'
 		return [
 			localInstanceLabel,
 			localInstanceCount,

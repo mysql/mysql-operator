@@ -429,6 +429,16 @@ It supports the following command-line options:
     it points out to a directory where to store all data and logs\
     if not provided, then a tmp dir will be used
 
+* --suite={path}\
+    point out the file with the list of tests to run, e.g.
+
+```text
+<suite.txt>
+e2e.mysqloperator.backup.dump_t.DumpInstance
+e2e.mysqloperator.cluster.cluster_ssl_t.ClusterSSL
+</suite.txt>
+```
+
 * --sort\
     by default tests are shuffled among workers equally but randomly, hence execution times may differ\
     this option enables identical order for every run\

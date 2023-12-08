@@ -206,7 +206,7 @@ pipeline {
 				always {
 					script {
 						if (utils.anyResultsAvailable()) {
-							build job: "${env.WORKERS_FOLDER}/prepare-test-suite-report", parameters: [
+							def reportJob = build job: "${env.WORKERS_FOLDER}/prepare-test-suite-report", parameters: [
 								string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
 								string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
 								string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
@@ -216,7 +216,7 @@ pipeline {
 
 							copyArtifacts fingerprintArtifacts: true,
 								projectName: "${env.WORKERS_FOLDER}/prepare-test-suite-report",
-								selector: lastCompleted(),
+								selector: specific(buildNumber: "${reportJob.getNumber()}"),
 								target: "${env.LOG_SUBDIR}"
 
 							env.TEST_SUITE_REPORT = utils.getTestSuiteReport()

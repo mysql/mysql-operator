@@ -8,7 +8,7 @@ set -vx
 
 source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || exit 10
 
-LOG_DIR=$WORKSPACE/build-$BUILD_NUMBER
+LOG_DIR=$BUILD_DIR
 if test -d "${LOG_DIR}"; then
 	rm -rfd $LOG_DIR
 fi

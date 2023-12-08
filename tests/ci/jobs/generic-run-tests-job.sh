@@ -15,12 +15,33 @@ source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || exit 10
 # set our temporary kubeconfig, because the default one may contain unrelated data that could fail the build
 export KUBECONFIG=$(mktemp /tmp/kubeconfig.$K8S_DRIVER-XXXXXX)
 
-trap 'kill $(jobs -p); rm $KUBECONFIG' EXIT
-cd "$TESTS_DIR"
+trap 'kill $(jobs -p); rm $KUBECONFIG; rm -rfd $OPERATOR_TEST_LOCAL_CREDENTIALS_DIR' EXIT
 
+if test -d "${BUILD_DIR}"; then
+	rm -rfd $BUILD_DIR
+fi
+mkdir -p $BUILD_DIR
+
+# default options
 if test -z ${TEST_OPTIONS+x}; then
 	TEST_OPTIONS='-t -vvv --doperator --dkube --doci --skip-audit-log --store-operator-log'
 fi
+
+# credentials
+if [[ -n $OPERATOR_CREDENTIALS ]]; then
+	echo "${OPERATOR_CREDENTIALS}" | base64 -d | tar jxf - -i -C ${OPERATOR_TEST_LOCAL_CREDENTIALS_DIR}
+	ls -lRh ${OPERATOR_TEST_LOCAL_CREDENTIALS_DIR}
+fi
+
+# custom test suite for that instance
+if [[ -n $OPERATOR_TEST_SUITE ]]; then
+	OPERATOR_TEST_INSTANCE_SUITE=$BUILD_DIR/instance-test-suite.txt
+	echo "${OPERATOR_TEST_SUITE}" | base64 -d | bunzip2 > $OPERATOR_TEST_INSTANCE_SUITE
+	cat $OPERATOR_TEST_INSTANCE_SUITE
+	TEST_OPTIONS="$TEST_OPTIONS --suite=$OPERATOR_TEST_INSTANCE_SUITE"
+fi
+
+cd "$TESTS_DIR"
 
 if [[ -z ${OPERATOR_TEST_SKIP_AZURE} ]]; then
 	TEST_OPTIONS="$TEST_OPTIONS --start-azure"
@@ -81,11 +102,7 @@ if test -z ${WORKERS_DEFER+x}; then
 	fi
 fi
 
-LOG_DIR=$WORKSPACE/build-$BUILD_NUMBER
-if test -d "${LOG_DIR}"; then
-	rm -rfd $LOG_DIR
-fi
-mkdir -p $LOG_DIR
+LOG_DIR=$BUILD_DIR
 TEST_OPTIONS="$TEST_OPTIONS --workdir=$LOG_DIR"
 
 TESTS_LOG=$LOG_DIR/$OTE_LOG_PREFIX-all.log

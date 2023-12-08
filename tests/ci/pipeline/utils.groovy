@@ -91,6 +91,14 @@ def listFilesInSubdir(String subdir) {
 	echo dirContents
 }
 
+def prepareCredentials(String credentialsDir) {
+	if (!fileExists(credentialsDir)) {
+		error "The directory with credentials ${credentialsDir} does not exist!"
+	}
+
+	return sh(script: "tar cj -C \$(dirname ${credentialsDir}) \$(basename ${credentialsDir}) | base64", returnStdout: true)
+}
+
 def initEnv() {
 	env.INIT_STAGE_SUCCEEDED = false
 	env.BUILD_STAGE_SUCCEEDED = false
@@ -114,7 +122,7 @@ def initEnv() {
 	env.LOG_DIR = "${WORKSPACE}/${env.LOG_SUBDIR}"
 	env.INSTANCES_SUBDIR = "${env.LOG_SUBDIR}/instances"
 	env.INSTANCES_DIR = "${WORKSPACE}/${env.INSTANCES_SUBDIR}"
-	env.INSTANCE_TESTSUITE_PREFIX = "instance-suite"
+	env.INSTANCE_TESTSUITE_INFIX = "instance-suite"
 	env.ARTIFACT_FILENAME = "${JOB_BASE_NAME}-${BUILD_NUMBER}-result.tar.bz2"
 	env.ARTIFACT_PATH = "${WORKSPACE}/${ARTIFACT_FILENAME}"
 
@@ -151,6 +159,8 @@ def initEnv() {
 	env.REPORT_PART_SUMMARY = 'SUMMARY'
 	env.REPORT_PART_FAILURES = 'FAILURES'
 	env.REPORT_PART_SKIPPED = 'SKIPPED'
+
+	env.OTE_CREDENTIALS = prepareCredentials(env.OTE_CREDENTIALS_DIR)
 }
 
 def isExecutionEnvironment(String execEnvType) {
@@ -226,18 +236,47 @@ def getIntroContents() {
 	return attachments
 }
 
-def getWorkerJobPath(String projectName) {
-	def workerJobPath = "${env.WORKERS_FOLDER}/${projectName}"
-	if (isOciExecutionEnvironment()) {
+def canRunOnOci(String k8sEnv) {
+	// currently, on OCI, we do support minikube only
+	switch(k8sEnv) {
+		case 'minikube':
+			return true
+
+		case 'k3d':
+		case 'kind':
+			return false
+
+		default:
+			echo "Unknown k8s environment ${k8sEnv}!"
+			return false
+	}
+}
+
+def getWorkerJobPath(String k8sEnv) {
+	def workerJobPath = "${env.WORKERS_FOLDER}/${k8sEnv}"
+	if (isOciExecutionEnvironment() && canRunOnOci(k8sEnv)) {
 		workerJobPath += "-oci"
 	}
 	return workerJobPath
 }
 
+def getJobBadge(String k8sEnv, String k8sVersion = '', String nodesCount = '', String ipFamily = '') {
+	def jobBadge = k8sEnv
+	if (k8sVersion) {
+		jobBadge += "_$k8sVersion"
+	}
+	if (nodesCount) {
+		jobBadge += "-${nodesCount}_nodes"
+	}
+	if (ipFamily && (ipFamily != "ipv4")) {
+		jobBadge += "-$ipFamily"
+	}
+	return jobBadge
+}
+
 // function returns a tuple [executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory]
 def getExecutionParams(String k8sEnv, String maxClustersPerInstance, String nodesPerCluster) {
-	// currently, on OCI, we do support minikube only
-	if (isLocalExecutionEnvironment() || (k8sEnv != 'minikube')) {
+	if (isLocalExecutionEnvironment() || !canRunOnOci(k8sEnv)) {
 		def localInstanceLabel = 'operator-ci'
 		def localInstanceCount = 1
 		def localInstanceNodeMemory = '8192'
@@ -269,13 +308,13 @@ def getExecutionParams(String k8sEnv, String maxClustersPerInstance, String node
 	]
 }
 
-def generateTestSuiteSubsets(int executionInstanceCount) {
+def generateTestSuiteSubsets(int executionInstanceCount, String jobBadge) {
 	sh "mkdir -p ${env.INSTANCES_DIR}"
 
 	def testSuiteBaseDir = env.TESTS_DIR
 	def subsetCount = executionInstanceCount
 	def outputDir = env.INSTANCES_DIR
-	def subsetFilePrefix = env.INSTANCE_TESTSUITE_PREFIX
+	def subsetFilePrefix = "$jobBadge-${env.INSTANCE_TESTSUITE_INFIX}"
 	def testSuiteSubsets = \
 		sh script: "cd $testSuiteBaseDir && python3 -c \"from utils.testsuite import generate_test_suite_subsets; " + \
 		"print(generate_test_suite_subsets('$testSuiteBaseDir', $subsetCount, '$outputDir', '$subsetFilePrefix'))\"", \
@@ -284,6 +323,21 @@ def generateTestSuiteSubsets(int executionInstanceCount) {
 	echo "number of generated test suite subsets: $testSuiteSubsets"
 	listFilesInSubdir(INSTANCES_SUBDIR)
 	return testSuiteSubsets.toInteger()
+}
+
+def getInstanceTestSuitePath(String jobBadge, int instanceIndex) {
+	return "${env.INSTANCES_DIR}/${jobBadge}-${env.INSTANCE_TESTSUITE_INFIX}-${instanceIndex}.txt"
+}
+
+def prepareInstanceTestSuite(String jobBadge, int instanceIndex) {
+	def instanceTestSuitePath = getInstanceTestSuitePath(jobBadge, instanceIndex)
+	echo instanceTestSuitePath
+	def instanceTestSuite = ""
+	if (fileExists(instanceTestSuitePath)) {
+		instanceTestSuite = readFile(instanceTestSuitePath)
+	}
+	echo instanceTestSuite
+	return sh(script: "bzip2 -c $instanceTestSuitePath | base64", returnStdout: true)
 }
 
 def delayLocalJob(int interval) {

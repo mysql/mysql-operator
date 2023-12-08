@@ -10,6 +10,7 @@ TESTS_DIR=$WORKSPACE/tests
 export PYTHONPATH=$PYTHONPATH:$TESTS_DIR
 CI_DIR=$TESTS_DIR/ci
 EXPECTED_FAILURES_PATH="$CI_DIR/expected-failures.txt"
+export BUILD_DIR=$WORKSPACE/build-$BUILD_NUMBER
 
 LOCAL_REGISTRY_CONTAINER_NAME=registry.localhost
 LOCAL_REGISTRY_HOST_PORT=5000
@@ -36,13 +37,13 @@ LOCAL_REGISTRY_OPERATOR_IMAGE=$LOCAL_REGISTRY_ADDRESS/$LOCAL_REPOSITORY_NAME/$CO
 LOCAL_REGISTRY_ENTERPRISE_OPERATOR_IMAGE=$LOCAL_REGISTRY_ADDRESS/$LOCAL_REPOSITORY_NAME/$ENTERPRISE_OPERATOR_IMAGE_NAME:$OPERATOR_TEST_VERSION_TAG
 
 # OCI config
-if ! test -d "${CREDENTIALS_DIR}"; then
-	echo "credentials directory '${CREDENTIALS_DIR}' doesn't exist"
-	exit 1
+export OPERATOR_TEST_LOCAL_CREDENTIALS_DIR=$BUILD_DIR/credentials
+if [[ -z $OPERATOR_TEST_CREDENTIALS_DIR ]]; then
+	OPERATOR_TEST_CREDENTIALS_DIR=$OPERATOR_TEST_LOCAL_CREDENTIALS_DIR
 fi
-export OPERATOR_TEST_OCI_CONFIG_PATH=${CREDENTIALS_DIR}/config
+export OPERATOR_TEST_OCI_CONFIG_PATH=${OPERATOR_TEST_CREDENTIALS_DIR}/config
 export OPERATOR_TEST_OCI_BUCKET=dumps
-export OPERATOR_TEST_VAULT_CONFIG_PATH=${CREDENTIALS_DIR}/vault.cfg
+export OPERATOR_TEST_VAULT_CONFIG_PATH=${OPERATOR_TEST_CREDENTIALS_DIR}/vault.cfg
 
 # extract operator version from the defaults
 export OPERATOR_BASE_VERSION_TAG=$(grep -m 1 OPERATOR_TEST_VERSION_TAG $WORKSPACE/tests/setup/defaults.py \
@@ -50,8 +51,10 @@ export OPERATOR_BASE_VERSION_TAG=$(grep -m 1 OPERATOR_TEST_VERSION_TAG $WORKSPAC
 
 # to enable OCI builds
 # - set it here explicitly to apply it globally
-# - define it in a given trigger job
+# - define it in a given trigger job (monitor | weekly | gerrit)
 # - modify a given pipeline (regular | weekly) in src or through Jenkins UI
+# U may also want to modify the function canRunOnOci in ./tests/ci/pipeline/utils.groovy
+# to indicate which k8s workers can run on an OCI instance
 # OTE_RUN_ON_OCI=1
 
 # execution environment

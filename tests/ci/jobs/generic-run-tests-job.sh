@@ -3,7 +3,7 @@
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
-# generic script intended for running tests for both k3d / minikube
+# generic script intended for running tests against all supported k8s environments (minikube, k3d, kind)
 set -vx
 
 export http_proxy=$HTTP_PROXY
@@ -12,10 +12,12 @@ export no_proxy=$NO_PROXY
 
 source $WORKSPACE/tests/ci/jobs/auxiliary/set-env.sh || exit 10
 
-# set our temporary kubeconfig, because the default one may contain unrelated data that could fail the build
-export KUBECONFIG=$(mktemp /tmp/kubeconfig.$K8S_DRIVER-XXXXXX)
+source $CI_DIR/jobs/auxiliary/k8s-worker-intro.sh || exit 11
 
-trap 'kill $(jobs -p); rm $KUBECONFIG; rm -rfd $OPERATOR_TEST_LOCAL_CREDENTIALS_DIR' EXIT
+# set our temporary kubeconfig, because the default one may contain unrelated data that could fail the build
+export KUBECONFIG=$(mktemp /tmp/kubeconfig.$JOB_BASE_NAME-XXXXXX)
+
+trap 'kill $(jobs -p); rm $KUBECONFIG; chmod -fR +w $OPERATOR_TEST_LOCAL_CREDENTIALS_DIR; rm -rfd $OPERATOR_TEST_LOCAL_CREDENTIALS_DIR' EXIT
 
 if test -d "${BUILD_DIR}"; then
 	rm -rfd $BUILD_DIR
@@ -28,18 +30,22 @@ if test -z ${TEST_OPTIONS+x}; then
 fi
 
 # credentials
+set +x
 if [[ -n $OPERATOR_CREDENTIALS ]]; then
-	echo "${OPERATOR_CREDENTIALS}" | base64 -d | tar jxf - -i -C ${OPERATOR_TEST_LOCAL_CREDENTIALS_DIR}
-	ls -lRh ${OPERATOR_TEST_LOCAL_CREDENTIALS_DIR}
+	mkdir -p ${OPERATOR_TEST_LOCAL_CREDENTIALS_DIR}
+	echo "${OPERATOR_CREDENTIALS}" | base64 -d | tar jxf - -i -C ${OPERATOR_TEST_LOCAL_CREDENTIALS_DIR} --same-owner
+	if [[ -z $OTE_CREDENTIALS_DIR_PLACEHOLDER ]]; then
+		echo "environment variable OTE_CREDENTIALS_DIR_PLACEHOLDER is not set!"
+		exit 20
+	fi
+	# to replace the placeholder with the actual path, make the modified file temporarily writable
+	find ${OPERATOR_TEST_LOCAL_CREDENTIALS_DIR} -type f \
+		-exec chmod +w {} \; \
+		-exec sed -i "s|key_file=$OTE_CREDENTIALS_DIR_PLACEHOLDER|key_file=$OPERATOR_TEST_LOCAL_CREDENTIALS_DIR|g" {} \; \
+		-exec chmod -w {} \;
+	du -hs ${OPERATOR_TEST_LOCAL_CREDENTIALS_DIR}
 fi
-
-# custom test suite for that instance
-if [[ -n $OPERATOR_TEST_SUITE ]]; then
-	OPERATOR_TEST_INSTANCE_SUITE=$BUILD_DIR/instance-test-suite.txt
-	echo "${OPERATOR_TEST_SUITE}" | base64 -d | bunzip2 > $OPERATOR_TEST_INSTANCE_SUITE
-	cat $OPERATOR_TEST_INSTANCE_SUITE
-	TEST_OPTIONS="$TEST_OPTIONS --suite=$OPERATOR_TEST_INSTANCE_SUITE"
-fi
+set -x
 
 cd "$TESTS_DIR"
 
@@ -91,7 +97,7 @@ if [[ -n ${OPERATOR_IP_FAMILY} ]]; then
 	TEST_OPTIONS="$TEST_OPTIONS --ip-family=$OPERATOR_IP_FAMILY"
 fi
 
-OTE_LOG_PREFIX=$K8S_DRIVER-build-$BUILD_NUMBER
+OTE_LOG_PREFIX=$JOB_BASE_NAME-build-$BUILD_NUMBER
 OTE_BUILD_TAG=ote-$OTE_LOG_PREFIX
 
 if test -z ${WORKERS_DEFER+x}; then
@@ -104,6 +110,24 @@ fi
 
 LOG_DIR=$BUILD_DIR
 TEST_OPTIONS="$TEST_OPTIONS --workdir=$LOG_DIR"
+
+# prepare list of tests for this job
+# if OPERATOR_LOCAL_TEST_SUITE is defined then it overrides OPERATOR_TEST_SUITE
+# by default OPERATOR_LOCAL_TEST_SUITE is NOT defined
+# OPERATOR_LOCAL_TEST_SUITE is useful for sandbox testing, e.g. to reduce the
+# number of tests or to run against a specified group of tests, etc.
+if [[ -n $OPERATOR_LOCAL_TEST_SUITE ]]; then
+	# OPERATOR_LOCAL_TEST_SUITE is added as a filter at the end of options
+	TEST_OPTIONS="$TEST_OPTIONS ${OPERATOR_LOCAL_TEST_SUITE}"
+elif [[ -n $OPERATOR_TEST_SUITE ]]; then
+	OPERATOR_INSTANCE_TEST_SUITE=$BUILD_DIR/${OTE_LOG_PREFIX}-instance-test-suite.txt
+	echo "${OPERATOR_TEST_SUITE}" | base64 -d | bunzip2 > $OPERATOR_INSTANCE_TEST_SUITE
+	TEST_OPTIONS="$TEST_OPTIONS --suite=$OPERATOR_INSTANCE_TEST_SUITE"
+	cat $OPERATOR_INSTANCE_TEST_SUITE
+else
+	echo "neither OPERATOR_LOCAL_TEST_SUITE nor OPERATOR_TEST_SUITE are defined,"\
+	"the entire test suite is to be run (no filtering)"
+fi
 
 TESTS_LOG=$LOG_DIR/$OTE_LOG_PREFIX-all.log
 
@@ -119,13 +143,12 @@ DIST_RUN_OPTIONS="--expected-failures=$EXPECTED_FAILURES_PATH ${DIST_RUN_OPTIONS
 touch $TESTS_LOG
 tail -f "$TESTS_LOG" &
 
-# a patch to avoid timeout ("FATAL: command execution failed") for long-lasting operations
+# a patch to avoid Jenkins timeout ("FATAL: command execution failed") for long-lasting operations
 "$CI_DIR/jobs/auxiliary/show-progress.sh" 480 30 &
 
-# by default TEST_SUITE is not defined, it means to run all tests
 if test $OPERATOR_CLUSTERS_COUNT == 1; then
 	mkdir -p $XML_DIR
-	./run --env=$K8S_DRIVER $SINGLE_WORKER_OPTIONS ${TEST_SUITE} > "$TESTS_LOG" 2>&1
+	./run --env=$K8S_DRIVER $SINGLE_WORKER_OPTIONS > "$TESTS_LOG" 2>&1
 	TMP_SUMMARY_PATH=$(mktemp)
 	# process the tests results
 	python3 $CI_DIR/jobs/auxiliary/process_single_worker_log.py $EXPECTED_FAILURES_PATH "$TESTS_LOG" > $TMP_SUMMARY_PATH 2>&1
@@ -133,7 +156,7 @@ if test $OPERATOR_CLUSTERS_COUNT == 1; then
 	cat $TMP_SUMMARY_PATH >> "$TESTS_LOG"
 	rm $TMP_SUMMARY_PATH
 else
-	python3 ./dist_run_e2e_tests.py --env=$K8S_DRIVER $DIST_RUN_OPTIONS ${TEST_SUITE} > "$TESTS_LOG" 2>&1
+	python3 ./dist_run_e2e_tests.py --env=$K8S_DRIVER $DIST_RUN_OPTIONS > "$TESTS_LOG" 2>&1
 	TESTS_RESULT=$?
 	$CI_DIR/cleanup/remove_networks.sh $OTE_BUILD_TAG
 fi
@@ -194,7 +217,9 @@ fi
 BROKEN_WORKERS=$(tac ${TESTS_LOG} | egrep -m 1 '^broken\s+: [0-9]+$' | awk '{print $3}')
 if [[ -n $BROKEN_WORKERS && $BROKEN_WORKERS -gt 0 ]]; then
 	ALL_WORKERS=$(tac ${TESTS_LOG} | egrep -m 1 '^all\s+: [0-9]+$' | awk '{print $3}')
-	BROKEN_WORKERS_MSG="${JOB_BADGE}: ${BROKEN_WORKERS} out of ${ALL_WORKERS} worker(s) have broken, some test results are missing!"
+	BROKEN_WORKERS_MSG_PREFIX="${JOB_BADGE} (<${BUILD_URL}|build #${BUILD_NUMBER}>):"
+	BROKEN_WORKERS_DESCRIPTION="${BROKEN_WORKERS} out of ${ALL_WORKERS} worker(s) have broken, some test results are missing!"
+	BROKEN_WORKERS_MSG="${BROKEN_WORKERS_MSG_PREFIX} ${BROKEN_WORKERS_DESCRIPTION}"
 	ISSUES_LOG=$LOG_DIR/${OTE_LOG_PREFIX}-issues.log
 	echo ${BROKEN_WORKERS_MSG} > ${ISSUES_LOG}
 	cat ${ISSUES_LOG}
@@ -231,11 +256,11 @@ fi
 cat ${RUNTIME_ENV_LOG}
 
 # archive all logs and auxiliary files
-tar cjf ../$OTE_LOG_PREFIX-result.tar.bz2 *
+tar cjf ../$OTE_LOG_PREFIX-result.tar.bz2 --exclude='credentials' *
 
 # prune old builds
 find $WORKSPACE/ -maxdepth 1 -type d -name 'build-*' -mtime +30 -exec rm -rf {} \;
-find $WORKSPACE/ -maxdepth 1 -type f -name "$K8S_DRIVER-build-*-result.tar.bz2" -mtime +30 -delete
-df -lh | grep /sd
+find $WORKSPACE/ -maxdepth 1 -type f -name "$JOB_BASE_NAME-build-*-result.tar.bz2" -mtime +30 -delete
+df -lh
 
 exit $TESTS_RESULT

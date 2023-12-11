@@ -96,7 +96,7 @@ def prepareCredentials(String credentialsDir) {
 		error "The directory with credentials ${credentialsDir} does not exist!"
 	}
 
-	return sh(script: "tar cj -C \$(dirname ${credentialsDir}) \$(basename ${credentialsDir}) | base64", returnStdout: true)
+	return sh(script: "tar cpj --owner=\$USER --group=\$(id -gn) -C ${credentialsDir} . | base64", returnStdout: true)
 }
 
 def initEnv() {
@@ -337,7 +337,7 @@ def prepareInstanceTestSuite(String jobBadge, int instanceIndex) {
 		instanceTestSuite = readFile(instanceTestSuitePath)
 	}
 	echo instanceTestSuite
-	return sh(script: "bzip2 -c $instanceTestSuitePath | base64", returnStdout: true)
+	return sh(script: "bzip2 -9 -c $instanceTestSuitePath | base64", returnStdout: true)
 }
 
 def delayLocalJob(int interval) {

@@ -332,6 +332,9 @@ spec:
   {{- range $_, $schedule := .Values.backupSchedules }}
   - name: {{ $schedule.name | quote }}
     schedule: {{ quote $schedule.schedule }}
+    {{- if ($schedule).timeZone }}
+    timeZone: {{ quote $schedule.timeZone }}
+    {{- end }}
     deleteBackupData: {{ $schedule.deleteBackupData }}
     enabled: {{ $schedule.enabled }}
     {{- if hasKey $schedule "backupProfileName" }}

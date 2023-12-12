@@ -99,7 +99,7 @@ spec:
   {{- end }}
 {{- end }}
   # datadirVolumeClaimTemplate
-{{- if .Values.datadirVolumeClaimTemplate }}
+{{- if (.Values).datadirVolumeClaimTemplate }}
   {{- with .Values.datadirVolumeClaimTemplate }}
   datadirVolumeClaimTemplate:
     {{- if .storageClassName }}
@@ -195,7 +195,7 @@ spec:
   {{- end }}
 {{- end }}
   # Init DB
-{{- if .Values.initDB }}
+{{- if (.Values).initDB }}
   {{- if and (and .Values.initDB.dump .Values.initDB.dump.name) (and .Values.initDB.clone .Values.initDB.donorUrl) }}
     {{- fail "Dump and Clone are mutually exclusive" }}
   {{- end }}
@@ -256,7 +256,7 @@ spec:
   {{- end }}
 {{- end }}
   # Backup Profiles
-{{- if .Values.backupProfiles }}
+{{- if (.Values).backupProfiles }}
   backupProfiles:
   {{- $isDumpInstance := false }}
   {{- $isSnapshot := false }}
@@ -325,7 +325,7 @@ spec:
   {{- end }}
 {{- end }}
   # Backup Schedules
-{{- if .Values.backupSchedules }}
+{{- if (.Values).backupSchedules }}
   backupSchedules:
   {{- $isDumpInstance := false }}
   {{- $isSnapshot := false }}
@@ -334,7 +334,7 @@ spec:
     schedule: {{ quote $schedule.schedule }}
     deleteBackupData: {{ $schedule.deleteBackupData }}
     enabled: {{ $schedule.enabled }}
-    {{- if hasKey $schedule "backupProfileName"  }}
+    {{- if hasKey $schedule "backupProfileName" }}
     backupProfileName: {{  $schedule.backupProfileName }}
     {{- else if hasKey $schedule "backupProfile" }}
       {{- $isDumpInstance = hasKey $schedule.backupProfile "dumpInstance" }}

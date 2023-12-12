@@ -17,7 +17,7 @@ Pull requests submitted via github are also tracked at bugs.mysql.com; see [CONT
 
 ## License
 
-Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+Copyright (c) 2020, 2024, Oracle and/or its affiliates.
 
 License information can be found in the [LICENSE](https://github.com/mysql/mysql-operator/blob/8.0.36-2.0.13/LICENSE) file.
 This distribution may include materials developed by third parties. For license

@@ -98,14 +98,13 @@ pipeline {
 					}
 					steps {
 						script {
-							def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory) =
-								utils.getExecutionParams(K8S_ENVIRONMENT, maxClustersPerInstance='3', nodesPerCluster='1')
+							def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster) =
+								utils.getExecutionParams(K8S_ENVIRONMENT, preferredClustersPerInstance='3', nodesPerCluster='1')
 							echo "[$K8S_ENVIRONMENT, \
 								$executionInstanceLabel, \
 								$executionInstanceCount, \
 								$clustersPerInstance, \
-								$nodesPerCluster, \
-								$nodeMemory \
+								$nodesPerCluster \
 							]"
 							def jobs = [:]
 							def jobBadge = utils.getJobBadge(K8S_ENVIRONMENT)
@@ -126,7 +125,6 @@ pipeline {
 										[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstanceLabel],
 										string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersPerInstance),
 										string(name: 'OPERATOR_NODES_PER_CLUSTER', value: nodesPerCluster),
-										string(name: 'OPERATOR_NODE_MEMORY', value: nodeMemory),
 										[$class: 'StringParameterValue', name: 'OPERATOR_CREDENTIALS', value: env.OTE_CREDENTIALS],
 										[$class: 'StringParameterValue', name: 'OPERATOR_TEST_SUITE', value: utils.prepareInstanceTestSuite(jobBadge, k8sJobInstanceIndex)]
 									], propagate: false
@@ -178,14 +176,18 @@ pipeline {
 							def k3dDelayInSeconds = 300
 							utils.delayLocalJob(k3dDelayInSeconds)
 
-							def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory) =
-								utils.getExecutionParams(K8S_ENVIRONMENT, maxClustersPerInstance='4', nodesPerCluster='1')
+							// if minikube runs on oci then create more local clusters for k3d
+							def preferredK3dClustersPerInstance = utils.isLocalExecutionEnvironment() ? '4' : '6'
+							def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster) =
+								utils.getExecutionParams(
+									K8S_ENVIRONMENT,
+									preferredClustersPerInstance=preferredK3dClustersPerInstance,
+									nodesPerCluster='1')
 							echo "[$K8S_ENVIRONMENT, \
 								$executionInstanceLabel, \
 								$executionInstanceCount, \
 								$clustersPerInstance, \
-								$nodesPerCluster, \
-								$nodeMemory \
+								$nodesPerCluster \
 							]"
 							def jobs = [:]
 							def jobBadge = utils.getJobBadge(K8S_ENVIRONMENT)
@@ -206,7 +208,6 @@ pipeline {
 										[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstanceLabel],
 										string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersPerInstance),
 										string(name: 'OPERATOR_NODES_PER_CLUSTER', value: nodesPerCluster),
-										string(name: 'OPERATOR_NODE_MEMORY', value: nodeMemory),
 										[$class: 'StringParameterValue', name: 'OPERATOR_CREDENTIALS', value: env.OTE_CREDENTIALS],
 										[$class: 'StringParameterValue', name: 'OPERATOR_TEST_SUITE', value: utils.prepareInstanceTestSuite(jobBadge, k8sJobInstanceIndex)]
 									], propagate: false

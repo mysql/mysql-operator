@@ -102,15 +102,15 @@ pipeline {
 					// https://github.com/kubernetes/kubernetes/releases
 					// curl -L https://dl.k8s.io/release/v1.23.14/bin/linux/amd64/kubectl -o kubectl-v1.23.14
 					// curl -L https://github.com/kubernetes/minikube/releases/download/v1.27.1/minikube-linux-amd64 -o minikube-v1.27.1
-					// format of values: 'minikube-binary;k8s-version;kubectl-version;clusters-per-instance;nodes-per-cluster;ip-family',
-					//				e.g. 'minikube-v1.22.0;v1.21.5;kubectl-v1.21.14;5;1;ipv4' - 5 clusters per execution instance with 1 node each
-					// 					 'minikube-v1.25.2;v1.23.4;kubectl-v1.23.4;3;2;ipv4' - 3 clusters per execution instance with 2 nodes each
+					// format of values: 'minikube-binary;k8s-version;kubectl-version;clusters-per-instance;nodes-per-cluster;node-memory-limit;ip-family',
+					//				e.g. 'minikube-v1.22.0;v1.21.5;kubectl-v1.21.14;5;1;8192;ipv4' - 5 clusters per execution instance with 1 node each, 8GB limit per node
+					// 					 'minikube-v1.25.2;v1.23.4;kubectl-v1.23.4;3;2;4096;ipv4' - 3 clusters per execution instance with 2 nodes each, 4GB limit per node
 					axis {
 						name 'K8S_VERSION'
-						values 'minikube-v1.31.2;v1.23.4;kubectl-v1.23.4;4;1;ipv4',
-							'minikube-v1.31.2;v1.25.5;kubectl-v1.25.6;4;1;ipv4',
-							'minikube-v1.31.2;v1.27.0;kubectl-v1.27.0;4;1;ipv4',
-							'minikube-v1.31.2;v1.27.4;kubectl-v1.28.2;4;1;ipv4'
+						values 'minikube-v1.31.2;v1.23.4;kubectl-v1.23.4;4;1;4096;ipv4',
+							'minikube-v1.31.2;v1.25.5;kubectl-v1.25.6;4;1;4096;ipv4',
+							'minikube-v1.31.2;v1.27.0;kubectl-v1.27.0;4;1;4096;ipv4',
+							'minikube-v1.31.2;v1.27.4;kubectl-v1.28.2;4;1;4096;ipv4'
 					}
 				}
 				stages {
@@ -118,16 +118,16 @@ pipeline {
 						steps {
 							script {
 								minikubeRuns++
-								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, maxClustersPerInstance, expectedNodesPerCluster, ipFamily) =
+								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, preferredClustersPerInstance, expectedNodesPerCluster, ipFamily) =
 									K8S_VERSION.split(';')
 								def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory) =
-									utils.getExecutionParams(K8S_ENVIRONMENT, maxClustersPerInstance, expectedNodesPerCluster)
+									utils.getExecutionParams(K8S_ENVIRONMENT, preferredClustersPerInstance, expectedNodesPerCluster)
 								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [ \
 									${executionInstanceLabel}, \
 									${k8sEnvBinaryPath}, \
 									${k8sVersion}, \
 									${kubectlPath}, \
-									${maxClustersPerInstance}, \
+									${preferredClustersPerInstance}, \
 									${clustersPerInstance}, \
 									${expectedNodesPerCluster}, \
 									${nodesPerCluster}, \
@@ -212,15 +212,15 @@ pipeline {
 					// https://github.com/k3d-io/k3d/releases
 					// https://hub.docker.com/r/rancher/k3s/tags
 					// curl -L https://github.com/k3d-io/k3d/releases/download/v5.4.6/k3d-linux-amd64 -o k3d-v5.4.6
-					// format of values: 'k3d-binary;k8s-version-image;kubectl-version;;clusters-per-instance;nodes-per-cluster;ip-family',
-					//				e.g. 'k3d-v5.2.2;rancher/k3s:v1.21.11-k3s1;kubectl-v1.21.14;3;3;ipv4' - 3 clusters per execution instance with 3 nodes each
-					// 					 'k3d-v5.4.4;rancher/k3s:v1.23.5-k3s1;kubectl-v1.23.14;5;1;ipv4' - 5 clusters per execution instance with 1 node each
+					// format of values: 'k3d-binary;k8s-version-image;kubectl-version;;clusters-per-instance;nodes-per-cluster;node-memory-limit;ip-family',
+					//				e.g. 'k3d-v5.2.2;rancher/k3s:v1.21.11-k3s1;kubectl-v1.21.14;3;3;4096;ipv4' - 3 clusters per execution instance with 3 nodes each, 4GB limit per node
+					// 					 'k3d-v5.4.4;rancher/k3s:v1.23.5-k3s1;kubectl-v1.23.14;5;1;8192;ipv4' - 5 clusters per execution instance with 1 node each, 8GB limit per node
 					axis {
 						name 'K8S_VERSION'
-						values 'k3d-v5.6.0;rancher/k3s:v1.22.7-k3s1;kubectl-v1.22.17;6;1;ipv4',
-							'k3d-v5.6.0;rancher/k3s:v1.24.7-k3s1;kubectl-v1.24.4;2;4;ipv4',
-							'k3d-v5.6.0;rancher/k3s:v1.26.0-k3s1;kubectl-v1.26.0;2;3;ipv4',
-							'k3d-v5.6.0;rancher/k3s:v1.27.4-k3s1;kubectl-v1.28.2;6;1;ipv4'
+						values 'k3d-v5.6.0;rancher/k3s:v1.22.7-k3s1;kubectl-v1.22.17;6;1;2048;ipv4',
+							'k3d-v5.6.0;rancher/k3s:v1.24.7-k3s1;kubectl-v1.24.4;2;4;2048;ipv4',
+							'k3d-v5.6.0;rancher/k3s:v1.26.0-k3s1;kubectl-v1.26.0;2;3;2048;ipv4',
+							'k3d-v5.6.0;rancher/k3s:v1.27.4-k3s1;kubectl-v1.28.2;6;1;2048;ipv4'
 					}
 				}
 				stages {
@@ -228,16 +228,16 @@ pipeline {
 						steps {
 							script {
 								k3dRuns++
-								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, maxClustersPerInstance, expectedNodesPerCluster, ipFamily) =
+								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, preferredClustersPerInstance, expectedNodesPerCluster, ipFamily) =
 									K8S_VERSION.split(';')
 								def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory) =
-									utils.getExecutionParams(K8S_ENVIRONMENT, maxClustersPerInstance, expectedNodesPerCluster)
+									utils.getExecutionParams(K8S_ENVIRONMENT, preferredClustersPerInstance, expectedNodesPerCluster)
 								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [ \
 									${executionInstanceLabel}, \
 									${k8sEnvBinaryPath}, \
 									${k8sVersion}, \
 									${kubectlPath}, \
-									${maxClustersPerInstance}, \
+									${preferredClustersPerInstance}, \
 									${clustersPerInstance}, \
 									${expectedNodesPerCluster}, \
 									${nodesPerCluster}, \
@@ -322,13 +322,13 @@ pipeline {
 					// https://github.com/kubernetes-sigs/kind/releases
 					// curl -L https://github.com/kubernetes-sigs/kind/releases/download/v0.17.0/kind-linux-amd64 -o kind-v0.17.0
 					// node images related to a given release are listed in its description (section 'New Features')
-					// format of values: 'kind-binary;k8s-version-image;kubectl-version;clusters-per-instance;nodes-per-cluster;ip-family',
-					//				e.g. 'kind-v0.18.0;;kubectl-v1.26.1;2;1;ipv6' - 2 clusters per execution instance with 1 node each
-					// 					 'kind-v0.17.0;;kubectl-v1.26.1;1;2;dual' - 1 clusters per execution instance with 2 nodes each
+					// format of values: 'kind-binary;k8s-version-image;kubectl-version;clusters-per-instance;nodes-per-cluster;node-memory-limit;ip-family',
+					//				e.g. 'kind-v0.18.0;;kubectl-v1.26.1;2;1;8192;ipv6' - 2 clusters per execution instance with 1 node each, 8GB limit per node
+					// 					 'kind-v0.17.0;;kubectl-v1.26.1;1;2;4096;dual' - 1 clusters per execution instance with 2 nodes each, 4GB limit per node
 					axis {
 						name 'K8S_VERSION'
-						values 'kind-v0.20.0;;kubectl-v1.26.1;2;1;ipv6',
-							'kind-v0.20.0;;kubectl-v1.27.2;2;2;dual'
+						values 'kind-v0.20.0;;kubectl-v1.26.1;2;1;4096;ipv6',
+							'kind-v0.20.0;;kubectl-v1.27.2;2;2;4096;dual'
 					}
 				}
 				stages {
@@ -336,16 +336,16 @@ pipeline {
 						steps {
 							script {
 								kindRuns++
-								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, maxClustersPerInstance, expectedNodesPerCluster, ipFamily) =
+								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, preferredClustersPerInstance, expectedNodesPerCluster, ipFamily) =
 									K8S_VERSION.split(';')
 								def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory) =
-									utils.getExecutionParams(K8S_ENVIRONMENT, maxClustersPerInstance, expectedNodesPerCluster)
+									utils.getExecutionParams(K8S_ENVIRONMENT, preferredClustersPerInstance, expectedNodesPerCluster)
 								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [ \
 									${executionInstanceLabel}, \
 									${k8sEnvBinaryPath}, \
 									${k8sVersion}, \
 									${kubectlPath}, \
-									${maxClustersPerInstance}, \
+									${preferredClustersPerInstance}, \
 									${clustersPerInstance}, \
 									${expectedNodesPerCluster}, \
 									${nodesPerCluster}, \

@@ -207,6 +207,9 @@ def patch_cron_template_for_backup_schedule(base: dict, cluster_name: str, sched
     new_object["spec"]["schedule"] = schedule_profile.schedule
     new_object["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"][0]["command"].extend(["--schedule-name", schedule_profile.name])
 
+    if schedule_profile.timeZone:
+        new_object["spec"]["timeZone"] = schedule_profile.timeZone
+
     metadata = {}
     if schedule_profile.backupProfile.podAnnotations:
         metadata['annotations'] = schedule_profile.backupProfile.podAnnotations

@@ -1,22 +1,14 @@
-# Copyright (c) 2022, Oracle and/or its affiliates.
+# Copyright (c) 2022, 2023, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
 from utils import tutil
 from utils import kutil
-from utils import dutil
 from utils import mutil
-import os
 import logging
-from e2e.mysqloperator.cluster import check_apiobjects
-from e2e.mysqloperator.cluster import check_group
-from e2e.mysqloperator.cluster import check_adminapi
-from e2e.mysqloperator.cluster import check_routing
-import unittest
 from utils.tutil import g_full_log
-from setup.config import g_ts_cfg
-from utils.optesting import DEFAULT_MYSQL_ACCOUNTS, COMMON_OPERATOR_ERRORS
+from utils.optesting import COMMON_OPERATOR_ERRORS
 
 
 class ScheduledBackupInline(tutil.OperatorTest):
@@ -95,6 +87,7 @@ spec:
   backupSchedules:
     - name: {self.schedule_name}
       schedule: "*/1 0-23 * * *"
+      timeZone: Antarctica/Davis
       deleteBackupData: false
       enabled: true
       backupProfile:
@@ -168,6 +161,16 @@ spec:
         self.assertTrue(status["output"].startswith(self.scheduled_dump_prefix))
         self.assertGreater(len(status["output"]), len(self.scheduled_dump_prefix))
 
+    def check_cj(self):
+        cj = kutil.get_cj(self.ns, f"{self.cluster_name}-{self.schedule_name}-cb")
+
+        spec = cj["spec"]
+        self.assertEqual(spec["schedule"], "*/1 0-23 * * *")
+        if kutil.server_version() >= '1.27':
+            # TimeZone support was added with Kubernetes 1.27 older versions
+            # ignore it
+            self.assertEqual(spec["timeZone"], "Antarctica/Davis")
+
     def test_1_backup_to_volume(self):
         # wait until backup is completed
         def check_mbk(l):
@@ -186,7 +189,7 @@ spec:
 
         self.check_ic()
         self.check_mbk(r["NAME"])
-
+        self.check_cj()
 
     def test_9_destroy(self):
         kutil.delete_ic(self.ns, self.cluster_name)

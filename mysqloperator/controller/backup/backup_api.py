@@ -120,6 +120,7 @@ class BackupSchedule:
         self.backupProfile: Optional[BackupProfile] = None
         self.schedule: str = ""
         self.enabled: bool = False
+        self.timeZone: str = None
         self.deleteBackupData: bool = False # unused
 
     def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
@@ -135,6 +136,8 @@ class BackupSchedule:
         self.enabled = dget_bool(spec, "enabled", prefix, default_value=False)
 
         self.backupProfileName = dget_str(spec, "backupProfileName", prefix, default_value= "")
+
+        self.timeZone = dget_str(spec, "timeZone", prefix, default_value=None)
 
         self.schedule = dget_str(spec, "schedule", prefix)
         if not self.schedule:
@@ -161,7 +164,7 @@ class BackupSchedule:
                 raise ApiSpecError(f"Invalid backupProfileName '{self.backupProfileName}' in cluster {self.cluster_spec.namespace}/{self.cluster_spec.name}")
 
     def __str__(self) -> str:
-        return f"Object BackupSchedule scheduleName={self.name} deleteBackupData={self.deleteBackupData} enabled={self.enabled} backupProfileName={self.backupProfileName} schedule={self.schedule} profile={self.backupProfile}"
+        return f"Object BackupSchedule scheduleName={self.name} deleteBackupData={self.deleteBackupData} enabled={self.enabled} backupProfileName={self.backupProfileName} schedule={self.schedule} profile={self.backupProfile} timeZone={self.timeZone}"
 
     def __eq__(self, other : 'BackupSchedule') -> bool:
         assert other is None or isinstance(other, BackupSchedule)
@@ -173,6 +176,7 @@ class BackupSchedule:
                 and self.backupProfile == other.backupProfile \
                 and self.schedule == other.schedule \
                 and self.deleteBackupData == other.deleteBackupData \
+                and self.timeZone == other.timeZone \
                 and self.enabled == other.enabled)
 
 
@@ -185,6 +189,7 @@ class MySQLBackupSpec:
         self.backupProfileName: str = ""
         self.backupProfile: BackupProfile = None
         self.deleteBackupData: bool = False # unused
+        self.timeZone: str = None
         self.addTimestampToBackupDirectory: bool = True
         self.operator_image: str = ""
         self.operator_image_pull_policy: str = ""
@@ -200,6 +205,7 @@ class MySQLBackupSpec:
         self.backupProfileName = dget_str(spec, "backupProfileName", "spec", default_value="")
         self.backupProfile = self.parse_backup_profile(dget_dict(spec, "backupProfile", "spec", {}), "spec.backupProfile")
         self.deleteBackupData = dget_bool(spec, "deleteBackupData", "spec", default_value=False)
+        self.timeZone = dget_str(spec, "timeZone", "spec", default_value=None)
         self.addTimestampToBackupDirectory = dget_bool(spec, "addTimestampToBackupDirectory", "spec", default_value=True)
 
         if self.backupProfileName and self.backupProfile:

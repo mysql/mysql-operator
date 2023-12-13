@@ -203,11 +203,13 @@ baseServerId: 1000
 #backupSchedules:
 #- name: schedule-ref
 #  schedule: "*/1 * * * *"
+#  timeZone: "Europe/Amsterdam"
 #  deleteBackupData: false
 #  backupProfileName: dump-instance-profile-oci
 #  enabled: true
 #- name: schedule-inline
 #  schedule: "*/1 * * * *"
+#  timeZone: "Europe/Amsterdam"
 #  deleteBackupData: false
 #  enabled: true
 #  backupProfile:

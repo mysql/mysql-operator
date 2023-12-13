@@ -86,7 +86,7 @@ def listFilesInSubdir(String subdir) {
 	def files = findFiles glob: "**/${subdir}/*"
 	def dirContents = "${subdir} contains ${files.length} file(s):\n"
 	files.each { file ->
-		dirContents += "${file.name} ${file.length}\n"
+		dirContents += "${file.name} ${file.length} byte(s)\n"
 	}
 	echo dirContents
 }
@@ -326,17 +326,17 @@ def generateTestSuiteSubsets(int executionInstanceCount, String jobBadge) {
 }
 
 def getInstanceTestSuitePath(String jobBadge, int instanceIndex) {
-	return "${env.INSTANCES_DIR}/${jobBadge}-${env.INSTANCE_TESTSUITE_INFIX}-${instanceIndex}.txt"
+	def instanceIndexPadded = instanceIndex.toString().padLeft(2, '0')
+	return "${env.INSTANCES_DIR}/${jobBadge}-${env.INSTANCE_TESTSUITE_INFIX}-${instanceIndexPadded}.txt"
 }
 
 def prepareInstanceTestSuite(String jobBadge, int instanceIndex) {
 	def instanceTestSuitePath = getInstanceTestSuitePath(jobBadge, instanceIndex)
-	echo instanceTestSuitePath
 	def instanceTestSuite = ""
 	if (fileExists(instanceTestSuitePath)) {
 		instanceTestSuite = readFile(instanceTestSuitePath)
 	}
-	echo instanceTestSuite
+	echo "$instanceTestSuitePath:\n$instanceTestSuite"
 	return sh(script: "bzip2 -9 -c $instanceTestSuitePath | base64", returnStdout: true)
 }
 
@@ -385,13 +385,30 @@ def getMergedReports(String reportPattern) {
 	}
 
 	def reportSummary = reportSummaryRaw.split('\n').sort().join('\n')
-	echo "report summary:\n${reportSummary}"
 	return reportSummary
 }
 
+def storeTestSuiteMergedSubReport(String contents, String suffix) {
+	if (!contents) {
+		return null
+	}
+	def reportPath = "${env.LOG_DIR}/test_suite_${suffix}.txt"
+	writeFile file: reportPath, text: contents
+	echo "$reportPath:\n$contents"
+	return reportPath
+}
+
 def getMergedStatsReports() {
-	statsPattern = "*-build-*-stats.log"
-	return getMergedReports(statsPattern)
+	def statsPattern = "*-build-*-stats.log"
+	def rawStats = getMergedReports(statsPattern)
+	def rawStatsPath = storeTestSuiteMergedSubReport(rawStats, 'stats_raw')
+	def stats = null
+	if (rawStatsPath) {
+		def mergeStatsScript = "${env.CI_SUBDIR}/pipeline/auxiliary/merge_test_suite_stats.py"
+		stats = sh script: "cat $rawStatsPath | python3 $mergeStatsScript", returnStdout: true
+		storeTestSuiteMergedSubReport(stats, 'stats')
+	}
+	return stats
 }
 
 def getTestSuiteReport() {
@@ -492,7 +509,9 @@ def anyResultsAvailable() {
 
 def getMergedIssuesReports() {
 	issuesPattern = "*-build-*-issues.log"
-	return getMergedReports(issuesPattern)
+	issues = getMergedReports(issuesPattern)
+	storeTestSuiteMergedSubReport(issues, 'issues')
+	return issues
 }
 
 def getTestsSuiteIssuesByEnv(String k8s_env, String result) {

@@ -91,7 +91,7 @@ def generate_test_suite_subsets(test_suite_base_dir, subset_count, output_dir, s
     portions = divide_test_suite(test_suite, subset_count)
     subset_index = 0
     for portion in portions:
-        subset_path = os.path.join(output_dir, f"{subset_file_prefix}-{subset_index}.txt")
+        subset_path = os.path.join(output_dir, f"{subset_file_prefix}-{subset_index:02}.txt")
         with open(subset_path, 'w') as f:
             for test_case in portion:
                 f.write(f"{test_case}\n")

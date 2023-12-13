@@ -260,6 +260,18 @@ def getWorkerJobPath(String k8sEnv) {
 	return workerJobPath
 }
 
+def getK8sEnvBinaryPath(String k8sEnv, String preferredK8sEnvBinaryPath) {
+	// we have custom k8s-env binaries like e.g. minikube-v1.31.2, k3d-v5.6.0, or
+	// kind-v0.20.0 on our local CI machine only
+	if (isLocalExecutionEnvironment() || !canRunOnOci(k8sEnv)) {
+		return preferredK8sEnvBinaryPath
+	}
+	// on the OCI instances, we have at our disposal only the newest k8s-env binary and
+	// its name is identical to the k8s-environment, i.e. [minikube|k3d|kind]
+	def ociK8sEnvBinaryPath = k8sEnv
+	return ociK8sEnvBinaryPath
+}
+
 def getJobBadge(String k8sEnv, String k8sVersion = '', String nodesCount = '', String ipFamily = '') {
 	def jobBadge = k8sEnv
 	if (k8sVersion) {

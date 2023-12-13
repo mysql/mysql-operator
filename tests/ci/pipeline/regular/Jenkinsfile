@@ -6,8 +6,13 @@
 // handle to util functions module
 def utils;
 
-// job ids to copy proper artifact for a given build
-def jobIds = [:];
+// counters for each environment, to store how many related jobs have been run
+def minikubeRuns = 0
+def k3dRuns = 0
+
+// job ids per each environment, to copy related artifacts
+def minikubeJobs = [:]
+def k3dJobs = [:]
 
 pipeline {
 	agent {
@@ -88,115 +93,154 @@ pipeline {
 		stage('test') {
 			parallel {
 				stage('minikube') {
+					environment {
+						K8S_ENVIRONMENT = 'minikube'
+					}
 					steps {
 						script {
-							def k8sEnv = 'minikube'
 							def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory) =
-								utils.getExecutionParams(k8sEnv, maxClustersPerInstance='3', nodesPerCluster='1')
-							echo "[$k8sEnv, $executionInstanceLabel, $executionInstanceCount, $clustersPerInstance, $nodesPerCluster, $nodeMemory]"
-							def k8sJob = null
-							catchError {
-								k8sJob = build job: utils.getWorkerJobPath(k8sEnv), parameters: [
-									string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
-									string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
-									string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
-									string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
-									string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
-									string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
-									string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
-									[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstanceLabel],
-									string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersPerInstance),
-									string(name: 'OPERATOR_NODES_PER_CLUSTER', value: nodesPerCluster),
-									string(name: 'OPERATOR_NODE_MEMORY', value: nodeMemory)
-								], propagate: false
+								utils.getExecutionParams(K8S_ENVIRONMENT, maxClustersPerInstance='3', nodesPerCluster='1')
+							echo "[$K8S_ENVIRONMENT, \
+								$executionInstanceLabel, \
+								$executionInstanceCount, \
+								$clustersPerInstance, \
+								$nodesPerCluster, \
+								$nodeMemory \
+							]"
+							def jobs = [:]
+							def jobBadge = utils.getJobBadge(K8S_ENVIRONMENT)
+							executionInstanceCount = utils.generateTestSuiteSubsets(executionInstanceCount, jobBadge)
+							for (int i = 0; i < executionInstanceCount; i++) {
+								def k8sJobInstanceIndex = i
+								def k8sJobInstance = "${K8S_ENVIRONMENT}-${k8sJobInstanceIndex}"
+								jobs[i] = {
+									minikubeJobs["${k8sJobInstance}"] = null
+									def k8sJob = build job: utils.getWorkerJobPath(K8S_ENVIRONMENT), parameters: [
+										string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
+										string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
+										string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+										string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
+										string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
+										string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
+										string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
+										[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstanceLabel],
+										string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersPerInstance),
+										string(name: 'OPERATOR_NODES_PER_CLUSTER', value: nodesPerCluster),
+										string(name: 'OPERATOR_NODE_MEMORY', value: nodeMemory),
+										[$class: 'StringParameterValue', name: 'OPERATOR_CREDENTIALS', value: env.OTE_CREDENTIALS],
+										[$class: 'StringParameterValue', name: 'OPERATOR_TEST_SUITE', value: utils.prepareInstanceTestSuite(jobBadge, k8sJobInstanceIndex)]
+									], propagate: false
+									if (k8sJob != null) {
+										minikubeJobs["${k8sJobInstance}"] = k8sJob.getNumber()
+										echo "${k8sJobInstance} completed (build #${k8sJob.getNumber()})"
+									}
+								}
 							}
-							if (k8sJob != null) {
-								jobIds[k8sEnv] = k8sJob.getNumber()
-								echo "${k8sEnv} completed (build #${k8sJob.getNumber()})"
-							}
+							parallel jobs
 						}
 					}
 					post {
 						always {
 							script {
-								def k8sEnv = 'minikube'
-								def k8sJob = jobIds[k8sEnv]
-								if (k8sJob) {
-									echo "copy ${k8sEnv} results for build #${k8sJob}"
-									catchError {
-										copyArtifacts fingerprintArtifacts: true,
-											projectName: utils.getWorkerJobPath(k8sEnv),
-											selector: specific(buildNumber: "${k8sJob}"),
-											target: "${env.LOG_SUBDIR}"
+								minikubeJobs.each { k8sJobInstance, k8sJobId ->
+									if (k8sJobId) {
+										echo "copy ${k8sJobInstance} results for build #${k8sJobId}"
+										catchError {
+											copyArtifacts fingerprintArtifacts: true,
+												projectName: utils.getWorkerJobPath(K8S_ENVIRONMENT),
+												selector: specific(buildNumber: "${k8sJobId}"),
+												target: "${env.LOG_SUBDIR}"
+											echo "successfully copied ${k8sJobInstance} results for build #${k8sJobId}"
+										}
+									} else {
+										echo "no results for ${k8sJobInstance}, job id not found"
 									}
-								} else {
-									echo "no results for ${k8sEnv}, job id not found"
 								}
 							}
 						}
 						cleanup {
 							script {
-								env.MINIKUBE_RESULT_STATUS = utils.addTestResults("minikube", 1)
+								env.MINIKUBE_RESULT_STATUS = utils.addTestResults(K8S_ENVIRONMENT, minikubeJobs.size())
 							}
 						}
 					}
 				}
 				stage('k3d') {
+					environment {
+						K8S_ENVIRONMENT = 'k3d'
+					}
 					steps {
 						script {
 							// in case the test suite runs on local execution environment (operator-ci), run k3d
 							// clusters with some delay (in seconds), after all minikube clusters already
 							// have started
 							// when clusters start at the same moment, they may fail randomly
-							utils.delayLocalJob(300)
+							def k3dDelayInSeconds = 300
+							utils.delayLocalJob(k3dDelayInSeconds)
 
-							def k8sEnv = 'k3d'
 							def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory) =
-								utils.getExecutionParams(k8sEnv, maxClustersPerInstance='4', nodesPerCluster='1')
-							echo "[$k8sEnv, $executionInstanceLabel, $clustersPerInstance, $nodesPerCluster, $nodeMemory]"
-							def k8sJob = null
-							catchError {
-								k8sJob = build job: utils.getWorkerJobPath(k8sEnv), parameters: [
-									string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
-									string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
-									string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
-									string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
-									string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
-									string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
-									string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
-									[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstanceLabel],
-									string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersPerInstance),
-									string(name: 'OPERATOR_NODES_PER_CLUSTER', value: nodesPerCluster),
-									string(name: 'OPERATOR_NODE_MEMORY', value: nodeMemory)
-								], propagate: false
+								utils.getExecutionParams(K8S_ENVIRONMENT, maxClustersPerInstance='4', nodesPerCluster='1')
+							echo "[$K8S_ENVIRONMENT, \
+								$executionInstanceLabel, \
+								$executionInstanceCount, \
+								$clustersPerInstance, \
+								$nodesPerCluster, \
+								$nodeMemory \
+							]"
+							def jobs = [:]
+							def jobBadge = utils.getJobBadge(K8S_ENVIRONMENT)
+							executionInstanceCount = utils.generateTestSuiteSubsets(executionInstanceCount, jobBadge)
+							for (int i = 0; i < executionInstanceCount; i++) {
+								def k8sJobInstanceIndex = i
+								def k8sJobInstance = "${K8S_ENVIRONMENT}-${k8sJobInstanceIndex}"
+								jobs[i] = {
+									k3dJobs["${k8sJobInstance}"] = null
+									def k8sJob = build job: utils.getWorkerJobPath(K8S_ENVIRONMENT), parameters: [
+										string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
+										string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
+										string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+										string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
+										string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
+										string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
+										string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
+										[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstanceLabel],
+										string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersPerInstance),
+										string(name: 'OPERATOR_NODES_PER_CLUSTER', value: nodesPerCluster),
+										string(name: 'OPERATOR_NODE_MEMORY', value: nodeMemory),
+										[$class: 'StringParameterValue', name: 'OPERATOR_CREDENTIALS', value: env.OTE_CREDENTIALS],
+										[$class: 'StringParameterValue', name: 'OPERATOR_TEST_SUITE', value: utils.prepareInstanceTestSuite(jobBadge, k8sJobInstanceIndex)]
+									], propagate: false
+									if (k8sJob != null) {
+										k3dJobs["${k8sJobInstance}"] = k8sJob.getNumber()
+										echo "${k8sJobInstance} completed (build #${k8sJob.getNumber()})"
+									}
+								}
 							}
-							if (k8sJob != null) {
-								jobIds[k8sEnv] = k8sJob.getNumber()
-								echo "${k8sEnv} completed (build #${k8sJob.getNumber()})"
-							}
+							parallel jobs
 						}
 					}
 					post {
 						always {
 							script {
-								def k8sEnv = 'k3d'
-								def k8sJob = jobIds[k8sEnv]
-								if (k8sJob) {
-									echo "copy ${k8sEnv} results for build #${k8sJob}"
-									catchError {
-										copyArtifacts fingerprintArtifacts: true,
-											projectName: utils.getWorkerJobPath(k8sEnv),
-											selector: specific(buildNumber: "${k8sJob}"),
-											target: "${env.LOG_SUBDIR}"
+								k3dJobs.each { k8sJobInstance, k8sJobId ->
+									if (k8sJobId) {
+										echo "copy ${k8sJobInstance} results for build #${k8sJobId}"
+										catchError {
+											copyArtifacts fingerprintArtifacts: true,
+												projectName: utils.getWorkerJobPath(K8S_ENVIRONMENT),
+												selector: specific(buildNumber: "${k8sJobId}"),
+												target: "${env.LOG_SUBDIR}"
+											echo "successfully copied ${k8sJobInstance} results for build #${k8sJobId}"
+										}
+									} else {
+										echo "no results for ${k8sJobInstance}, job id not found"
 									}
-								} else {
-									echo "no results for ${k8sEnv}, job id not found"
 								}
 							}
 						}
 						cleanup {
 							script {
-								env.K3D_RESULT_STATUS = utils.addTestResults("k3d", 1)
+								env.K3D_RESULT_STATUS = utils.addTestResults(K8S_ENVIRONMENT, k3dJobs.size())
 							}
 						}
 					}

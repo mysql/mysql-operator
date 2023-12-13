@@ -39,10 +39,10 @@ if [[ -n $OPERATOR_CREDENTIALS ]]; then
 		exit 20
 	fi
 	# to replace the placeholder with the actual path, make the modified file temporarily writable
+	chmod -fR +w $OPERATOR_TEST_LOCAL_CREDENTIALS_DIR
 	find ${OPERATOR_TEST_LOCAL_CREDENTIALS_DIR} -type f \
-		-exec chmod +w {} \; \
-		-exec sed -i "s|key_file=$OTE_CREDENTIALS_DIR_PLACEHOLDER|key_file=$OPERATOR_TEST_LOCAL_CREDENTIALS_DIR|g" {} \; \
-		-exec chmod -w {} \;
+		-exec sed -i "s|key_file=$OTE_CREDENTIALS_DIR_PLACEHOLDER|key_file=$OPERATOR_TEST_LOCAL_CREDENTIALS_DIR|g" {} \;
+	chmod -fR -w $OPERATOR_TEST_LOCAL_CREDENTIALS_DIR
 	du -hs ${OPERATOR_TEST_LOCAL_CREDENTIALS_DIR}
 fi
 set -x

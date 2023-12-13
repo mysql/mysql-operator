@@ -61,7 +61,7 @@ export OPERATOR_BASE_VERSION_TAG=$(grep -m 1 OPERATOR_TEST_VERSION_TAG $WORKSPAC
 # - modify a given pipeline (regular | weekly) in src or through Jenkins UI
 # U may also want to modify the function canRunOnOci in ./tests/ci/pipeline/utils.groovy
 # to indicate which k8s workers can run on an OCI instance
-# OTE_RUN_ON_OCI=1
+OTE_RUN_ON_OCI=1
 
 # execution environment
 if [[ -v OTE_RUN_ON_OCI && $OTE_RUN_ON_OCI -eq 1 ]]; then

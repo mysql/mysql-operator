@@ -1,4 +1,4 @@
-Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+Copyright (c) 2020, 2024, Oracle and/or its affiliates.
 
 This is a release of MySQL Operator, a Kubernetes Operator for MySQL InnoDB Cluster
 

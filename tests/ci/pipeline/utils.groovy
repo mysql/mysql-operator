@@ -720,6 +720,14 @@ def getBuildSummary() {
 	return attachments
 }
 
+def archiveArtifact() {
+	listFilesInSubdir(env.LOG_SUBDIR)
+	if (anyResultsAvailable()) {
+		sh "cd ${env.LOG_DIR} && tar cjf ${ARTIFACT_PATH} *"
+		archiveArtifacts artifacts: "${ARTIFACT_FILENAME}", fingerprint: true
+	}
+}
+
 def pruneOldBuilds() {
 	sh "find ${WORKSPACE}/ -maxdepth 1 -type d -name 'build-*' -mtime +30 -exec rm -rf {} \\;"
 	sh "find ${WORKSPACE}/ -maxdepth 1 -type f -name '${JOB_BASE_NAME}-*-result.tar.bz2' -mtime +30 -delete"

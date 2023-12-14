@@ -59,6 +59,10 @@ community-server:8.3.0
 1
 ---
 community-server:8.4.0
+mysql-server:8.4.0
+1
+---
+community-server:8.4.0
 community-server:8.4.0
 1
 ---
@@ -120,6 +124,10 @@ mysql-router:8.3.0
 ---
 community-router:8.3.0
 community-router:8.3.0
+1
+---
+community-router:8.4.0
+mysql-router:8.4.0
 1
 ---
 community-router:8.4.0
@@ -275,6 +283,10 @@ enterprise-router:8.3.0
 1
 ---
 enterprise-router:8.4.0
+mysql-enterprise-router:8.4.0
+1
+---
+enterprise-router:8.4.0
 enterprise-router:8.4.0
 1
 ---
@@ -288,6 +300,10 @@ mysql-enterprise-router:8.3.0-arm64
 ---
 enterprise-router:8.3.0-arm64
 enterprise-router:8.3.0-arm64
+1
+---
+enterprise-router:8.4.0-arm64
+mysql-enterprise-router:8.4.0-arm64
 1
 ---
 enterprise-router:8.4.0-arm64
@@ -375,6 +391,10 @@ enterprise-server:8.3.0
 1
 ---
 enterprise-server:8.4.0
+mysql-enterprise-server:8.4.0
+1
+---
+enterprise-server:8.4.0
 enterprise-server:8.4.0
 1
 ---
@@ -388,6 +408,10 @@ mysql-enterprise-server:8.3.0-arm
 ---
 enterprise-server:8.3.0-arm
 enterprise-server:8.3.0-arm
+1
+---
+enterprise-server:8.4.0-arm
+mysql-enterprise-server:8.4.0-arm
 1
 ---
 enterprise-server:8.4.0-arm

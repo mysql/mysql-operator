@@ -70,6 +70,14 @@ else
 	OTE_DEFAULT_EXECUTION_ENVIRONMENT='local'
 fi
 
+# determines how long a container, its related volumes, or networks are
+# allowed to live before they are purged at the init stage of the next
+# starting build
+# it is correlated with the jenkins setting 'Time-out strategy', which we set to
+# 'Absolute' and '240 minutes' for all our k8s workers currently
+# with more and more tests added, both values may need an update
+export MAX_ALLOWED_CONTAINER_LIFETIME='5 hours'
+
 # log some infos
 pwd
 python3 --version

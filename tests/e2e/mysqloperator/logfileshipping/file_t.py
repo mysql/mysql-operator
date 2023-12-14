@@ -15,7 +15,7 @@ import json
 from utils.tutil import g_full_log
 from utils.optesting import COMMON_OPERATOR_ERRORS
 from e2e.mysqloperator.cluster.cluster_t import check_all
-from setup.config import g_ts_cfg
+from setup.config import g_ts_cfg, Config
 
 
 def get_sts_rollover_update_waiter(test_obj, cluster_name, timeout, delay):
@@ -91,7 +91,7 @@ spec:
       longQueryTime: 1.8
       collect: true
     collector:
-      image: {g_ts_cfg.get_fluentd_image()}
+      image: {g_ts_cfg.get_image(Config.Image.FLUENTD)}
       env:
       - name: SOME_OPT
         value: "some_opt_value"
@@ -150,7 +150,7 @@ spec:
       longQueryTime: 2
       collect: true
     collector:
-      image: {g_ts_cfg.get_fluentd_image()}
+      image: {g_ts_cfg.get_image(Config.Image.FLUENTD)}
       fluentd:
         slowQueryLog:
           tag: slowLogTag
@@ -167,7 +167,7 @@ spec:
       longQueryTime: 2
       collect: true
     collector:
-      image: {g_ts_cfg.get_fluentd_image()}
+      image: {g_ts_cfg.get_image(Config.Image.FLUENTD)}
       fluentd:
         sinks:
         - name: stdout
@@ -551,7 +551,7 @@ spec:
       enabled: true
       longQueryTime: 13.0 #Test fails with k3d on slow systems when the long query time is high one digit seconds
     collector:
-      image: {g_ts_cfg.get_fluentd_image()}
+      image: {g_ts_cfg.get_image(Config.Image.FLUENTD)}
       containerName: "{cls.collector_container_name}"
       env:
       - name: FLUENTD_OPT
@@ -1057,7 +1057,7 @@ spec:
       enabled: false
       longQueryTime: 2.5
     collector:
-      image: {g_ts_cfg.get_fluentd_image()}
+      image: {g_ts_cfg.get_image(Config.Image.FLUENTD)}
       env:
       - name: FLUENTD_OPT
         value: -c /tmp/fluent.conf
@@ -1300,7 +1300,7 @@ spec:
       enabled: false
       longQueryTime: 2.5
     collector:
-      image: {g_ts_cfg.get_fluentd_image()}
+      image: {g_ts_cfg.get_image(Config.Image.FLUENTD)}
       containerName: {cls.collector_container_name}
       env:
       - name: FLUENTD_OPT
@@ -1580,7 +1580,7 @@ spec:
       enabled: true
       longQueryTime: 12.9 #Test fails with k3d on slow systems when the long query time is high one digit seconds
     collector:
-      image: {g_ts_cfg.get_fluentd_image()}
+      image: {g_ts_cfg.get_image(Config.Image.FLUENTD)}
       containerName: "{cls.collector_container_name}"
       env:
       - name: FLUENTD_OPT

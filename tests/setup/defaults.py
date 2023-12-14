@@ -72,6 +72,12 @@ OCI_VAULT_CONFIG_PATH = os.getenv(
 AZURE_SKIP = os.getenv(
     "OPERATOR_TEST_SKIP_AZURE", default=False)
 
+AZURE_STORAGE_IMAGE_NAME = os.getenv(
+    "OPERATOR_TEST_AZURE_STORAGE_IMAGE_NAME", default="mcr.microsoft.com/azure-storage/azurite")
+
+AZURE_CLI_IMAGE_NAME = os.getenv(
+    "OPERATOR_TEST_AZURE_CLI_IMAGE_NAME", default="mcr.microsoft.com/azure-cli")
+
 AZURE_CONFIG_FILE = os.getenv(
     "OPERATOR_TEST_AZURE_CONFIG_FILE", default=None)
 

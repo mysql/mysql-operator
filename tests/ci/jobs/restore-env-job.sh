@@ -16,13 +16,15 @@ ARCHIVES_DIR=$WORKSPACE/archives
 mkdir -p $BINARIES_DIR
 mkdir -p $ARCHIVES_DIR
 
-$CI_DIR/restore/restore-env.sh $BINARIES_DIR $ARCHIVES_DIR
-
 echo """
     0. before executing this job, run $CI_DIR/restore/registry/pull-and-save-dockerhub-images.sh locally to
-        collect unreachable images, then copy them to $ARCHIVES_DIR, and set owner:group:
-        sudo chown james:common $ARCHIVES_DIR/*
-    1. after executing this job, copy all binaries from $BINARIES_DIR to a reachable path, e.g.
-        sudo chmod +x $BINARIES_DIR/*
-        sudo cp -ruv $BINARIES_DIR/* /usr/local/bin
+        collect unreachable images, then copy them to $ARCHIVES_DIR
 """
+sudo chown -fR james:common $ARCHIVES_DIR/*
+ls -l $ARCHIVES_DIR/*
+
+$CI_DIR/restore/restore-env.sh $BINARIES_DIR $ARCHIVES_DIR
+
+sudo chmod -fR +x $BINARIES_DIR/*
+ls -l $BINARIES_DIR/*
+sudo cp -ruv $BINARIES_DIR/* /usr/local/bin

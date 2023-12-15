@@ -118,9 +118,9 @@ pipeline {
 						steps {
 							script {
 								minikubeRuns++
-								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, preferredClustersPerInstance, expectedNodesPerCluster, ipFamily) =
+								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, preferredClustersPerInstance, expectedNodesPerCluster, nodeMemory, ipFamily) =
 									K8S_VERSION.split(';')
-								def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory) =
+								def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster) =
 									utils.getExecutionParams(K8S_ENVIRONMENT, preferredClustersPerInstance, expectedNodesPerCluster)
 								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [ \
 									${executionInstanceLabel}, \
@@ -228,9 +228,9 @@ pipeline {
 						steps {
 							script {
 								k3dRuns++
-								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, preferredClustersPerInstance, expectedNodesPerCluster, ipFamily) =
+								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, preferredClustersPerInstance, expectedNodesPerCluster, nodeMemory, ipFamily) =
 									K8S_VERSION.split(';')
-								def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory) =
+								def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster) =
 									utils.getExecutionParams(K8S_ENVIRONMENT, preferredClustersPerInstance, expectedNodesPerCluster)
 								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [ \
 									${executionInstanceLabel}, \
@@ -336,9 +336,9 @@ pipeline {
 						steps {
 							script {
 								kindRuns++
-								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, preferredClustersPerInstance, expectedNodesPerCluster, ipFamily) =
+								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, preferredClustersPerInstance, expectedNodesPerCluster, nodeMemory, ipFamily) =
 									K8S_VERSION.split(';')
-								def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory) =
+								def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster) =
 									utils.getExecutionParams(K8S_ENVIRONMENT, preferredClustersPerInstance, expectedNodesPerCluster)
 								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [ \
 									${executionInstanceLabel}, \

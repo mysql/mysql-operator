@@ -34,7 +34,7 @@ k8s_env_to_stats = defaultdict(lambda: {'tests': 0, 'passed': 0, 'failed': 0, 's
 # the input for regex, e.g.:
 # minikube: 10 tests, 7 passed, 2 failed, 1 skipped [0h 16m 02.135000s (962.135s)]
 # k3d: 18 tests, 18 passed, 0 failed, 0 skipped [0h 15m 29.762000s (929.762s)]
-k8s_job_stats_format = r'(\w+): (\d+) tests, (\d+) passed, (\d+) failed, (\d+) skipped \[.* \((\d+.?\d*)s\)\]'
+k8s_job_stats_format = r'(.+): (\d+) tests, (\d+) passed, (\d+) failed, (\d+) skipped \[.* \((\d+.?\d*)s\)\]'
 
 for k8s_worker_stats in k8s_job_stats:
     k8s_env, tests, passed, failed, skipped, time = re.findall(k8s_job_stats_format, k8s_worker_stats)[0]

@@ -283,7 +283,7 @@ def getJobBadge(String k8sEnv, String k8sVersion = '', String nodesCount = '', S
 	if (ipFamily && (ipFamily != "ipv4")) {
 		jobBadge += "-$ipFamily"
 	}
-	return jobBadge
+	return jobBadge.replaceAll(/[.:\/]/, '_')
 }
 
 // function returns a tuple [executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster]

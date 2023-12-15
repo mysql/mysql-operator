@@ -120,7 +120,7 @@ class BackupSchedule:
         self.backupProfile: Optional[BackupProfile] = None
         self.schedule: str = ""
         self.enabled: bool = False
-        self.timeZone: str = None
+        self.timeZone: str = ""
         self.deleteBackupData: bool = False # unused
 
     def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
@@ -137,7 +137,7 @@ class BackupSchedule:
 
         self.backupProfileName = dget_str(spec, "backupProfileName", prefix, default_value= "")
 
-        self.timeZone = dget_str(spec, "timeZone", prefix, default_value=None)
+        self.timeZone = dget_str(spec, "timeZone", prefix, default_value="") # marking timeZone with default_value None will make it non-optional
 
         self.schedule = dget_str(spec, "schedule", prefix)
         if not self.schedule:
@@ -189,7 +189,7 @@ class MySQLBackupSpec:
         self.backupProfileName: str = ""
         self.backupProfile: BackupProfile = None
         self.deleteBackupData: bool = False # unused
-        self.timeZone: str = None
+        self.timeZone: str = ""
         self.addTimestampToBackupDirectory: bool = True
         self.operator_image: str = ""
         self.operator_image_pull_policy: str = ""
@@ -205,7 +205,7 @@ class MySQLBackupSpec:
         self.backupProfileName = dget_str(spec, "backupProfileName", "spec", default_value="")
         self.backupProfile = self.parse_backup_profile(dget_dict(spec, "backupProfile", "spec", {}), "spec.backupProfile")
         self.deleteBackupData = dget_bool(spec, "deleteBackupData", "spec", default_value=False)
-        self.timeZone = dget_str(spec, "timeZone", "spec", default_value=None)
+        self.timeZone = dget_str(spec, "timeZone", "spec", default_value="") #marking timeZone with default_value None will make it non-optional
         self.addTimestampToBackupDirectory = dget_bool(spec, "addTimestampToBackupDirectory", "spec", default_value=True)
 
         if self.backupProfileName and self.backupProfile:

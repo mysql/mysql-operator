@@ -19,5 +19,5 @@ MAX_ALLOWED_LIFETIME=$2
 docker network prune -f
 
 docker network ls -q -f name=$FILTER | xargs -r -n 1 docker network inspect -f '{{.ID}} {{json .Created}}' \
-  | awk -v cut_off_date="$(date -d "$MAX_ALLOWED_LIFETIME ago" -Ins)" '$2 <= cut_off_date {print $1}' \
+  | awk -v cut_off_date=\""$(date -d "$MAX_ALLOWED_LIFETIME ago" -Ins)"\" '$2 <= cut_off_date {print $1}' \
   | xargs -r -n 1 ${SCRIPT_DIR}/remove_network.sh

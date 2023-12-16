@@ -17,7 +17,7 @@ MAX_ALLOWED_LIFETIME=$2
 docker container prune -f
 
 CONTAINERS=$(docker ps -q -f name=$FILTER | xargs -r -n 1 docker container inspect -f '{{.ID}} {{json .Created}}' \
-  | awk -v cut_off_date="$(date -d "$MAX_ALLOWED_LIFETIME ago" -Ins)" '$2 <= cut_off_date {print $1}')
+  | awk -v cut_off_date=\""$(date -d "$MAX_ALLOWED_LIFETIME ago" -Ins)"\" '$2 <= cut_off_date {print $1}')
 
 if [ -n "$CONTAINERS" ]; then
   docker container stop -t 60 $CONTAINERS

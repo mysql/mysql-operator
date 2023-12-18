@@ -753,7 +753,7 @@ data:
     log_bin={spec.name}
     enforce_gtid_consistency=ON
     gtid_mode=ON
-    skip_slave_start=1
+    skip_replica_start=1
 
   02-ssl.cnf: |
     # SSL configurations
@@ -827,7 +827,8 @@ def update_stateful_set_spec(sts : api_client.V1StatefulSet, patch: dict) -> Non
         sts.metadata.name, sts.metadata.namespace, body=patch)
 
 
-def update_mysql_image(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec, logger: Logger) -> None:
+def update_mysql_image(sts: api_client.V1StatefulSet, cluster: InnoDBCluster,
+                       spec: AbstractServerSetSpec, logger: Logger) -> None:
     """Update MySQL Server image
 
     This will also update the sidecar container to the current operator version,
@@ -887,7 +888,10 @@ def update_mysql_image(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec, l
             # This might happen during a retry or some other case where it was
             # removed already
             logger.info(f"Failed to remove keyring config from initconf, ignoring: {exc}")
-            pass
+
+    cm = prepare_initconf(cluster, spec, logger)
+    api_core.patch_namespaced_config_map(
+        cm['metadata']['name'], sts.metadata.namespace, body=cm)
 
     update_stateful_set_spec(sts, patch)
 

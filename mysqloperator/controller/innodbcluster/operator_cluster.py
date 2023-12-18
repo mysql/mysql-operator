@@ -439,7 +439,7 @@ def on_innodbcluster_field_version(old, new, body: Body,
         except:
             # revert version in the spec
             raise
-        cluster_objects.update_mysql_image(sts, cluster.parsed_spec, logger)
+        cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, logger)
         router_deploy = cluster.get_router_deployment()
         if router_deploy:
             router_objects.update_router_image(router_deploy, cluster.parsed_spec, logger)
@@ -463,7 +463,7 @@ def on_innodbcluster_field_image_repository(old, new, body: Body,
 
         cluster.parse_spec()
 
-        cluster_objects.update_mysql_image(sts, cluster.parsed_spec, logger)
+        cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, logger)
         cluster_objects.update_operator_image(sts, cluster.parsed_spec)
         router_deploy = cluster.get_router_deployment()
         if router_deploy:
@@ -521,7 +521,7 @@ def on_innodbcluster_field_image(old, new, body: Body,
             # revert version in the spec
             raise
 
-        cluster_objects.update_mysql_image(sts, cluster.parsed_spec, logger)
+        cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, logger)
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,

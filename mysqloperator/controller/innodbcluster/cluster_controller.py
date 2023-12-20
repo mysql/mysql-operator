@@ -791,14 +791,15 @@ class ClusterController:
                 pod.remove_member_finalizer(pod_body)
                 return
 
-        if pod.deleting or diag.status in (diagnose.ClusterDiagStatus.ONLINE, diagnose.ClusterDiagStatus.ONLINE_PARTIAL, diagnose.ClusterDiagStatus.ONLINE_UNCERTAIN, diagnose.ClusterDiagStatus.FINALIZING):
+        if pod.deleting and diag.status in (diagnose.ClusterDiagStatus.ONLINE, diagnose.ClusterDiagStatus.ONLINE_PARTIAL, diagnose.ClusterDiagStatus.ONLINE_UNCERTAIN, diagnose.ClusterDiagStatus.FINALIZING):
             shellutils.RetryLoop(logger).call(
                 self.remove_instance, pod, pod_body, logger)
         else:
-            if self.repair_cluster(pod, diag, logger):
-                # Retry from scratch in another iteration
-                raise kopf.TemporaryError(
-                    f"Cluster repair from state {diag.status} attempted", delay=3)
+            logger.info("ATTEMPTING CLUSTER REPAIR")
+            self.repair_cluster(pod, diag, logger)
+            # Retry from scratch in another iteration
+            logger.info("RETRYING ON POD DELETE")
+            raise kopf.TemporaryError(f"Cluster repair from state {diag.status} attempted", delay=3)
 
         # TODO maybe not needed? need to make sure that shrinking cluster will be reported as ONLINE
         self.probe_status(logger)

@@ -40,8 +40,6 @@ metadata:
     mysql.oracle.com/cluster: {spec.cluster_name}
     mysql.oracle.com/instance-type: {instance_type}
     {extra_label}
-  annotations:
-    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
 spec:
   clusterIP: None
   publishNotReadyAddresses: true

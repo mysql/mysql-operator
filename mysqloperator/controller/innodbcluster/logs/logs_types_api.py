@@ -26,7 +26,7 @@ class ServerLogType(Enum):
     GENERAL = "general"
     SLOW_QUERY = "slowQuery"
 
-class MySQLLogSpecBase(ABC):
+class ConfigMapMountBase(ABC):
     def __init__(self, volume_mount_name: str, config_file_name: str, config_file_mount_path: str):
         super().__init__()
         self.volume_mount_name = volume_mount_name
@@ -39,10 +39,6 @@ class MySQLLogSpecBase(ABC):
 
     @abstractmethod
     def validate(self) -> None:
-        ...
-
-    @abstractmethod
-    def get_cm_data(self, logger: Logger) -> Dict[str, str]:
         ...
 
     def _add_volumes_to_sts_spec(self,
@@ -114,6 +110,15 @@ class MySQLLogSpecBase(ABC):
                         logger: Logger) -> None:
         self._add_containers_to_sts_spec(sts, container_name, logger)
         self._add_volumes_to_sts_spec(sts, cm_name, logger)
+
+
+class MySQLLogSpecBase(ConfigMapMountBase):
+    def __init__(self, volume_mount_name: str, config_file_name: str, config_file_mount_path: str):
+        super().__init__(volume_mount_name, config_file_name, config_file_mount_path)
+
+    @abstractmethod
+    def get_cm_data(self, logger: Logger) -> Dict[str, str]:
+        ...
 
 class GeneralLogSpec(MySQLLogSpecBase):
     def __init__(self):

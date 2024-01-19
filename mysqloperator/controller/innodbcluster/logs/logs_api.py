@@ -71,7 +71,7 @@ class LogCollectorSpec:
                 raise ApiSpecError(f"No collector configured")
             self.collector.add_to_sts_spec(sts, self.container_name, self.image_name, self.envs, logger)
 
-    def get_config_maps(self, logHandlers: Dict[ServerLogType, MySQLLogSpecBase]) -> List:
+    def get_config_maps(self, logHandlers: Dict[ServerLogType, MySQLLogSpecBase]) -> List[Dict]:
         return self.collector.get_config_maps(logHandlers) if self.collect(logHandlers) and self.collector else []
 
 
@@ -127,7 +127,7 @@ class LogsSpec:
         return cb
 
     def get_configmaps_cb(self) -> Optional[Callable[[str, Logger], List[Dict]]]:
-        def cb(prefix: str, logger: Logger):
+        def cb(prefix: str, logger: Logger) -> List[Dict]:
 
             logs_configmap = {
                     'apiVersion' : "v1",

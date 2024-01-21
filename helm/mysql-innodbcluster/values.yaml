@@ -4,6 +4,17 @@ image:
     enabled: false
     secretName:
 
+## @param initContainers Add additional init containers.
+## Example:
+## initContainers:
+##   - name: your-image-name
+##     image: your-image
+##     imagePullPolicy: Always
+##     ports:
+##       - name: portname
+##         containerPort: 1234
+##
+initContainers: []
 
 credentials:
   root:

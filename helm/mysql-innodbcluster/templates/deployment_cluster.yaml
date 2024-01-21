@@ -34,6 +34,10 @@ metadata:
   name: {{ $cluster_name }}
   namespace: {{ .Release.Namespace }}
 spec:
+  initContainers:
+    { { - if .Values.initContainers } }
+      { { - include "common.tplvalues.render" (dict "value" .Values.initContainers "context" $) | nindent 8 } }
+      { { - end } }
   instances: {{ required "serverInstances is required" .Values.serverInstances }}
   tlsUseSelfSigned: {{ $use_self_signed }}
   router:

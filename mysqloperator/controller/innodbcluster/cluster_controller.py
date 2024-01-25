@@ -873,7 +873,7 @@ class ClusterController:
                     self.dba_cluster.set_routing_option(key, None)
                 except mysqlsh.Error as e:
                     # We don't fail when setting an option fails
-                    logger.warn(f"Failed unsetting routing option {routing_option}: {e}")
+                    logger.warn(f"Failed unsetting routing option {key}: {e}")
 
         # Set new values, this resets existing values
         for key in new:
@@ -881,4 +881,4 @@ class ClusterController:
                 self.dba_cluster.set_routing_option(key, new[key])
             except mysqlsh.Error as e:
                 # We don't fail when setting an option fails
-                logger.warn(f"Failed setting routing option {routing_option} to {routing_value}: {e}")
+                logger.warn(f"Failed setting routing option {key} to {new[key]}: {e}")

@@ -299,11 +299,9 @@ def create_admin_account(session, cluster, logger):
     # binlog has to be disabled for this, because we need to create the account
     # independently in all instances (so that we can run configure on them),
     # which would cause diverging GTID sets
-    session.run_sql(
-        "CREATE USER IF NOT EXISTS ?@? IDENTIFIED BY ?", [user, host, password])
+    session.run_sql("CREATE USER IF NOT EXISTS ?@? IDENTIFIED BY ?", [user, host, password])
     session.run_sql("GRANT ALL ON *.* TO ?@? WITH GRANT OPTION", [user, host])
-    session.run_sql(
-        "GRANT PROXY ON ''@'' TO ?@? WITH GRANT OPTION", [user, host])
+    session.run_sql("GRANT PROXY ON ''@'' TO ?@? WITH GRANT OPTION", [user, host])
     logger.info("Admin account created")
 
 
@@ -341,13 +339,11 @@ def connect(user: str, password: str, logger: Logger, timeout: Optional[int] = 6
                 logger.info(f"Connect attempt #{i} failed: {e}")
                 time.sleep(2)
             else:
-                logger.critical(
-                    f"Unexpected MySQL error during connection: {e}")
+                logger.critical(f"Unexpected MySQL error during connection: {e}")
                 raise
         i += 1
     else:
-        raise Exception(
-            "Could not connect to MySQL server after initialization")
+        raise Exception("Could not connect to MySQL server after initialization")
 
     assert mysqlsh.globals.session
 
@@ -431,8 +427,7 @@ def bootstrap(pod: MySQLPod, datadir: str, logger: Logger) -> int:
 
     mdver = metadata_schema_version(session, logger)
     if mdver:
-        logger.info(
-            f"InnoDB Cluster metadata (version={mdver}) found, skipping configuration...")
+        logger.info(f"InnoDB Cluster metadata (version={mdver}) found, skipping configuration...")
         pod.update_member_readiness_gate("configured", True)
         return 0
 

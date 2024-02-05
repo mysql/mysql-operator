@@ -143,7 +143,7 @@ def check_router_ssl(self, ns, pod, ca=None, has_cert=False, crl=None):
         self.assertEqual("PREFERRED", conf["DEFAULT"]["client_ssl_mode"])
 
     self.assertEqual("/router-ssl/ca/ca.pem", conf["DEFAULT"]["server_ssl_ca"])
-    self.assertEqual("AS_CLIENT", conf["DEFAULT"]["server_ssl_mode"])
+    self.assertEqual("PREFERRED", conf["DEFAULT"]["server_ssl_mode"])
     self.assertEqual("VERIFY_IDENTITY", conf["DEFAULT"]["server_ssl_verify"])
 
     # This won't be set with router 8.0.29, it knows about CA anyways

@@ -24,7 +24,7 @@ k_connect_retry_interval = 10
 class MonitoredCluster:
     def __init__(self, cluster: InnoDBCluster,
                  account: Tuple[str, str],
-                 handler: Callable[[InnoDBCluster, list, bool], None]):
+                 handler: Callable[[InnoDBCluster, list[tuple], bool], None]):
         self.cluster = cluster
         self.account = account
 
@@ -48,8 +48,7 @@ class MonitoredCluster:
     def ensure_connected(self) -> Optional['mysqlx.Session']:
         # TODO run a ping every X seconds
         if not self.session and (not self.last_connect_attempt or time.time() - self.last_connect_attempt > k_connect_retry_interval):
-            print(
-                f"GroupMonitor: Trying to connect to a member of cluster {self.cluster.namespace}/{self.cluster.name}")
+            print(f"GroupMonitor: Trying to connect to a member of cluster {self.cluster.namespace}/{self.cluster.name}")
             self.last_connect_attempt = time.time()
             self.session = None
             self.connect_to_primary()
@@ -57,12 +56,10 @@ class MonitoredCluster:
             # force a refresh after we connect so we don't miss anything
             # that happened while we were out
             if self.session:
-                print(
-                    f"GroupMonitor: Connect member of {self.cluster.namespace}/{self.cluster.name} OK {self.session}")
+                print(f"GroupMonitor: Connect member of {self.cluster.namespace}/{self.cluster.name} OK {self.session}")
                 self.on_view_change(None)
             else:
-                print(
-                    f"GroupMonitor: Connect to member of {self.cluster.namespace}/{self.cluster.name} failed")
+                print(f"GroupMonitor: Connect to member of {self.cluster.namespace}/{self.cluster.name} failed")
 
         return self.session
 
@@ -71,17 +68,14 @@ class MonitoredCluster:
             session, is_primary = self.find_primary()
             if not is_primary:
                 if session:
-                    print(
-                        f"GroupMonitor: Could not connect to PRIMARY of cluster {self.cluster.namespace}/{self.cluster.name}")
+                    print(f"GroupMonitor: Could not connect to PRIMARY of cluster {self.cluster.namespace}/{self.cluster.name}")
                 else:
-                    print(
-                        f"GroupMonitor: Could not connect to PRIMARY nor SECONDARY of cluster {self.cluster.namespace}/{self.cluster.name}")
+                    print(f"GroupMonitor: Could not connect to PRIMARY nor SECONDARY of cluster {self.cluster.namespace}/{self.cluster.name}")
 
             if session:
                 try:
                     # extend number of seconds for the server to wait for a command to arrive to a full day
-                    session.run_sql(
-                        f"set session mysqlx_wait_timeout = {24*60*60}")
+                    session.run_sql(f"set session mysqlx_wait_timeout = {24*60*60}")
                     session._enable_notices(["GRViewChanged"])
                     co = shellutils.parse_uri(session.uri)
                     self.target = f"{co['host']}:{co['port']}"
@@ -192,7 +186,7 @@ class GroupMonitor(threading.Thread):
         self.stopped = False
 
     def monitor_cluster(self, cluster: InnoDBCluster,
-                        handler: Callable[[InnoDBCluster, list, bool], None],
+                        handler: Callable[[InnoDBCluster, list[tuple], bool], None],
                         logger: Logger) -> None:
         for c in self.clusters:
             if c.name == cluster.name and c.namespace == cluster.namespace:

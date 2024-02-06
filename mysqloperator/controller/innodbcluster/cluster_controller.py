@@ -85,7 +85,7 @@ class ClusterController:
         }
         self.cluster.set_cluster_status(cluster_status)
 
-    def probe_status(self, logger) -> diagnose.ClusterStatus:
+    def probe_status(self, logger: Logger) -> diagnose.ClusterStatus:
         diag = diagnose.diagnose_cluster(self.cluster, logger)
         if not self.cluster.deleting:
             self.publish_status(diag)
@@ -93,7 +93,7 @@ class ClusterController:
             f"cluster probe: status={diag.status} online={diag.online_members}")
         return diag
 
-    def probe_status_if_needed(self, changed_pod: MySQLPod, logger) -> diagnose.ClusterDiagStatus:
+    def probe_status_if_needed(self, changed_pod: MySQLPod, logger: Logger) -> diagnose.ClusterDiagStatus:
         cluster_probe_time = self.cluster.get_cluster_status("lastProbeTime")
         member_transition_time = changed_pod.get_membership_info(
             "lastTransitionTime")
@@ -124,7 +124,7 @@ class ClusterController:
 
         return minfo
 
-    def connect_to_primary(self, primary_pod: MySQLPod, logger) -> 'Cluster':
+    def connect_to_primary(self, primary_pod: MySQLPod, logger: Logger) -> 'Cluster':
         if primary_pod:
             self.dba = shellutils.connect_dba(
                 primary_pod.endpoint_co, logger, max_tries=2)
@@ -135,7 +135,7 @@ class ClusterController:
         assert self.dba_cluster
         return self.dba_cluster
 
-    def connect_to_cluster(self, logger, need_primary=False) -> MySQLPod:
+    def connect_to_cluster(self, logger: Logger, need_primary:bool = False) -> MySQLPod:
         # Get list of pods and try to connect to one of them
         def try_connect() -> MySQLPod:
             last_exc = None
@@ -196,7 +196,7 @@ class ClusterController:
 
         return try_connect()
 
-    def log_mysql_info(self, pod: MySQLPod, session: 'ClassicSession', logger) -> None:
+    def log_mysql_info(self, pod: MySQLPod, session: 'ClassicSession', logger: Logger) -> None:
         row = session.run_sql(
             "select @@server_id, @@server_uuid, @@report_host").fetch_one()
         server_id, server_uuid, report_host = row
@@ -210,7 +210,7 @@ class ClusterController:
         logger.info(
             f"server_id={server_id} server_uuid={server_uuid}  report_host={report_host}  gtid_executed={gtid_executed}  gtid_purged={gtid_purged}")
 
-    def create_cluster(self, seed_pod: MySQLPod, logger) -> None:
+    def create_cluster(self, seed_pod: MySQLPod, logger: Logger) -> None:
         logger.info("Creating cluster at %s" % seed_pod.name)
 
         assume_gtid_set_complete = False
@@ -322,7 +322,7 @@ class ClusterController:
             if self.cluster.parsed_spec.instances == 1:
                 self.post_create_actions(dba.session, self.dba_cluster, logger)
 
-    def post_create_actions(self, session: 'ClassicSession', dba_cluster: 'Cluster', logger) -> None:
+    def post_create_actions(self, session: 'ClassicSession', dba_cluster: 'Cluster', logger: Logger) -> None:
         logger.info("cluster_controller::post_create_actions")
         # create router account
         user, password = self.cluster.get_router_account()
@@ -357,7 +357,7 @@ class ClusterController:
             router_objects.update_size(self.cluster, n, logger)
 
 
-    def reboot_cluster(self, seed_pod_index: MySQLPod, logger) -> None:
+    def reboot_cluster(self, seed_pod_index: MySQLPod, logger: Logger) -> None:
         pods = self.cluster.get_pods()
         seed_pod = pods[seed_pod_index]
 
@@ -385,7 +385,7 @@ class ClusterController:
         self.probe_member_status(seed_pod, self.dba.session, True, logger)
 
 
-    def force_quorum(self, seed_pod, logger) -> None:
+    def force_quorum(self, seed_pod, logger: Logger) -> None:
         logger.info(
             f"Forcing quorum of cluster {self.cluster.name} using {seed_pod.name}...")
 
@@ -398,7 +398,7 @@ class ClusterController:
 
         # TODO Rejoin OFFLINE members
 
-    def destroy_cluster(self, last_pod, logger) -> None:
+    def destroy_cluster(self, last_pod, logger: Logger) -> None:
         logger.info(f"Stopping GR for last cluster member {last_pod.name}")
 
         try:
@@ -417,7 +417,7 @@ class ClusterController:
 
         last_pod.remove_member_finalizer()
 
-    def reconcile_pod(self, primary_pod: MySQLPod, pod: MySQLPod, logger) -> None:
+    def reconcile_pod(self, primary_pod: MySQLPod, pod: MySQLPod, logger: Logger) -> None:
         with DbaWrap(shellutils.connect_dba(pod.endpoint_co, logger)) as pod_dba_session:
             cluster = self.connect_to_primary(primary_pod, logger)
 
@@ -460,7 +460,7 @@ class ClusterController:
 
                 self.probe_member_status(pod, pod_dba_session.session, False, logger)
 
-    def join_instance(self, pod: MySQLPod, pod_dba_session: 'Dba', logger) -> None:
+    def join_instance(self, pod: MySQLPod, pod_dba_session: 'Dba', logger: Logger) -> None:
         logger.info(f"Adding {pod.endpoint} to cluster")
 
         peer_pod = self.connect_to_cluster(logger)
@@ -530,7 +530,7 @@ class ClusterController:
         if not router_objects.get_size(self.cluster) and member_count == self.cluster.parsed_spec.instances:
             self.post_create_actions(self.dba.session, self.dba_cluster, logger)
 
-    def rejoin_instance(self, pod: MySQLPod, pod_session, logger) -> None:
+    def rejoin_instance(self, pod: MySQLPod, pod_session, logger: Logger) -> None:
         logger.info(f"Rejoining {pod.endpoint} to cluster")
 
         if not self.dba_cluster:
@@ -553,7 +553,7 @@ class ClusterController:
 
         self.probe_member_status(pod, pod_session, False, logger)
 
-    def remove_instance(self, pod: MySQLPod, pod_body: Body, logger, force: bool = False) -> None:
+    def remove_instance(self, pod: MySQLPod, pod_body: Body, logger: Logger, force: bool = False) -> None:
         try:
             self.__remove_instance_aux(pod, logger, force)
         except Exception as e:
@@ -564,7 +564,7 @@ class ClusterController:
             pod.remove_member_finalizer(pod_body)
             logger.info(f"Removed finalizer for pod {pod_body['metadata']['name']}")
 
-    def __remove_instance_aux(self, pod: MySQLPod, logger, force: bool = False) -> None:
+    def __remove_instance_aux(self, pod: MySQLPod, logger: Logger, force: bool = False) -> None:
         logger.info(f"Removing {pod.endpoint} from cluster")
 
         # TODO improve this check
@@ -637,7 +637,7 @@ class ClusterController:
 
 
 
-    def repair_cluster(self, pod: MySQLPod, diagnostic: diagnose.ClusterStatus, logger) -> None:
+    def repair_cluster(self, pod: MySQLPod, diagnostic: diagnose.ClusterStatus, logger: Logger) -> None:
         # TODO check statuses where router has to be put down
 
         # Restore cluster to an ONLINE state
@@ -735,7 +735,7 @@ class ClusterController:
         """
         pass
 
-    def on_pod_created(self, pod: MySQLPod, logger) -> None:
+    def on_pod_created(self, pod: MySQLPod, logger: Logger) -> None:
         diag = self.probe_status(logger)
 
         logger.debug(
@@ -767,7 +767,7 @@ class ClusterController:
             raise kopf.TemporaryError(
                 f"Cluster repair from state {diag.status} attempted", delay=3)
 
-    def on_pod_restarted(self, pod: MySQLPod, logger) -> None:
+    def on_pod_restarted(self, pod: MySQLPod, logger: Logger) -> None:
         diag = self.probe_status(logger)
         logger.debug(
             f"on_pod_restarted: pod={pod.name}  primary={diag.primary}  cluster_state={diag.status}")
@@ -778,7 +778,7 @@ class ClusterController:
         shellutils.RetryLoop(logger).call(
             self.reconcile_pod, diag.primary, pod, logger)
 
-    def on_pod_deleted(self, pod: MySQLPod, pod_body: Body, logger) -> None:
+    def on_pod_deleted(self, pod: MySQLPod, pod_body: Body, logger: Logger) -> None:
         diag = self.probe_status(logger)
 
         logger.debug(
@@ -804,7 +804,7 @@ class ClusterController:
         # TODO maybe not needed? need to make sure that shrinking cluster will be reported as ONLINE
         self.probe_status(logger)
 
-    def on_group_view_change(self, members: list, view_id_changed) -> None:
+    def on_group_view_change(self, members: list[tuple], view_id_changed) -> None:
         """
         Query membership info about the cluster and update labels and
         annotations in each pod.
@@ -863,7 +863,7 @@ class ClusterController:
         mysqlutils.setup_metrics_user(self.dba.session, user, grants,
                                       max_connections)
 
-    def on_router_routing_option_chahnge(self, old: dict, new: dict, logger: 'Logger') -> None:
+    def on_router_routing_option_chahnge(self, old: dict, new: dict, logger: Logger) -> None:
         self.connect_to_primary(None, logger)
 
         # Unset removed entries

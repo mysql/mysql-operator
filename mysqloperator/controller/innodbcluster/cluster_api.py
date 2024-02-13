@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -11,6 +11,8 @@ from typing import Optional, Union, List, Tuple, Dict, Callable, cast, overload
 
 from kopf._cogs.structs.bodies import Body
 from logging import getLogger, Logger
+
+from .. import fqdn
 from ..k8sobject import K8sInterfaceObject
 from .. import utils, config, consts
 from ..backup.backup_api import BackupProfile, BackupSchedule
@@ -887,6 +889,7 @@ class AbstractServerSetSpec(abc.ABC):
 
     router_httpport: int = 8443
 
+    serviceFqdnTemplate = None
 
     # TODO resource allocation for server, router and sidecar
     # TODO recommendation is that sidecar has 500MB RAM if MEB is used
@@ -1002,6 +1005,13 @@ class AbstractServerSetSpec(abc.ABC):
         # TODO keep a list of base_server_id in the operator to keep things globally unique?
         if "baseServerId" in spec_specific:
             self.baseServerId = dget_int(spec_specific, "baseServerId", "spec")
+
+        self.serviceFqdnTemplate = None
+        if "serviceFqdnTemplate" in spec_root:
+            self.serviceFqdnTemplate = dget_str(spec_root, "serviceFqdnTemplate",
+                                                "spec",
+                                                default_value="{service}.{namespace}.svc.{domain}")
+
 
 
     def print_backup_schedules(self) -> None:
@@ -1321,6 +1331,7 @@ class InnoDBClusterSpec(AbstractServerSetSpec):
                 self.readReplicas.append(self.parse_read_replica(spec, replica, f"spec.readReplicas[{i}]"))
                 i += 1
 
+
     def validate(self, logger: Logger) -> None:
         super().validate(logger)
 
@@ -1446,6 +1457,11 @@ class InnoDBClusterSpec(AbstractServerSetSpec):
     @property
     def router_image_pull_policy(self) -> str:
         return self.router.podSpec.get("imagePullPolicy", self.imagePullPolicy.value)
+
+    @property
+    def service_fqdn_template(self) -> Optional[str]:
+        return self.serviceFqdnTemplate
+
 
 
 class InnoDBCluster(K8sInterfaceObject):
@@ -1869,6 +1885,17 @@ class InnoDBCluster(K8sInterfaceObject):
             obj["status"] = utils.merge_patch_object(obj["status"], status)
         self.obj = self._patch_status(self.namespace, self.name, obj)
 
+    def update_cluster_fqdn(self) -> None:
+        fqdn_template = fqdn.idc_service_fqdn_template(self.parsed_spec)
+        patch = {
+            "metadata": {
+                "annotations": {
+                    fqdn.FQDN_ANNOTATION_NAME: fqdn_template
+                }
+            }
+        }
+        self.obj = self._patch(self.namespace, self.name, patch)
+
     def update_cluster_info(self, info: dict) -> None:
         """
         Set metadata about the cluster as an annotation.
@@ -2146,7 +2173,7 @@ class MySQLPod(K8sInterfaceObject):
 
     @property
     def address_fqdn(self) -> str:
-        return self.name+"."+cast(str, self.spec.subdomain)+"."+self.namespace+".svc."+k8s_cluster_domain(self.logger)
+        return fqdn.pod_fqdn(self, self.logger)
 
     @property
     def pod_ip_address(self) -> str:

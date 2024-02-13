@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -10,6 +10,7 @@ from ..kubeutils import client as api_client, ApiException
 from .. import utils, config, consts
 from .cluster_api import InnoDBCluster, AbstractServerSetSpec, InnoDBClusterSpec, ReadReplicaSpec, InnoDBClusterSpecProperties
 from . import cluster_controller
+from .. import fqdn
 import yaml
 from ..kubeutils import api_core, api_apps, api_customobj, k8s_cluster_domain
 import base64
@@ -153,6 +154,8 @@ def prepare_cluster_stateful_set(spec: AbstractServerSetSpec, logger: Logger) ->
     # on the safe side
     cluster_domain = k8s_cluster_domain(logger)
 
+    fqdn_template = fqdn.idc_service_fqdn_template(spec)
+
     extra_label = ""
     if type(spec) is InnoDBClusterSpec:
         instance_type = "group-member"
@@ -171,6 +174,8 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {spec.name}
+  annotations:
+      mysql.oracle.com/fqdn-template: '{fqdn_template}'
   labels:
     tier: mysql
     mysql.oracle.com/cluster: {spec.cluster_name}
@@ -199,6 +204,8 @@ spec:
       app.kubernetes.io/created-by: mysql-operator
   template:
     metadata:
+      annotations:
+        mysql.oracle.com/fqdn-template: '{fqdn_template}'
       labels:
         component: mysqld
         tier: mysql

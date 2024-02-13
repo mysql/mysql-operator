@@ -857,6 +857,10 @@ spec:
                       podLabels:
                         type: object
                         x-kubernetes-preserve-unknown-fields: true
+                serviceFqdnTemplate:
+                  type: string
+                  description: "Template for a FQDN resolving to the cluster's headless instance Service and individual Pods"
+                  #default: "{service}.{namespace}.svc.{domain}" - We can't set the default as that would override the environment value from the operator
             status:
               type: object
               x-kubernetes-preserve-unknown-fields: true

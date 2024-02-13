@@ -460,3 +460,6 @@ spec:
     {{- end }}
   {{- end }}
 {{- end }}
+{{- if ((.Values).serviceFqdnTemplate) }}
+  serviceFqdnTemplate:  {{ (.Values).serviceFqdnTemplate | quote }}
+{{- end }}

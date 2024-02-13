@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -11,7 +11,7 @@ import shutil
 import argparse
 from typing import cast
 import mysqlsh
-from .controller import utils, k8sobject
+from .controller import fqdn, utils, k8sobject
 from .controller.innodbcluster.cluster_api import MySQLPod
 from .controller.kubeutils import k8s_cluster_domain
 
@@ -41,8 +41,8 @@ def init_conf(datadir: str, pod: MySQLPod, cluster, logger: logging.Logger):
     else:
         raise RuntimeError(f"Invalid instance type: {pod.instance_type}")
 
-    subdomain = pod.spec.subdomain
-    report_host = f"{pod.name}.{subdomain}.{cluster.namespace}.svc.{k8s_cluster_domain(logger, ns = cluster.namespace)}"
+    report_host = fqdn.pod_fqdn(pod, logger)
+
     logger.info(
         f"Setting up configurations for {pod.name}  server_id={server_id}  report_host={report_host}")
 

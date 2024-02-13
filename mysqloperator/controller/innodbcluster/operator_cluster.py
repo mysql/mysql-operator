@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -180,6 +180,8 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
 
     #print(f"Default operator IC edition: {config.MYSQL_OPERATOR_DEFAULT_IC_EDITION} Edition")
     cluster.log_cluster_info(logger)
+
+    cluster.update_cluster_fqdn()
 
     if not cluster.ready:
         try:

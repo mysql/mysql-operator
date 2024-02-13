@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -6,7 +6,7 @@
 from shlex import quote
 from .cluster_api import InnoDBCluster, InnoDBClusterSpec
 from ..kubeutils import client as api_client, ApiException
-from .. import config, utils
+from .. import config, fqdn, utils
 import yaml
 from ..kubeutils import api_apps, api_core, k8s_cluster_domain
 import kopf
@@ -125,6 +125,8 @@ def prepare_router_deployment(cluster: InnoDBCluster, logger, *,
     (router_bootstrap_options, router_tls_exists, ca_and_tls) = get_bootstrap_and_tls_options(cluster)
     router_command = ['mysqlrouter', *spec.router.options]
 
+    router_target = fqdn.idc_service_fqdn(cluster, logger)
+
     tmpl = f"""
 apiVersion: apps/v1
 kind: Deployment
@@ -185,7 +187,7 @@ spec:
             - ALL
         env:
         - name: MYSQL_HOST
-          value: {spec.name}-instances.{spec.namespace}.svc.{k8s_cluster_domain(logger)}
+          value: {router_target}
         - name: MYSQL_PORT
           value: "3306"
         - name: MYSQL_USER

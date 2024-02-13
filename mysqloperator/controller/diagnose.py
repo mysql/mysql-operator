@@ -107,7 +107,9 @@ def diagnose_instance(pod: MySQLPod, logger, dba: 'Dba' = None) -> InstanceStatu
         status.gtid_executed = dba.session.run_sql("select @@gtid_executed").fetch_one()[0]
 
         try:
-            cluster = dba.get_cluster(None, {"connectToPrimary": False})
+            # TODO: we want to check from individual Pod's/Server's perspective
+            #       it will now check based from primary N times
+            cluster = dba.get_cluster()
         except mysqlsh.Error as e:
             logger.info(f"get_cluster() error for {pod.endpoint}: error={e}")
 

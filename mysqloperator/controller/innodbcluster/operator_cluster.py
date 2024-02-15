@@ -27,7 +27,7 @@ import time
 # TODO check whether we should store versions in status to make upgrade easier
 
 
-def on_group_view_change(cluster: InnoDBCluster, members: list, view_id_changed: bool) -> None:
+def on_group_view_change(cluster: InnoDBCluster, members: list[tuple], view_id_changed: bool) -> None:
     """
     Triggered from the GroupMonitor whenever the membership view changes.
     This handler should react to changes that wouldn't be noticed by regular
@@ -114,8 +114,8 @@ def do_create_read_replica(cluster: InnoDBCluster, rr: cluster_objects.ReadRepli
     print(f"{indention}RR Service")
     if not ignore_404(lambda: cluster.get_read_replica_service(rr.name)):
         print(f"{indention}\tPreparing... {rr.name} Service")
-        service = cluster_objects.prepare_cluster_service(rr)
-        print(f"{indention}\tCreating...")
+        service = cluster_objects.prepare_cluster_service(rr, logger)
+        print(f"{indention}\tCreating...{service}")
         kopf.adopt(service)
         api_core.create_namespaced_service(namespace=namespace, body=service)
 
@@ -232,8 +232,8 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             print("4. Cluster Service")
             if not ignore_404(cluster.get_service):
                 print("\tPreparing...")
-                service = cluster_objects.prepare_cluster_service(icspec)
-                print(f"\tCreating Service {service['metadata']['name']}...")
+                service = cluster_objects.prepare_cluster_service(icspec, logger)
+                print(f"\tCreating Service {service['metadata']['name']}...{service}")
                 kopf.adopt(service)
                 api_core.create_namespaced_service(namespace=namespace, body=service)
 
@@ -266,7 +266,6 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 statefulset = cluster_objects.prepare_cluster_stateful_set(icspec, logger)
                 print(f"\tCreating...{statefulset}")
                 kopf.adopt(statefulset)
-
                 api_apps.create_namespaced_stateful_set(namespace=namespace, body=statefulset)
 
             print("8. Cluster PodDisruptionBudget")
@@ -316,14 +315,14 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 kopf.adopt(secret)
                 api_core.create_namespaced_secret(namespace=namespace, body=secret)
 
-            print("13. Metrics Service Monitor")
-            if not ignore_404(cluster.get_metrics_monitor):
-                if icspec.metrics and icspec.metrics.enable and icspec.metrics.monitor:
-                    print("\tPreparing...")
-                    monitor = cluster_objects.prepare_metrics_service_monitor(cluster, logger)
-                    print("\tCreating...")
+            print("13. Service Monitors")
+            monitors = cluster_objects.prepare_metrics_service_monitors(cluster.parsed_spec, logger)
+            if len(monitors) == 0:
+                print("\tNone requested")
+            for monitor in monitors:
+                if not ignore_404(lambda: cluster.get_service_monitor(monitor['metadata']['name'])):
+                    print(f"\tCreating ServiceMonitor {monitor} ...")
                     kopf.adopt(monitor)
-                    print(monitor)
                     try:
                         api_customobj.create_namespaced_custom_object(
                             "monitoring.coreos.com", "v1", cluster.namespace,
@@ -331,10 +330,9 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                     except Exception as exc:
                         # This might be caused by Prometheus Operator missing
                         # we won't fail for that
+                        print(f"\tServiceMonitor {monitor['metadata']['name']} NOT created!")
                         print(exc)
                         cluster.warn(action="CreateCluster", reason="CreateResourceFailed", message=f"{exc}")
-                else:
-                    print("\tNot requested.")
 
         except Exception as exc:
             cluster.warn(action="CreateCluster", reason="CreateResourceFailed",
@@ -387,8 +385,7 @@ def on_innodbcluster_delete(name: str, namespace: str, body: Body,
             cluster.remove_cluster_finalizer()
 
         logger.info(f"Updating InnoDB Cluster StatefulSet.instances to 0")
-        cluster_objects.update_stateful_set_spec(
-            sts, {"spec": {"replicas": 0}})
+        cluster_objects.update_stateful_set_spec(sts, {"spec": {"replicas": 0}})
 
 
 # TODO add a busy state and prevent changes while on it
@@ -776,7 +773,7 @@ def on_pod_create(body: Body, logger: Logger, **kwargs):
     # check general assumption
     assert not pod.deleting
 
-    logger.info(f"POD CREATED: pod={pod.name} ContainersReady={pod.check_condition('ContainersReady')} Ready={pod.check_condition('Ready')} gate[configured]={pod.get_member_readiness_gate('configured')}")
+    print(f"on_pod_create: pod={pod.name} ContainersReady={pod.check_condition('ContainersReady')} Ready={pod.check_condition('Ready')} gate[configured]={pod.get_member_readiness_gate('configured')}")
 
     configured = pod.get_member_readiness_gate("configured")
     if not configured:
@@ -788,13 +785,13 @@ def on_pod_create(body: Body, logger: Logger, **kwargs):
     # the database from a donor (cloning) the sidecar has already started a seed instance
     # and cloned from the donor into it (see initdb.py::start_clone_seed_pod())
     cluster = pod.get_cluster()
-    logger.info(f"CLUSTER DELETING={cluster.deleting}")
 
     assert cluster
 
     with ClusterMutex(cluster, pod):
         first_pod = pod.index == 0 and not cluster.get_create_time()
         if first_pod:
+            print("on_pod_create: first pod created")
             cluster_objects.on_first_cluster_pod_created(cluster, logger)
 
             g_group_monitor.monitor_cluster(
@@ -879,6 +876,7 @@ def on_pod_delete(body: Body, logger: Logger, **kwargs):
     - cluster is being deleted
     - user deletes a pod by hand
     """
+    print("on_pod_delete")
     # TODO ensure that the pod is owned by us
     pod = MySQLPod.from_json(body)
 
@@ -895,6 +893,7 @@ def on_pod_delete(body: Body, logger: Logger, **kwargs):
             cluster_ctl.on_pod_deleted(pod, body, logger)
 
             if pod.index == 0 and cluster.deleting:
+                print("Last cluster removed being removed!")
                 cluster_objects.on_last_cluster_pod_removed(cluster, logger)
     else:
         pod.remove_member_finalizer(body)
@@ -1001,9 +1000,7 @@ def on_innodbcluster_field_metrics(old: str, new: str, body: Body,
         cluster_ctl = ClusterController(cluster)
         cluster_ctl.on_change_metrics_user(logger)
 
-        sts = cluster.get_stateful_set()
-        service = cluster.get_service()
-        cluster_objects.update_metrics(sts, service, cluster, logger)
+        cluster_objects.update_objects_for_metrics(cluster, logger)
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
@@ -1033,5 +1030,4 @@ def on_innodbcluster_field_logs(old: str, new: str, body: Body, logger: Logger, 
 
     cluster.parsed_spec.validate(logger)
     with ClusterMutex(cluster):
-        sts = cluster.get_stateful_set()
-        cluster_objects.update_objects_for_logs(sts, cluster, logger)
+        cluster_objects.update_objects_for_logs(cluster, logger)

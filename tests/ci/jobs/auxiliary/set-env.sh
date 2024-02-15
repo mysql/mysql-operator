@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) 2022, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2022, 2024, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -69,6 +69,8 @@ if [[ -v OTE_RUN_ON_OCI && $OTE_RUN_ON_OCI -eq 1 ]]; then
 else
 	OTE_DEFAULT_EXECUTION_ENVIRONMENT='local'
 fi
+
+#export OPERATOR_TEST_METRICS_IMAGE_NAME=${OPERATOR_TEST_REGISTRY}/prom/mysqld-exporter:v0.14.0
 
 # determines how long a container, its related volumes, or networks are
 # allowed to live before they are purged at the init stage of the next

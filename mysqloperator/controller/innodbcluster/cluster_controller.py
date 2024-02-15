@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -565,13 +565,18 @@ class ClusterController:
             logger.info(f"Removed finalizer for pod {pod_body['metadata']['name']}")
 
     def __remove_instance_aux(self, pod: MySQLPod, logger: Logger, force: bool = False) -> None:
-        logger.info(f"Removing {pod.endpoint} from cluster")
+        print(f"Removing {pod.endpoint} from cluster FORCE={force}")
 
         # TODO improve this check
         other_pods = self.cluster.get_pods()
+        if len(other_pods) == 1 and pod.instance_type == 'group-member':
+            print("There is only one pod left in the cluster. Won't remove it, as this will dissolve the cluster. It will be removed only if the cluster is being deleted.")
+
         if len(other_pods) > 1 or (len(other_pods) > 0 and pod.instance_type == 'read-replica'):
             try:
+                print("connect_to_cluster")
                 peer_pod = self.connect_to_cluster(logger)
+                print(f"peer_pod={peer_pod}")
             except mysqlsh.Error as e:
                 peer_pod = None
                 if self.cluster.deleting:
@@ -589,8 +594,7 @@ class ClusterController:
                     logger.info(
                         f"remove_instance: {pod.name}  peer={peer_pod.name}  options={remove_options}")
                     try:
-                        self.dba_cluster.remove_instance(
-                            pod.endpoint, remove_options)
+                        self.dba_cluster.remove_instance(pod.endpoint, remove_options)
                         removed = True
                         logger.debug("remove_instance OK")
                     except mysqlsh.Error as e:
@@ -603,14 +607,13 @@ class ClusterController:
                         elif e.code == errors.SHERR_DBA_MEMBER_METADATA_MISSING:
                             # already removed and we're probably just retrying
                             removed = True
-
+                print(f"removed={removed}")
                 if not removed:
                     remove_options["force"] = True
                     logger.info(
                         f"remove_instance: {pod.name}  peer={peer_pod.name}  options={remove_options}")
                     try:
-                        self.dba_cluster.remove_instance(
-                            pod.endpoint, remove_options)
+                        self.dba_cluster.remove_instance(pod.endpoint, remove_options)
 
                         logger.info("FORCED remove_instance OK")
                     except mysqlsh.Error as e:
@@ -736,10 +739,10 @@ class ClusterController:
         pass
 
     def on_pod_created(self, pod: MySQLPod, logger: Logger) -> None:
+        print("on_pod_created: probing cluster")
         diag = self.probe_status(logger)
 
-        logger.debug(
-            f"on_pod_created: pod={pod.name} primary={diag.primary} cluster_state={diag.status}")
+        print(f"on_pod_created: pod={pod.name} primary={diag.primary} cluster_state={diag.status}")
 
         if diag.status == diagnose.ClusterDiagStatus.INITIALIZING:
             # If cluster is not yet created, then we create it at pod-0
@@ -748,6 +751,7 @@ class ClusterController:
                     raise kopf.PermanentError(
                         f"Internal inconsistency: cluster marked as initialized, but create requested again")
 
+                print("Time to create the cluster")
                 shellutils.RetryLoop(logger).call(self.create_cluster, pod, logger)
 
                 # Mark the cluster object as already created
@@ -757,15 +761,16 @@ class ClusterController:
                 raise kopf.TemporaryError("Cluster is not yet ready", delay=15)
 
         elif diag.status in (diagnose.ClusterDiagStatus.ONLINE, diagnose.ClusterDiagStatus.ONLINE_PARTIAL, diagnose.ClusterDiagStatus.ONLINE_UNCERTAIN):
+            print("Reconciling pod")
             # Cluster exists and is healthy, join the pod to it
             shellutils.RetryLoop(logger).call(
                 self.reconcile_pod, diag.primary, pod, logger)
         else:
+            print("Attempting to repair the cluster")
             self.repair_cluster(pod, diag, logger)
 
             # Retry from scratch in another iteration
-            raise kopf.TemporaryError(
-                f"Cluster repair from state {diag.status} attempted", delay=3)
+            raise kopf.TemporaryError(f"Cluster repair from state {diag.status} attempted", delay=5)
 
     def on_pod_restarted(self, pod: MySQLPod, logger: Logger) -> None:
         diag = self.probe_status(logger)
@@ -781,8 +786,7 @@ class ClusterController:
     def on_pod_deleted(self, pod: MySQLPod, pod_body: Body, logger: Logger) -> None:
         diag = self.probe_status(logger)
 
-        logger.debug(
-            f"on_pod_deleted: pod={pod.name}  primary={diag.primary}  cluster_state={diag.status}")
+        print(f"on_pod_deleted: pod={pod.name}  primary={diag.primary}  cluster_state={diag.status} cluster.deleting={self.cluster.deleting}")
 
         if self.cluster.deleting:
             # cluster is being deleted, if this is pod-0 shut it down
@@ -792,13 +796,14 @@ class ClusterController:
                 return
 
         if pod.deleting and diag.status in (diagnose.ClusterDiagStatus.ONLINE, diagnose.ClusterDiagStatus.ONLINE_PARTIAL, diagnose.ClusterDiagStatus.ONLINE_UNCERTAIN, diagnose.ClusterDiagStatus.FINALIZING):
+            print(f"REMOVING INSTANCE {pod.name}")
             shellutils.RetryLoop(logger).call(
                 self.remove_instance, pod, pod_body, logger)
         else:
-            logger.info("ATTEMPTING CLUSTER REPAIR")
+            print("ATTEMPTING CLUSTER REPAIR")
             self.repair_cluster(pod, diag, logger)
             # Retry from scratch in another iteration
-            logger.info("RETRYING ON POD DELETE")
+            print("RETRYING ON POD DELETE")
             raise kopf.TemporaryError(f"Cluster repair from state {diag.status} attempted", delay=3)
 
         # TODO maybe not needed? need to make sure that shrinking cluster will be reported as ONLINE

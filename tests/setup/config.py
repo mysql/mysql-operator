@@ -70,9 +70,6 @@ class Config:
     # vault
     vault_cfg_path = defaults.OCI_VAULT_CONFIG_PATH
 
-    # metrics sidecar
-    metrics_image_name = defaults.METRICS_IMAGE_NAME
-
     # runtime environment
     workspace_dir = None
 
@@ -210,6 +207,7 @@ class Config:
         AZURE_STORAGE = 0
         AZURE_CLI = 1
         FLUENTD = 2
+        METRICS = 3
 
     def image_to_name(self, image: Image) -> str:
         if image == Config.Image.AZURE_STORAGE:
@@ -218,6 +216,8 @@ class Config:
             return defaults.AZURE_CLI_IMAGE_NAME
         elif image == Config.Image.FLUENTD:
             return defaults.FLUENTD_IMAGE_NAME
+        elif image == Config.Image.METRICS:
+            return defaults.METRICS_IMAGE_NAME
         else:
             return None
 
@@ -265,6 +265,7 @@ Operator image                       : {self.get_operator_image()}
 Server image / old image             : {self.get_server_image()} / {self.get_old_server_image()}
 Router image / old image             : {self.get_router_image()} / {self.get_old_router_image()}
 Fluentd image                        : {self.get_image(Config.Image.FLUENTD)}
+Metrics image                        : {self.get_image(Config.Image.METRICS)}
 Custom test ns labels                : {self.get_custom_test_ns_labels()}
 Custom operator ns labels            : {self.get_custom_operator_ns_labels()}
 Custom STS podspec                   : {self.get_custom_sts_podspec()}

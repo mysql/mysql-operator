@@ -20,7 +20,7 @@ import base64
 # This service includes all instances, even those that are not ready
 
 
-def prepare_cluster_service(spec: AbstractServerSetSpec) -> dict:
+def prepare_cluster_service(spec: AbstractServerSetSpec, logger: Logger) -> dict:
     extra_label = ""
     if type(spec) is InnoDBClusterSpec:
         instance_type = "group-member"
@@ -54,7 +54,6 @@ spec:
   - name: gr-xcom
     port: {spec.mysql_grport}
     targetPort: {spec.mysql_grport}
-{utils.indent(spec.metrics_service_port, 2)}
   selector:
     component: mysqld
     tier: mysql
@@ -63,7 +62,15 @@ spec:
     {extra_label}
   type: ClusterIP
 """
-    return yaml.safe_load(tmpl)
+
+    svc = yaml.safe_load(tmpl)
+    for subsystem in spec.get_add_to_svc_cbs:
+        print(f"\t\tadd_to_sts_cb: Checking subsystem {subsystem}")
+        for add_to_svc_cb in spec.get_add_to_svc_cbs[subsystem]:
+            print(f"\t\tAdding {subsystem} bits")
+            add_to_svc_cb(svc, logger)
+
+    return svc
 
 
 def prepare_secrets(spec: InnoDBClusterSpec) -> dict:
@@ -479,7 +486,6 @@ spec:
           mountPath: /tmp
 {utils.indent(spec.extra_volume_mounts, 8)}
 
-{utils.indent(spec.metrics_sidecar, 6)}
       volumes:
       - name: mycnfdata
         emptyDir: {{}}
@@ -502,7 +508,6 @@ spec:
       - name: sidecar-tmp
         emptyDir: {{}}
 {utils.indent(spec.extra_volumes, 6)}
-{utils.indent(spec.metrics_volumes, 6)}
   volumeClaimTemplates:
   - metadata:
       name: datadir
@@ -531,6 +536,7 @@ spec:
         spec.keyring.add_to_sts_spec(statefulset)
 
     for subsystem in spec.add_to_sts_cbs:
+        print(f"\t\tadd_to_sts_cb: Checking subsystem {subsystem}")
         for add_to_sts_cb in spec.add_to_sts_cbs[subsystem]:
             print(f"\t\tAdding {subsystem} bits")
             add_to_sts_cb(statefulset, logger)
@@ -600,12 +606,12 @@ roleRef:
 def prepare_additional_configmaps(spec: AbstractServerSetSpec, logger: Logger) -> List[Dict]:
     configmaps = []
     prefix = ''
-    for subsystem in spec.get_configmap_cbs:
-        for cb in spec.get_configmap_cbs[subsystem]:
-            cm = cb(prefix, logger)
-            if cm:
-                configmaps.extend(cm)
-
+    for subsystem in spec.get_configmaps_cbs:
+        for cb in spec.get_configmaps_cbs[subsystem]:
+            if cms := cb(prefix, logger):
+              for (cm_name, cm) in cms:
+                  if cm:
+                      configmaps.append(cm)
     return configmaps
 
 
@@ -793,9 +799,19 @@ data:
 
     return cm
 
-def prepare_metrics_service_monitor(cluster: InnoDBCluster, logger: Logger) -> List[Dict]:
+def prepare_metrics_service_monitors(spec: AbstractServerSetSpec, logger: Logger) -> List[Dict]:
+    monitors = []
+    prefix = ''
+    for subsystem in spec.get_svc_monitor_cbs:
+        for cb in spec.get_svc_monitor_cbs[subsystem]:
+            (monitor_name, monitor) = cb(logger)
+            if monitor:
+                monitors.append(monitor)
+
+    return monitors
+
     monitor = f"""
-apiVersion: monitoring.coreos.com/v1
+apiVersion: monitoringcoreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: {cluster.name}
@@ -934,98 +950,110 @@ def update_template_property(sts: api_client.V1StatefulSet, property_name: str, 
     update_stateful_set_spec(sts, patch)
 
 
-def update_metrics(sts: api_client.V1StatefulSet,
-                   service: api_client.V1Service,
-                   cluster: InnoDBCluster, logger: Logger) -> None:
+def update_objects_for_subsystem(subsystem: InnoDBClusterSpecProperties,
+                                 cluster: InnoDBCluster,
+                                 logger: Logger) -> None:
+    logger.info(f"update_objects_for_subsystem: {subsystem}")
+
+    sts = cluster.get_stateful_set()
+    svc = cluster.get_service()
+
     spec = cluster.parsed_spec
 
-    # Changes to the metrics user will be handled by the ClusterController and
-    # should be done before this is being called
+    if subsystem in spec.get_configmaps_cbs:
+        print(f"\t\tWalking over get_configmaps_cbs len={len(spec.get_configmaps_cbs[subsystem])}")
+        #TODO: This won't delete old CMs but only replace old ones, if are still in use, with new content
+        #      or create new ones. The solution is to use tuple returning like get_svc_monitor_cbs, where
+        #      the cm name will be returned as first tuple element and second will be just None. This will
+        #      signal that this CM should be removed, as not in use anymore.
+        for get_configmap_cb in spec.get_configmaps_cbs[subsystem]:
+            prefix = ''
+            new_configmaps = get_configmap_cb(prefix, logger)
+            if not new_configmaps:
+                continue
+            for (cm_name, new_cm) in new_configmaps:
+                current_cm = cluster.get_configmap(cm_name)
+                if current_cm:
+                    if not new_cm:
+                        print(f"\t\t\tDeleting CM {cluster.namespace}/{cm_name}")
+                        cluster.delete_configmap(cm_name)
+                        continue
 
-    # Here we are first removing old sidecar and volumes, if they exist and
-    # then add current as needed
+                    data_differs = current_cm.data != new_cm["data"]
+                    if data_differs:
+                        print(f"\t\t\tReplacing CM {cluster.namespace}/{cm_name}")
+                        current_cm.data = new_cm["data"]
+                        api_core.replace_namespaced_config_map(cm_name, cluster.namespace, body=current_cm)
+                else:
+                    print(f"\t\t\tNo such cm exists. Creating {cluster.namespace}/{new_cm}")
+                    kopf.adopt(new_cm)
+                    api_core.create_namespaced_config_map(cluster.namespace, new_cm)
 
-    sts.spec.template.spec.containers = list(filter(
-        lambda container: container.name != "metrics",
-        sts.spec.template.spec.containers
-    ))
+    if subsystem in spec.add_to_sts_cbs:
+        print(f"\t\tCurrent container count: {len(sts.spec.template.spec.containers)}")
+        print(f"\t\tWalking over add_to_sts_cbs len={len(spec.add_to_sts_cbs[subsystem])}")
+        changed = False
+        for add_to_sts_cb in spec.add_to_sts_cbs[subsystem]:
+            changed = True
+            print("\t\t\tPatching STS")
+            add_to_sts_cb(sts, logger)
+        if changed:
+            print(f"\t\t\tNew container count: {len(sts.spec.template.spec.containers)}")
+            if not hasattr(sts.spec.template.metadata, "annotations") or sts.spec.template.metadata.annotations is None:
+                setattr(sts.spec.template.metadata, "annotations", {})
+            sts.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = utils.isotime()
+            api_apps.replace_namespaced_stateful_set(sts.metadata.name, sts.metadata.namespace, body=sts)
 
-    sts.spec.template.spec.volumes = list(filter(
-        lambda volume: volume.name not in ['metrics-web-config', 'metrics-tls'],
-        sts.spec.template.spec.volumes
-    ))
+        print(f"\t\t\tSTS {'patched' if changed else 'unchanged. No rollover upgrade!'}")
 
-    if spec.metrics and spec.metrics.enable:
-        sts.spec.template.spec.containers += yaml.safe_load(spec.metrics_sidecar)
-        if spec.metrics_volumes:
-            sts.spec.template.spec.volumes += yaml.safe_load(spec.metrics_volumes)
+    if subsystem in spec.get_add_to_svc_cbs:
+        print(f"\t\tWalking over get_add_to_svc_cbs len={len(spec.get_add_to_svc_cbs[subsystem])}")
+        changed = False
+        for add_to_svc_cb in spec.get_add_to_svc_cbs[subsystem]:
+            changed = True
+            print("\t\t\tPatching SVC")
+            add_to_svc_cb(svc, logger)
+        if changed:
+            api_core.replace_namespaced_service(svc.metadata.name, svc.metadata.namespace, svc)
 
-    logger.info("Updating StatefulSet")
-    api_apps.replace_namespaced_stateful_set(
-        sts.metadata.name, sts.metadata.namespace, body=sts)
+        print(f"\t\t\tSVC {'patched' if changed else 'unchanged'}")
 
-    # Same with the instance service, first remove old port and then re-add
-    # if needed
+    if subsystem in spec.get_svc_monitor_cbs:
+      for subsystem in spec.get_svc_monitor_cbs:
+          for cb in spec.get_svc_monitor_cbs[subsystem]:
+              (monitor_name, monitor) = cb(logger)
+              # monitor could be empty, this means - delete old monitor with monitor_name
+              print(f"\t\t\tChecking for old ServiceMonitor {monitor_name}")
+              if cluster.get_service_monitor(monitor_name):
+                  print(f"\t\t\tRemoving old ServiceMonitor {monitor_name}")
+                  try:
+                      api_customobj.delete_namespaced_custom_object("monitoring.coreos.com", "v1", cluster.namespace,
+                                                                    "servicemonitors", monitor_name)
+                  except Exception as exc:
+                      print(f"\t\t\tPrevious ServiceMonitor {monitor_name} was not removed. Reason: {exc}")
+              if monitor:
+                  kopf.adopt(monitor)
+                  print(f"\t\t\tCreating ServiceMonitor {monitor} ...")
+                  try:
+                      api_customobj.create_namespaced_custom_object("monitoring.coreos.com", "v1", cluster.namespace,
+                                                                    "servicemonitors", monitor)
+                  except Exception as exc:
+                      # This might be caused by Prometheus Operator missing
+                      # we won't fail for that
+                      print(f"\t\t\tServiceMonitor {monitor_name} NOT created!")
+                      print(exc)
+                      cluster.warn(action="CreateCluster", reason="CreateResourceFailed", message=f"{exc}")
+              else:
+                  print(f"\t\t\tNew ServiceMonitor {monitor_name} will not be created. Monitoring disabled.")
 
-    service.spec.ports = list(filter(
-        lambda port: port.name != "metrics",
-        service.spec.ports))
 
-    if spec.metrics and spec.metrics.enable:
-        service.spec.ports += yaml.safe_load(spec.metrics_service_port)
-
-    logger.info("Updating Service")
-    api_core.replace_namespaced_service(
-        service.metadata.name, service.metadata.namespace, service)
-
-    try:
-        api_customobj.delete_namespaced_custom_object(
-            "monitoring.coreos.com", "v1", spec.namespace, "servicemonitors", spec.cluster_name)
-    except Exception as exc:
-        # This may fail for a variety of reasons
-        # Most likely: It wasn't enabled before, but might also have failed to
-        # create due to missign Prometheus Operator or some other reason
-        print(f"Previous  ServiceMonitor was not removed. This is usually ok. Reason: {exc}")
-
-    if spec.metrics and spec.metrics.enable and spec.metrics.monitor:
-        monitor = prepare_metrics_service_monitor(cluster, logger)
-        kopf.adopt(monitor)
-        api_customobj.create_namespaced_custom_object(
-            "monitoring.coreos.com", "v1", spec.namespace, "servicemonitors",
-            monitor)
-
-def update_objects_for_logs(sts: api_client.V1StatefulSet, cluster: InnoDBCluster, logger: Logger) -> None:
-    logger.info(f"update_sts_for_logs")
-
+def update_objects_for_logs(cluster: InnoDBCluster, logger: Logger) -> None:
     subsystem = InnoDBClusterSpecProperties.LOGS.value
-    spec = cluster.parsed_spec
+    update_objects_for_subsystem(subsystem, cluster, logger)
 
-    for get_configmap_cb in spec.get_configmap_cbs[subsystem]:
-        prefix = ''
-        new_configmaps = get_configmap_cb(prefix, logger)
-        for new_cm in new_configmaps:
-            cm_name = new_cm["metadata"]["name"]
-            current_cm = cluster.get_configmap(cm_name)
-            if current_cm:
-                data_differs = current_cm.data != new_cm["data"]
-                if data_differs:
-                    print(f"\t\tReplacing {cluster.namespace}/{cm_name}")
-                    current_cm.data = new_cm["data"]
-                    api_core.replace_namespaced_config_map(cm_name, cluster.namespace, body=current_cm)
-            else:
-                print(f"\t\tNo such cm exists. Creating {cluster.namespace}/{new_cm}")
-                kopf.adopt(new_cm)
-                api_core.create_namespaced_config_map(cluster.namespace, new_cm)
-
-    print(f"\t\tWalking over add_to_sts_cbs len={len(spec.add_to_sts_cbs[subsystem])}")
-    for add_to_sts_cb in spec.add_to_sts_cbs[subsystem]:
-        print("\t\tPatching STS")
-        add_to_sts_cb(sts, logger)
-        if not hasattr(sts.spec.template.metadata, "annotations") or sts.spec.template.metadata.annotations is None:
-            setattr(sts.spec.template.metadata, "annotations", {})
-        sts.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = utils.isotime()
-        print("\t\tReplacing STS")
-        api_apps.replace_namespaced_stateful_set(sts.metadata.name, sts.metadata.namespace, body=sts)
+def update_objects_for_metrics(cluster: InnoDBCluster, logger: Logger) -> None:
+    subsystem = InnoDBClusterSpecProperties.METRICS.value
+    update_objects_for_subsystem(subsystem, cluster, logger)
 
 
 def remove_read_replica(cluster: InnoDBCluster, name: str):
@@ -1043,7 +1071,6 @@ def remove_read_replica(cluster: InnoDBCluster, name: str):
         api_apps.delete_namespaced_stateful_set(f"{cluster.name}-{name}", cluster.namespace)
     except Exception as exc:
         print(f"StatefulSet for ReadReplica  {name} was not removed. This is usually ok. Reason: {exc}")
-
 
 
 def on_first_cluster_pod_created(cluster: InnoDBCluster, logger: Logger) -> None:

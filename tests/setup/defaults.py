@@ -89,7 +89,7 @@ FLUENTD_IMAGE_NAME= os.getenv(
 
 # metrics sidecar
 METRICS_IMAGE_NAME = os.getenv(
-    "OPERATOR_TEST_METRICS_IMAGE_NAME", default=None)
+    "OPERATOR_TEST_METRICS_IMAGE_NAME", default="prom/mysqld-exporter:v0.14.0")
 
 
 # k8s

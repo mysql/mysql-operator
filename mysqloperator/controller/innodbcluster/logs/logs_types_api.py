@@ -1,10 +1,10 @@
-# Copyright (c) 2023, Oracle and/or its affiliates.
+# Copyright (c) 2023, 2024 Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
 from enum import Enum
-from typing import Optional, Union, List, Dict
+from typing import Optional, Union, List, Dict, Any
 from logging import Logger
 from ...api_utils import dget_bool, dget_int, ApiSpecError
 from ...kubeutils import client as api_client
@@ -12,13 +12,97 @@ from ... import utils
 import yaml
 from abc import ABC, abstractmethod
 
-def get_object_name(obj: Union[Dict, api_client.V1Container, api_client.V1Volume]) -> str:
-    # When we get data from K8s it will be V1Container/V1Volume, however, as we patch the STS
+def snail_to_camel(s: str) -> str:
+    if s.find("_") == -1:
+        return s
+
+    words = s.split("_")
+    return words[0] + "".join(word.title() for word in words[1:])
+
+def get_object_attr(obj: Union[Dict, api_client.V1Container, api_client.V1Volume, api_client.V1ServicePort, api_client.V1PodSpec, Any], attr: str) -> Any:
+    # When we get data from K8s it will be V1Container/V1Volume/V1ServicePort, however, as we patch the STS
     # the data may become Dict, because this is what merge_patch_object() produces
     # There are multiple log types and every each one of them works on the 'logcollector'
     # container as well as on the volume being mounted. The first one will see
     # V1Container, the next will see Dict.
-    return obj["name"] if isinstance(obj, dict) else obj.name
+    return obj[snail_to_camel(attr)] if isinstance(obj, dict) else getattr(obj, attr)
+
+# Pass attr always as snail_case, not as camelCase
+def set_object_attr(obj: Union[Dict, api_client.V1Container, api_client.V1Volume, api_client.V1ServicePort, api_client.V1PodSpec, Any], attr: str, value: Any) -> None:
+    if isinstance(obj, dict):
+        obj[snail_to_camel(attr)] = value
+    else:
+        setattr(obj, attr, value)
+
+def has_object_attr(obj: Union[Dict, api_client.V1Container, api_client.V1Volume, api_client.V1ServicePort, api_client.V1PodSpec, Any], attr: str) -> bool:
+    return snail_to_camel(attr) in obj if isinstance(obj, dict) else hasattr(obj, attr)
+
+def get_object_name(obj: Union[Dict, api_client.V1Container, api_client.V1Volume, api_client.V1ServicePort]) -> str:
+    return get_object_attr(obj, "name")
+
+
+# Replaces whole container in sts.spec.template.spec.containers
+def patch_sts_spec_template_complex_attribute(sts: Union[dict, api_client.V1StatefulSet], patch: dict, attr: str, add: bool) -> None:
+    attr_c = snail_to_camel(attr)
+    if patch is None or len(patch[attr_c]) == 0:
+        return
+    attr_names = [a["name"] for a in patch[attr_c]]
+    if isinstance(sts, dict):
+        # first filter out
+        sts["spec"]["template"]["spec"][attr_c] = [a for a in sts["spec"]["template"]["spec"][attr_c] if a and get_object_name(a) not in attr_names]
+        if add:
+            utils.merge_patch_object(sts["spec"]["template"]["spec"], patch)
+    elif isinstance(sts, api_client.V1StatefulSet):
+        # first filter out
+        # attribute should be here snail case
+        new = [a for a in get_object_attr(sts.spec.template.spec, attr) if a and get_object_name(a) not in attr_names]
+        if add:
+            new += patch[attr_c]
+        set_object_attr(sts.spec.template.spec, attr, new)
+
+
+# Attribute should be snail_case
+# Replaces value of just one attribute of a container in sts.spec.template.spec.containers
+# Example is patching volume_mounts (the V1StatefulSet notation of YAML's volumeMounts)
+def patch_container_attribute(sts: Union[dict, api_client.V1StatefulSet], patch: dict, attr: str, add: bool) -> None:
+    attr_c = snail_to_camel(attr)
+    for container_idx in range(0, len(patch["containers"])):
+        container_name = patch["containers"][container_idx]["name"]
+        changed_obj_names = [ attr_v["name"] for attr_v in patch["containers"][container_idx][attr_c] ]
+        found = False
+        if isinstance(sts, dict):
+            # first filter out
+            for container in sts["spec"]["template"]["spec"]["containers"]:
+                if get_object_name(container) == container_name:
+                    current_value = get_object_attr(container, attr) if has_object_attr(container, attr) else []
+                    #print(f"\t\t\t\tcurrent_value({container_name}.{attr})={current_value}")
+                    new_value = [v for v in current_value if (v and (get_object_name(v) not in changed_obj_names))]
+                    if add:
+                        new_value += patch["containers"][container_idx][attr_c]
+                    #print(f"\t\t\t\tnew_value({container_name}.{attr})={new_value}")
+                    set_object_attr(container, attr, new_value)
+                    found = True
+                    break
+            if found == False and add:
+                utils.merge_patch_object(sts["spec"]["template"]["spec"], patch)
+
+        elif isinstance(sts, api_client.V1StatefulSet):
+            for container in sts.spec.template.spec.containers:
+                if get_object_name(container) == container_name:
+                    current_value = get_object_attr(container, attr) if has_object_attr(container, attr) else []
+                    #print(f"\t\t\t\tcurrent_value({container_name}.{attr})={current_value}")
+                    new_value = [v for v in current_value if (v and (get_object_name(v) not in changed_obj_names))]
+                    if add:
+                        new_value += patch["containers"][container_idx][attr_c]
+                    #print(f"\t\t\t\tnew_value({container_name}.{attr})={new_value}")
+                    set_object_attr(container, attr, new_value)
+                    found = True
+                    break
+            if found == False and add:
+                sts.spec.template.spec.containers += patch
+
+
+
 
 # Must correspond to the names in the CRD
 class ServerLogType(Enum):
@@ -44,6 +128,7 @@ class ConfigMapMountBase(ABC):
     def _add_volumes_to_sts_spec(self,
                                  sts: Union[dict, api_client.V1StatefulSet],
                                  cm_name: str,
+                                 add: bool,
                                  logger: Logger) -> None:
         patch = {
             "volumes" : [
@@ -62,18 +147,13 @@ class ConfigMapMountBase(ABC):
                 }
             ]
         }
+        patch_sts_spec_template_complex_attribute(sts, patch, "volumes", add)
 
-        # During first time creation
-        if isinstance(sts, dict):
-            utils.merge_patch_object(sts["spec"]["template"]["spec"], patch)
-        elif isinstance(sts, api_client.V1StatefulSet):
-            # first filter out our old logs volumes spec
-            sts.spec.template.spec.volumes = [volume for volume in sts.spec.template.spec.volumes if volume and get_object_name(volume) != self.volume_mount_name]
-            sts.spec.template.spec.volumes += patch["volumes"]
 
     def _add_containers_to_sts_spec(self,
                                     sts: Union[dict, api_client.V1StatefulSet],
                                     container_name: str,
+                                    add: bool,
                                     logger: Logger) -> None:
         patch = {
             "containers" : [
@@ -89,27 +169,16 @@ class ConfigMapMountBase(ABC):
                 }
             ]
         }
-
-        if isinstance(sts, dict):
-            utils.merge_patch_object(sts["spec"]["template"]["spec"], patch)
-        elif isinstance(sts, api_client.V1StatefulSet):
-            found = False
-            for container in sts.spec.template.spec.containers:
-                if get_object_name(container) == container_name:
-                    container.volume_mounts = [vm for vm in container.volume_mounts if vm and get_object_name(vm) != self.volume_mount_name]
-                    container.volume_mounts += patch["containers"][0]["volumeMounts"]
-                    found = True
-                    break
-            if not found:
-                sts.spec.template.spec.containers += patch
+        patch_container_attribute(sts, patch, "volume_mounts", add)
 
     def add_to_sts_spec(self,
                         sts: Union[dict, api_client.V1StatefulSet],
                         container_name: str,
                         cm_name: str,
+                        add: bool,
                         logger: Logger) -> None:
-        self._add_containers_to_sts_spec(sts, container_name, logger)
-        self._add_volumes_to_sts_spec(sts, cm_name, logger)
+        self._add_containers_to_sts_spec(sts, container_name, add, logger)
+        self._add_volumes_to_sts_spec(sts, cm_name, add, logger)
 
 
 class MySQLLogSpecBase(ConfigMapMountBase):

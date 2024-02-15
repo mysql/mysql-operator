@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import PurePosixPath
 import typing, abc
-from typing import Optional, Union, List, Tuple, Dict, Callable, cast, overload
+from typing import Optional, Union, List, Tuple, Dict, Callable, Any, cast, overload
 
 from kopf._cogs.structs.bodies import Body
 from logging import getLogger, Logger
@@ -22,6 +22,7 @@ from ..kubeutils import api_core, api_apps, api_customobj, api_policy, api_rbac,
 from ..kubeutils import client as api_client, ApiException
 from ..kubeutils import k8s_cluster_domain
 from .logs.logs_api import LogsSpec
+from .logs.logs_types_api import ConfigMapMountBase, get_object_name, patch_sts_spec_template_complex_attribute
 import json
 import yaml
 import datetime
@@ -38,6 +39,17 @@ class SecretData:
     secret_name: Optional[str] = None
     key: Optional[str] = None
 
+class MetricsConfigMap(ConfigMapMountBase):
+    def __init__(self):
+        super().__init__("metrics", "metrics.cnf", "/tmp/metrics")
+
+    def parse(self, spec: dict, prefix: str) -> None:
+        pass
+
+    def validate(self) -> None:
+        pass
+
+
 class MetriscSpec:
     enable: bool = False
     image: str = ""
@@ -48,13 +60,23 @@ class MetriscSpec:
     dbuser_grants: list = ['PROCESS', 'REPLICATION CLIENT', 'SELECT']
     dbuser_max_connections: int = 3
     monitor: bool = False
-    monitor_spec: dict
+    monitor_spec: dict = {}
+    port = 9104
+    config: MetricsConfigMap = MetricsConfigMap()
+    container_name = "metrics"
+    svc_port_name = "metrics"
+
+    def __init__(self, namespace: str, cluster_name: str):
+        self.namespace = namespace
+        self.cluster_name = cluster_name
+        self.cm_name = f"{self.cluster_name}-metricsconf"
 
     def parse(self, spec: dict, prefix: str) -> None:
         self.enable = dget_bool(spec, "enable", prefix)
         self.image = dget_str(spec, "image", prefix)
         self.options = dget_list(spec, "options", prefix, default_value=[],
                                  content_type=str)
+
         self.web_config = dget_str(spec, "webConfig", prefix, default_value="")
         self.tls_secret = dget_str(spec, "tlsSecret", prefix, default_value="")
 
@@ -63,7 +85,6 @@ class MetriscSpec:
 
         self.monitor_spec = dget_dict(spec, "monitorSpec", prefix,
                                       default_value={})
-
 
         user_spec = dget_dict(spec, "dbUser", prefix, default_value={})
         user_prefix = prefix+".dbUser"
@@ -75,6 +96,207 @@ class MetriscSpec:
         self.dbuser_max_connections = dget_int(user_spec, "maxConnections",
                                                user_prefix, default_value=3)
 
+        self.options.append("--config.my-cnf=/tmp/metrics/metrics.cnf") # see __init__
+
+    def validate(self) -> None:
+        pass
+
+    def _add_container_to_sts_spec(self, sts: Union[dict, api_client.V1StatefulSet], add: bool, logger: Logger) -> None:
+        options = self.options
+        if self.web_config:
+            options += ["--web.config.file=/config/web.config"]
+
+        mounts = [
+            {
+                "name": "rundir",
+                "mountPath": "/var/run/mysqld",
+            }
+        ]
+        if self.web_config:
+            mounts.append(
+                {
+                    "name": f"{self.container_name}-web-config",
+                    "mountPath" : "/config",
+                    "readOnly": True,
+                }
+            )
+
+        if self.tls_secret:
+            mounts.append(
+                {
+                    "name": f"{self.container_name}-tls",
+                    "mountPath" : "/tls",
+                    "readOnly": True,
+                }
+            )
+
+        patch = {
+            "containers" : [
+                {
+                    "name": self.container_name,
+                    "image": self.image,
+                    "imagePullPolicy": "IfNotPresent", # TODO: should be self.sidecar_image_pull_policy
+                    "args": options,
+                    # These can't go to spec.template.spec.securityContext
+                    # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodTemplateSpec / https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSpec
+                    # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSecurityContext - for pods (top level)
+                    # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#Container
+                    # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#SecurityContext - for containers
+                    "securityContext": {
+                        "allowPrivilegeEscalation": False,
+                        "privileged": False,
+                        "readOnlyRootFilesystem": True,
+                        "capabilities": {
+                            "drop": ["ALL"]
+                        },
+                        # We must use same user id as auth_socket expects
+                        "runAsUser": 2,
+                        "runAsGroup": 27,
+                    },
+                    "env": [
+                        # For BC with pre-0.15.0. 0.15.0+ will use the configuration file and skip the env totally
+                        {
+                            "name": "DATA_SOURCE_NAME",
+                            "value": f"{self.dbuser_name}:@unix(/var/run/mysqld/mysql.sock)/"
+                        }
+                    ],
+                    "ports": [
+                        {
+                            "name": self.container_name,
+                            "containerPort": self.port,
+                            "protocol": "TCP",
+                        }
+                    ],
+                    "volumeMounts": mounts,
+                }
+            ]
+        }
+
+        patch_sts_spec_template_complex_attribute(sts, patch, "containers", add)
+
+    def _add_volumes_to_sts_spec(self, sts: Union[dict, api_client.V1StatefulSet], add: bool, logger: Logger) -> None:
+        volumes = []
+        if self.web_config:
+            volumes.append(
+                {
+                    "name": f"{self.container_name}-web-config",
+                    "configMap": {
+                        "name" : self.web_config,
+                        "defaultMode": 0o444,
+                    }
+                }
+            )
+        if self.tls_secret:
+            volumes.append(
+                {
+                    "name": f"{self.container_name}-tls",
+                    "secret": {
+                        "name" : self.tls_secret,
+                        "defaultMode": 0o444,
+                    }
+                }
+            )
+
+        patch = {
+            "volumes" : volumes
+        }
+
+        patch_sts_spec_template_complex_attribute(sts, patch, "volumes", add)
+
+    def get_add_to_sts_cb(self) -> Optional[Callable[[Union[dict, api_client.V1StatefulSet], bool, Logger], None]]:
+        def cb(sts: Union[dict, api_client.V1StatefulSet], logger: Logger) -> None:
+            self._add_container_to_sts_spec(sts, self.enable, logger)
+            self._add_volumes_to_sts_spec(sts, self.enable, logger)
+            self.config.add_to_sts_spec(sts, self.container_name, self.cm_name, self.enable, logger)
+        return cb
+
+    def get_configmaps_cb(self) -> Optional[Callable[[str, Logger], Optional[List[Tuple[str, Optional[Dict]]]]]]:
+        def cb(prefix: str, logger: Logger) -> Optional[List[Tuple[str, Optional[Tuple[str, Optional[Dict]]]]]]:
+            if not self.enable:
+                return [(self.cm_name, None)]
+
+            config = f"""[client]
+user={self.dbuser_name}
+socket=unix:///var/run/mysqld/mysql.sock
+"""
+
+            return [
+                (
+                    self.cm_name,
+                    {
+                        'apiVersion' : "v1",
+                        'kind': 'ConfigMap',
+                        'metadata': {
+                            'name': self.cm_name,
+                        },
+                        'data' : {
+                            self.config.config_file_name: config
+                        }
+                    }
+                )
+            ]
+
+        return cb
+
+    def get_add_to_svc_cb(self) -> Optional[Callable[[Union[dict, api_client.V1Service], Logger], None]]:
+        def cb(svc: Union[dict, api_client.V1Service], logger: Logger) -> None:
+            patch = {
+                "ports" : [
+                    {
+                        "name" : self.svc_port_name,
+                        "port": self.port, # ToDo : should be cluster.mysql_metrics_port
+                        "targetPort": self.port, # ToDo : should be cluster.mysql_metrics_port
+                    }
+                ]
+            }
+
+            svc_name = "n/a"
+            my_port_names = [port["name"] for port in patch["ports"]]
+            if isinstance(svc, dict):
+                svc_name = svc["metadata"]["name"]
+                # first filter out the old `port`
+                svc["spec"]["ports"] = [port for port in svc["spec"]["ports"] if port and get_object_name(port) not in my_port_names]
+                # Then add, if needed
+                if self.enable:
+                    utils.merge_patch_object(svc["spec"], patch)
+            elif isinstance(svc, api_client.V1Service):
+                svc_name = svc.metadata.name
+                # first filter out the old `port`
+                svc.spec.ports = [port for port in svc.spec.ports if port and get_object_name(port) not in my_port_names]
+                # Then add, if needed
+                if self.enable:
+                    svc.spec.ports += patch["ports"]
+            print(f"\t\t\t{'A' if self.enable else 'Not a'}dding port {self.svc_port_name} to Service {svc_name}")
+
+        return cb
+
+    # Can't include the type for the MonitoringCoreosComV1Api.ServiceMonitor
+    def get_svc_monitor_cb(self) -> Optional[Callable[[Logger], Tuple[str, Optional[dict]]]]:
+        def cb(logger: Logger) -> dict:
+            monitor = None
+            requested = self.enable and self.monitor
+            monitor_name = self.cluster_name
+
+            if requested:
+                monitor = f"""
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {monitor_name}
+spec:
+  selector:
+    matchLabels:
+      mysql.oracle.com/cluster: {self.cluster_name}
+      tier: mysql
+  endpoints:
+  - port: metrics
+    path: /metrics
+"""
+                monitor = yaml.safe_load(monitor)
+
+            return (monitor_name, monitor)
+
+        return cb
 
 class CloneInitDBSpec:
     uri: str = ""
@@ -829,6 +1051,7 @@ class InnoDBClusterSpecProperties(Enum):
     ROUTER = "router"
     BACKUP_PROFILES = "backupProfiles"
     BACKUP_SCHEDULES = "backupSchedules"
+    METRICS = "metrics"
     INITDB = "initDB"
 
 
@@ -906,10 +1129,12 @@ class AbstractServerSetSpec(abc.ABC):
 
     def _load(self, spec_root: dict, spec_specific: dict, where_specific: str) -> None:
         # initialize now or all instances will share the same list initialized before the ctor
-        self.add_to_initconf_cbs: Dict[str, List[Callable]] = {}
-        self.remove_from_sts_cbs: Dict[str, List[Callable]] = {}
-        self.add_to_sts_cbs: Dict[str, List[Callable]] = {}
-        self.get_configmap_cbs: Dict[str, List[Callable]] = {}
+        self.add_to_initconf_cbs: Dict[str, List[Callable[[Dict, str, Logger], None]]] = {}
+        self.remove_from_sts_cbs: Dict[str, List[Callable[[Union[dict, api_client.V1StatefulSet], Logger], None]]] = {}
+        self.add_to_sts_cbs: Dict[str, List[Callable[[Union[dict, api_client.V1StatefulSet], Logger], None]]] = {}
+        self.get_configmaps_cbs: Dict[str, List[Callable[[str, Logger], Optional[List[Tuple[str, Optional[Dict]]]]]]] = {}
+        self.get_add_to_svc_cbs: Dict[str, List[Callable[[Union[dict, api_client.V1Service], Logger], None]]] = {}
+        self.get_svc_monitor_cbs: Dict[str, List[Callable[[Logger], Tuple[str, Optional[dict]]]]] = {}
 
         self.secretName = dget_str(spec_root, "secretName", "spec")
 
@@ -973,28 +1198,36 @@ class AbstractServerSetSpec(abc.ABC):
         if "mycnf" in spec_root:
             self.mycnf = dget_str(spec_root, "mycnf", "spec")
 
+        self.metrics = MetriscSpec(self.namespace, self.cluster_name)
         if "metrics" in spec_root:
-            self.metrics = MetriscSpec()
             self.metrics.parse(dget_dict(spec_root, "metrics", "spec"), "spec.metrics")
 
+        if cb := self.metrics.get_configmaps_cb():
+            self.get_configmaps_cbs[InnoDBClusterSpecProperties.METRICS.value] = [cb]
+
+        if cb := self.metrics.get_add_to_sts_cb():
+            self.add_to_sts_cbs[InnoDBClusterSpecProperties.METRICS.value] = [cb]
+
+        if cb := self.metrics.get_add_to_svc_cb():
+            self.get_add_to_svc_cbs[InnoDBClusterSpecProperties.METRICS.value] = [cb]
+
+        if cb := self.metrics.get_svc_monitor_cb():
+            self.get_svc_monitor_cbs[InnoDBClusterSpecProperties.METRICS.value] = [cb]
+
         self.logs = LogsSpec(self.namespace, self.cluster_name)
-        section = InnoDBClusterSpecProperties.LOGS.value
-        if section in spec_root:
+        if (section:= InnoDBClusterSpecProperties.LOGS.value) in spec_root:
             self.logs.parse(dget_dict(spec_root, section, "spec"), f"spec.{section}", getLogger())
 
-            cb = self.logs.get_configmaps_cb()
-            if cb:
-                self.get_configmap_cbs[InnoDBClusterSpecProperties.LOGS.value] = [cb]
+            if cb := self.logs.get_configmaps_cb():
+                self.get_configmaps_cbs[InnoDBClusterSpecProperties.LOGS.value] = [cb]
 
-            cb = self.logs.get_add_to_initconf_cb()
-            if cb:
+            if cb := self.logs.get_add_to_initconf_cb():
                 self.add_to_initconf_cbs[InnoDBClusterSpecProperties.LOGS.value] = [cb]
 
-            cb = self.logs.get_remove_from_sts_cb()
-            if cb:
+            if cb := self.logs.get_remove_from_sts_cb():
                 self.remove_from_sts_cbs[InnoDBClusterSpecProperties.LOGS.value] = [cb]
-            cb = self.logs.get_add_to_sts_cb()
-            if cb:
+
+            if cb := self.logs.get_add_to_sts_cb():
                 self.add_to_sts_cbs[InnoDBClusterSpecProperties.LOGS.value] = [cb]
 
         # Initialization Options
@@ -1155,102 +1388,6 @@ class AbstractServerSetSpec(abc.ABC):
   name: ssldata
 """)
         return "\n".join(mounts)
-
-
-    @property
-    def metrics_sidecar(self) -> str:
-        if not self.metrics or not self.metrics.enable:
-            return ""
-
-        metrics = self.metrics
-
-        mounts = ""
-        options = []
-
-        if metrics.web_config:
-            options += ["--web.config.file=/config/web.config"]
-            mounts += """
-- name: metrics-web-config
-  mountPath: /config
-  readOnly: true
-"""
-
-        if metrics.tls_secret:
-            mounts += """
-- name: metrics-tls
-  mountPath: /tls
-  readOnly: true
-"""
-
-        options_yaml = ""
-        if options:
-            options_yaml = yaml.dump(options)
-
-        return f"""
-- name: metrics
-  args:
-{utils.indent(options_yaml, 4)}
-  image: {metrics.image}
-  imagePullPolicy: {self.sidecar_image_pull_policy}
-  securityContext:
-      # These can't go to spec.template.spec.securityContext
-      # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodTemplateSpec / https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSpec
-      # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSecurityContext - for pods (top level)
-      # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#Container
-      # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#SecurityContext - for containers
-      allowPrivilegeEscalation: false
-      privileged: false
-      readOnlyRootFilesystem: true
-      capabilities:
-      drop:
-      - ALL
-      # We must use same user id as auth_socket expects
-      runAsUser: 2
-      runAsGroup: 27
-  env:
-  - name: DATA_SOURCE_NAME
-    value: {metrics.dbuser_name}:@unix(/var/run/mysqld/mysql.sock)/
-  ports:
-  - containerPort: {self.mysql_metrics_port}
-    name: metrics
-    protocol: TCP
-  volumeMounts:
-  - name: rundir
-    mountPath: /var/run/mysqld
-{utils.indent(mounts, 2)}
-"""
-
-
-    @property
-    def metrics_volumes(self) -> str:
-        volumes = ""
-
-        if self.metrics and self.metrics.web_config:
-            volumes += f"""
-- name: metrics-web-config
-  configMap:
-    name: {self.metrics.web_config}
-"""
-
-        if self.metrics and self.metrics.tls_secret:
-            volumes += f"""
-- name: metrics-tls
-  secret:
-    name: {self.metrics.tls_secret}
-"""
-
-        return volumes
-
-    @property
-    def metrics_service_port(self) -> str:
-        if not self.metrics or not self.metrics.enable:
-            return ""
-
-        return f"""
-- name: metrics
-  port: {self.mysql_metrics_port}
-  targetPort: {self.mysql_metrics_port}
-"""
 
     @property
     def image_pull_secrets(self) -> str:
@@ -1854,6 +1991,15 @@ class InnoDBCluster(K8sInterfaceObject):
                 return None
             raise
 
+    def get_service_monitor(self, name: str) :#-> typing.Optional[api_customobj.___]:
+        try:
+            return api_customobj.get_namespaced_custom_object(
+                "monitoring.coreos.com", "v1", self.namespace, "servicemonitors", name)
+        except ApiException as e:
+            if e.status == 404:
+                return None
+            raise
+
     def _get_status_field(self, field: str) -> typing.Any:
         return cast(str, self.status.get(field))
 
@@ -1969,6 +2115,7 @@ class InnoDBCluster(K8sInterfaceObject):
         self._add_finalizer("mysql.oracle.com/cluster")
 
     def remove_cluster_finalizer(self, cluster_body: dict = None) -> None:
+        print("remove_cluster_finalizer")
         self._remove_finalizer("mysql.oracle.com/cluster")
         if cluster_body:
             # modify the JSON data used internally by kopf to update its finalizer list

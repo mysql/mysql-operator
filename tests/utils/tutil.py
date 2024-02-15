@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -698,3 +698,16 @@ class OperatorTest(unittest.TestCase):
     def get_secondary_instances(self, instance="mycluster-0", user="root", password="sakila"):
         _, secondaries = self.get_instances_by_role(instance, user, password)
         return secondaries
+
+
+def get_sts_rollover_update_waiter(test_obj: OperatorTest, cluster_name:str, timeout: int, delay: int):
+    def get_pods_uids(pattern) -> set:
+        return set([kutil.get_po(test_obj.ns, pod['NAME'])['metadata']['uid'] for pod in kutil.ls_po(test_obj.ns, pattern=pattern)])
+
+    pattern = f"{cluster_name}-\d"
+    old_uids = get_pods_uids(pattern)
+
+    def waiter() -> bool:
+        test_obj.wait(lambda : len(old_uids.intersection(get_pods_uids(pattern))) == 0, timeout=timeout, delay=delay)
+
+    return waiter

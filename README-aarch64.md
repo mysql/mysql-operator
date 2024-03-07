@@ -18,12 +18,15 @@ To that end, the following files were modified:
 To build the image, we use the new file Dockerfile.patch as the basis of the build.
 The Dockerfile retrieves the fully compiled operator image, and then copies our new version of the `mysqloperator` code.
 
-Build the image:
+Build the image (on an ARM64 host):
 
 ```shell
 $ podman build \
-    -t ghcr.io/ifeelfine/community-operator:8.3.0-2.1.2-aarch64
+    -t ghcr.io/ifeelfine/community-operator:8.3.0-2.1.2-aarch64 \
     --label "org.opencontainers.image.source=https://github.com/ifeelfine/mysql-operator" \
     --label "org.opencontainers.image.description=MySQL Operator image hardcoded to aarch64 achitecture" \
-    --label "org.opencontainers.image.licenses=MIT"
+    --label "org.opencontainers.image.licenses=MIT" \
+    -f Dockerfile.patch \
+    .
+
 ```

@@ -19,20 +19,22 @@ else:
 
 
 # Constants
-OPERATOR_VERSION = "2.1.2-aarch64"
+IMAGE_TAG = "-aarch64"
+ARCH="arm64"
+OPERATOR_VERSION = "2.1.2"
 OPERATOR_EDITION = Edition.community
 OPERATOR_EDITION_NAME_TO_ENUM = { edition.value : edition.name for edition in Edition }
 
-SHELL_VERSION = "8.3.0-aarch64"
+SHELL_VERSION = "8.3.0"
 
 MIN_BASE_SERVER_ID = 1
 MAX_BASE_SERVER_ID = 4000000000
 
-DEFAULT_VERSION_TAG = "8.3.0-aarch64"
+DEFAULT_VERSION_TAG = "8.3.0"
 
-DEFAULT_SERVER_VERSION_TAG = DEFAULT_VERSION_TAG
-MIN_SUPPORTED_MYSQL_VERSION = "8.0.27-aarch64"
-MAX_SUPPORTED_MYSQL_VERSION = "8.3.0-aarch64" # SHELL_VERSION
+DEFAULT_SERVER_VERSION_TAG = "8.3.0"
+MIN_SUPPORTED_MYSQL_VERSION = "8.0.27"
+MAX_SUPPORTED_MYSQL_VERSION = "8.3.0" # SHELL_VERSION
 
 DISABLED_MYSQL_VERSION = {
     "8.0.29": "Support for MySQL 8.0.29 is disabled. Please see https://dev.mysql.com/doc/relnotes/mysql-operator/en/news-8-0-29.html"
@@ -41,7 +43,7 @@ DISABLED_MYSQL_VERSION = {
 DEFAULT_ROUTER_VERSION_TAG = DEFAULT_VERSION_TAG
 
 # This is used for the sidecar. The operator version is deploy-operator.yaml
-DEFAULT_OPERATOR_VERSION_TAG = "8.3.0-2.1.2-aarch64"
+DEFAULT_OPERATOR_VERSION_TAG = "8.3.0-2.1.2"
 
 DEFAULT_IMAGE_REPOSITORY = os.getenv(
     "MYSQL_OPERATOR_DEFAULT_REPOSITORY", default="container-registry.oracle.com/mysql").rstrip('/')
@@ -68,6 +70,7 @@ def log_config_banner(logger) -> None:
     logger.info(f"DEFAULT_VERSION_TAG={DEFAULT_VERSION_TAG}")
     logger.info(f"SIDECAR_VERSION_TAG={DEFAULT_OPERATOR_VERSION_TAG}")
     logger.info(f"DEFAULT_IMAGE_REPOSITORY   ={DEFAULT_IMAGE_REPOSITORY}")
+    logger.info(f"ARCH               ={ARCH}")
 
 
 def config_from_env() -> None:

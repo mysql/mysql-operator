@@ -183,6 +183,7 @@ metadata:
     app.kubernetes.io/component: database
     app.kubernetes.io/managed-by: mysql-operator
     app.kubernetes.io/created-by: mysql-operator
+    kubernetes.io/arch: {config.ARCH}
 spec:
   serviceName: {spec.name}-instances
   replicas: {spec.instances}
@@ -199,6 +200,7 @@ spec:
       app.kubernetes.io/component: database
       app.kubernetes.io/managed-by: mysql-operator
       app.kubernetes.io/created-by: mysql-operator
+      kubernetes.io/arch: {config.ARCH}
   template:
     metadata:
       labels:
@@ -212,6 +214,7 @@ spec:
         app.kubernetes.io/component: database
         app.kubernetes.io/managed-by: mysql-operator
         app.kubernetes.io/created-by: mysql-operator
+        kubernetes.io/arch: {config.ARCH}
     spec:
       subdomain: {spec.name}
       readinessGates:

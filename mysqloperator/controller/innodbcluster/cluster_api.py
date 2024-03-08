@@ -750,7 +750,9 @@ class RouterSpec:
     instances: int = 1
 
     # Router version, if user wants to override it (latest by default)
-    version: str = None # config.DEFAULT_ROUTER_VERSION_TAG
+# Edit by DB 3/8/24 explicitly set version     
+#    version: str = None # config.DEFAULT_ROUTER_VERSION_TAG
+    version: str = config.DEFAULT_ROUTER_VERSION_TAG + config.IMAGE_TAG
 
     podSpec: dict = {}
     podAnnotations: Optional[dict] = None
@@ -1061,14 +1063,14 @@ class AbstractServerSetSpec(abc.ABC):
 
     def format_image(self, image, version):
         if self.imageRepository:
-            return f"{self.imageRepository}/{image}:{version}"
-        return f"{image}:{version}"
+            return f"{self.imageRepository}/{image}:{version}{config.IMAGE_TAG}"
+        return f"{image}:{version}{config.IMAGE_TAG}"
 
     @property
     def mysql_image(self) -> str:
         # server image version is the one given by the user or latest by default
         image = config.MYSQL_SERVER_IMAGE if self.edition == Edition.community else config.MYSQL_SERVER_EE_IMAGE
-        return self.format_image(image, self.version)
+        return self.format_image(image, self.version + config.IMAGE_TAG)
 
     @property
     def operator_image(self) -> str:
@@ -1078,7 +1080,7 @@ class AbstractServerSetSpec(abc.ABC):
         else:
             image = config.MYSQL_OPERATOR_EE_IMAGE
 
-        return self.format_image(image, self.sidecarVersion)
+        return self.format_image(image, self.sidecarVersion + config.ARCH)
 
 
     @property
@@ -1433,11 +1435,11 @@ class InnoDBClusterSpec(AbstractServerSetSpec):
     @property
     def router_image(self) -> str:
         if self.router.version:
-            version = self.router.version
+            version = self.router.version + config.IMAGE_TAG
         elif self.version:
-            version = self.version
+            version = self.version + config.IMAGE_TAG
         else:
-            version = config.DEFAULT_ROUTER_VERSION_TAG
+            version = config.DEFAULT_ROUTER_VERSION_TAG + config.IMAGE_TAG
 
         image = config.MYSQL_ROUTER_IMAGE if self.edition == Edition.community else config.MYSQL_ROUTER_EE_IMAGE
 

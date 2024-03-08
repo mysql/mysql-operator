@@ -369,7 +369,7 @@ def main(argv):
 
     command = args.command
 
-    logger.info(f"[BACKUP] command={command} version={config.OPERATOR_VERSION} timestamp={ts}")
+    logger.info(f"[BACKUP] command={command} version={config.OPERATOR_VERSION}{config.ARCH} timestamp={ts}")
 
     print(f"Command is {command}")
 

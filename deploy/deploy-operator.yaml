@@ -147,6 +147,7 @@ metadata:
     app.kubernetes.io/component: controller
     app.kubernetes.io/managed-by: mysql-operator
     app.kubernetes.io/created-by: mysql-operator
+    kubernetes.io/arch: arm64
 spec:
   replicas: 1
   selector:
@@ -159,7 +160,7 @@ spec:
     spec:
       containers:
         - name: mysql-operator
-          image: container-registry.oracle.com/mysql/community-operator:8.3.0-2.1.2
+          image: container-registry.oracle.com/mysql/community-operator:8.3.0-2.1.2-aarch64
           imagePullPolicy: IfNotPresent
           args:
             [

@@ -138,6 +138,7 @@ metadata:
     app.kubernetes.io/component: router
     app.kubernetes.io/managed-by: mysql-operator
     app.kubernetes.io/created-by: mysql-operator
+    kubernetes.io/arch: {config.ARCH}
 spec:
   replicas: {spec.router.instances or 1 if not init_only else 0}
   selector:
@@ -150,6 +151,7 @@ spec:
       app.kubernetes.io/component: router
       app.kubernetes.io/managed-by: mysql-operator
       app.kubernetes.io/created-by: mysql-operator
+      kubernetes.io/arch: {config.ARCH}
   template:
     metadata:
       labels:
@@ -161,6 +163,7 @@ spec:
         app.kubernetes.io/component: router
         app.kubernetes.io/managed-by: mysql-operator
         app.kubernetes.io/created-by: mysql-operator
+        kubernetes.io/arch: {config.ARCH}
     spec:
       serviceAccountName: {spec.serviceAccountName}
       securityContext:

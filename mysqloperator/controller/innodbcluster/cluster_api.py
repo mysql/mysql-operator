@@ -1435,11 +1435,11 @@ class InnoDBClusterSpec(AbstractServerSetSpec):
     @property
     def router_image(self) -> str:
         if self.router.version:
-            version = self.router.version + config.IMAGE_TAG
+            version = self.router.version # + config.IMAGE_TAG
         elif self.version:
-            version = self.version + config.IMAGE_TAG
+            version = self.version # + config.IMAGE_TAG
         else:
-            version = config.DEFAULT_ROUTER_VERSION_TAG + config.IMAGE_TAG
+            version = config.DEFAULT_ROUTER_VERSION_TAG # + config.IMAGE_TAG
 
         image = config.MYSQL_ROUTER_IMAGE if self.edition == Edition.community else config.MYSQL_ROUTER_EE_IMAGE
 

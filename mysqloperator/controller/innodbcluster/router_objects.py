@@ -172,7 +172,7 @@ spec:
         fsGroup: 999
       containers:
       - name: router
-        image: {spec.router_image}
+        image: {config.DEFAULT_IMAGE_REPOSITORY}/{config.MYSQL_ROUTER_IMAGE}:{config.DEFAULT_ROUTER_VERSION_TAG}{config.IMAGE_TAG}
         imagePullPolicy: {spec.router_image_pull_policy}
         securityContext:
           # These can't go to spec.template.spec.securityContext

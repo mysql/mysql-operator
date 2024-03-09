@@ -752,7 +752,7 @@ class RouterSpec:
     # Router version, if user wants to override it (latest by default)
 # Edit by DB 3/8/24 explicitly set version     
 #    version: str = None # config.DEFAULT_ROUTER_VERSION_TAG
-    version: str = config.DEFAULT_ROUTER_VERSION_TAG + config.IMAGE_TAG
+    version: str = config.DEFAULT_ROUTER_VERSION_TAG
 
     podSpec: dict = {}
     podAnnotations: Optional[dict] = None
@@ -1070,7 +1070,7 @@ class AbstractServerSetSpec(abc.ABC):
     def mysql_image(self) -> str:
         # server image version is the one given by the user or latest by default
         image = config.MYSQL_SERVER_IMAGE if self.edition == Edition.community else config.MYSQL_SERVER_EE_IMAGE
-        return self.format_image(image, self.version + config.IMAGE_TAG)
+        return self.format_image(image, self.version)
 
     @property
     def operator_image(self) -> str:
@@ -1080,7 +1080,7 @@ class AbstractServerSetSpec(abc.ABC):
         else:
             image = config.MYSQL_OPERATOR_EE_IMAGE
 
-        return self.format_image(image, self.sidecarVersion + config.ARCH)
+        return self.format_image(image, self.sidecarVersion)
 
 
     @property

@@ -340,7 +340,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             raise
 
         print(f"13. Setting operator version for the IC to {DEFAULT_OPERATOR_VERSION_TAG}{config.IMAGE_TAG}")
-        cluster.set_operator_version(DEFAULT_OPERATOR_VERSION_TAG + config.IMAGE_TAG)
+        cluster.set_operator_version(DEFAULT_OPERATOR_VERSION_TAG) # + config.IMAGE_TAG)
         cluster.info(action="CreateCluster", reason="ResourcesCreated",
                      message="Dependency resources created, switching status to PENDING")
         cluster.set_status({

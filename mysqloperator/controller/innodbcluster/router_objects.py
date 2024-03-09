@@ -173,7 +173,7 @@ spec:
       containers:
       - name: router
         image: {spec.router_image}
-        imagePullPolicy: {spec.router_image_pull_policy}
+        imagePullPolicy: Always # Hardcoded because spec.router_image_pull_policy isn't working: {spec.router_image_pull_policy}
         securityContext:
           # These can't go to spec.template.spec.securityContext
           # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodTemplateSpec / https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSpec

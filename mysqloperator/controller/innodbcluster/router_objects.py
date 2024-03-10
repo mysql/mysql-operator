@@ -125,6 +125,8 @@ def prepare_router_deployment(cluster: InnoDBCluster, logger, *,
     (router_bootstrap_options, router_tls_exists, ca_and_tls) = get_bootstrap_and_tls_options(cluster)
     router_command = ['mysqlrouter', *spec.router.options]
 
+# spec.template.spec.containers[1].image was: {config.DEFAULT_IMAGE_REPOSITORY}/{config.MYSQL_ROUTER_IMAGE}:{config.DEFAULT_ROUTER_VERSION_TAG}{config.IMAGE_TAG}
+# image here is hard coded to our docker.io repo
     tmpl = f"""
 apiVersion: apps/v1
 kind: Deployment
@@ -172,7 +174,7 @@ spec:
         fsGroup: 999
       containers:
       - name: router
-        image: {config.DEFAULT_IMAGE_REPOSITORY}/{config.MYSQL_ROUTER_IMAGE}:{config.DEFAULT_ROUTER_VERSION_TAG}{config.IMAGE_TAG}
+        image: docker.io/ifeelfine/community-router:8.3.0-aarch64
         imagePullPolicy: {spec.router_image_pull_policy}
         securityContext:
           # These can't go to spec.template.spec.securityContext

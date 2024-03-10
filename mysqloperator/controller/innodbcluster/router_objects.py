@@ -132,7 +132,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {spec.name}-router
-  label:
+  labels:
     tier: mysql
     mysql.oracle.com/cluster: {spec.name}
     app.kubernetes.io/name: mysql-innodbcluster

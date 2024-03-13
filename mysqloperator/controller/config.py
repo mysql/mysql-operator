@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -20,20 +20,20 @@ else:
 
 
 # Constants
-OPERATOR_VERSION = "2.1.3"
+OPERATOR_VERSION = "2.2.0"
 OPERATOR_EDITION = Edition.community
 OPERATOR_EDITION_NAME_TO_ENUM = { edition.value : edition.name for edition in Edition }
 
-SHELL_VERSION = "8.4.0"
+SHELL_VERSION = "9.0.0"
 
 MIN_BASE_SERVER_ID = 1
 MAX_BASE_SERVER_ID = 4000000000
 
-DEFAULT_VERSION_TAG = "8.4.0"
+DEFAULT_VERSION_TAG = "9.0.0"
 
 DEFAULT_SERVER_VERSION_TAG = DEFAULT_VERSION_TAG
 MIN_SUPPORTED_MYSQL_VERSION = "8.0.27"
-MAX_SUPPORTED_MYSQL_VERSION = "8.4.0" # SHELL_VERSION
+MAX_SUPPORTED_MYSQL_VERSION = "9.0.0" # SHELL_VERSION
 
 DISABLED_MYSQL_VERSION = {
     "8.0.29": "Support for MySQL 8.0.29 is disabled. Please see https://dev.mysql.com/doc/relnotes/mysql-operator/en/news-8-0-29.html"
@@ -42,7 +42,7 @@ DISABLED_MYSQL_VERSION = {
 DEFAULT_ROUTER_VERSION_TAG = DEFAULT_VERSION_TAG
 
 # This is used for the sidecar. The operator version is deploy-operator.yaml
-DEFAULT_OPERATOR_VERSION_TAG = "8.4.0-2.1.3"
+DEFAULT_OPERATOR_VERSION_TAG = "9.0.0-2.2.0"
 
 DEFAULT_IMAGE_REPOSITORY = os.getenv(
     "MYSQL_OPERATOR_DEFAULT_REPOSITORY", default="container-registry.oracle.com/mysql").rstrip('/')

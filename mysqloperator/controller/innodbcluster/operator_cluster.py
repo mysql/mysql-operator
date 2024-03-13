@@ -262,7 +262,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             if not ignore_404(cluster.get_stateful_set):
                 print(f"\tPreparing...")
                 statefulset = cluster_objects.prepare_cluster_stateful_set(icspec, logger)
-                print(f"\tCreating Stateful Set {statefulset['metadata']['name']}...\tstatefulset}")
+                print(f"\tCreating Stateful Set {statefulset['metadata']['name']}...\{tstatefulset}")
                 kopf.adopt(statefulset)
 
                 api_apps.create_namespaced_stateful_set(namespace=namespace, body=statefulset)

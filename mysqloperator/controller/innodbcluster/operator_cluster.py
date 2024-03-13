@@ -186,20 +186,20 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             print("0. Components ConfigMaps and Secrets")
             for cm in cluster_objects.prepare_component_config_configmaps(icspec, logger):
                 if not cluster.get_configmap(cm['metadata']['name']):
-                    print(f"\tCreating CM {cm['metadata']['name']} ...")
+                    print(f"\tCreating CM {cm['metadata']['name']}...\t{cm}")
                     kopf.adopt(cm)
                     api_core.create_namespaced_config_map(namespace, cm)
 
             for secret in cluster_objects.prepare_component_config_secrets(icspec, logger):
                 if not cluster.get_secret(secret['metadata']['name']):
-                    print(f"\tCreating Secret {secret['metadata']['name']} ...")
+                    print(f"\tCreating Secret {secret['metadata']['name']}...\t{secret}")
                     kopf.adopt(secret)
                     api_core.create_namespaced_secret(namespace, secret)
 
             print("0.5. Additional ConfigMaps")
             for cm in cluster_objects.prepare_additional_configmaps(icspec, logger):
                 if not cluster.get_configmap(cm['metadata']['name']):
-                    print(f"\tCreating CM {cm['metadata']['name']} ...")
+                    print(f"\tCreating CM {cm['metadata']['name']}...\t{cm}")
                     kopf.adopt(cm)
                     api_core.create_namespaced_config_map(namespace, cm)
 
@@ -207,7 +207,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             if not ignore_404(lambda: cluster.get_initconf(icspec)):
                 print("\tPreparing...")
                 configs = cluster_objects.prepare_initconf(cluster, icspec, logger)
-                print("\tCreating...")
+                print(f"\tCreating Config {configs['metadata']['name']}...\t{configs}")
                 kopf.adopt(configs)
                 api_core.create_namespaced_config_map(namespace, configs)
 
@@ -215,7 +215,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             if not ignore_404(cluster.get_private_secrets):
                 print("\tPreparing...")
                 secret = cluster_objects.prepare_secrets(icspec)
-                print("\tCreating...")
+                print(f"\tCreating Secret {secret['metadata']['name']}...\t{secret}")
                 kopf.adopt(secret)
                 api_core.create_namespaced_secret(namespace=namespace, body=secret)
 
@@ -223,7 +223,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             if not ignore_404(cluster.get_router_account):
                 print("\tPreparing...")
                 secret = router_objects.prepare_router_secrets(icspec)
-                print("\tCreating...")
+                print(f"\tCreating Secret {secret['metadata']['name']}...\t{secret}")
                 kopf.adopt(secret)
                 api_core.create_namespaced_secret(namespace=namespace, body=secret)
 
@@ -231,7 +231,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             if not ignore_404(cluster.get_service):
                 print("\tPreparing...")
                 service = cluster_objects.prepare_cluster_service(icspec)
-                print(f"\tCreating Service {service['metadata']['name']}...")
+                print(f"\tCreating Service {service['metadata']['name']}...\t{service}")
                 kopf.adopt(service)
                 api_core.create_namespaced_service(namespace=namespace, body=service)
 
@@ -242,36 +242,36 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             if not existing_sa:
                 print("\tPreparing...")
                 sa = cluster_objects.prepare_service_account(icspec)
-                print(f"\tCreating...{sa}")
+                print(f"\tCreating Service Account {sa['metadata']['name']}...\t{sa}")
                 kopf.adopt(sa)
                 api_core.create_namespaced_service_account(namespace=namespace, body=sa)
             elif icspec.imagePullSecrets:
                 patch = cluster_objects.prepare_service_account_patch_for_image_pull_secrets(icspec)
-                print(f"\tPatching existing SA with {patch}")
+                print(f"\tPatching existing SA {sa['metadata']['name']} with {patch}")
                 api_core.patch_namespaced_service_account(name=existing_sa.metadata.name, namespace=namespace, body=patch)
 
             print("6. Cluster RoleBinding")
             if not ignore_404(lambda: cluster.get_role_binding(icspec)):
-                print("\tPreparing...")
+                print(f"\tPreparing...")
                 rb = cluster_objects.prepare_role_binding(icspec)
-                print(f"\tCreating RoleBinding {rb['metadata']['name']} ...")
+                print(f"\tCreating RoleBinding {rb['metadata']['name']}...\t{rb}")
                 kopf.adopt(rb)
                 api_rbac.create_namespaced_role_binding(namespace=namespace, body=rb)
 
             print("7. Cluster StatefulSet")
             if not ignore_404(cluster.get_stateful_set):
-                print("\tPreparing...")
+                print(f"\tPreparing...")
                 statefulset = cluster_objects.prepare_cluster_stateful_set(icspec, logger)
-                print(f"\tCreating...{statefulset}")
+                print(f"\tCreating Stateful Set {statefulset['metadata']['name']}...\tstatefulset}")
                 kopf.adopt(statefulset)
 
                 api_apps.create_namespaced_stateful_set(namespace=namespace, body=statefulset)
 
             print("8. Cluster PodDisruptionBudget")
             if not ignore_404(cluster.get_disruption_budget):
-                print("\tPreparing...")
+                print(f"\tPreparing...")
                 disruption_budget = cluster_objects.prepare_cluster_pod_disruption_budget(icspec)
-                print("\tCreating...")
+                print(f"\tCreating {disruption_budget['metadata']['name']}...\t{disruption_budget}")
                 kopf.adopt(disruption_budget)
                 api_policy.create_namespaced_pod_disruption_budget(namespace=namespace, body=disruption_budget)
 
@@ -281,45 +281,45 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 for rr in icspec.readReplicas:
                     do_create_read_replica(cluster, rr, True, "\t\t", logger)
             else:
-                print("\tNo Read Replica")
+                print(f"\tNo Read Replica")
 
             print("10. Router Service")
             if not ignore_404(cluster.get_router_service):
-                print("\tPreparing...")
+                print(f"\tPreparing...")
                 router_service = router_objects.prepare_router_service(icspec)
-                print("\tCreating...")
+                print(f"\tCreating {router_service['metadata']['name']}...\t{router_service}")
                 kopf.adopt(router_service)
                 api_core.create_namespaced_service(namespace=namespace, body=router_service)
 
             print("11. Router Deployment")
             if not ignore_404(cluster.get_router_deployment):
                 if icspec.router.instances > 0:
-                    print("\tPreparing...")
+                    print(f"\tPreparing...")
                     # This will create the deployment but 0 instances. When the cluster is created (first
                     # instance joins it) the instance count will be set to icspec.router.instances
                     router_deployment = router_objects.prepare_router_deployment(cluster, logger, init_only=True)
-                    print(f"\tCreating...{router_deployment}")
+                    print(f"\tCreating {router_deployment['metadata']['name']}...\t{router_deployment}")
                     kopf.adopt(router_deployment)
                     api_apps.create_namespaced_deployment(namespace=namespace, body=router_deployment)
                 else:
                     # If the user decides to set !0 routers, the routine that handles that that
                     # will create the deployment
-                    print("\tRouter count is 0. No Deployment is created.")
+                    print(f"\tRouter count is 0. No Deployment is created.")
 
             print("12. Backup Secrets")
             if not ignore_404(cluster.get_backup_account):
-                print("\tPreparing...")
+                print(f"\tPreparing...")
                 secret = backup_objects.prepare_backup_secrets(icspec)
-                print("\tCreating...")
+                print(f"\tCreating Secret {secret['metadata']['name']}...\t{secret}")
                 kopf.adopt(secret)
                 api_core.create_namespaced_secret(namespace=namespace, body=secret)
 
             print("13. Metrics Service Monitor")
             if not ignore_404(cluster.get_metrics_monitor):
                 if icspec.metrics and icspec.metrics.enable and icspec.metrics.monitor:
-                    print("\tPreparing...")
+                    print(f"\tPreparing...")
                     monitor = cluster_objects.prepare_metrics_service_monitor(cluster, logger)
-                    print("\tCreating...")
+                    print(f"\tCreating Monitor {monitor['metadata']['name']}...\t{monitor}")
                     kopf.adopt(monitor)
                     print(monitor)
                     try:
@@ -336,13 +336,13 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
 
         except Exception as exc:
             cluster.warn(action="CreateCluster", reason="CreateResourceFailed",
-                         message=f"{exc}")
+                        message=f"{exc}")
             raise
 
         print(f"13. Setting operator version for the IC to {DEFAULT_OPERATOR_VERSION_TAG}{config.IMAGE_TAG}")
         cluster.set_operator_version(DEFAULT_OPERATOR_VERSION_TAG) # + config.IMAGE_TAG)
         cluster.info(action="CreateCluster", reason="ResourcesCreated",
-                     message="Dependency resources created, switching status to PENDING")
+                    message="Dependency resources created, switching status to PENDING")
         cluster.set_status({
             "cluster": {
                 "status":  diagnose.ClusterDiagStatus.PENDING.value,

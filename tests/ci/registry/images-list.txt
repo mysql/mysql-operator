@@ -66,6 +66,10 @@ community-server:8.4.0
 mysql/community-server:8.4.0
 1
 ---
+community-server:9.0.0
+mysql/community-server:9.0.0
+1
+---
 community-router:8.0.27
 mysql-router:8.0.27
 1
@@ -132,6 +136,10 @@ mysql-router:8.4.0
 ---
 community-router:8.4.0
 mysql/community-router:8.4.0
+1
+---
+community-router:9.0.0
+mysql/community-router:9.0.0
 1
 ---
 community-operator:8.0.29-2.0.4

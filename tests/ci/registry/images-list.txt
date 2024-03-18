@@ -302,6 +302,10 @@ enterprise-router:8.4.0
 mysql/enterprise-router:8.4.0
 1
 ---
+enterprise-router:9.0.0
+mysql/enterprise-router:9.0.0
+1
+---
 enterprise-router:8.2.0-arm64
 mysql-enterprise-router:8.2.0-arm64
 1
@@ -408,6 +412,10 @@ mysql-enterprise-server:8.4.0
 ---
 enterprise-server:8.4.0
 mysql/enterprise-server:8.4.0
+1
+---
+enterprise-server:9.0.0
+mysql/enterprise-server:9.0.0
 1
 ---
 enterprise-server:8.2.0-arm

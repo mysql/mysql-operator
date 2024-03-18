@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -94,13 +94,14 @@ def check_instance(test, icobj, all_pods, pod, is_primary, num_sessions=None, ve
             test.assertSetEqual(set(my_group_seeds), group_seeds, name)
 
         # check that SSL is enabled for recovery
-        row = session.query_sql(
-            "select ssl_allowed, coalesce(tls_version, '') from performance_schema.replication_connection_configuration where channel_name='group_replication_recovery'").fetch_one()
-        # there's no recovery channel in the seed
-        if row:
-            ssl_allowed, tls_version = row
-            test.assertTrue(ssl_allowed, name)
-            test.assertNotEqual(tls_version, "", name)
+        if not is_primary:
+            row = session.query_sql(
+                "select ssl_allowed, coalesce(tls_version, '') from performance_schema.replication_connection_configuration where channel_name='group_replication_recovery'").fetch_one()
+            # there's no recovery channel in the seed
+            if row:
+                ssl_allowed, tls_version = row
+                test.assertTrue(ssl_allowed, name)
+                test.assertNotEqual(tls_version, "", name)
 
         if num_sessions is not None:
             sessions = [tuple(row)

@@ -1,4 +1,4 @@
-# Copyright (c) 2021, 2023 Oracle and/or its affiliates.
+# Copyright (c) 2021, 2024 Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -55,23 +55,22 @@ def check_ssl(self, ns, pod, ca=None, crl=None, ssl_cert_days=None, check_gr_acc
     self_signed = not ca or "/" not in ca
 
     with mutil.MySQLPodSession(ns, pod, "root", "sakila") as s:
-        row = s.query_sql("select @@global.have_ssl, @@global.ssl_ca, @@global.ssl_capath, @@global.ssl_cert, @@global.ssl_crl, @@global.ssl_crlpath, @@global.ssl_key").fetch_one()
+        row = s.query_sql("select @@global.ssl_ca, @@global.ssl_capath, @@global.ssl_cert, @@global.ssl_crl, @@global.ssl_crlpath, @@global.ssl_key").fetch_one()
 
-        self.assertTrue(row[0], f"{pod}: have_ssl")
         if not self_signed:
-            self.assertEqual("/etc/mysql-ssl/ca.pem", row[1], f"{pod}: ssl_ca")
-            self.assertFalse(row[2], f"{pod}: ssl_capath")
-            self.assertEqual("/etc/mysql-ssl/tls.crt", row[3], f"{pod}: ssl_cert")
-            self.assertEqual("/etc/mysql-ssl/crl.pem" if crl else None, row[4], f"{pod}: ssl_crl")
-            self.assertFalse(row[5], f"{pod}: ssl_crlpath")
-            self.assertEqual("/etc/mysql-ssl/tls.key", row[6], f"{pod}: ssl_key")
+            self.assertEqual("/etc/mysql-ssl/ca.pem", row[0], f"{pod}: ssl_ca")
+            self.assertFalse(row[1], f"{pod}: ssl_capath")
+            self.assertEqual("/etc/mysql-ssl/tls.crt", row[2], f"{pod}: ssl_cert")
+            self.assertEqual("/etc/mysql-ssl/crl.pem" if crl else None, row[3], f"{pod}: ssl_crl")
+            self.assertFalse(row[4], f"{pod}: ssl_crlpath")
+            self.assertEqual("/etc/mysql-ssl/tls.key", row[5], f"{pod}: ssl_key")
         else:
-            self.assertEqual("ca.pem", row[1], f"{pod}: ssl_ca")
-            self.assertFalse(row[2], f"{pod}: ssl_capath")
-            self.assertEqual("server-cert.pem", row[3], f"{pod}: ssl_cert")
-            self.assertFalse(row[4], f"{pod}: ssl_crl")
-            self.assertFalse(row[5], f"{pod}: ssl_crlpath")
-            self.assertEqual("server-key.pem", row[6], f"{pod}: ssl_key")
+            self.assertEqual("ca.pem", row[0], f"{pod}: ssl_ca")
+            self.assertFalse(row[1], f"{pod}: ssl_capath")
+            self.assertEqual("server-cert.pem", row[2], f"{pod}: ssl_cert")
+            self.assertFalse(row[3], f"{pod}: ssl_crl")
+            self.assertFalse(row[4], f"{pod}: ssl_crlpath")
+            self.assertEqual("server-key.pem", row[5], f"{pod}: ssl_key")
 
         row = s.query_sql("""select @@global.group_replication_ssl_mode,
                             @@global.group_replication_recovery_use_ssl,

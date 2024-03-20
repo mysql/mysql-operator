@@ -21,11 +21,15 @@ def check_sidecar_health(test, ns, pod):
     test.assertIn("Starting Operator request handler...", logs)
 
 def get_routing_options(ns, pod) -> dict:
-        result = kutil.execp(ns, [pod, "sidecar"],
-                             ["mysqlsh", "root:sakila@localhost", "--js", "-e",
-                              "print(dba.getCluster().routingOptions())",
-                              "--quiet-start=2"])
+    result = kutil.execp(ns, [pod, "sidecar"],
+                         ["mysqlsh", "root:sakila@localhost", "--js", "-e",
+                          "print(dba.getCluster().routingOptions())",
+                          "--quiet-start=2"])
+    try:
         return json.loads(result)
+    except json.decoder.JSONDecodeError:
+        print(f"Failed shell output: {result=}")
+        raise
 
 
 # Test 1 member cluster with all default configs

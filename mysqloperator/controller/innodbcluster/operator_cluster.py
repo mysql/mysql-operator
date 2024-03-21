@@ -55,6 +55,13 @@ def ensure_backup_schedules_use_current_image(clusters: List[InnoDBCluster], log
             logger.warn(f"Error while ensuring {cluster.namespace}/{cluster.name} uses current operator version for scheduled backups: {exc}")
 
 
+def ensure_router_accounts_are_uptodate(clusters: List[InnoDBCluster], logger: Logger) -> None:
+    for cluster in clusters:
+        router_objects.update_router_account(cluster,
+                                             lambda: logger.warning(f"Cluster {cluster.namespace}/{cluster.name} unreachable"),
+                                             logger)
+
+
 def ignore_404(f) -> Any:
     try:
         return f()
@@ -408,9 +415,8 @@ def on_innodbcluster_field_instances(old, new, body: Body,
         logger.info(
             f"Updating InnoDB Cluster StatefulSet.replicas from {old} to {new}")
         cluster.parsed_spec.validate(logger)
-
-        cluster_objects.update_stateful_set_spec(
-            sts, {"spec": {"replicas": new}})
+        with ClusterMutex(cluster):
+            cluster_objects.update_stateful_set_spec(sts, {"spec": {"replicas": new}})
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
@@ -431,17 +437,21 @@ def on_innodbcluster_field_version(old, new, body: Body,
         logger.info(
             f"Propagating spec.version={new} for {cluster.namespace}/{cluster.name} (was {old})")
 
-        cluster.parse_spec()
-        cluster_ctl = ClusterController(cluster)
-        try:
-            cluster_ctl.on_server_version_change(new)
-        except:
-            # revert version in the spec
-            raise
-        cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, logger)
-        router_deploy = cluster.get_router_deployment()
-        if router_deploy:
-            router_objects.update_router_image(router_deploy, cluster.parsed_spec, logger)
+        cluster.parsed_spec.validate(logger)
+        with ClusterMutex(cluster):
+            cluster_ctl = ClusterController(cluster)
+            try:
+                cluster_ctl.on_router_upgrade(logger)
+                cluster_ctl.on_server_version_change(new)
+            except:
+                # revert version in the spec
+                raise
+
+            cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, logger)
+
+            router_deploy = cluster.get_router_deployment()
+            if router_deploy:
+                router_objects.update_router_image(router_deploy, cluster.parsed_spec, logger)
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
@@ -460,13 +470,19 @@ def on_innodbcluster_field_image_repository(old, new, body: Body,
         logger.info(
             f"Propagating spec.imageRepository={new} for {cluster.namespace}/{cluster.name} (was {old})")
 
-        cluster.parse_spec()
-
-        cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, logger)
-        cluster_objects.update_operator_image(sts, cluster.parsed_spec)
-        router_deploy = cluster.get_router_deployment()
-        if router_deploy:
-            router_objects.update_router_image(router_deploy, cluster.parsed_spec, logger)
+        cluster.parsed_spec.validate(logger)
+        with ClusterMutex(cluster):
+            try:
+                cluster_ctl = ClusterController(cluster)
+                cluster_ctl.on_router_upgrade(logger)
+            except:
+                # revert version in the spec
+                raise
+            cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, logger)
+            cluster_objects.update_operator_image(sts, cluster.parsed_spec)
+            router_deploy = cluster.get_router_deployment()
+            if router_deploy:
+                router_objects.update_router_image(router_deploy, cluster.parsed_spec, logger)
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
@@ -485,12 +501,12 @@ def on_innodbcluster_field_image_pull_policy(old, new, body: Body,
         logger.info(
             f"Propagating spec.imagePullPolicy={new} for {cluster.namespace}/{cluster.name} (was {old})")
 
-        cluster.parse_spec()
-
-        cluster_objects.update_pull_policy(sts, cluster.parsed_spec, logger)
-        router_deploy = cluster.get_router_deployment()
-        if router_deploy:
-            router_objects.update_pull_policy(router_deploy, cluster.parsed_spec, logger)
+        cluster.parsed_spec.validate(logger)
+        with ClusterMutex(cluster):
+            cluster_objects.update_pull_policy(sts, cluster.parsed_spec, logger)
+            router_deploy = cluster.get_router_deployment()
+            if router_deploy:
+                router_objects.update_pull_policy(router_deploy, cluster.parsed_spec, logger)
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
@@ -511,16 +527,15 @@ def on_innodbcluster_field_image(old, new, body: Body,
         logger.info(
             f"Updating MySQL image for InnoDB Cluster StatefulSet pod template from {old} to {new}")
         cluster.parsed_spec.validate(logger)
+        with ClusterMutex(cluster):
+            try:
+                cluster_ctl = ClusterController(cluster)
+                cluster_ctl.on_server_image_change(new)
+            except:
+                # revert version in the spec
+                raise
 
-        cluster_ctl = ClusterController(cluster)
-
-        try:
-            cluster_ctl.on_server_image_change(new)
-        except:
-            # revert version in the spec
-            raise
-
-        cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, logger)
+            cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, logger)
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
@@ -535,10 +550,9 @@ def on_innodbcluster_field_router_instances(old: int, new: int, body: Body,
             f"Ignoring spec.router.instances change for unready cluster")
         return
 
+    cluster.parsed_spec.validate(logger)
     with ClusterMutex(cluster):
         logger.info(f"Updating Router Deployment.replicas from {old} to {new}")
-        cluster.parsed_spec.validate(logger)
-
         router_objects.update_size(cluster, new, logger)
 
 
@@ -559,6 +573,12 @@ def on_innodbcluster_field_router_version(old: str, new: str, body: Body,
 
     cluster.parsed_spec.validate(logger)
     with ClusterMutex(cluster):
+        try:
+            cluster_ctl = ClusterController(cluster)
+            cluster_ctl.on_router_upgrade(logger)
+        except:
+            # revert version in the spec
+            raise
         router_deploy = cluster.get_router_deployment()
         if router_deploy:
             router_objects.update_router_image(router_deploy, cluster.parsed_spec, logger)
@@ -673,8 +693,8 @@ def on_sts_field_update(body: Body, field: str, logger: Logger) -> None:
         return
 
     cluster.parsed_spec.validate(logger)
-
-    cluster_objects.reconcile_stateful_set(cluster, logger)
+    with ClusterMutex(cluster):
+        cluster_objects.reconcile_stateful_set(cluster, logger)
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
@@ -928,10 +948,12 @@ def on_ic_labels_and_annotations_change(what: str, body: Body, diff, old, new, l
     # TODO - identify what cluster statuses should allow changes to the size of the cluster
 
     sts = cluster.get_stateful_set()
+    cluster.parsed_spec.validate(logger)
     if sts and diff:
         logger.info(f"on_ic_labels_and_annotations_change: Updating InnoDB Cluster StatefulSet {what}")
         patch = {field[0]: new for op, field, old, new in diff }
-        cluster_objects.update_stateful_set_spec(sts, {"spec": {"template": { "metadata" : { what : patch }}}})
+        with ClusterMutex(cluster):
+            cluster_objects.update_stateful_set_spec(sts, {"spec": {"template": { "metadata" : { what : patch }}}})
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
@@ -960,7 +982,9 @@ def on_ic_router_labels_and_annotations_change(what: str, body: Body, diff, logg
     patch = {field[0]: new for op, field, old, new in diff }
     logger.info(f"diff={diff}")
     logger.info(f"patch={patch}")
-    router_objects.update_labels_or_annotations(what, patch, cluster, logger)
+    cluster.parsed_spec.validate(logger)
+    with ClusterMutex(cluster):
+        router_objects.update_labels_or_annotations(what, patch, cluster, logger)
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,

@@ -851,6 +851,11 @@ class ClusterController:
         if not version_valid:
             raise kopf.PermanentError(version_error)
 
+    def on_router_upgrade(self, logger: Logger) -> None:
+        def on_nonupdated() -> None:
+            raise kopf.TemporaryError(f"Cluster {self.cluster.namespace}/{self.cluster.name} unreachable", delay=5)
+        router_objects.update_router_account(self.cluster, on_nonupdated, logger)
+
     def on_change_metrics_user(self, logger: Logger) -> None:
         metrics = self.cluster.parsed_spec.metrics
         self.connect_to_primary(None, logger)

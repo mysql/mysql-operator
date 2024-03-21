@@ -6,12 +6,13 @@
 from shlex import quote
 from .cluster_api import InnoDBCluster, InnoDBClusterSpec
 from ..kubeutils import client as api_client, ApiException
-from .. import config, fqdn, utils
+from .. import config, fqdn, utils, shellutils
+import mysqlsh
 import yaml
 from ..kubeutils import api_apps, api_core, k8s_cluster_domain
 import kopf
 from logging import Logger
-from typing import Optional
+from typing import Optional, Callable
 
 
 def prepare_router_service(spec: InnoDBClusterSpec) -> dict:
@@ -124,7 +125,6 @@ def prepare_router_deployment(cluster: InnoDBCluster, logger, *,
 
     (router_bootstrap_options, router_tls_exists, ca_and_tls) = get_bootstrap_and_tls_options(cluster)
     router_command = ['mysqlrouter', *spec.router.options]
-
     router_target = fqdn.idc_service_fqdn(cluster, logger)
 
     tmpl = f"""
@@ -433,3 +433,37 @@ def restart_deployment_for_tls(dpl: api_client.V1Deployment, router_tls_crt, rou
 
     logger.info("TLS data hasn't changed. Deployment doesn't need a restart")
     return False
+
+
+def update_router_account(cluster: InnoDBCluster, on_nonupdated: Optional[Callable], logger: Logger) -> None:
+      if not cluster.ready:
+          logger.info(f"Cluster {cluster.namespace}/{cluster.name} not ready. Skipping router account update.")
+          return
+
+      try:
+          user, password = cluster.get_router_account()
+      except ApiException as e:
+          if e.status == 404:
+              # Should not happen, as cluster.ready should be False for a cluster with missing router account
+              # In any case handle this case and skip
+              logger.warning(f"Could not find router account of {cluster.name} in {cluster.namespace}")
+              return
+          raise
+
+      updated = False
+
+      for pod in cluster.get_pods():
+          if pod.deleting:
+              continue
+          try:
+              with shellutils.DbaWrap(shellutils.connect_dba(pod.endpoint_co, logger, max_tries=3)) as dba:
+                  dba.get_cluster().setup_router_account(user, {"update": True})
+                  updated = True
+                  break
+
+          except mysqlsh.Error as e:
+              logger.warning(f"Could not connect to {pod.endpoint_co}: {e}")
+              continue
+
+      if not updated and on_nonupdated:
+          on_nonupdated()

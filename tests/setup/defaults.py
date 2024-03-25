@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -6,10 +6,10 @@
 import os
 
 # version
-VERSION_TAG = "8.0.36"
+VERSION_TAG = "8.0.37"
 
 MIN_SUPPORTED_VERSION = "8.0.27"
-MAX_SUPPORTED_VERSION = "8.0.36"
+MAX_SUPPORTED_VERSION = "8.0.37"
 
 # image
 IMAGE_REGISTRY = os.getenv(
@@ -27,7 +27,7 @@ OPERATOR_EE_IMAGE_NAME = os.getenv(
     "OPERATOR_TEST_EE_IMAGE_NAME", default="enterprise-operator")
 
 OPERATOR_VERSION_TAG = os.getenv(
-    "OPERATOR_TEST_VERSION_TAG", default="8.0.36-2.0.13")
+    "OPERATOR_TEST_VERSION_TAG", default="8.0.37-2.0.14")
 
 OPERATOR_OLD_VERSION_TAG = os.getenv(
     "OPERATOR_TEST_OLD_VERSION_TAG", default="8.0.32-2.0.8")

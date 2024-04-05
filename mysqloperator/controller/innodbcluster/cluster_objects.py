@@ -810,29 +810,6 @@ def prepare_metrics_service_monitors(spec: AbstractServerSetSpec, logger: Logger
 
     return monitors
 
-    monitor = f"""
-apiVersion: monitoringcoreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: {cluster.name}
-spec:
-  selector:
-    matchLabels:
-      mysql.oracle.com/cluster: {cluster.name}
-      tier: mysql
-  endpoints:
-  - port: metrics
-    path: /metrics
-"""
-    monitor = yaml.safe_load(monitor)
-
-    if cluster.parsed_spec.metrics and cluster.parsed_spec.metrics.monitor_spec:
-        utils.merge_patch_object(monitor["spec"],
-                                 cluster.parsed_spec.metrics.monitor_spec,
-                                 "spec.metrics.monitorSpec")
-
-    return monitor
-
 
 def reconcile_stateful_set(cluster: InnoDBCluster, logger: Logger) -> None:
     logger.info("reconcile_stateful_set")

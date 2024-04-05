@@ -101,6 +101,8 @@ class Config:
     local_path_provisioner_manifest_url = "https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.24/deploy/local-path-storage.yaml"
     local_path_provisioner_shared_path = "/tmp/local-path-shared"
 
+    expected_termination_grace_period = 120
+
     def __del__(self):
         if self.azure_config_file_is_tmp:
              os.remove(self.azure_config_file)
@@ -258,6 +260,9 @@ class Config:
     def get_local_path_provisioner_manifest_url(self) -> str:
         return self.local_path_provisioner_manifest_url
 
+    def get_expected_termination_grace_period(self) -> int:
+        return self.expected_termination_grace_period
+
     def __str__(self):
         return f"""
 Image registry:                      : {self.get_image_registry_repository()}
@@ -276,7 +281,8 @@ Custom IC Router version override all: {self.get_custom_ic_server_version_overri
 Total containers per router pod      : {self.get_router_total_containers_per_pod()}
 Local path provisioner install       : {self.local_path_provisioner_install}
 Local path provisioner shared path   : {self.get_local_path_provisioner_shared_path()}
-Local path provisioner manifest URL  : {self.get_local_path_provisioner_manifest_url()}"""
+Local path provisioner manifest URL  : {self.get_local_path_provisioner_manifest_url()}
+Expected termination grace period    : {self.get_expected_termination_grace_period()}"""
 
 # test-suite configuration
 g_ts_cfg = Config()

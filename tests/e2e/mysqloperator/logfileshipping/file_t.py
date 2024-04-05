@@ -321,7 +321,7 @@ spec:
 
     def _04_disable_slow_log(self):
         patch = {"spec": { "logs" : { "slowQuery" : { "enabled": False }}}}
-        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
+        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=600, delay=50)
         start_time = time()
         kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
         """
@@ -372,7 +372,7 @@ spec:
 
     def _08_reenable_slow_log(self):
         patch = {"spec": { "logs" : { "slowQuery" : { "enabled": True }}}}
-        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
+        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=600, delay=50)
         start_time = time()
         kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
         waiter()
@@ -407,7 +407,7 @@ spec:
 
     def _12_enable_general_log(self):
         patch = {"spec": { "logs" : { "general" : { "enabled": True }}}}
-        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
+        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=600, delay=50)
         start_time = time()
         kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
         waiter()
@@ -850,7 +850,7 @@ spec:
     def _04_disable_general_log(self):
         patch = {"spec": { "logs" : { "general" : { "enabled": False }}}}
         start_time = time()
-        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
+        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=600, delay=50)
         kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
         waiter()
         self.wait_ic("mycluster", "ONLINE")
@@ -900,7 +900,7 @@ spec:
                 }
             }
         ]
-        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
+        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=600, delay=50)
         start_time = time()
         kutil.patch_ic(self.ns, "mycluster", patch, type="json", data_as_type='json')
         # We have set the terminationGracePeriodSeconds to 5s, so the pod should die quickly and be
@@ -1784,7 +1784,7 @@ spec:
 
     def _06_disable_general_log(self):
         patch = {"spec": { "logs" : { "general" : { "enabled": False, "collect": False }}}}
-        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
+        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=600, delay=50)
         start_time = time()
         kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
 

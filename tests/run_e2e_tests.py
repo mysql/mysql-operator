@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -93,6 +93,8 @@ if __name__ == '__main__':
     opt_cfg_path = None
     opt_ip_family = None
     opt_xml_report_path = None
+    opt_test_runner = 0
+    opt_test_runners = 0
 
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     allowed_commands = ["run", "list", "setup", "test", "clean"]
@@ -216,6 +218,8 @@ if __name__ == '__main__':
                 g_ts_cfg.custom_sts_podspec = base64.b64decode(arg.partition("=")[-1]).decode("utf8")
             except:
                 pass
+        elif arg.startswith("--sts-expected-termination-grace-period"):
+            g_ts_cfg.expected_termination_grace_period = int(arg.partition("=")[-1])
         elif arg.startswith("--ic-server-version"):
             g_ts_cfg.custom_ic_server_version = arg.partition("=")[-1]
         elif arg.startswith("--ic-server-version-override"):
@@ -231,6 +235,10 @@ if __name__ == '__main__':
             g_ts_cfg.local_path_provisioner_shared_path = arg.partition("=")[-1]
         elif arg.startswith("--local-path-provisioner-manifest-url"):
             g_ts_cfg.local_path_provisioner_manifest_url = arg.partition("=")[-1]
+        elif arg.startswith("--test-runner="):
+            opt_test_runner = int(arg.split("=")[-1])
+        elif arg.startswith("--test-runners="):
+            opt_test_runners = int(arg.split("=")[-1])
         elif arg.startswith("-"):
             print(f"Invalid option {arg}")
             sys.exit(1)
@@ -248,25 +256,26 @@ if __name__ == '__main__':
         with open(opt_suite_path, 'r') as f:
             opt_include += f.read().splitlines()
     print(f"opt_include: {opt_include}")
-    print(g_ts_cfg)
+    print(f"opt_test_runner={opt_test_runner} opt_test_runners={opt_test_runners}")
 
     image_dir = os.getenv("DOCKER_IMAGE_DIR") or "/tmp/docker-images"
     images = ["mysql-server:8.0.25", "mysql-router:8.0.25",
               "mysql-server:8.0.24", "mysql-router:8.0.24",
               "mysql-operator:8.0.25-2.0.1", "mysql-operator-commercial:8.0.25-2.0.1"]
 
-    suites = testsuite.load_test_suite(basedir, opt_include, opt_exclude)
+    suites = testsuite.load_test_suite(basedir, opt_include, opt_exclude, opt_test_runner, opt_test_runners)
     if not suites or suites.countTestCases() == 0:
         print("No tests matched")
         sys.exit(0)
 
     if cmd == "list":
         print("Listing tests and exiting...")
+        print(f"Count={suites.countTestCases()}")
         list_tests(suites)
         sys.exit(0)
 
     setup_logging(opt_verbose)
-
+    print(g_ts_cfg)
     print(
         f"Using environment {g_ts_cfg.env} with kubernetes version {opt_kube_version or 'latest'}...")
 

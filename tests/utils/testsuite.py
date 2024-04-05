@@ -1,4 +1,4 @@
-# Copyright (c) 2023, Oracle and/or its affiliates.
+# Copyright (c) 2023, 2024 Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -9,7 +9,8 @@ import os
 import unittest
 from unittest.util import strclass
 
-def load_test_suite(basedir: str, include: list, exclude: list):
+def load_test_suite(basedir: str, include: list, exclude: list,
+                    runner: int = 0, runners: int = 0):
     loader = unittest.TestLoader()
 
     tests = loader.discover("e2e", pattern="*_t.py", top_level_dir=basedir)
@@ -32,15 +33,22 @@ def load_test_suite(basedir: str, include: list, exclude: list):
                 return True
         return False
 
+    all_i = 0
     for ts in tests:
         for test in ts:
             for case in test:
                 name = strclass(case.__class__)
                 if ((not include or match_any(name, include)) and
                         (not exclude or not match_any(name, exclude))):
+                    all_i += 1
+                    if runners > 0 and runner > 0:
+                        if (all_i - 1) % runners != (runner - 1):
+                            print(f"Skipping test #{all_i:2} {name}")
+                            break
+                    print(f"Adding test #{all_i:2} {name}")
                     suite.addTest(test)
                 else:
-                    print("skipping", name)
+                    print(f"Skipping {name}")
                 break
 
     if suite.countTestCases() > 0:

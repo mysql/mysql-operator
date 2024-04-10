@@ -29,6 +29,13 @@ baseServerId: 1000
 #  podAnnotations:
 #  podLabels:
 
+podPriorityClassName:
+  # If create is false with no name set, no podPriorityClassName is specified.
+  create: true
+  # If not set a name is generated using the fullname template 
+  name: ""
+  priority: 1000000
+
 #logs:
 #  error:
 #    enabled: true

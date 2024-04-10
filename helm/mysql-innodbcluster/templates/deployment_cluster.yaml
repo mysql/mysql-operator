@@ -444,6 +444,9 @@ spec:
         {{- end }}
       {{- end }}
     {{- end }}
+    {{- if .Values.priorityClassName }}
+    priorityClassName: {{ .Values.priorityClassName }}
+    {{- end }}
     {{- if hasKey $replica "mycnf" }}
     mycnf: | {{- if not (hasPrefix "[mysqld]" (($replica).mycnf) ) }}{{- "[mysqld]" | nindent 6 }}{{- end }}{{ (($replica).mycnf) | nindent 6 }}{{- end }}
     {{- if hasKey $replica "instances" }}

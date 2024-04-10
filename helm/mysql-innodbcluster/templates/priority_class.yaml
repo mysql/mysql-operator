@@ -1,0 +1,11 @@
+{{- $cluster_name :=  default "mycluster" .Release.Name }}
+{{- if .Values.podPriorityClassName.create }}
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: {{ $cluster_name }}
+  namespace: {{ .Release.Namespace }}
+preemptionPolicy: PreemptLowerPriority
+globalDefault: false
+value: {{ .Values.podPriorityClassName.priority }}
+{{- end }}

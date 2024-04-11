@@ -216,7 +216,7 @@ def populate_with_dump(datadir: str, session: 'ClassicSession', cluster: InnoDBC
     return session
 
 
-def populate_db(datadir, session, cluster, pod, logger: Logger) -> 'ClassicSession':
+def populate_db(datadir, session, cluster: InnoDBCluster, pod, logger: Logger) -> 'ClassicSession':
     """
     Populate DB from source specified in the cluster spec.
     Also creates main root account specified by user.

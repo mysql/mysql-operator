@@ -65,6 +65,7 @@ from .controller.plugins import install_enterprise_plugins, install_enterprise_e
 
 if TYPE_CHECKING:
     from mysqlsh.mysql import ClassicSession
+    from mysqlsh import Dba
 
 mysql = mysqlsh.mysql
 
@@ -93,7 +94,7 @@ CLONE_RESTART_TIMEOUT = 60*10
 BOOTSTRAP_DONE_FILE = "/var/run/mysql/bootstrap-done"
 
 
-def create_local_accounts(session, logger):
+def create_local_accounts(session: 'ClassicSession', logger: Logger):
     """
     Creates:
     - a localroot@localhost account with auth_socket authentication.
@@ -114,7 +115,7 @@ def create_local_accounts(session, logger):
             raise Exception("Error creating local accounts")
 
 
-def configure_for_innodb_cluster(dba, logger):
+def configure_for_innodb_cluster(dba:'Dba', logger: Logger):
     """
     Configure instance for InnoDB Cluster.
     """
@@ -124,7 +125,7 @@ def configure_for_innodb_cluster(dba, logger):
     logger.info("Instance configured")
 
 
-def wipe_old_innodb_cluster(session, logger):
+def wipe_old_innodb_cluster(session: 'ClassicSession', logger: Logger):
     # drop innodb cluster accounts
     try:
         rows = session.run_sql(
@@ -216,7 +217,7 @@ def populate_with_dump(datadir: str, session: 'ClassicSession', cluster: InnoDBC
     return session
 
 
-def populate_db(datadir, session, cluster: InnoDBCluster, pod, logger: Logger) -> 'ClassicSession':
+def populate_db(datadir: str, session: 'ClassicSession', cluster: InnoDBCluster, pod, logger: Logger) -> 'ClassicSession':
     """
     Populate DB from source specified in the cluster spec.
     Also creates main root account specified by user.
@@ -350,7 +351,7 @@ def connect(user: str, password: str, logger: Logger, timeout: Optional[int] = 6
     return mysqlsh.globals.session
 
 
-def initialize(session, datadir: str, pod: MySQLPod, cluster: InnoDBCluster, logger: Logger) -> None:
+def initialize(session: 'ClassicSession', datadir: str, pod: MySQLPod, cluster: InnoDBCluster, logger: Logger) -> None:
     session.run_sql("SET sql_log_bin=0")
     create_root_account(session, pod, cluster, logger)
     create_admin_account(session, cluster, logger)
@@ -453,7 +454,7 @@ def bootstrap(pod: MySQLPod, datadir: str, logger: Logger) -> int:
 
     return 1
 
-def ensure_correct_tls_sysvars(pod: MySQLPod, session, enabled: bool, caller: str, logger: Logger) -> None:
+def ensure_correct_tls_sysvars(pod: MySQLPod, session: 'ClassicSession', enabled: bool, caller: str, logger: Logger) -> None:
     has_crl = os.path.exists("/etc/mysql-ssl/crl.pem")
 
     logger.info(f"Ensuring custom TLS certificates are {'enabled' if enabled else 'disabled'} {'(with crl)' if has_crl else ''} caller={caller}")

@@ -437,7 +437,6 @@ def on_innodbcluster_field_version(old, new, body: Body,
         logger.info(
             f"Propagating spec.version={new} for {cluster.namespace}/{cluster.name} (was {old})")
 
-        cluster.parsed_spec.validate(logger)
         with ClusterMutex(cluster):
             cluster_ctl = ClusterController(cluster)
             try:
@@ -447,6 +446,10 @@ def on_innodbcluster_field_version(old, new, body: Body,
                 # revert version in the spec
                 raise
 
+            # should not be earlier, as on_server_version_change() checks also for the version and raises
+            # a PermanentError while validate() raises ApiSpecError which is turned by Kopf to a TemporaryError
+            # spec.version requires this special handling
+            cluster.parsed_spec.validate(logger)
             cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, logger)
 
             router_deploy = cluster.get_router_deployment()
@@ -807,6 +810,7 @@ def on_pod_create(body: Body, logger: Logger, **kwargs):
     cluster = pod.get_cluster()
 
     assert cluster
+    logger.info(f"on_pod_create: cluster create time {cluster.get_create_time()}")
 
     with ClusterMutex(cluster, pod):
         first_pod = pod.index == 0 and not cluster.get_create_time()

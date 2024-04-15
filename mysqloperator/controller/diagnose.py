@@ -575,7 +575,7 @@ def do_diagnose_cluster(cluster: InnoDBCluster, logger) -> ClusterStatus:
                                  ClusterDiagStatus.ONLINE_UNCERTAIN,
                                  ClusterDiagStatus.NO_QUORUM,
                                  ClusterDiagStatus.NO_QUORUM_UNCERTAIN):
-        print(log_msg)
+        logger.info(log_msg)
 
     logger.debug(f"Cluster {cluster.name}  status={cluster_status.status}")
 

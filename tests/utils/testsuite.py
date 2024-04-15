@@ -10,7 +10,7 @@ import unittest
 from unittest.util import strclass
 
 def load_test_suite(basedir: str, include: list, exclude: list,
-                    runner: int = 0, runners: int = 0):
+                    silent: bool = True, runner: int = 0, runners: int = 0):
     loader = unittest.TestLoader()
 
     tests = loader.discover("e2e", pattern="*_t.py", top_level_dir=basedir)
@@ -43,9 +43,11 @@ def load_test_suite(basedir: str, include: list, exclude: list,
                     all_i += 1
                     if runners > 0 and runner > 0:
                         if (all_i - 1) % runners != (runner - 1):
-                            print(f"Skipping test #{all_i:2} {name}")
+                            if not silent:
+                                print(f"Skipping test #{all_i:2} {name}")
                             break
-                    print(f"Adding test #{all_i:2} {name}")
+                    if not silent:
+                        print(f"Adding test #{all_i:2} {name}")
                     suite.addTest(test)
                 else:
                     print(f"Skipping {name}")

@@ -263,7 +263,7 @@ if __name__ == '__main__':
               "mysql-server:8.0.24", "mysql-router:8.0.24",
               "mysql-operator:8.0.25-2.0.1", "mysql-operator-commercial:8.0.25-2.0.1"]
 
-    suites = testsuite.load_test_suite(basedir, opt_include, opt_exclude, opt_test_runner, opt_test_runners)
+    suites = testsuite.load_test_suite(basedir, opt_include, opt_exclude, False, opt_test_runner, opt_test_runners)
     if not suites or suites.countTestCases() == 0:
         print("No tests matched")
         sys.exit(0)

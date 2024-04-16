@@ -513,7 +513,7 @@ spec:
 
         # there should be events for the cluster resource indicating the update problem
         self.assertGotClusterEvent(
-            "mycluster", type="Normal", reason="Logging", msg=rf"Propagating spec.version=8.8.8 for {self.ns}/mycluster \(was None\)")
+            "mycluster", type="Normal", reason="Logging", msg=rf"Propagating spec.version=100.8.8 for {self.ns}/mycluster \(was None\)")
         self.assertGotClusterEvent(
             "mycluster", type="Error", reason="Logging", msg="Handler 'on_innodbcluster_field_version/spec.version' failed permanently: version 100.8.8 must be between .*")
         self.assertGotClusterEvent(

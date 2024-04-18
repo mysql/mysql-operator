@@ -912,13 +912,6 @@ spec:
         print("[08_restart_sts] Cluster ONLINE after %2.f seconds " % (time() - start_time))
 
     def _10_check_general_log_doesnt_exist(self):
-        patch = {"spec": { "logs" : { "general" : { "enabled": False }}}}
-        kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
-        sleep(5)
-        for instance in reversed(range(0, self.instances)):
-            self.wait_pod(f"mycluster-{instance}", "Running")
-        self.wait_ic("mycluster", "ONLINE")
-
         server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
         pod_names = [server["NAME"] for server in server_pods]
         for pod_name in pod_names:
@@ -1787,7 +1780,6 @@ spec:
         waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=600, delay=50)
         start_time = time()
         kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
-
         waiter()
         self.wait_ic("mycluster", "ONLINE")
         print("[06_disable_general_log] Cluster ONLINE after %.2f seconds " % (time() - start_time))

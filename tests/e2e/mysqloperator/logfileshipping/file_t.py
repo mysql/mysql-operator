@@ -261,7 +261,7 @@ metadata:
 spec:
   instances: {cls.instances}
   router:
-    instances: 0
+    instances: 1
   secretName: mypwds
   edition: community
   tlsUseSelfSigned: true
@@ -286,6 +286,7 @@ spec:
 
         self.wait_pod("mycluster-0", "Running")
 
+        self.wait_routers("mycluster-router-*", 1)
         self.wait_ic("mycluster", "ONLINE")
 
         self.assertGotClusterEvent(
@@ -335,6 +336,8 @@ spec:
         kutil.patch_ic(self.ns, "mycluster", patch, type="json", data_as_type='json')
         """
         waiter()
+        for instance in reversed(range(0, self.instances)):
+            self.wait_pod(f"mycluster-{instance}", "Running")
         self.wait_ic("mycluster", "ONLINE")
         print("[04_disable_slow_log] Cluster ONLINE after %.2f seconds " % (time() - start_time))
 
@@ -376,6 +379,8 @@ spec:
         start_time = time()
         kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
         waiter()
+        for instance in reversed(range(0, self.instances)):
+            self.wait_pod(f"mycluster-{instance}", "Running")
         self.wait_ic("mycluster", "ONLINE")
         print("[08_reenable_slow_log] Cluster ONLINE after %.2f seconds " % (time() - start_time))
 
@@ -411,6 +416,8 @@ spec:
         start_time = time()
         kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
         waiter()
+        for instance in reversed(range(0, self.instances)):
+            self.wait_pod(f"mycluster-{instance}", "Running")
         self.wait_ic("mycluster", "ONLINE")
         print("[12_enable_general_log] Cluster ONLINE after %.2f seconds " % (time() - start_time))
 
@@ -518,7 +525,7 @@ metadata:
 spec:
   instances: {cls.instances}
   router:
-    instances: 0
+    instances: 1
   secretName: mypwds
   edition: community
   tlsUseSelfSigned: true
@@ -630,6 +637,7 @@ spec:
         for instance in range(0, self.instances):
             self.wait_pod(f"mycluster-{instance}", "Running")
 
+        self.wait_routers("mycluster-router-*", 1)
         self.wait_ic("mycluster", "ONLINE")
 
         self.assertGotClusterEvent(
@@ -784,7 +792,7 @@ metadata:
 spec:
   instances: {cls.instances}
   router:
-    instances: 0
+    instances: 1
   secretName: mypwds
   edition: community
   tlsUseSelfSigned: true
@@ -816,6 +824,7 @@ spec:
         for instance in range(0, self.instances):
             self.wait_pod(f"mycluster-{instance}", "Running")
 
+        self.wait_routers("mycluster-router-*", 1)
         self.wait_ic("mycluster", "ONLINE")
 
         self.assertGotClusterEvent(
@@ -853,6 +862,8 @@ spec:
         waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=600, delay=50)
         kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
         waiter()
+        for instance in reversed(range(0, self.instances)):
+            self.wait_pod(f"mycluster-{instance}", "Running")
         self.wait_ic("mycluster", "ONLINE")
         print("[04_disable_general_log] Cluster ONLINE after %.2f seconds " % (time() - start_time))
 
@@ -943,6 +954,8 @@ spec:
         start_time = time()
         kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
         waiter()
+        for instance in reversed(range(0, self.instances)):
+            self.wait_pod(f"mycluster-{instance}", "Running")
         self.wait_ic("mycluster", "ONLINE")
         print("[12_reenable_general_log] Cluster ONLINE after %.2f seconds " % (time() - start_time))
 
@@ -1020,7 +1033,7 @@ metadata:
 spec:
   instances: {cls.instances}
   router:
-    instances: 0
+    instances: 1
   secretName: mypwds
   edition: community
   tlsUseSelfSigned: true
@@ -1118,6 +1131,7 @@ spec:
         for instance in range(0, self.instances):
             self.wait_pod(f"mycluster-{instance}", "Running")
 
+        self.wait_routers("mycluster-router-*", 1)
         self.wait_ic("mycluster", "ONLINE")
 
         self.assertGotClusterEvent(
@@ -1264,7 +1278,7 @@ metadata:
 spec:
   instances: {cls.instances}
   router:
-    instances: 0
+    instances: 1
   secretName: mypwds
   edition: community
   tlsUseSelfSigned: true
@@ -1362,6 +1376,7 @@ spec:
         for instance in range(0, self.instances):
             self.wait_pod(f"mycluster-{instance}", "Running")
 
+        self.wait_routers("mycluster-router-*", 1)
         self.wait_ic("mycluster", "ONLINE")
 
         self.assertGotClusterEvent(
@@ -1540,7 +1555,7 @@ metadata:
 spec:
   instances: {cls.instances}
   router:
-    instances: 0
+    instances: 1
   secretName: mypwds
   edition: community
   tlsUseSelfSigned: true
@@ -1652,6 +1667,7 @@ spec:
         for instance in range(0, self.instances):
             self.wait_pod(f"mycluster-{instance}", "Running")
 
+        self.wait_routers("mycluster-router-*", 1)
         self.wait_ic("mycluster", "ONLINE")
 
         self.assertGotClusterEvent(
@@ -1781,6 +1797,8 @@ spec:
         start_time = time()
         kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
         waiter()
+        for instance in reversed(range(0, self.instances)):
+            self.wait_pod(f"mycluster-{instance}", "Running")
         self.wait_ic("mycluster", "ONLINE")
         print("[06_disable_general_log] Cluster ONLINE after %.2f seconds " % (time() - start_time))
 

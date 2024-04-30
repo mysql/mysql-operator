@@ -183,6 +183,7 @@ def diagnose_instance(pod: MySQLPod, logger, dba: 'Dba' = None) -> InstanceStatu
             elif mystate == "UNREACHABLE":
                 status.status = InstanceDiagStatus.UNREACHABLE
             else:
+                logger.error(f"{pod.endpoint}: bad state {mystate}")
                 assert False, f"{pod.endpoint}: bad state {mystate}"
         except mysqlsh.Error as e:
             if shellutils.check_fatal(

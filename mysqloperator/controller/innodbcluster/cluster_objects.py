@@ -6,13 +6,13 @@
 from logging import Logger, getLogger
 import kopf
 from typing import List, Dict, Optional
-from ..kubeutils import client as api_client, ApiException
+from ..kubeutils import client as api_client
 from .. import utils, config, consts
 from .cluster_api import InnoDBCluster, AbstractServerSetSpec, InnoDBClusterSpec, ReadReplicaSpec, InnoDBClusterSpecProperties
-from . import cluster_controller
 from .. import fqdn
 import yaml
-from ..kubeutils import api_core, api_apps, api_customobj, k8s_cluster_domain
+from ..kubeutils import api_core, api_apps, api_customobj, k8s_cluster_domain, ApiException
+from . import router_objects
 import base64
 
 # TODO replace app field with component (mysqld,router) and tier (mysql)
@@ -811,29 +811,21 @@ def prepare_metrics_service_monitors(spec: AbstractServerSetSpec, logger: Logger
     return monitors
 
 
-def reconcile_stateful_set(cluster: InnoDBCluster, logger: Logger) -> None:
-    logger.info("reconcile_stateful_set")
-    patch = prepare_cluster_stateful_set(cluster.parsed_spec, logger)
-
-    logger.info(f"reconcile_stateful_set: patch={patch}")
-    api_apps.patch_namespaced_stateful_set(
-        cluster.name, cluster.namespace, body=patch)
-
-
 def update_stateful_set_spec(sts : api_client.V1StatefulSet, patch: dict) -> None:
     api_apps.patch_namespaced_stateful_set(
         sts.metadata.name, sts.metadata.namespace, body=patch)
 
-
 def update_mysql_image(sts: api_client.V1StatefulSet, cluster: InnoDBCluster,
-                       spec: AbstractServerSetSpec, logger: Logger) -> None:
+                       spec: AbstractServerSetSpec,
+                       patcher,
+                       logger: Logger) -> None:
     """Update MySQL Server image
 
     This will also update the sidecar container to the current operator version,
     so that a single rolling upgrade covers both and we don't require a restart
     for upgrading sidecar.
     """
-
+    logger.info("update_mysql_image")
     # Operators <= 8.0.32-2.0.8 don't set this environment variable, we have to make sure it is there
     cluster_domain_env = [{
         "name": "MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN",
@@ -872,26 +864,31 @@ def update_mysql_image(sts: api_client.V1StatefulSet, cluster: InnoDBCluster,
     keyring_update = spec.keyring.upgrade_to_component(sts, spec, logger)
 
     if keyring_update:
+        logger.info("Need to upgrade keyring from plugin to component")
         (cm, key_sts_patch) = keyring_update
         utils.merge_patch_object(patch["spec"]["template"], key_sts_patch)
 
         kopf.adopt(cm)
-        api_core.create_namespaced_config_map(spec.namespace, cm)
+        patcher.create_configmap(spec.namespace, cm["metadata"]["name"], cm, on_apiexception_generic_handler)
+        #api_core.create_namespaced_config_map(spec.namespace, cm)
 
         initconf_patch = [{"op": "remove", "path": "/data/03-keyring-oci.cnf"}]
-        try:
-            api_core.patch_namespaced_config_map(f"{spec.cluster_name}-initconf",
-                                                    spec.namespace, initconf_patch)
-        except ApiException as exc:
-            # This might happen during a retry or some other case where it was
-            # removed already
-            logger.info(f"Failed to remove keyring config from initconf, ignoring: {exc}")
+        #try:
+        #    api_core.patch_namespaced_config_map(f"{spec.cluster_name}-initconf",
+        #                                            spec.namespace, initconf_patch)
+        #except ApiException as exc:
+        #    # This might happen during a retry or some other case where it was
+        #    # removed already
+        #    logger.info(f"Failed to remove keyring config from initconf, ignoring: {exc}")
+        patcher.patch_configmap(spec.namespace, f"{spec.cluster_name}-initconf", initconf_patch, on_apiexception_404_handler)
 
     cm = prepare_initconf(cluster, spec, logger)
-    api_core.patch_namespaced_config_map(
-        cm['metadata']['name'], sts.metadata.namespace, body=cm)
+    patcher.patch_configmap(spec.namespace, cm['metadata']['name'], cm, on_apiexception_generic_handler)
+    #api_core.patch_namespaced_config_map(
+    #    cm['metadata']['name'], sts.metadata.namespace, body=cm)
 
-    update_stateful_set_spec(sts, patch)
+    patcher.patch_sts(patch)
+#    update_stateful_set_spec(sts, patch)
 
 
 def update_operator_image(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec) -> None:
@@ -908,7 +905,7 @@ def update_operator_image(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec
     update_stateful_set_spec(sts, patch)
 
 
-def update_pull_policy(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec, logger: Logger) -> None:
+def update_pull_policy(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec, logger: Logger) -> dict:
     patch = {"spec": {"template":
                       {"spec": {
                           "initContainers": [
@@ -920,7 +917,7 @@ def update_pull_policy(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec, l
                                {"name": "mysql", "imagePullPolicy": spec.mysql_image_pull_policy}
                           ]}
                        }}}
-    update_stateful_set_spec(sts, patch)
+    return patch
 
 def update_template_property(sts: api_client.V1StatefulSet, property_name: str, property_value: str, logger: Logger) -> None:
     patch = {"spec": {"template": {"spec": { property_name: property_value }}}}
@@ -1062,3 +1059,115 @@ def on_last_cluster_pod_removed(cluster: InnoDBCluster, logger: Logger) -> None:
     logger.info(
         f"Last pod for cluster {cluster.name} was deleted, removing cluster finalizer...")
     cluster.remove_cluster_finalizer()
+
+
+from enum import Enum
+from typing import Callable, cast
+from .. import kubeutils
+from . import cluster_objects
+
+class PatchTarget(Enum):
+    STS = "STS"
+    DEPLOY = "DEPLOYMENT"
+    CM = "CONFIGMAP"
+
+class ApiCommandType(Enum):
+    PATCH_STS = "PATCH_STS"
+    PATCH_DEPLOY = "PATCH_DEPLOY"
+    CREATE_CM = "CREATE_CM"
+    DELETE_CM = "DELETE_CM"
+    PATCH_CM = "PATCH_CM"
+
+OnApiExceptionHandler = Callable[[ApiException, Logger], None]
+
+def on_ApiException_404_handler(exc: ApiException, logger: Logger):
+    if exc.status == 404:
+        logger.warning("Object not found! Exception: {exc}")
+        return
+    raise exc
+
+def on_apiexception_generic_handler(exc: ApiException, logger: Logger):
+    logger.warning("ApiException: {exc}")
+
+
+class ApiCommand:
+    def __init__(self,
+                 type: ApiCommandType,
+                 namespace: str,
+                 name: str,
+                 body: Optional[dict] = None,
+                 on_api_exception: Optional[OnApiExceptionHandler] = None):
+        self.type = type
+        self.namespace = namespace
+        self.name = name
+        self.body = body
+        self.on_api_exception = on_api_exception
+
+    def run(self, logger: Logger) -> Optional[api_client.V1Status]:
+        try:
+            if self.type == ApiCommandType.CREATE_CM:
+                status = cast(api_client.V1Status,
+                              api_core.create_namespaced_config_map(self.namespace, self.body))
+            elif self.type == ApiCommandType.DELETE_CM:
+                delete_body = api_client.V1DeleteOptions(grace_period_seconds=0)
+                status = cast(api_client.V1Status,
+                              api_core.delete_namespaced_config_map(self.name, self.namespace, body=delete_body))
+                return status
+            elif self.type == ApiCommandType.PATCH_CM:
+                status = cast(api_client.V1Status,
+                              api_core.patch_namespaced_config_map(self.name, self.namespace, self.body))
+
+        except kubeutils.ApiException as exc:
+            if self.on_api_exception is not None:
+                self.on_api_exception(exc, logger)
+            else:
+                raise
+
+        return status
+
+
+class InnoDBClusterObjectModifier:
+    def __init__(self, cluster: InnoDBCluster, logger: Logger):
+        self.server_sts_patch = {}
+        self.router_deploy_patch = {}
+        self.cluster = cluster
+        self.logger = logger
+        self.commands: list[ApiCommand] = []
+
+    def add_patch(self, target: PatchTarget, patch: dict) -> None:
+        target_patch = None
+        if target == PatchTarget.STS:
+            target_patch = self.server_sts_patch
+        elif target == PatchTarget.DEPLOY:
+            target_patch = self.router_deploy_patch
+        if target_patch is not None:
+            self.logger.info(f"Merging patch {patch} into {target_patch}")
+            utils.merge_patch_object(target_patch, patch)
+
+    def patch_sts(self, patch: dict) -> None:
+        self.add_patch(PatchTarget.STS, patch)
+
+    def patch_deploy(self, patch: dict) -> None:
+        self.add_patch(PatchTarget.DEPLOY, patch)
+
+    def create_configmap(self, namespace: str, name: str, body: dict, on_api_exception: Optional[OnApiExceptionHandler]) -> None:
+        self.commands.append(ApiCommand(ApiCommandType.CREATE_CM, namespace, name, body, on_api_exception))
+
+    def delete_configmap(self, namespace: str, name: str, on_api_exception: Optional[OnApiExceptionHandler]) -> None:
+        self.commands.append(ApiCommand(ApiCommandType.DELETE_CM, namespace, name, None, on_api_exception))
+
+    def patch_configmap(self, namespace: str, name: str, patch: dict, on_api_exception: Optional[OnApiExceptionHandler]) -> None:
+        self.commands.append(ApiCommand(ApiCommandType.PATCH_CM, namespace, name, patch, on_api_exception))
+
+    def submit_patches(self) -> None:
+        sts = self.cluster.get_stateful_set()
+        if (len(self.server_sts_patch) or len(self.router_deploy_patch) or len(self.commands)):
+              if len(self.commands):
+                  for command in self.commands:
+                      command.run(self.logger)
+              if len(self.server_sts_patch):
+                  self.logger.info(f"Patching STS with {self.server_sts_patch}")
+                  update_stateful_set_spec(sts, self.server_sts_patch)
+              if len(self.router_deploy_patch) and (deploy:= self.cluster.get_router_deployment()):
+                  self.logger.info(f"Patching Deployment with {self.router_deploy_patch}")
+                  router_objects.update_deployment_spec(deploy, self.router_deploy_patch)

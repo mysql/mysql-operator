@@ -3,16 +3,15 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
-
 from kopf._cogs.structs.bodies import Body
-from .. import consts, errors, kubeutils, shellutils, utils, config, mysqlutils
+from .. import consts, errors, shellutils, utils, config, mysqlutils
 from .. import diagnose
 from ..backup import backup_objects
 from ..shellutils import DbaWrap
 from . import cluster_objects, router_objects
 from .cluster_api import MySQLPod, InnoDBCluster, client
 import typing
-from typing import Optional, TYPE_CHECKING, Dict
+from typing import Optional, TYPE_CHECKING, Dict, cast, Callable
 from logging import Logger
 if TYPE_CHECKING:
     from mysqlsh.mysql import ClassicSession
@@ -35,6 +34,7 @@ def select_pod_with_most_gtids(gtids: Dict[int, str]) -> int:
     pod_indexes = list(gtids.keys())
     pod_indexes.sort(key = lambda a: mysqlutils.count_gtids(gtids[a]))
     return pod_indexes[-1]
+
 
 class ClusterMutex:
     def __init__(self, cluster: InnoDBCluster, pod: Optional[MySQLPod] = None, context: str = "n/a"):
@@ -354,7 +354,7 @@ class ClusterController:
         n = self.cluster.parsed_spec.router.instances
         if n:
             logger.debug(f"Setting router replicas to {n}")
-            router_objects.update_size(self.cluster, n, logger)
+            router_objects.update_size(self.cluster, n, False, logger)
 
 
     def reboot_cluster(self, seed_pod_index: MySQLPod, logger: Logger) -> None:
@@ -899,3 +899,4 @@ class ClusterController:
             except mysqlsh.Error as e:
                 # We don't fail when setting an option fails
                 logger.warn(f"Failed setting routing option {key} to {new[key]}: {e}")
+

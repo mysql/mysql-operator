@@ -3,8 +3,7 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
-
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Callable
 from kopf._cogs.structs.bodies import Body
 from kubernetes.client.rest import ApiException
 
@@ -26,6 +25,8 @@ import traceback
 
 
 # TODO check whether we should store versions in status to make upgrade easier
+
+
 
 
 def on_group_view_change(cluster: InnoDBCluster, members: list[tuple], view_id_changed: bool) -> None:
@@ -371,7 +372,7 @@ def on_innodbcluster_delete(name: str, namespace: str, body: Body,
 
     # Scale down routers to 0
     logger.info(f"Updating Router Deployment.replicas to 0")
-    router_objects.update_size(cluster, 0, logger)
+    router_objects.update_size(cluster, 0, False, logger)
 
     # Scale down the cluster to 0
     sts = cluster.get_stateful_set()
@@ -382,8 +383,7 @@ def on_innodbcluster_delete(name: str, namespace: str, body: Body,
         # cluster finalizer will stay hanging
         # If we check after scaling down to 0, and there is only one pod, it will be moved to Terminating
         # state and we won't know whether it was in Terminating beforehand. If it wasn't then
-        # on_pod_delete() will be called and we will try to remove the finalizer again
-        # This is true if only the PodDisruptionBudget has set to maxUnavailable to 1. If more
+        # on_pod_delete() will be called and we will try to remove the finalizer again663/385000on_spec
         # then len(pods) == maxUnavailable and all pods should be inspected whether they are terminating
         pods = cluster.get_pods()
         if len(pods) == 1 and pods[0].deleting:
@@ -398,240 +398,133 @@ def on_innodbcluster_delete(name: str, namespace: str, body: Body,
 
 # TODO add a busy state and prevent changes while on it
 
-@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
-               field="spec.instances")  # type: ignore
-def on_innodbcluster_field_instances(old, new, body: Body,
-                                     logger: Logger, **kwargs):
-    cluster = InnoDBCluster(body)
 
-    # ignore spec changes if the cluster is still being initialized
-    if not cluster.ready:
-        logger.debug(f"Ignoring spec.instances change for unready cluster")
-        return
-
-    # TODO - identify what cluster statuses should allow changes to the size of the cluster
-
-    sts = cluster.get_stateful_set()
-    if sts and old != new:
-        logger.info(
-            f"Updating InnoDB Cluster StatefulSet.replicas from {old} to {new}")
-        cluster.parsed_spec.validate(logger)
-        with ClusterMutex(cluster):
-            cluster_objects.update_stateful_set_spec(sts, {"spec": {"replicas": new}})
+def on_innodbcluster_field_instances(old, new, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
+    cluster.parsed_spec.validate(logger)
+    patcher.patch_sts({
+                "spec": {
+                    "replicas": new
+                }
+            })
 
 
-@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
-               field="spec.version")  # type: ignore
+# No need for kopf.on.field. This is called by on_spec()
 def on_innodbcluster_field_version(old, new, body: Body,
+                                   cluster: InnoDBCluster,
+                                   patcher: cluster_objects.InnoDBClusterObjectModifier,
                                    logger: Logger, **kwargs):
-    cluster = InnoDBCluster(body)
-
-    # ignore spec changes if the cluster is still being initialized
-    if not cluster.ready:
-        logger.debug(f"Ignoring spec.version change for unready cluster")
-        return
-
     # TODO - identify what cluster statuses should allow this change
 
     sts = cluster.get_stateful_set()
-    if sts and old != new:
-        logger.info(
-            f"Propagating spec.version={new} for {cluster.namespace}/{cluster.name} (was {old})")
+    if sts:
+        logger.info(f"Propagating spec.version={new} for {cluster.namespace}/{cluster.name} (was {old})")
 
-        with ClusterMutex(cluster):
+        try:
             cluster_ctl = ClusterController(cluster)
-            try:
-                cluster_ctl.on_router_upgrade(logger)
-                cluster_ctl.on_server_version_change(new)
-            except:
-                # revert version in the spec
-                raise
+            cluster_ctl.on_router_upgrade(logger)
+            cluster_ctl.on_server_version_change(new)
+        except:
+            # revert version in the spec
+            raise
 
-            # should not be earlier, as on_server_version_change() checks also for the version and raises
-            # a PermanentError while validate() raises ApiSpecError which is turned by Kopf to a TemporaryError
-            # spec.version requires this special handling
-            cluster.parsed_spec.validate(logger)
-            cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, logger)
+        # should not be earlier, as on_server_version_change() checks also for the version and raises
+        # a PermanentError while validate() raises ApiSpecError which is turned by Kopf to a TemporaryError
+        # spec.version requires this special handling
+        cluster.parsed_spec.validate(logger)
+        cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, patcher, logger)
 
-            router_deploy = cluster.get_router_deployment()
-            if router_deploy:
-                router_objects.update_router_image(router_deploy, cluster.parsed_spec, logger)
+        router_deploy = cluster.get_router_deployment()
+        if router_deploy:
+            router_objects.update_router_image(router_deploy, cluster.parsed_spec, patcher, logger)
 
 
-@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
-               field="spec.imageRepository")  # type: ignore
+# No need for kopf.on.field. This is called by on_spec()
 def on_innodbcluster_field_image_repository(old, new, body: Body,
+                                            cluster: InnoDBCluster,
+                                            patcher: cluster_objects.InnoDBClusterObjectModifier,
                                             logger: Logger, **kwargs):
-    cluster = InnoDBCluster(body)
-
-    # ignore spec changes if the cluster is still being initialized
-    if not cluster.ready:
-        logger.debug(f"Ignoring spec.imageRepository change for unready cluster")
-        return
-
     sts = cluster.get_stateful_set()
-    if sts and old != new:
-        logger.info(
-            f"Propagating spec.imageRepository={new} for {cluster.namespace}/{cluster.name} (was {old})")
+    if sts:
+        logger.info(f"Propagating spec.imageRepository={new} for {cluster.namespace}/{cluster.name} (was {old})")
 
-        cluster.parsed_spec.validate(logger)
-        with ClusterMutex(cluster):
-            try:
-                cluster_ctl = ClusterController(cluster)
-                cluster_ctl.on_router_upgrade(logger)
-            except:
-                # revert version in the spec
-                raise
-            cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, logger)
-            cluster_objects.update_operator_image(sts, cluster.parsed_spec)
-            router_deploy = cluster.get_router_deployment()
-            if router_deploy:
-                router_objects.update_router_image(router_deploy, cluster.parsed_spec, logger)
-
-
-@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
-               field="spec.imagePullPolicy")  # type: ignore
-def on_innodbcluster_field_image_pull_policy(old, new, body: Body,
-                                            logger: Logger, **kwargs):
-    cluster = InnoDBCluster(body)
-
-    # ignore spec changes if the cluster is still being initialized
-    if not cluster.ready:
-        logger.debug(f"Ignoring spec.imagePullPolicy change for unready cluster")
-        return
-
-    sts = cluster.get_stateful_set()
-    if sts and old != new:
-        logger.info(
-            f"Propagating spec.imagePullPolicy={new} for {cluster.namespace}/{cluster.name} (was {old})")
-
-        cluster.parsed_spec.validate(logger)
-        with ClusterMutex(cluster):
-            cluster_objects.update_pull_policy(sts, cluster.parsed_spec, logger)
-            router_deploy = cluster.get_router_deployment()
-            if router_deploy:
-                router_objects.update_pull_policy(router_deploy, cluster.parsed_spec, logger)
-
-
-@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
-               field="spec.image")  # type: ignore
-def on_innodbcluster_field_image(old, new, body: Body,
-                                 logger: Logger, **kwargs):
-    cluster = InnoDBCluster(body)
-
-    # ignore spec changes if the cluster is still being initialized
-    if not cluster.ready:
-        logger.debug(f"Ignoring spec.image change for unready cluster")
-        return
-
-    # TODO - identify what cluster statuses should allow this change
-
-    sts = cluster.get_stateful_set()
-    if sts and old != new:
-        logger.info(
-            f"Updating MySQL image for InnoDB Cluster StatefulSet pod template from {old} to {new}")
-        cluster.parsed_spec.validate(logger)
-        with ClusterMutex(cluster):
-            try:
-                cluster_ctl = ClusterController(cluster)
-                cluster_ctl.on_server_image_change(new)
-            except:
-                # revert version in the spec
-                raise
-
-            cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, logger)
-
-
-@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
-               field="spec.router.instances")  # type: ignore
-def on_innodbcluster_field_router_instances(old: int, new: int, body: Body,
-                                            logger: Logger, **kwargs):
-    cluster = InnoDBCluster(body)
-
-    # ignore spec changes if the cluster is still being initialized
-    if not cluster.get_create_time():
-        logger.debug(
-            f"Ignoring spec.router.instances change for unready cluster")
-        return
-
-    cluster.parsed_spec.validate(logger)
-    with ClusterMutex(cluster):
-        logger.info(f"Updating Router Deployment.replicas from {old} to {new}")
-        router_objects.update_size(cluster, new, logger)
-
-
-@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
-               field="spec.router.version")  # type: ignore
-def on_innodbcluster_field_router_version(old: str, new: str, body: Body,
-                                          logger: Logger, **kwargs):
-    if old == new:
-        return
-
-    cluster = InnoDBCluster(body)
-
-    # ignore spec changes if the cluster is still being initialized
-    if not cluster.get_create_time():
-        logger.debug(
-            f"Ignoring spec.router.version change for unready cluster")
-        return
-
-    cluster.parsed_spec.validate(logger)
-    with ClusterMutex(cluster):
         try:
             cluster_ctl = ClusterController(cluster)
             cluster_ctl.on_router_upgrade(logger)
         except:
             # revert version in the spec
             raise
+        cluster.parsed_spec.validate(logger)
+        cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, patcher, logger)
+        cluster_objects.update_operator_image(sts, cluster.parsed_spec)
         router_deploy = cluster.get_router_deployment()
         if router_deploy:
-            router_objects.update_router_image(router_deploy, cluster.parsed_spec, logger)
+            router_objects.update_router_image(router_deploy, cluster.parsed_spec, patcher, logger)
 
 
-@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
-               field="spec.router.bootstrapOptions")  # type: ignore
-def on_innodbcluster_field_router_bootstrap_options(old: str, new: str, body: Body,
-                                                    logger: Logger, **kwargs):
-    if old == new:
-        return
 
-    cluster = InnoDBCluster(body)
-
-    # ignore spec changes if the cluster is still being initialized
-    if not cluster.get_create_time():
-        logger.debug(
-            f"Ignoring spec.router.bootstrapOptions change for unready cluster")
-        return
-
+def on_innodbcluster_field_image_pull_policy(old: dict, new: dict, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
     cluster.parsed_spec.validate(logger)
-    with ClusterMutex(cluster):
-        router_deploy = cluster.get_router_deployment()
-        if router_deploy:
-            router_objects.update_bootstrap_options(router_deploy, cluster, logger)
+    sts = cluster.get_stateful_set()
+    patcher.patch_sts(cluster_objects.update_pull_policy(sts, cluster.parsed_spec, logger))
+    router_deploy = cluster.get_router_deployment()
+    if router_deploy:
+        patcher.patch_deploy(router_objects.update_pull_policy(router_deploy, cluster.parsed_spec, logger))
 
 
-@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
-               field="spec.router.options")  # type: ignore
-def on_innodbcluster_field_router_options(old: str, new: str, body: Body,
-                                          logger: Logger, **kwargs):
-    if old == new:
-        return
+# No need for kopf.on.field. This is called by on_spec()
+def on_innodbcluster_field_image(old, new, body: Body,
+                                 cluster: InnoDBCluster,
+                                 patcher: cluster_objects.InnoDBClusterObjectModifier,
+                                 logger: Logger, **kwargs):
+    # TODO - identify what cluster statuses should allow this change
 
-    cluster = InnoDBCluster(body)
+    sts = cluster.get_stateful_set()
+    if sts:
+        logger.info( f"Propagating spec.image={new} for {cluster.namespace}/{cluster.name} (was {old})")
 
-    # ignore spec changes if the cluster is still being initialized
-    if not cluster.get_create_time():
-        logger.debug(
-            f"Ignoring spec.router.options change for unready cluster")
-        return
+        try:
+            cluster_ctl = ClusterController(cluster)
+            cluster_ctl.on_server_image_change(new)
+        except:
+            # revert version in the spec
+            raise
+        cluster.parsed_spec.validate(logger)
+        cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, patcher, logger)
 
+
+def on_innodbcluster_field_router_instances(old: dict, new: dict, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
     cluster.parsed_spec.validate(logger)
-    with ClusterMutex(cluster):
-        router_deploy = cluster.get_router_deployment()
-        if router_deploy:
-            router_objects.update_options(router_deploy, cluster.parsed_spec, logger)
+    patcher.patch_deploy(router_objects.update_size(cluster, new, True, logger))
 
 
+def on_innodbcluster_field_router_version(old: dict, new: dict, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
+    cluster.parsed_spec.validate(logger)
+    try:
+        cluster_ctl = ClusterController(cluster)
+        cluster_ctl.on_router_upgrade(logger)
+    except:
+        # revert version in the spec
+        raise
+    router_deploy = cluster.get_router_deployment()
+    if router_deploy:
+       router_objects.update_router_image(router_deploy, cluster.parsed_spec, patcher, logger)
+
+
+def on_innodbcluster_field_router_bootstrap_options(old: dict, new: dict, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
+    cluster.parsed_spec.validate(logger)
+    router_deploy = cluster.get_router_deployment()
+    if router_deploy:
+        patcher.patch_deploy(router_objects.update_bootstrap_options(router_deploy, cluster, logger))
+
+
+def on_innodbcluster_field_router_container_options(old: dict, new: dict, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
+    cluster.parsed_spec.validate(logger)
+    router_deploy = cluster.get_router_deployment()
+    if router_deploy:
+        patcher.patch_deploy(router_objects.update_options(router_deploy, cluster.parsed_spec, logger))
+
+
+# on_innodbcluster_field_router_options is safe to no go thru on_spec() as this method neither touches the STS nor the Deploy
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
                field="spec.router.routingOptions")  # type: ignore
 def on_innodbcluster_field_router_options(old: dict, new: dict, body: Body,
@@ -657,7 +550,7 @@ def on_innodbcluster_field_router_options(old: dict, new: dict, body: Body,
         c = ClusterController(cluster)
         c.on_router_routing_option_chahnge(old, new, logger)
 
-
+# on_innodbcluster_field_backup_schedules is safe to no go thru on_spec() as this method neither touches the STS nor the Deploy
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
                field="spec.backupSchedules")  # type: ignore
 def on_innodbcluster_field_backup_schedules(old: str, new: str, body: Body,
@@ -689,52 +582,34 @@ def on_innodbcluster_field_backup_schedules(old: str, new: str, body: Body,
         backup_objects.update_schedules(cluster.parsed_spec, old, new, logger)
 
 
-def on_sts_field_update(body: Body, field: str, logger: Logger) -> None:
-    cluster = InnoDBCluster(body)
-
-    if not cluster.get_create_time():
-        logger.debug(f"Ignoring {field} change for unready cluster")
-        return
-
+def on_sts_field_update(cluster: InnoDBCluster, field: str, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
     cluster.parsed_spec.validate(logger)
-    with ClusterMutex(cluster):
-        cluster_objects.reconcile_stateful_set(cluster, logger)
+    patcher.patch_sts(cluster_objects.prepare_cluster_stateful_set(cluster.parsed_spec, logger))
 
 
-@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
-               field="spec.tlsUseSelfSigned")  # type: ignore
-def on_innodbcluster_field_tls_use_self_signed(body: Body,
-                                               logger: Logger, **kwargs):
+def on_innodbcluster_field_tls_use_self_signed(old: dict, new: dict, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
     logger.info("on_innodbcluster_field_tls_use_self_signed")
-    on_sts_field_update(body, "spec.tlsUseSelfSigned", logger)
+    return on_sts_field_update(cluster, "spec.tlsUseSelfSigned", patcher, logger)
 
 
-@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
-               field="spec.tlsSecretName")  # type: ignore
-def on_innodbcluster_field_tls_secret_name(body: Body,
-                                          logger: Logger, **kwargs):
+def on_innodbcluster_field_tls_secret_name(old: dict, new: dict, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
     logger.info("on_innodbcluster_field_tls_secret_name")
-    on_sts_field_update(body, "spec.tlsSecretName", logger)
+    return on_sts_field_update(cluster, "spec.tlsSecretName", patcher, logger)
 
 
-@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
-               field="spec.router.tlsSecretName")  # type: ignore
-def on_innodbcluster_field_router_tls_secret_name(body: Body,
-                                                  logger: Logger, **kwargs):
+def on_innodbcluster_field_router_tls_secret_name(old: dict, new: dict, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
     logger.info("on_innodbcluster_field_router_tls_secret_name")
-    on_sts_field_update(body, "spec.router.tlsSecretName", logger)
+    return on_sts_field_update(cluster, "spec.router.tlsSecretName", patcher, logger)
 
 
-@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
-               field="spec.tlsCASecretName")  # type: ignore
-def on_innodbcluster_field_tls_ca_secret_name(body: Body,
-                                              logger: Logger, **kwargs):
+def on_innodbcluster_field_tls_ca_secret_name(old: dict, new: dict, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
     logger.info("on_innodbcluster_field_tls_ca_secret_name")
-    on_sts_field_update(body, "spec.tlsCASecretName", logger)
+    return on_sts_field_update(cluster, "spec.tlsCASecretName", patcher, logger)
+
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
                field="spec.readReplicas")  # type: ignore
-def on_innodbcluster_read_replicas_changed(body: Body, old: list, new: list,
+def on_innodbcluster_read_replicas_changed(old: dict, new: dict, body: Body,
                                            logger: Logger, **kwargs):
     logger.info("on_innodbcluster_read_replicas_changed")
 
@@ -941,69 +816,140 @@ def on_pod_delete(body: Body, logger: Logger, **kwargs):
 #@kopf.on.update("", "v1", "secrets", when=secret_belongs_to_a_cluster_checker) # type: ignore
 #
 
+DefaultValueLambda = Callable[[], Any]
+OnFieldHandler = Callable[[dict, dict, Any, InnoDBCluster, cluster_objects.InnoDBClusterObjectModifier, Logger], None]
+OnFieldHandlerList = list[tuple[str, DefaultValueLambda, OnFieldHandler]]
 
-def on_ic_labels_and_annotations_change(what: str, body: Body, diff, old, new, logger: Logger) -> None:
-    cluster = InnoDBCluster(body)
 
-    # ignore spec changes if the cluster is still being initialized
-    if not cluster.ready:
-        logger.debug(f"Ignoring {what} change for unready cluster")
-        return
+def compare_two_dicts_return_keys(d1: dict, d2: dict) -> list[str]:
+    return set([l for l, v in (set(d1.items()) ^ set(d2.items()))])
 
-    # TODO - identify what cluster statuses should allow changes to the size of the cluster
+def on_pod_metadata_field_compare_and_generate_diff(old: dict, new: dict) -> Optional[dict]:
+    diff = compare_two_dicts_return_keys(old, new)
+    metadata = None
+    if len(diff):
+        metadata = {}
+        for label in diff:
+            # (new or changed value) | (deleted value)
+            metadata[label] = new[label] if label in new else None
+    return metadata
 
-    sts = cluster.get_stateful_set()
-    cluster.parsed_spec.validate(logger)
-    if sts and diff:
-        logger.info(f"on_ic_labels_and_annotations_change: Updating InnoDB Cluster StatefulSet {what}")
-        patch = {field[0]: new for op, field, old, new in diff }
-        with ClusterMutex(cluster):
-            cluster_objects.update_stateful_set_spec(sts, {"spec": {"template": { "metadata" : { what : patch }}}})
+def on_pod_metadata_field(old: dict, new: dict, body: Body, what: str, cluster: InnoDBCluster, patcher: callable, logger: Logger) -> None:
+    values = on_pod_metadata_field_compare_and_generate_diff(old, new)
+    if values is not None:
+        patcher({"spec": {"template": {"metadata": {what : values}}}})
 
+def on_server_pod_labels(old: dict, new: dict, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
+    on_pod_metadata_field(old, new, body, "labels", cluster, lambda patch: patcher.patch_sts(patch), logger)
+
+def on_server_pod_annotations(old: dict, new: dict, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
+    on_pod_metadata_field(old, new, body, "annotations", cluster, lambda patch: patcher.patch_sts(patch), logger)
+
+def on_router_pod_labels(old: dict, new: dict, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
+    on_pod_metadata_field(old, new, body, "labels", cluster, lambda patch: patcher.patch_deploy(patch), logger)
+
+def on_router_pod_annotations(old: dict, new: dict, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
+    on_pod_metadata_field(old, new, body, "annotations", cluster, lambda patch: patcher.patch_deploy(patch), logger)
+
+
+def call_kopf_style_on_handler_if_needed(old_dict: dict, new_dict: dict, key: str, body: Body,
+                                        cluster: InnoDBCluster,
+                                        patcher: cluster_objects.InnoDBClusterObjectModifier,
+                                        handler: callable,
+                                        logger: Logger) -> None:
+    old_value = old_dict[key] if key in old_dict else None
+    new_value = new_dict[key] if key in new_dict else None
+    if old_value != new_value:
+        handler(old_value, new_value, body, cluster, patcher, logger)
+
+
+def change_between_old_and_new(old: dict, new: dict, key: str, default_value: DefaultValueLambda) -> tuple[Any, Any]:
+    if key in old:
+        if key in new:
+            if old[key] != new[key]:
+                # changed
+                return (old[key], new[key])
+        else:
+            return (old[key], default_value())
+            # deleted
+            pass
+    elif key in new:
+        # added
+        return (default_value(), new[key])
+
+    return (None, None)
+
+spec_tld_handlers : OnFieldHandlerList = [\
+    ("version",        lambda: None, on_innodbcluster_field_version),
+    ("image",          lambda: None, on_innodbcluster_field_image),
+    ("imageRepository",lambda: None, on_innodbcluster_field_image_repository),
+    ("podLabels",      lambda: {},   on_server_pod_labels),
+    ("podAnnotations", lambda: {},   on_server_pod_annotations),
+    ("instances",      lambda: None, on_innodbcluster_field_instances),
+    ("imagePullPolicy",lambda: None, on_innodbcluster_field_image_pull_policy),
+    ("tlsUseSelfSigned",lambda: None,on_innodbcluster_field_tls_use_self_signed),
+    ("tlsSecretName",  lambda: None, on_innodbcluster_field_tls_secret_name),
+    ("tlsCASecretName",lambda: None, on_innodbcluster_field_tls_ca_secret_name)
+]
+
+spec_router_handlers : OnFieldHandlerList = [\
+    ("podLabels",       lambda: {},   on_router_pod_labels),
+    ("podAnnotations",  lambda: {},   on_router_pod_annotations),
+    ("instances",       lambda: None, on_innodbcluster_field_router_instances),
+    ("version",         lambda: None, on_innodbcluster_field_router_version),
+    ("options",         lambda: {},   on_innodbcluster_field_router_container_options),
+    ("bootstrapOptions",lambda: {},   on_innodbcluster_field_router_bootstrap_options),
+    ("tlsSecretName",   lambda: None, on_innodbcluster_field_router_tls_secret_name)
+]
+
+def handle_fields(old, new, body: Body,
+                  cluster: InnoDBCluster,
+                  patcher: cluster_objects.InnoDBClusterObjectModifier,
+                  handlers: OnFieldHandlerList,
+                  prefix: str, logger: Logger) -> None:
+    if old != new:
+        for cr_name, default_value, handler in handlers:
+            o, n = change_between_old_and_new(old, new, cr_name, default_value)
+            # (None, None) means no change
+            if o is not None and new is not None:
+                logger.info(f"\tValue differs for {prefix}{cr_name}")
+                handler(o, n, body, cluster, patcher, logger)
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
-               field="spec.podLabels")  # type: ignore
-def on_innodbcluster_field_pod_labels(body: Body, diff, old, new, logger: Logger, **kwargs):
+               field="spec")  # type: ignore
+def on_spec(body: Body, diff, old, new, logger: Logger, **kwargs):
+    logger.info("on_spec")
+    logger.info(f"old={old}")
+    logger.info(f"new={new}")
 
-    on_ic_labels_and_annotations_change("labels", body, diff, old, new, logger)
-
-
-@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
-               field="spec.podAnnotations")  # type: ignore
-def on_innodbcluster_field_pod_annotations(body: Body, diff, old, new, logger: Logger, **kwargs):
-
-    on_ic_labels_and_annotations_change("annotations", body, diff, old, new, logger)
-
-
-def on_ic_router_labels_and_annotations_change(what: str, body: Body, diff, logger: Logger) -> None:
-    cluster = InnoDBCluster(body)
-
-    # ignore spec changes if the cluster is still being initialized
-    if not cluster.ready:
-        logger.debug(f"Ignoring {what} change for unready cluster")
+    if not old:
+        # on IC object created, nothing to do here
+        logger.debug(f"on_spec: Old is empty")
         return
 
-    # TODO - identify what cluster statuses should allow changes to the size of the cluster
-    patch = {field[0]: new for op, field, old, new in diff }
-    logger.info(f"diff={diff}")
-    logger.info(f"patch={patch}")
-    cluster.parsed_spec.validate(logger)
+    cluster = InnoDBCluster(body)
+
+    if not cluster.ready:
+        # ignore spec changes if the cluster is still being initialized
+        logger.debug(f"on_spec: Ignoring on_spec change for unready cluster")
+        return
+
+    if not (sts:= cluster.get_stateful_set()):
+        logger.warning("STS doesn't exist yet. If this is a change during cluster start it might race and be lost")
+        return
+
+    patcher = cluster_objects.InnoDBClusterObjectModifier(cluster, logger)
+
+    # TODOA: Enable and test this
+    #cluster.parsed_spec.validate(logger)
+    handle_fields(old, new, body, cluster, patcher, spec_tld_handlers, "spec.", logger)
+
+    old_router, new_router = change_between_old_and_new(old, new, "router", lambda: {})
+    handle_fields(old_router, new_router, body, cluster, patcher, spec_router_handlers, "spec.router.", logger)
+
+    # It's time to patch
     with ClusterMutex(cluster):
-        router_objects.update_labels_or_annotations(what, patch, cluster, logger)
-
-
-@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
-               field="spec.router.podLabels")  # type: ignore
-def on_innodbcluster_field_router_pod_labels(body: Body, diff, logger: Logger, **kwargs):
-
-    on_ic_router_labels_and_annotations_change("labels", body, diff, logger)
-
-
-@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
-               field="spec.router.podAnnotations")  # type: ignore
-def on_innodbcluster_field_router_pod_annotations(body: Body, new, diff, logger: Logger, **kwargs):
-
-    on_ic_router_labels_and_annotations_change("annotations", body, diff, logger)
+        patcher.submit_patches()
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
@@ -1045,7 +991,8 @@ def on_innodbcluster_field_service_type(old: str, new: str, body: Body,
         router_objects.update_service(svc, cluster.parsed_spec, logger)
 
 
-@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL, field="spec.logs")  # type: ignore
+@kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
+               field="spec.logs")  # type: ignore
 def on_innodbcluster_field_logs(old: str, new: str, body: Body, logger: Logger, **kwargs):
     if old == new:
         return

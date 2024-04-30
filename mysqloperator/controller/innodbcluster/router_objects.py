@@ -295,11 +295,11 @@ spec:
     return deployment
 
 
-def update_labels_or_annotations(what: str, what_value: dict, cluster: InnoDBCluster, logger: Logger) -> None:
+def patch_metadata(cluster: InnoDBCluster, value: dict, logger: Logger) -> None:
     deploy = cluster.get_router_deployment()
     # if the size is 0 it might not exist. In this case the proper labels and annotations will be set when eventually created
     if deploy:
-        patch = {"spec": {"template": { "metadata" : { what : what_value }}}}
+        patch = {"spec": {"template": { "metadata" : value }}}
         api_apps.patch_namespaced_deployment(deploy.metadata.name, deploy.metadata.namespace, body=patch)
 
 
@@ -309,17 +309,19 @@ def get_size(cluster: InnoDBCluster) -> int:
         return deploy.spec.replicas
     return None
 
-def update_size(cluster: InnoDBCluster, size: int, logger: Logger) -> None:
+
+def update_size(cluster: InnoDBCluster, size: int, return_patch: bool, logger: Logger) -> dict:
+    patch = {}
     deploy = cluster.get_router_deployment()
     if deploy:
         if size:
             patch = {"spec": {"replicas": size}}
-            api_apps.patch_namespaced_deployment(
-                deploy.metadata.name, deploy.metadata.namespace, body=patch)
+            if return_patch == False:
+              api_apps.patch_namespaced_deployment(
+                  deploy.metadata.name, deploy.metadata.namespace, body=patch)
         else:
-            logger.info(f"Deleting Router Deployment")
-            api_apps.delete_namespaced_deployment(
-                f"{cluster.name}-router", cluster.namespace)
+          logger.info(f"Deleting Router Deployment")
+          api_apps.delete_namespaced_deployment(f"{cluster.name}-router", cluster.namespace)
     else:
         if size:
             logger.info(f"Creating Router Deployment with replicas={size}")
@@ -328,6 +330,9 @@ def update_size(cluster: InnoDBCluster, size: int, logger: Logger) -> None:
             kopf.adopt(router_deployment)
             api_apps.create_namespaced_deployment(
                 namespace=cluster.namespace, body=router_deployment)
+
+    if return_patch == True:
+      return patch
 
 
 
@@ -338,7 +343,8 @@ def update_deployment_spec(dpl: api_client.V1Deployment, patch: dict) -> None:
 
 def update_router_container_template_property(dpl: api_client.V1Deployment,
                                               property_name: str, property_value: str,
-                                              logger: Logger) -> None:
+                                              patcher,
+                                              logger: Logger) -> Optional[dict]:
     patch = {"spec": {"template":
                       {"spec": {
                           "containers": [
@@ -348,41 +354,40 @@ def update_router_container_template_property(dpl: api_client.V1Deployment,
                       }
                     }
             }
+    if patcher is not None:
+        patcher.patch_deploy(patch)
+        return
+
     update_deployment_spec(dpl, patch)
 
 
-def update_router_image(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, logger: Logger) -> None:
-    update_router_container_template_property(dpl, "image", spec.router_image, logger)
-
-
-def update_router_version(cluster: InnoDBCluster, logger: Logger) -> None:
-    dpl = cluster.get_router_deployment()
-    if dpl:
-        return update_router_image(dpl, cluster.parsed_spec, logger)
+def update_router_image(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, patcher, logger: Logger) -> None:
+    return update_router_container_template_property(dpl, "image", spec.router_image, patcher, logger)
 
 
 def update_pull_policy(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, logger: Logger) -> None:
     # NOTE: We are using spec.mysql_image_pull_policy and not spec.router_image_pull_policy
     #       (both are decorated), becase the latter will read the value from the Router Deployment
     #       and thus the value will be constant. We are using the former to push the value down
-    update_router_container_template_property(dpl, "imagePullPolicy", spec.mysql_image_pull_policy, logger)
+    update_router_container_template_property(dpl, "imagePullPolicy", spec.mysql_image_pull_policy, False, logger)
 
 
 def update_deployment_template_spec_property(dpl: api_client.V1Deployment, property_name: str, property_value: str) -> None:
     patch = {"spec": {"template": {"spec": { property_name: property_value }}}}
     update_deployment_spec(dpl, patch)
 
-def update_bootstrap_options(dpl: api_client.V1Deployment, cluster: InnoDBCluster, logger: Logger) -> None:
+
+def update_bootstrap_options(dpl: api_client.V1Deployment, cluster: InnoDBCluster, logger: Logger) -> dict:
     (router_bootstrap_options, _, _) = get_bootstrap_and_tls_options(cluster)
     patch = [{
         "name": "MYSQL_ROUTER_BOOTSTRAP_EXTRA_OPTIONS",
         "value": router_bootstrap_options
     }]
-    update_router_container_template_property(dpl, "env", patch, logger)
+    return update_router_container_template_property(dpl, "env", patch, True, logger)
 
-def update_options(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, logger: Logger) -> None:
+def update_options(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, logger: Logger) -> dict:
     router_command = ["mysqlrouter", *spec.router.options]
-    update_router_container_template_property(dpl, "args", router_command, logger)
+    return update_router_container_template_property(dpl, "args", router_command, True, logger)
 
 def update_service(svc: api_client.V1Deployment, spec: InnoDBClusterSpec,
                    logger: Logger) -> None:

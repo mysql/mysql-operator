@@ -655,8 +655,10 @@ spec:
         waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
         kutil.patch_ic(self.ns, "mycluster", patch, type="json", data_as_type='json')
         waiter()
-        self.wait_pod("mycluster-0", "Running")
-        self.wait_ic("mycluster", "ONLINE")
+        server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
+        pod_names = [server["NAME"] for server in server_pods]
+        for pod_name in pod_names:
+            self.wait_pod(pod_name, "Running")
 
     def test_05_check_ic(self):
         labels = kutil.get_ic(self.ns, "mycluster")["spec"]["podLabels"]

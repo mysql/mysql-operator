@@ -401,7 +401,7 @@ class KeyringSpecBase(ABC):
         ...
 
     # TODO [compat8.3.0] remove this when compatibility pre 8.3.0 isn't needed anymore
-    def upgrade_to_component(self, sts: api_client.V1StatefulSet, spec, logger: Logger) -> None:
+    def upgrade_to_component(self, sts: api_client.V1StatefulSet, spec, logger: Logger) -> Optional[tuple[dict, dict]]:
         # only exists for OCI keyring
         pass
 
@@ -768,7 +768,7 @@ spec:
                data[self.component_manifest_name]["keyring_oci_ca_certificate"] = "/etc/mysql-keyring-ca/certificate"
 
     # TODO [compat8.3.0] remove this when compatibility pre 8.3.0 isn't needed anymore
-    def upgrade_to_component(self, sts: api_client.V1StatefulSet, spec, logger: Logger):
+    def upgrade_to_component(self, sts: api_client.V1StatefulSet, spec, logger: Logger) -> Optional[tuple[dict, dict]]:
         cm_mount_name = "keyringfile-conf"
         if any(v.name == cm_mount_name for v in sts.spec.template.spec.volumes):
             # we already mount config map for component - nothign to do
@@ -835,7 +835,8 @@ spec:
     secret:
       secretName: {self.caCertificate}
 """
-            utils.merge_patch_object(sts_patch, yaml.safe_load(patch))
+
+        utils.merge_patch_object(sts_patch, yaml.safe_load(patch))
 
         cm = spec.keyring.get_component_config_configmap_manifest()
 
@@ -964,7 +965,7 @@ spec:
         self.keyring.add_to_sts_spec(statefulset)
 
     # TODO [compat8.3.0] remove this when compatibility pre 8.3.0 isn't needed anymore
-    def upgrade_to_component(self, sts: api_client.V1StatefulSet, spec, logger: Logger):
+    def upgrade_to_component(self, sts: api_client.V1StatefulSet, spec, logger: Logger) -> Optional[tuple[dict, dict]]:
         # only exists for OCI keyring
         if self.keyring:
             return self.keyring.upgrade_to_component(sts, spec, logger)
@@ -2509,3 +2510,4 @@ class MySQLPod(K8sInterfaceObject):
             # modify the JSON data used internally by kopf to update its finalizer list
             if fin in pod_body["metadata"]["finalizers"]:
                 pod_body["metadata"]["finalizers"].remove(fin)
+

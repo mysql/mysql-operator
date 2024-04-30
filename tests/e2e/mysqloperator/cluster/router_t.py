@@ -271,17 +271,15 @@ spec:
             },
         ]
 
+        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
         kutil.patch_ic(self.ns, "mycluster", patch, type="json", data_as_type='json')
+        waiter()
+        server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
+        pod_names = [server["NAME"] for server in server_pods]
+        for pod_name in pod_names:
+            self.wait_pod(pod_name, "Running")
 
-        # Give time to the operator to update the deployment and new routers to be
-        # started.
-        # Because the Operator has two handlers - one for labels, one for annotations
-        # and they run async. One of the handlers will patch the deployment, which will
-        # spawn a new router pod and then the second handler will patch, which will
-        # spawn another router pod and the recently started one will move directly into
-        # terminating state. So, at one point of time there will be one running and two
-        # terminating routers.
-        sleep(20)
+        self.wait_routers("mycluster-router-*", 1)
 
     def test_07_check_ic(self):
         labels = kutil.get_ic(self.ns, "mycluster")["spec"]["router"]["podLabels"]

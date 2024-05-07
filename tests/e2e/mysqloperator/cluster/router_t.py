@@ -271,7 +271,7 @@ spec:
             },
         ]
 
-        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
+        waiter = tutil.get_deploy_rollover_update_waiter(self, "mycluster", timeout=300, delay=5)
         kutil.patch_ic(self.ns, "mycluster", patch, type="json", data_as_type='json')
         waiter()
         server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")

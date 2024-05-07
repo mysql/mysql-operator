@@ -699,15 +699,21 @@ class OperatorTest(unittest.TestCase):
         _, secondaries = self.get_instances_by_role(instance, user, password)
         return secondaries
 
-
-def get_sts_rollover_update_waiter(test_obj: OperatorTest, cluster_name:str, timeout: int, delay: int):
+def get_rollover_update_waiter(test_obj: OperatorTest, pattern: str, timeout: int, delay: int):
     def get_pods_uids(pattern) -> set:
         return set([kutil.get_po(test_obj.ns, pod['NAME'])['metadata']['uid'] for pod in kutil.ls_po(test_obj.ns, pattern=pattern)])
 
-    pattern = f"{cluster_name}-\d"
     old_uids = get_pods_uids(pattern)
 
     def waiter() -> bool:
         test_obj.wait(lambda : len(old_uids.intersection(get_pods_uids(pattern))) == 0, timeout=timeout, delay=delay)
 
     return waiter
+
+
+def get_sts_rollover_update_waiter(test_obj: OperatorTest, cluster_name: str, timeout: int, delay: int):
+    return get_rollover_update_waiter(test_obj, f"{cluster_name}-\d", timeout, delay)
+
+
+def get_deploy_rollover_update_waiter(test_obj: OperatorTest, cluster_name:str, timeout: int, delay: int):
+    return get_rollover_update_waiter(test_obj, f"{cluster_name}-router-*", timeout, delay)

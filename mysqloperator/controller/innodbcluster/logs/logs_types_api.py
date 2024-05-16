@@ -42,35 +42,54 @@ def get_object_name(obj: Union[Dict, api_client.V1Container, api_client.V1Volume
 
 
 # Replaces whole container in sts.spec.template.spec.containers
-def patch_sts_spec_template_complex_attribute(sts: Union[dict, api_client.V1StatefulSet], patch: dict, attr: str, add: bool) -> None:
+def patch_sts_spec_template_complex_attribute(sts: Union[dict, api_client.V1StatefulSet], patcher: 'InnoDBClusterObjectModifier', patch: dict, attr: str, add: bool) -> None:
+    #print(f"\npatch_sts_spec_template_complex_attribute attr={attr} add={add} patch={patch}")
     attr_c = snail_to_camel(attr)
     if patch is None or len(patch[attr_c]) == 0:
         return
     attr_names = [a["name"] for a in patch[attr_c]]
+    #print(f"\npatch_sts_spec_template_complex_attribute: attr_names={attr_names}\n")
     if isinstance(sts, dict):
         # first filter out
+        #cleaned_up_attr = [a for a in sts["spec"]["template"]["spec"][attr_c] if a and get_object_name(a) not in attr_names]
+        #patcher.patch_sts_overwrite(cleaned_up_attr, f"/spec/template/spec/{attr_c}")
+        # This is at startup, when we create ourselves. V1StatefulSet is only when we fetch from the server.
+        # For now when we create ourselves we don't use the patcher
+        #print(f"\tpatch_sts_spec_template_complex_attribute Dict. Filtering out {attr_c}")
         sts["spec"]["template"]["spec"][attr_c] = [a for a in sts["spec"]["template"]["spec"][attr_c] if a and get_object_name(a) not in attr_names]
         if add:
+            #print(f"STS is dict. Patching with {patch}")
+            #patcher.patch_sts({"spec":{"template":{"spec": patch}}})
+            #print(f"patch_sts_spec_template_complex_attribute: STS is Dict. Adding {attr_c} attribute by patching with {patch}\n")
             utils.merge_patch_object(sts["spec"]["template"]["spec"], patch)
     elif isinstance(sts, api_client.V1StatefulSet):
         # first filter out
         # attribute should be here snail case
-        new = [a for a in get_object_attr(sts.spec.template.spec, attr) if a and get_object_name(a) not in attr_names]
+        path = f"/spec/template/spec/{attr_c}"
+        sts_path = patcher.get_sts_path(path)
+        cleaned_up_attr = [a for a in sts_path if a and get_object_name(a) not in attr_names]
+        #print(f"\tcleaned_up_attr     = {cleaned_up_attr}\n")
+        if cleaned_up_attr != sts_path:
+            patcher.patch_sts_overwrite(cleaned_up_attr, path)
+        #sts.spec["template"]["spec"][attr_c] = [a for a in sts.spec["template"]["spec"][attr_c] if a and get_object_name(a) not in attr_names]
         if add:
-            new += patch[attr_c]
-        set_object_attr(sts.spec.template.spec, attr, new)
+            #print(f"patch_sts_spec_template_complex_attribute: STS is V1StatefulSet. Adding {attr_c} attribute by patching with {patch}\n")
+            patcher.patch_sts({"spec": {"template": {"spec": patch}}})
+            #utils.merge_patch_object(sts.spec["template"]["spec"], patch)
 
 
 # Attribute should be snail_case
 # Replaces value of just one attribute of a container in sts.spec.template.spec.containers
 # Example is patching volume_mounts (the V1StatefulSet notation of YAML's volumeMounts)
-def patch_container_attribute(sts: Union[dict, api_client.V1StatefulSet], patch: dict, attr: str, add: bool) -> None:
+def patch_container_attribute(sts: Union[dict, api_client.V1StatefulSet], patcher: 'InnoDBClusterObjectModifier', patch: dict, attr: str, add: bool) -> None:
+    #print(f"\npatch_container_attribute attr={attr} add={add} patch={patch}")
     attr_c = snail_to_camel(attr)
     for container_idx in range(0, len(patch["containers"])):
         container_name = patch["containers"][container_idx]["name"]
         changed_obj_names = [ attr_v["name"] for attr_v in patch["containers"][container_idx][attr_c] ]
         found = False
         if isinstance(sts, dict):
+            #print("\npatch_container_attribute dict\n")
             # first filter out
             for container in sts["spec"]["template"]["spec"]["containers"]:
                 if get_object_name(container) == container_name:
@@ -85,23 +104,25 @@ def patch_container_attribute(sts: Union[dict, api_client.V1StatefulSet], patch:
                     break
             if found == False and add:
                 utils.merge_patch_object(sts["spec"]["template"]["spec"], patch)
-
         elif isinstance(sts, api_client.V1StatefulSet):
-            for container in sts.spec.template.spec.containers:
+            #print("\npatch_container_attribute V1StatefulSet\n")
+            for container in sts.spec["template"]["spec"]["containers"]:
                 if get_object_name(container) == container_name:
                     current_value = get_object_attr(container, attr) if has_object_attr(container, attr) else []
                     #print(f"\t\t\t\tcurrent_value({container_name}.{attr})={current_value}")
                     new_value = [v for v in current_value if (v and (get_object_name(v) not in changed_obj_names))]
+                    #print(f"\new_value={new_value}")
                     if add:
                         new_value += patch["containers"][container_idx][attr_c]
                     #print(f"\t\t\t\tnew_value({container_name}.{attr})={new_value}")
+                    #print(f"\tset_object_attr={new_value}")
                     set_object_attr(container, attr, new_value)
                     found = True
                     break
             if found == False and add:
-                sts.spec.template.spec.containers += patch
-
-
+                #print(f"patch_container_attribute: STS is V1StatefulSet. Patching with {patch}")
+                patcher.patch_sts({"spec":{"template":{"spec": patch}}})
+                #utils.merge_patch_object(sts.spec["template"]["spec"]["containers"], patch)
 
 
 # Must correspond to the names in the CRD
@@ -127,6 +148,7 @@ class ConfigMapMountBase(ABC):
 
     def _add_volumes_to_sts_spec(self,
                                  sts: Union[dict, api_client.V1StatefulSet],
+                                 patcher: 'InnoDBClusterObjectModifier',
                                  cm_name: str,
                                  add: bool,
                                  logger: Logger) -> None:
@@ -147,11 +169,12 @@ class ConfigMapMountBase(ABC):
                 }
             ]
         }
-        patch_sts_spec_template_complex_attribute(sts, patch, "volumes", add)
+        patch_sts_spec_template_complex_attribute(sts, patcher, patch, "volumes", add)
 
 
     def _add_containers_to_sts_spec(self,
                                     sts: Union[dict, api_client.V1StatefulSet],
+                                    patcher: 'InnoDBClusterObjectModifier',
                                     container_name: str,
                                     add: bool,
                                     logger: Logger) -> None:
@@ -169,16 +192,17 @@ class ConfigMapMountBase(ABC):
                 }
             ]
         }
-        patch_container_attribute(sts, patch, "volume_mounts", add)
+        patch_container_attribute(sts, patcher, patch, "volume_mounts", add)
 
     def add_to_sts_spec(self,
                         sts: Union[dict, api_client.V1StatefulSet],
+                        patcher: 'InnoDBClusterObjectModifier',
                         container_name: str,
                         cm_name: str,
                         add: bool,
                         logger: Logger) -> None:
-        self._add_containers_to_sts_spec(sts, container_name, add, logger)
-        self._add_volumes_to_sts_spec(sts, cm_name, add, logger)
+        self._add_containers_to_sts_spec(sts, patcher, container_name, add, logger)
+        self._add_volumes_to_sts_spec(sts, patcher, cm_name, add, logger)
 
 
 class MySQLLogSpecBase(ConfigMapMountBase):

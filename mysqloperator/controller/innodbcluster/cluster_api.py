@@ -29,6 +29,12 @@ import datetime
 from cryptography import x509
 from kubernetes import client
 
+AddToInitconfHandler = Callable[[dict, str, Logger], None]
+RemoveFromStsHandler = Callable[[Union[dict, api_client.V1StatefulSet], Logger], None]
+AddToStsHandler = Callable[[Union[dict, 'InnoDBClusterObjectModifier', api_client.V1StatefulSet], Logger], None]
+GetConfigMapHandler = Callable[[str, Logger], Optional[list[tuple[str, Optional[dict]]]]]
+AddToSvcHandler = Callable[[Union[dict, api_client.V1Service], Logger], None]
+GetSvcMonitorHandler = Callable[[Logger], tuple[str, Optional[dict]]]
 
 MAX_CLUSTER_NAME_LEN = 28
 
@@ -101,7 +107,7 @@ class MetriscSpec:
     def validate(self) -> None:
         pass
 
-    def _add_container_to_sts_spec(self, sts: Union[dict, api_client.V1StatefulSet], add: bool, logger: Logger) -> None:
+    def _add_container_to_sts_spec(self, sts: Union[dict, api_client.V1StatefulSet], patcher: 'InnoDBClusterObjectModifier', add: bool, logger: Logger) -> None:
         options = self.options
         if self.web_config:
             options += ["--web.config.file=/config/web.config"]
@@ -172,11 +178,13 @@ class MetriscSpec:
             ]
         }
 
-        patch_sts_spec_template_complex_attribute(sts, patch, "containers", add)
+        patch_sts_spec_template_complex_attribute(sts, patcher, patch, "containers", add)
 
-    def _add_volumes_to_sts_spec(self, sts: Union[dict, api_client.V1StatefulSet], add: bool, logger: Logger) -> None:
+    def _add_volumes_to_sts_spec(self, sts: Union[dict, api_client.V1StatefulSet], patcher: 'InnoDBClusterObjectModifier', add: bool, logger: Logger) -> None:
         volumes = []
-        if self.web_config:
+        # if there is web_config and we have to add it - add it
+        # if there don't have to add, the patch won't be added but still be used to clean up from remnants of previous add
+        if (self.web_config and add) or (not add):
             volumes.append(
                 {
                     "name": f"{self.container_name}-web-config",
@@ -186,7 +194,7 @@ class MetriscSpec:
                     }
                 }
             )
-        if self.tls_secret:
+        if (self.tls_secret and add) or (not add):
             volumes.append(
                 {
                     "name": f"{self.container_name}-tls",
@@ -201,16 +209,16 @@ class MetriscSpec:
             "volumes" : volumes
         }
 
-        patch_sts_spec_template_complex_attribute(sts, patch, "volumes", add)
+        patch_sts_spec_template_complex_attribute(sts, patcher, patch, "volumes", add)
 
-    def get_add_to_sts_cb(self) -> Optional[Callable[[Union[dict, api_client.V1StatefulSet], bool, Logger], None]]:
-        def cb(sts: Union[dict, api_client.V1StatefulSet], logger: Logger) -> None:
-            self._add_container_to_sts_spec(sts, self.enable, logger)
-            self._add_volumes_to_sts_spec(sts, self.enable, logger)
-            self.config.add_to_sts_spec(sts, self.container_name, self.cm_name, self.enable, logger)
+    def get_add_to_sts_cb(self) -> Optional[AddToStsHandler]:
+        def cb(sts: Union[dict, api_client.V1StatefulSet], patcher: 'InnoDBClusterObjectModifier', logger: Logger) -> None:
+            self._add_container_to_sts_spec(sts, patcher, self.enable, logger)
+            self._add_volumes_to_sts_spec(sts, patcher, self.enable, logger)
+            self.config.add_to_sts_spec(sts, patcher, self.container_name, self.cm_name, self.enable, logger)
         return cb
 
-    def get_configmaps_cb(self) -> Optional[Callable[[str, Logger], Optional[List[Tuple[str, Optional[Dict]]]]]]:
+    def get_configmaps_cb(self) -> Optional[GetConfigMapHandler]:
         def cb(prefix: str, logger: Logger) -> Optional[List[Tuple[str, Optional[Tuple[str, Optional[Dict]]]]]]:
             if not self.enable:
                 return [(self.cm_name, None)]
@@ -238,7 +246,7 @@ socket=unix:///var/run/mysqld/mysql.sock
 
         return cb
 
-    def get_add_to_svc_cb(self) -> Optional[Callable[[Union[dict, api_client.V1Service], Logger], None]]:
+    def get_add_to_svc_cb(self) -> Optional[AddToSvcHandler]:
         def cb(svc: Union[dict, api_client.V1Service], logger: Logger) -> None:
             patch = {
                 "ports" : [
@@ -271,7 +279,7 @@ socket=unix:///var/run/mysqld/mysql.sock
         return cb
 
     # Can't include the type for the MonitoringCoreosComV1Api.ServiceMonitor
-    def get_svc_monitor_cb(self) -> Optional[Callable[[Logger], Tuple[str, Optional[dict]]]]:
+    def get_svc_monitor_cb(self) -> Optional[GetSvcMonitorHandler]:
         def cb(logger: Logger) -> dict:
             monitor = None
             requested = self.enable and self.monitor
@@ -1045,6 +1053,7 @@ class ServiceSpec:
         return ports[self.defaultPort]
 
 
+
 # Must correspond to the names in the CRD
 class InnoDBClusterSpecProperties(Enum):
     SERVICE = "service"
@@ -1130,12 +1139,12 @@ class AbstractServerSetSpec(abc.ABC):
 
     def _load(self, spec_root: dict, spec_specific: dict, where_specific: str) -> None:
         # initialize now or all instances will share the same list initialized before the ctor
-        self.add_to_initconf_cbs: Dict[str, List[Callable[[Dict, str, Logger], None]]] = {}
-        self.remove_from_sts_cbs: Dict[str, List[Callable[[Union[dict, api_client.V1StatefulSet], Logger], None]]] = {}
-        self.add_to_sts_cbs: Dict[str, List[Callable[[Union[dict, api_client.V1StatefulSet], Logger], None]]] = {}
-        self.get_configmaps_cbs: Dict[str, List[Callable[[str, Logger], Optional[List[Tuple[str, Optional[Dict]]]]]]] = {}
-        self.get_add_to_svc_cbs: Dict[str, List[Callable[[Union[dict, api_client.V1Service], Logger], None]]] = {}
-        self.get_svc_monitor_cbs: Dict[str, List[Callable[[Logger], Tuple[str, Optional[dict]]]]] = {}
+        self.add_to_initconf_cbs: dict[str, List[AddToInitconfHandler]] = {}
+        self.remove_from_sts_cbs: dict[str, List[RemoveFromStsHandler]] = {}
+        self.add_to_sts_cbs: dict[str, List[AddToStsHandler]] = {}
+        self.get_configmaps_cbs: dict[str, List[GetConfigMapHandler]] = {}
+        self.get_add_to_svc_cbs: dict[str, List[AddToSvcHandler]] = {}
+        self.get_svc_monitor_cbs: dict[str, List[GetSvcMonitorHandler]] = {}
 
         self.secretName = dget_str(spec_root, "secretName", "spec")
 
@@ -2432,7 +2441,7 @@ class MySQLPod(K8sInterfaceObject):
                 "lastProbeTime": '%s' % now,
                 "lastTransitionTime": '%s' % now if changed else None
             }]}}
-        print(f"Updating readiness gate {gate} with patch {patch}")
+        #print(f"Updating readiness gate {gate} with patch {patch}")
         self.pod = cast(api_client.V1Pod, api_core.patch_namespaced_pod_status(
             self.name, self.namespace, body=patch))
 

@@ -344,7 +344,7 @@ def update_deployment_spec(dpl: api_client.V1Deployment, patch: dict) -> None:
 def update_router_container_template_property(dpl: api_client.V1Deployment,
                                               property_name: str, property_value: str,
                                               patcher,
-                                              logger: Logger) -> Optional[dict]:
+                                              logger: Logger) -> None:
     patch = {"spec": {"template":
                       {"spec": {
                           "containers": [
@@ -354,40 +354,38 @@ def update_router_container_template_property(dpl: api_client.V1Deployment,
                       }
                     }
             }
-    if patcher is not None:
-        patcher.patch_deploy(patch)
-        return
-
-    update_deployment_spec(dpl, patch)
+#    if patcher is not None:
+    patcher.patch_deploy(patch)
+#       return
+#    update_deployment_spec(dpl, patch)
 
 
 def update_router_image(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, patcher, logger: Logger) -> None:
     return update_router_container_template_property(dpl, "image", spec.router_image, patcher, logger)
 
 
-def update_pull_policy(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, logger: Logger) -> None:
+def update_pull_policy(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, patcher, logger: Logger) -> None:
     # NOTE: We are using spec.mysql_image_pull_policy and not spec.router_image_pull_policy
     #       (both are decorated), becase the latter will read the value from the Router Deployment
     #       and thus the value will be constant. We are using the former to push the value down
-    update_router_container_template_property(dpl, "imagePullPolicy", spec.mysql_image_pull_policy, False, logger)
+    update_router_container_template_property(dpl, "imagePullPolicy", spec.mysql_image_pull_policy, patcher, logger)
 
 
-def update_deployment_template_spec_property(dpl: api_client.V1Deployment, property_name: str, property_value: str) -> None:
-    patch = {"spec": {"template": {"spec": { property_name: property_value }}}}
-    update_deployment_spec(dpl, patch)
+def get_update_deployment_template_spec_property(dpl: api_client.V1Deployment, property_name: str, property_value: str) -> str:
+    return {"spec": {"template": {"spec": { property_name: property_value }}}}
 
 
-def update_bootstrap_options(dpl: api_client.V1Deployment, cluster: InnoDBCluster, logger: Logger) -> dict:
+def update_bootstrap_options(dpl: api_client.V1Deployment, cluster: InnoDBCluster, patcher, logger: Logger) -> dict:
     (router_bootstrap_options, _, _) = get_bootstrap_and_tls_options(cluster)
     patch = [{
         "name": "MYSQL_ROUTER_BOOTSTRAP_EXTRA_OPTIONS",
         "value": router_bootstrap_options
     }]
-    return update_router_container_template_property(dpl, "env", patch, True, logger)
+    return update_router_container_template_property(dpl, "env", patch, patcher, logger)
 
-def update_options(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, logger: Logger) -> dict:
+def update_options(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, patcher, logger: Logger) -> dict:
     router_command = ["mysqlrouter", *spec.router.options]
-    return update_router_container_template_property(dpl, "args", router_command, True, logger)
+    return update_router_container_template_property(dpl, "args", router_command, patcher, logger)
 
 def update_service(svc: api_client.V1Deployment, spec: InnoDBClusterSpec,
                    logger: Logger) -> None:

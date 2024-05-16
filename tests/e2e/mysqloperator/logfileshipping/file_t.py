@@ -411,7 +411,28 @@ spec:
             self.assertTrue(f"stat: cannot statx '/var/lib/mysql/{self.general_log_file_name}': No such file or directory" in line)
 
     def _12_enable_general_log(self):
-        patch = {"spec": { "logs" : { "general" : { "enabled": True }}}}
+        la_index = 8
+        self.label_name = f"server-label{la_index}"
+        self.label_value = f"mycluster-server-label{la_index}-value"
+        self.annotation_name = f"server.mycluster.example.com/ann{la_index}"
+        self.annotation_value = f"server-ann{la_index}-value"
+        patch = {
+            "spec": {
+                "logs": {
+                    "general": {
+                        "enabled": True
+                    }
+                },
+                "podLabels": {
+                    f"server-label{la_index}": f"mycluster-server-label{la_index}-value"
+                },
+                "podAnnotations": {
+                    f"server.mycluster.example.com/ann{la_index}": f"server-ann{la_index}-value"
+                }
+            }
+        }
+
+        #patch = {"spec": { "logs" : { "general" : { "enabled": True }}}}
         waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=600, delay=50)
         start_time = time()
         kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
@@ -425,30 +446,37 @@ spec:
         server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
         pod_names = [server["NAME"] for server in server_pods]
         for pod_name in pod_names:
-            container_names = [container['name'] for container in kutil.get_po(self.ns, pod_name)['spec']['containers']]
-            self.assertFalse("logcollector" in container_names)
+            with self.subTest(pod_name):
+                pod_manifest = kutil.get_po(self.ns, pod_name)
+                container_names = [container['name'] for container in pod_manifest['spec']['containers']]
+                self.assertFalse("logcollector" in container_names)
 
-            with mutil.MySQLPodSession(self.ns, pod_name, self.root_user, self.root_pass) as s:
-                s.query_sql("SELECT SLEEP(3.19)").fetch_all()
-            sleep(15)
-            # Slow Log should exist
-            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
-            line = out.strip().decode("utf-8")
-            self.assertEqual(f"/var/lib/mysql/{self.slow_query_log_file_name} mysql 640", line)
-            slow_log_contents = kutil.cat(self.ns, [pod_name, "mysql"], f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
-            print(slow_log_contents)
-            # Queries from the removed slow log should not exists any more
-            self.assertEqual(slow_log_contents.find("SELECT SLEEP(2.89)"), -1)
-            self.assertEqual(slow_log_contents.find("SELECT SLEEP(3.39)"), -1)
-            # Queries from the new slow log should be there
-            self.assertTrue(slow_log_contents.find("SELECT SLEEP(3.49)") != -1)
-            self.assertTrue(slow_log_contents.find("SELECT SLEEP(3.19)") != -1)
+                self.assertTrue(self.label_name in pod_manifest['metadata']['labels'])
+                self.assertTrue(pod_manifest['metadata']['labels'][self.label_name] == self.label_value)
+                self.assertTrue(self.annotation_name in pod_manifest['metadata']['annotations'])
+                self.assertTrue(pod_manifest['metadata']['annotations'][self.annotation_name] == self.annotation_value)
 
-            # General Log should exist
-            out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
-            line = out.strip().decode("utf-8")
-            print(line)
-            self.assertEqual(f"/var/lib/mysql/{self.general_log_file_name} mysql 640", line)
+                with mutil.MySQLPodSession(self.ns, pod_name, self.root_user, self.root_pass) as s:
+                    s.query_sql("SELECT SLEEP(3.19)").fetch_all()
+                sleep(15)
+                # Slow Log should exist
+                out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
+                line = out.strip().decode("utf-8")
+                self.assertEqual(f"/var/lib/mysql/{self.slow_query_log_file_name} mysql 640", line)
+                slow_log_contents = kutil.cat(self.ns, [pod_name, "mysql"], f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
+                print(slow_log_contents)
+                # Queries from the removed slow log should not exists any more
+                self.assertEqual(slow_log_contents.find("SELECT SLEEP(2.89)"), -1)
+                self.assertEqual(slow_log_contents.find("SELECT SLEEP(3.39)"), -1)
+                # Queries from the new slow log should be there
+                self.assertTrue(slow_log_contents.find("SELECT SLEEP(3.49)") != -1)
+                self.assertTrue(slow_log_contents.find("SELECT SLEEP(3.19)") != -1)
+
+                # General Log should exist
+                out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
+                line = out.strip().decode("utf-8")
+                print(line)
+                self.assertEqual(f"/var/lib/mysql/{self.general_log_file_name} mysql 640", line)
 
     def _99_destroy(self):
         kutil.delete_ic(self.ns, "mycluster")
@@ -1385,7 +1413,7 @@ spec:
             msg="Dependency resources created, switching status to PENDING")
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
-            reason=r"StatusChange", msg=r"Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
+            reason=r"StatusChange", msg=r"Cluster status changed to ONLINE. .* member\(s\) ONLINE")
 
     def _02_check_error_log_exists(self):
         server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")

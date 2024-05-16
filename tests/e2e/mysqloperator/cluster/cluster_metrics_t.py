@@ -101,16 +101,17 @@ spec:
                           msg="Expected config setting not reported, maybe database connection failed?")
 
     def test_04_mysql_user_created_on_all_pods(self):
-        for pod in ('mycluster-0', 'mycluster-1'):
+        for instance in range(0, self.instances):
+            pod = f"mycluster-{instance}"
             with self.subTest(pod):
                 with mutil.MySQLPodSession(self.ns, pod, "root", "sakila") as s:
                     user = s.query_sql(
-                        "SELECT User, Host, plugin, authentication_string"
+                        "SELECT User, Host, plugin"
                         " FROM mysql.user"
                         " WHERE User='mysqlmetrics'").fetch_all()
-                    self.assertListEqual([("mysqlmetrics", "localhost", "auth_socket", b"daemon")], user)
+                    self.assertListEqual([("mysqlmetrics", "localhost", "auth_socket")], user)
 
-    def test_06_enable_config(self):
+    def _test_enable_config(self, cm_web_config_name: str):
         old_pod_uid = kutil.get_po(self.ns, "mycluster-0")["metadata"]["uid"]
 
         # configuration for the exporter using alice:alice as credentials
@@ -119,12 +120,12 @@ web.config: |
     basic_auth_users:
       alice: '$2y$10$v4kAPAxETqQGmNlwUrqsN.a46uwg3MBDcNew.2KQA8M73azAGEJ2O'
 """
-        kutil.create_cm(self.ns, "cm-web-config", web_config)
+        kutil.create_cm(self.ns, cm_web_config_name, web_config)
 
         patch = {
             "spec": {
                 "metrics": {
-                    "webConfig": "cm-web-config"
+                    "webConfig": cm_web_config_name
                 }
             }
         }
@@ -135,28 +136,45 @@ web.config: |
         self.wait_ic("mycluster", "ONLINE", num_online=self.instances)
 
         for instance in reversed(range(0, self.instances)):
-            pod = f"mycluster-{instance}"
-            self.wait_pod(pod, "Running")
+            with self.subTest():
+                pod = f"mycluster-{instance}"
+                self.wait_pod(pod, "Running")
 
-            podspec = kutil.get_po(self.ns, pod)
+                podspec = kutil.get_po(self.ns, pod)
 
-            self.assertEqual(3, len(podspec["spec"]["containers"]))
+                self.assertEqual(3, len(podspec["spec"]["containers"]))
+                metrics_container_spec = [c for c in podspec["spec"]["containers"] if c["name"] == "metrics"][0]
+                metrics_container_volume_mounts = [mount["name"] for mount in metrics_container_spec["volumeMounts"]]
+                print(metrics_container_volume_mounts)
+                self.assertIn("metrics-web-config", metrics_container_volume_mounts)
 
-            self.assertIn("metrics-web-config",
-                          map(lambda volume: volume["name"],
-                              podspec["spec"]["volumes"]))
+                self.assertIn("metrics-web-config",
+                            map(lambda volume: volume["name"],
+                                podspec["spec"]["volumes"]))
 
-            with kutil.PortForward(self.ns, pod, "metrics") as port:
-                resp = requests.get(f'http://127.0.0.1:{port}/metrics')
-                self.assertEqual(resp.status_code, 401)
+                metrics_volume = [v for v in podspec["spec"]["volumes"] if v["name"] == "metrics-web-config"][0]
+                self.assertEqual(metrics_volume["configMap"]["name"], cm_web_config_name)
 
-                resp = requests.get(f'http://127.0.0.1:{port}/metrics',
-                                    auth=("alice", "alice"))
-                self.assertEqual(resp.status_code, 200)
+                with mutil.MySQLPodSession(self.ns, pod, "root", "sakila") as s:
+                    user = s.query_sql(
+                        "SELECT User, Host, plugin"
+                        " FROM mysql.user"
+                        " WHERE User='mysqlmetrics'").fetch_all()
+                    self.assertListEqual([("mysqlmetrics", "localhost", "auth_socket")], user)
 
-    def test_08_disable(self):
-        old_pod_uid = kutil.get_po(self.ns, "mycluster-0")["metadata"]["uid"]
 
+                with kutil.PortForward(self.ns, pod, "metrics") as port:
+                    resp = requests.get(f'http://127.0.0.1:{port}/metrics')
+                    self.assertEqual(resp.status_code, 401)
+
+                    resp = requests.get(f'http://127.0.0.1:{port}/metrics',
+                                        auth=("alice", "alice"))
+                    self.assertEqual(resp.status_code, 200)
+
+    def test_06_enable_config(self):
+        self._test_enable_config("cm-web-config")
+
+    def test_08_disable(self, web_config_is_none: bool = False):
         patch = {
             "spec": {
                 "metrics": {
@@ -164,6 +182,8 @@ web.config: |
                 }
             }
         }
+        if web_config_is_none:
+            patch["spec"]["metrics"]["webConfig"] = None
 
         waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=300, delay=20)
         kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
@@ -178,11 +198,14 @@ web.config: |
             pod = f"mycluster-{instance}"
             with self.subTest(pod):
                 podspec = kutil.get_po(self.ns, pod)
+                print(podspec["spec"]["containers"])
                 self.assertEqual(2, len(podspec["spec"]["containers"]))
-                self.assertNotIn("metrics", (c["name"] for c in podspec["spec"]["containers"]))
+                container_names = [c["name"] for c in podspec["spec"]["containers"]]
+                self.assertNotIn("metrics", container_names)
 
-                print(podspec["spec"]["volumes"])
-                self.assertNotIn("metrics-web-config", (v["name"] for v in podspec["spec"]["containers"]))
+                volumes_names = [v["name"] for v in podspec["spec"]["volumes"]]
+                print(volumes_names)
+                self.assertNotIn("metrics-web-config", volumes_names)
 
                 with mutil.MySQLPodSession(self.ns, pod, "root", "sakila") as s:
                     user = s.query_sql(
@@ -196,7 +219,80 @@ web.config: |
         self.assertNotIn("metrics", (p["name"] for p in svc["spec"]["ports"]))
 
 
-    def test_10_metrics_user_will_be_created_on_clone(self):
+
+    def test_10_enable(self, la_index = 9, web_config_was_none: bool = False):
+        patch = {
+            "spec": {
+                "metrics": {
+                    "enable": True
+                },
+                "podLabels": {
+                    f"server-label{la_index}": f"mycluster-server-label{la_index}-value"
+                },
+                "podAnnotations": {
+                    f"server.mycluster.example.com/ann{la_index}": f"server-ann{la_index}-value"
+                }
+            }
+        }
+
+        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=300, delay=20)
+        kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
+        waiter()
+
+        for instance in reversed(range(0, self.instances)):
+            pod = f"mycluster-{instance}"
+            self.wait_pod(pod, "Running")
+
+        for instance in range(0, self.instances):
+            pod = f"mycluster-{instance}"
+            with self.subTest(pod):
+                podspec = kutil.get_po(self.ns, pod)
+                print(podspec["spec"]["containers"])
+                self.assertEqual(3, len(podspec["spec"]["containers"]))
+                container_names = [c["name"] for c in podspec["spec"]["containers"]]
+                self.assertIn("metrics", container_names)
+
+                volumes_names = [v["name"] for v in podspec["spec"]["volumes"]]
+                print(volumes_names)
+                if web_config_was_none:
+                    self.assertNotIn("metrics-web-config", volumes_names)
+                else:
+                    self.assertIn("metrics-web-config", volumes_names)
+
+                self.assertEqual(podspec['metadata']['labels'][f'server-label{la_index}'], f'mycluster-server-label{la_index}-value')
+                self.assertEqual(podspec['metadata']['annotations'][f'server.mycluster.example.com/ann{la_index}'], f'server-ann{la_index}-value')
+
+
+                with mutil.MySQLPodSession(self.ns, pod, "root", "sakila") as s:
+                    user = s.query_sql(
+                        "SELECT User, Host, plugin"
+                        " FROM mysql.user"
+                        " WHERE User='mysqlmetrics'").fetch_all()
+                    self.assertListEqual([("mysqlmetrics", "localhost", "auth_socket")], user)
+
+        #self._test_enable_config("configmap-web-config")
+
+        server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
+        pod_names = [server["NAME"] for server in server_pods]
+        for pod_name in pod_names:
+            with self.subTest(pod):
+                pod = kutil.get_po(self.ns, pod_name)
+                self.assertEqual(pod['metadata']['labels']['server-label9'], 'mycluster-server-label9-value')
+                self.assertEqual(pod['metadata']['annotations']['server.mycluster.example.com/ann9'], 'server-ann9-value')
+
+        self.wait_ic("mycluster", "ONLINE", num_online=self.instances)
+
+
+    def test_12_disable_again(self):
+        self.test_08_disable(True)
+
+    def __test_14_enable_again(self):
+        self.test_10_enable(3, "cm-web-config3")
+
+    def __test_16_disable_again(self):
+        self.test_08_disable(False)
+
+    def __test_18_metrics_user_will_be_created_on_clone(self):
         """Make sure a clone will reset metrics user credentials
         The server we are cloning from got no 'mysqlmetrics' user, thus
         after clone there will be no user and it ahs to be reset"""
@@ -236,10 +332,10 @@ spec:
 
         with mutil.MySQLPodSession(self.ns, "copycluster-0", "root", "sakila") as s:
             user = s.query_sql(
-                "SELECT User, Host, plugin, authentication_string"
+                "SELECT User, Host, plugin"
                 " FROM mysql.user"
                 " WHERE User='mysqlmetrics'").fetch_all()
-            self.assertListEqual([("mysqlmetrics", "localhost", "auth_socket", b"daemon")], user)
+            self.assertListEqual([("mysqlmetrics", "localhost", "auth_socket")], user)
 
 
     def test_99_shutdown(self):

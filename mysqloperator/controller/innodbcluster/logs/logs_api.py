@@ -10,6 +10,7 @@ from ...api_utils import dget_dict, dget_str, dget_list, ApiSpecError
 from ...kubeutils import client as api_client
 from .logs_collector_fluentd_api import FluentdSpec
 from .logs_types_api import ServerLogType, GeneralLogSpec, ErrorLogSpec, SlowQueryLogSpec, MySQLLogSpecBase
+#from ..cluster_api import AddToStsHandler
 
 lc_default_container_name = "logcollector"
 
@@ -65,11 +66,11 @@ class LogCollectorSpec:
                 raise ApiSpecError(f"No collector configured")
             self.collector.remove_from_sts_spec(sts, self.container_name, self.image_name, self.envs, logger)
 
-    def add_to_sts_spec(self, sts: Union[dict, api_client.V1StatefulSet], logHandlers: Dict[ServerLogType, MySQLLogSpecBase], add: bool, logger: Logger) -> None:
+    def add_to_sts_spec(self, sts: Union[dict, api_client.V1StatefulSet], patcher: 'InnoDBClusterObjectModifier', logHandlers: Dict[ServerLogType, MySQLLogSpecBase], add: bool, logger: Logger) -> None:
         if self.collect(logHandlers):
             if self.collector is None:
                 raise ApiSpecError(f"No collector configured")
-            self.collector.add_to_sts_spec(sts, self.container_name, self.image_name, self.envs, add, logger)
+            self.collector.add_to_sts_spec(sts, patcher, self.container_name, self.image_name, self.envs, add, logger)
 
     def get_config_maps(self, logHandlers: Dict[ServerLogType, MySQLLogSpecBase]) -> List[Dict]:
         return self.collector.get_config_maps(logHandlers) if self.collect(logHandlers) and self.collector else []
@@ -118,16 +119,16 @@ class LogsSpec:
     def get_remove_from_sts_cb(self) -> Optional[Callable[[Union[dict, api_client.V1StatefulSet], Logger], None]]:
         return (lambda sts, logger: self.collector.remove_from_sts_spec(sts, self.logs, logger))
 
-    def get_add_to_sts_cb(self) -> Optional[Callable[[Union[dict, api_client.V1StatefulSet], Logger], None]]:
-        def cb(sts: Union[dict, api_client.V1StatefulSet], logger: Logger) -> None:
+    def get_add_to_sts_cb(self) -> Optional['AddToStsHandler']:
+        def cb(sts: Union[dict,api_client.V1StatefulSet], patcher: 'InnoDBClusterObjectModifier', logger: Logger) -> None:
             enabled = self.enabled
             for logName in self.logs:
                 container_name = "mysql"
-                self.logs[logName].add_to_sts_spec(sts, container_name, self.cm_name, enabled, logger)
-            self.collector.add_to_sts_spec(sts, self.logs, enabled, logger)
+                self.logs[logName].add_to_sts_spec(sts, patcher, container_name, self.cm_name, enabled, logger)
+            self.collector.add_to_sts_spec(sts, patcher, self.logs, enabled, logger)
         return cb
 
-    def get_configmaps_cb(self) -> Optional[Callable[[str, Logger], Optional[List[Tuple[str, Optional[Dict]]]]]]:
+    def get_configmaps_cb(self) -> Optional['GetConfigMapHandler']:
         def cb(prefix: str, logger: Logger) -> Optional[List[Tuple[str, Optional[Dict]]]]:
 
             logs_configmap = {

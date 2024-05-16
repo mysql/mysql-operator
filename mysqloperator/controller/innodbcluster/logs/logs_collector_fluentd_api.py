@@ -310,6 +310,7 @@ class FluentdSpec:
 
 
     def _add_containers_to_sts_spec(self, sts: Union[dict, api_client.V1StatefulSet],
+                                    patcher: 'InnoDBClusterObjectModifier',
                                     container_name: str,
                                     image_name: str,
                                     image_envs: List[Dict],
@@ -339,12 +340,15 @@ class FluentdSpec:
             sts["spec"]["template"]["spec"]["containers"] += yaml.safe_load(patch)
         elif isinstance(sts, api_client.V1StatefulSet):
             # first filter out our old logs container spec
-            containers = sts.spec.template.spec.containers
-            sts.spec.template.spec.containers = [container for container in containers if get_container_name(container) != container_name]
-            sts.spec.template.spec.containers += yaml.safe_load(patch)
+            containers = sts.spec["template"]['spec']['containers']
+            sts.spec["template"]['spec']['containers'] = [container for container in containers if get_container_name(container) != container_name]
+            sts.spec["template"]['spec']['containers'] += yaml.safe_load(patch)
 
 
-    def _add_volumes_to_sts_spec(self, sts: Union[dict, api_client.V1StatefulSet], add: bool,
+    def _add_volumes_to_sts_spec(self,
+                                 sts: Union[dict, api_client.V1StatefulSet],
+                                 patcher: 'InnoDBClusterObjectModifier',
+                                 add: bool,
                                  logger: Logger) -> None:
         _, config_file_name = os.path.split(self.fluentd_container_config_path)
         volume_name = self.fluentd_configmap_volume_mount_name
@@ -357,23 +361,26 @@ class FluentdSpec:
     - key: {config_file_name}
       path: {config_file_name}
 """
-        # During first time creation
         if isinstance(sts, dict):
             sts["spec"]["template"]["spec"]["volumes"] += yaml.safe_load(patch)
         elif isinstance(sts, api_client.V1StatefulSet):
+            logger.info(f"sts.spec.template.spec.volumes={sts.spec['template']['spec']['volumes']}")
             # first filter out our old logs volumes spec
-            sts.spec.template.spec.volumes = [volume for volume in sts.spec.template.spec.volumes if volume and get_volume_name(volume) != volume_name]
-            sts.spec.template.spec.volumes += yaml.safe_load(patch)
+            sts.spec["template"]['spec']['volumes'] = [volume for volume in sts.spec["template"]['spec']['volumes'] if volume and get_volume_name(volume) != volume_name]
+            sts.spec["template"]['spec']['volumes'] += yaml.safe_load(patch)
 
-    def add_to_sts_spec(self, sts: Union[dict, api_client.V1StatefulSet],
+
+    def add_to_sts_spec(self,
+                        sts: Union[dict, api_client.V1StatefulSet],
+                        patcher: 'InnoDBClusterObjectModifier',
                         container_name: str,
                         image_name: str,
                         image_envs: List[Dict],
                         add: bool,
                         logger: Logger) -> None:
 
-        self._add_containers_to_sts_spec(sts, container_name, image_name, image_envs, add, logger)
-        self._add_volumes_to_sts_spec(sts, add, logger)
+        self._add_containers_to_sts_spec(sts, patcher, container_name, image_name, image_envs, add, logger)
+        self._add_volumes_to_sts_spec(sts, patcher, add, logger)
 
 
     def _get_general_log_fluent_conf(self, general_log: GeneralLogSpec) -> Optional[str]:

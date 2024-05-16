@@ -72,9 +72,8 @@ def timestamp(dash: bool = True, four_digit_year: bool = True) -> str:
     return datetime.datetime.utcnow().replace(microsecond=0).strftime(f"{year_str}%m%d{dash_str}%H%M%S")
 
 
-def merge_patch_object(base: dict, patch: dict, prefix: str = "", key: str = "") -> None:
+def merge_patch_object(base: dict, patch: dict, prefix: str = "", key: str = "", none_deletes: bool = False) -> None:
     assert not key, "not implemented"  # TODO support key
-
     if type(base) != type(patch):
         raise ValueError(f"Invalid type in patch at {prefix}")
     if type(base) != dict:
@@ -96,7 +95,7 @@ def merge_patch_object(base: dict, patch: dict, prefix: str = "", key: str = "")
                     # TODO
                     raise ValueError(f"Invalid type in {prefix}")
                 else:
-                    merge_patch_object(ov, v, prefix+"."+k)
+                    merge_patch_object(ov, v, prefix+"."+k, none_deletes=none_deletes)
             elif type(ov) == list:
                 if type(v) != list:
                     # TODO
@@ -122,16 +121,23 @@ def merge_patch_object(base: dict, patch: dict, prefix: str = "", key: str = "")
                                 o = get_named_object(ov, name)
                                 if o:
                                     merge_patch_object(
-                                        o, elem, prefix+"."+k+"["+str(i)+"]")
+                                        o, elem, prefix+"."+k+"["+str(i)+"]",
+                                        none_deletes=none_deletes)
                                 else:
                                     ov.append(elem)
 
             elif type(ov) not in (dict, list) and type(v) in (dict, list):
                 raise ValueError(f"Invalid type in {prefix}")
             else:
-                base[k] = v
+                if none_deletes and v is None:
+                    del base[k]
+                else:
+                    base[k] = v
         else:
-            base[k] = v
+            if none_deletes and v is None:
+                pass
+            else:
+                base[k] = v
 
 
 def generate_password() -> str:

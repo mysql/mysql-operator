@@ -334,10 +334,11 @@ def connect(user: str, password: str, logger: Logger, timeout: Optional[int] = 6
         try:
             shell.connect(
                 {"user": user, "password": password, "scheme": "mysql"})
+            logger.info(f"Connect attempt #{i} successful")
             break
         except mysqlsh.Error as e:
             if mysqlutils.is_client_error(e.code):
-                logger.info(f"Connect attempt #{i} failed: {e}")
+                logger.warning(f"Connect attempt #{i} failed: {e}")
                 time.sleep(2)
             else:
                 logger.critical(f"Unexpected MySQL error during connection: {e}")
@@ -394,7 +395,7 @@ def metadata_schema_version(session: 'ClassicSession', logger: Logger) -> Option
             "select * from mysql_innodb_cluster_metadata.schema_version").fetch_one()
         return r[0]
     except Exception as e:
-        logger.debug(f"Metadata check failed: {e}")
+        logger.info(f"Metadata check failed: {e}")
         return None
 
 

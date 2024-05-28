@@ -873,6 +873,13 @@ class ClusterController:
         mysqlutils.setup_metrics_user(self.dba.session, user, grants,
                                       max_connections)
 
+    def on_router_pod_delete(self, name: str, logger: Logger) -> None:
+        logger.info(f"Removing metadata for router {name} from {self.cluster.name}")
+        self.connect_to_cluster(logger)
+
+        self.dba_cluster.remove_router_metadata(name + '::')
+
+
     def on_router_routing_option_chahnge(self, old: dict, new: dict, logger: Logger) -> None:
         self.connect_to_primary(None, logger)
 

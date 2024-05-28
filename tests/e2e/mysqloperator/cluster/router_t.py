@@ -146,6 +146,81 @@ spec:
             self.assertEqual(res.status_code, 200)
 
 
+    def test_4_remove_router_metadata(self):
+        def list_routers() -> dict:
+            # TODO - with ClusterSet we got to change from cluster to clusterset
+            router_list = kutil.execp(self.ns, ("mycluster-0", "sidecar"),
+                                      ["mysqlsh", "root:sakila@localhost",
+                                       "--quiet-start=2", "--",
+                                       "cluster", "list-routers"])
+            return json.loads(router_list)["routers"]
+
+        def assert_metadata_matches_running_pods(expected_count):
+            routers = sorted(list(list_routers()))
+
+            expected = sorted([pod['NAME']+'::'
+                               for pod in
+                               kutil.ls_po(self.ns,
+                                           pattern="mycluster-router-.*")])
+
+            # testing ListEqual first gives better error if they mismatch
+            self.assertListEqual(routers, expected)
+            self.assertEqual(len(routers), expected_count)
+            self.assertEqual(len(expected), expected_count)
+
+        def scale_routers(new_scale: int):
+            patch = {
+                "spec": {
+                    "router": {
+                        "instances": new_scale
+                    }
+                }
+            }
+            kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
+            self.wait_routers("mycluster-router-.*", new_scale)
+
+        # 1. check initial router registered
+        assert_metadata_matches_running_pods(expected_count=1)
+
+        # 2. scale up and see if routers register
+        scale_routers(3)
+        assert_metadata_matches_running_pods(expected_count=3)
+
+        # 3. scale down and see if they unregister
+        scale_routers(1)
+        assert_metadata_matches_running_pods(expected_count=1)
+
+        # 4. rotate pod by deleting, should unregister old and register new
+        name = kutil.ls_po(self.ns, pattern="mycluster-router-.*")[0]["NAME"]
+
+        kutil.delete_po(self.ns, name)
+        self.wait_routers("mycluster-router-.*", 1)
+
+        new_name = kutil.ls_po(self.ns, pattern="mycluster-router-.*")[0]["NAME"]
+        self.assertNotEqual(name, new_name)
+
+        assert_metadata_matches_running_pods(expected_count=1)
+
+        # 5. failure while removing doesn't cause an issue
+
+        name = new_name
+
+        # removing meta data will lead to an exception when operator tries
+        # which would case the pod to stick around in terminating state if
+        # we don't handle that error
+        kutil.exec(self.ns, ("mycluster-0", "sidecar"),
+                   ["mysqlsh", "root:sakila@localhost",
+                    "--quiet-start=2", "--",
+                    "cluster", "remove-router-metadata", name+'::'])
+
+        kutil.delete_po(self.ns, name)
+        self.wait_routers("mycluster-router-.*", 1)
+
+        new_name = kutil.ls_po(self.ns, pattern="mycluster-router-.*")[0]["NAME"]
+        self.assertNotEqual(name, new_name)
+
+        assert_metadata_matches_running_pods(expected_count=1)
+
     def test_99_destroy(self):
         kutil.delete_ic(self.ns, "mycluster")
 

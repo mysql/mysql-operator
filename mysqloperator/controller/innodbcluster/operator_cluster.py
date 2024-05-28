@@ -22,6 +22,7 @@ from .cluster_api import InnoDBCluster, InnoDBClusterSpec, MySQLPod, get_all_clu
 import kopf
 from logging import Logger
 import time
+import traceback
 
 
 # TODO check whether we should store versions in status to make upgrade easier
@@ -1059,3 +1060,19 @@ def on_innodbcluster_field_logs(old: str, new: str, body: Body, logger: Logger, 
     cluster.parsed_spec.validate(logger)
     with ClusterMutex(cluster):
         cluster_objects.update_objects_for_logs(cluster, logger)
+
+@kopf.on.delete("", "v1", "pods",
+                labels={"component": "mysqlrouter"})  # type: ignore
+def on_router_pod_delete(body: Body, logger: Logger, namespace: str, **kwargs):
+    router_name = body["metadata"]["name"]
+    try:
+        cluster_name = body["metadata"]["labels"]["mysql.oracle.com/cluster"]
+
+        cluster = cluster_api.InnoDBCluster.read(namespace, cluster_name)
+        controller = ClusterController(cluster)
+        controller.on_router_pod_delete(router_name, logger)
+    except Exception as exc:
+        # Ignore errors, there isn't much we could do
+        # and there is no point in retrying forever
+        logger.warn(f"Failed to remove metadata for {router_name}: {exc}")
+        print(traceback.format_exc())

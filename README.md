@@ -19,7 +19,7 @@ Pull requests submitted via github are also tracked at bugs.mysql.com; see [CONT
 
 Copyright (c) 2020, 2024, Oracle and/or its affiliates.
 
-License information can be found in the [LICENSE](https://github.com/mysql/mysql-operator/blob/8.0.38-2.0.15/LICENSE) file.
+License information can be found in the [LICENSE](https://github.com/mysql/mysql-operator/blob/8.0.39-2.0.16/LICENSE) file.
 This distribution may include materials developed by third parties. For license
 and attribution notices for these materials, please refer to the `LICENSE` file.
 
@@ -30,13 +30,13 @@ and attribution notices for these materials, please refer to the `LICENSE` file.
 First deploy the Custom Resource Definition (CRDs):
 
 ```sh
-$> kubectl apply -f https://raw.githubusercontent.com/mysql/mysql-operator/8.0.38-2.0.15/deploy/deploy-crds.yaml
+$> kubectl apply -f https://raw.githubusercontent.com/mysql/mysql-operator/8.0.39-2.0.16/deploy/deploy-crds.yaml
 ```
 
 Then deploy MySQL Operator for Kubernetes:
 
 ```sh
-$> kubectl apply -f https://raw.githubusercontent.com/mysql/mysql-operator/8.0.38-2.0.15/deploy/deploy-operator.yaml
+$> kubectl apply -f https://raw.githubusercontent.com/mysql/mysql-operator/8.0.39-2.0.16/deploy/deploy-operator.yaml
 ```
 
 Verify the operator is running by checking the deployment inside the `mysql-operator` namespace:

@@ -1076,3 +1076,4 @@ def on_router_pod_delete(body: Body, logger: Logger, namespace: str, **kwargs):
         # and there is no point in retrying forever
         logger.warn(f"Failed to remove metadata for {router_name}: {exc}")
         print(traceback.format_exc())
+        logger.warn("Exception ignored, there might be stale metadata left")

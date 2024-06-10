@@ -1,6 +1,6 @@
 Licensing Information User Manual
 
-MySQL Operator for Kubernetes 8.4.0 Community
+MySQL Operator for Kubernetes 9.0.0 Community
      __________________________________________________________________
 
 Introduction
@@ -8,13 +8,13 @@ Introduction
    This License Information User Manual contains Oracle's product license
    and other licensing information, including licensing information for
    third-party software which may be included in this distribution of
-   MySQL Operator for Kubernetes 8.4.0 Community.
+   MySQL Operator for Kubernetes 9.0.0 Community.
 
-   Last updated: March 2024
+   Last updated: May 2024
 
 Licensing Information
 
-   This release of MySQL Operator for Kubernetes 8.4.0 Community is
+   This release of MySQL Operator for Kubernetes 9.0.0 Community is
    brought to you by the MySQL team at Oracle. This software is released
    under version 1 of the Universal Permissive License (UPL), as set forth
    below.

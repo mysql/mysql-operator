@@ -3,7 +3,7 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
-FROM container-registry.oracle.com/os/oraclelinux:8 AS pip-stage
+FROM container-registry.oracle.com/os/oraclelinux:9 AS pip-stage
 
 ARG PYTHON_TARBALL
 ARG PYTHON_ROOT
@@ -19,6 +19,6 @@ COPY requirements.txt .
 
 RUN python3 -m pip install --target=/tmp/site-packages -r requirements.txt
 
-FROM container-registry.oracle.com/os/oraclelinux:8-slim
+FROM container-registry.oracle.com/os/oraclelinux:9-slim
 
 COPY --from=pip-stage /tmp/site-packages /usr/lib/mysqlsh/python-packages

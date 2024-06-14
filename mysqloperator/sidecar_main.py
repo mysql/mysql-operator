@@ -275,22 +275,26 @@ def create_root_account(session: 'ClassicSession', pod: MySQLPod, cluster: InnoD
         pod.error(action="InitDB", reason="InvalidArgument", message=f"{e}")
         raise
 
-    if user == "root" and host == "localhost":
-        # Nothing to do here, password was already set by the container
-        pass
-    else:
-        logger.info(f"Creating root account {user}@{host}")
-        session.run_sql(
-            "CREATE USER IF NOT EXISTS ?@? IDENTIFIED BY ?", [user, host, password])
-        session.run_sql(
-            "GRANT ALL ON *.* TO ?@? WITH GRANT OPTION", [user, host])
-        session.run_sql(
-            "GRANT PROXY ON ''@'' TO ?@? WITH GRANT OPTION", [user, host])
-        # Drop the default root account and keep the new one only
-        session.run_sql("DROP USER IF EXISTS root@localhost")
+
+    # DROP root@localhost which has random password in case create_root_account() is called from initialize
+    # or drop the root@localhost from a initDB and set new password, as the one in the dump/clone might differ
+    ret = session.run_sql("DROP USER IF EXISTS root@localhost")
+    logger.info(f"DROP USER root@localhost - Warnings {ret.warnings if ret is not None else []}")
+
+    logger.info(f"Creating own root account {user}@{host}")
+
+    ret = session.run_sql("CREATE USER IF NOT EXISTS ?@? IDENTIFIED BY ?", [user, host, password])
+    logger.info(f"CREATE USER - Warnings {ret.warnings if ret is not None else []}")
+
+    ret = session.run_sql("GRANT ALL ON *.* TO ?@? WITH GRANT OPTION", [user, host])
+    logger.info(f"GRANT ALL - Warnings {ret.warnings if ret is not None else []}")
+
+    ret = session.run_sql("GRANT PROXY ON ''@'' TO ?@? WITH GRANT OPTION", [user, host])
+    logger.info(f"GRANT PROXY - Warnings {ret.warnings if ret is not None else []}")
 
 
-def create_admin_account(session, cluster, logger):
+
+def create_admin_account(session, cluster, logger: Logger):
     """
     Create a super-user to be used by the operator.
     """

@@ -245,6 +245,8 @@ spec:
   instances: 1
   secretName: badsecret
   tlsUseSelfSigned: true
+  podSpec:
+    terminationGracePeriodSeconds: 10
 """
         start_time = isotime()
 
@@ -252,13 +254,10 @@ spec:
 
         self.wait_pod("mycluster-0", "Pending")
 
-        # the initmysql container will fail during creation with
-        # CreateContainerConfigError because the container is setup to read from
-        # it to set MYSQL_ROOT_PASSWORD, so the operator or sidecars will never
-        # run
-        self.wait(kutil.ls_po, (self.ns,),
-                  lambda pods: pods[0]["STATUS"] == "Init:CreateContainerConfigError",
-                  timeout=90, delay=5)
+        self.wait_got_pod_event(
+            "mycluster-0", after=start_time, type="Warning",
+            reason="FailedMount",
+            msg='MountVolume.SetUp failed for volume "rootcreds" : secret "badsecret" not found')
 
         kutil.delete_ic(self.ns, "mycluster")
 
@@ -288,6 +287,8 @@ spec:
   edition: community
   tlsUseSelfSigned: true
   version: "5.7.30"
+  podSpec:
+    terminationGracePeriodSeconds: 10
 """
         kutil.apply(self.ns, yaml)
 
@@ -329,6 +330,8 @@ spec:
   secretName: mypwds
   tlsUseSelfSigned: true
   version: "5.7.30"
+  podSpec:
+    terminationGracePeriodSeconds: 10
 """
         kutil.apply(self.ns, yaml)
 

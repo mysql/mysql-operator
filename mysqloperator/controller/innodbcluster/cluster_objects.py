@@ -329,11 +329,8 @@ spec:
         env:
         - name: MYSQL_INITIALIZE_ONLY
           value: "1"
-        - name: MYSQL_ROOT_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: {spec.secretName}
-              key: rootPassword
+        - name: MYSQL_RANDOM_ROOT_PASSWORD
+          value: "1"
         - name: MYSQLSH_USER_CONFIG_HOME
           value: /tmp
         volumeMounts:
@@ -354,6 +351,10 @@ spec:
           mountPath: /tmp
         - name: varlibmysqlfiles # The entrypoint of the container `touch`-es 2 files there
           mountPath: /var/lib/mysql-files
+        - name: rootcreds
+          readOnly: true
+          subPath: rootHost
+          mountPath: /rootcreds/rootHost
       containers:
       - name: sidecar
         image: {spec.operator_image}
@@ -485,7 +486,6 @@ spec:
         - name: mysql-tmp
           mountPath: /tmp
 {utils.indent(spec.extra_volume_mounts, 8)}
-
       volumes:
       - name: mycnfdata
         emptyDir: {{}}
@@ -507,6 +507,13 @@ spec:
         emptyDir: {{}}
       - name: sidecar-tmp
         emptyDir: {{}}
+      - name: rootcreds
+        secret:
+          secretName: {spec.secretName}
+          defaultMode: 0400
+          items:
+          - key: rootHost
+            path: rootHost
 {utils.indent(spec.extra_volumes, 6)}
   volumeClaimTemplates:
   - metadata:

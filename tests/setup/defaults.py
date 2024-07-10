@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -6,10 +6,10 @@
 import os
 
 # version
-VERSION_TAG = "8.3.0"
+VERSION_TAG = "9.0.0"
 
 MIN_SUPPORTED_VERSION = "8.0.27"
-MAX_SUPPORTED_VERSION = "8.3.0"
+MAX_SUPPORTED_VERSION = "9.0.0"
 
 # image
 IMAGE_REGISTRY = os.getenv(
@@ -27,7 +27,7 @@ OPERATOR_EE_IMAGE_NAME = os.getenv(
     "OPERATOR_TEST_EE_IMAGE_NAME", default="enterprise-operator")
 
 OPERATOR_VERSION_TAG = os.getenv(
-    "OPERATOR_TEST_VERSION_TAG", default="8.3.0-2.1.2")
+    "OPERATOR_TEST_VERSION_TAG", default="9.0.0-2.2.0")
 
 OPERATOR_OLD_VERSION_TAG = os.getenv(
     "OPERATOR_TEST_OLD_VERSION_TAG", default="8.0.31-2.0.7")
@@ -72,6 +72,12 @@ OCI_VAULT_CONFIG_PATH = os.getenv(
 AZURE_SKIP = os.getenv(
     "OPERATOR_TEST_SKIP_AZURE", default=False)
 
+AZURE_STORAGE_IMAGE_NAME = os.getenv(
+    "OPERATOR_TEST_AZURE_STORAGE_IMAGE_NAME", default="mcr.microsoft.com/azure-storage/azurite")
+
+AZURE_CLI_IMAGE_NAME = os.getenv(
+    "OPERATOR_TEST_AZURE_CLI_IMAGE_NAME", default="mcr.microsoft.com/azure-cli")
+
 AZURE_CONFIG_FILE = os.getenv(
     "OPERATOR_TEST_AZURE_CONFIG_FILE", default=None)
 
@@ -83,7 +89,7 @@ FLUENTD_IMAGE_NAME= os.getenv(
 
 # metrics sidecar
 METRICS_IMAGE_NAME = os.getenv(
-    "OPERATOR_TEST_METRICS_IMAGE_NAME", default=None)
+    "OPERATOR_TEST_METRICS_IMAGE_NAME", default="prom/mysqld-exporter:v0.14.0")
 
 
 # k8s

@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -625,7 +625,7 @@ class OperatorTest(unittest.TestCase):
             awaited_status = [awaited_status]
 
         logger.info(
-            f"Waiting for routers {ns}/{name_pattern} to become {awaited_status}, num_online={num_online}")
+            f"Waiting for routers {ns or self.ns}/{name_pattern} to become {awaited_status}, num_online={num_online}")
 
         router_names = []
 
@@ -698,3 +698,92 @@ class OperatorTest(unittest.TestCase):
     def get_secondary_instances(self, instance="mycluster-0", user="root", password="sakila"):
         _, secondaries = self.get_instances_by_role(instance, user, password)
         return secondaries
+
+
+def get_rollover_update_waiter(test_obj: OperatorTest, pattern_prefix: str, pattern_suffix: str, is_server: bool, timeout: int, delay: int):
+    pattern = pattern_prefix + pattern_suffix
+    def get_instances() -> int:
+        return (kutil.get_sts(test_obj.ns, pattern_prefix) if is_server else kutil.get_deploy(test_obj.ns, pattern_prefix))["spec"]["replicas"]
+
+    def get_pods_uids(pattern) -> set:
+        return set([kutil.get_po(test_obj.ns, pod['NAME'])['metadata']['uid'] for pod in kutil.ls_po(test_obj.ns, pattern=pattern)])
+
+    old_instances = get_instances()
+    new_instances = None
+
+    old_uids = get_pods_uids(pattern)
+    new_uids = set()
+
+    def get_if_pods_uids_completely_changed(pattern, new_instances) -> bool:
+        nonlocal new_uids
+        my_new_uids = get_pods_uids(pattern)
+        isect_count = len(old_uids.intersection(my_new_uids))
+        if isect_count != 0:
+            print(f"{pattern} : waiting for {isect_count} of {new_instances} pods to be renewed")
+            return False
+        if len(my_new_uids) != new_instances:
+            print(f"{pattern} : waiting for {new_instances - len(my_new_uids)} to be spawned")
+            return False
+        print(f"{pattern} : All old pods are gone and total new {new_instances} are there")
+        new_uids = my_new_uids
+        return True
+
+    def get_if_pods_container_statuses_all_running(pattern, new_instances) -> bool:
+        nonlocal new_uids
+        pods = kutil.ls_po(test_obj.ns, pattern=pattern)
+        if len(pods) != new_instances:
+            print(f"{pattern} : GET PODS found {len(pods)} but expected are {new_instances}")
+            return False
+
+        for pod in pods:
+            pod_spec = kutil.get_po(test_obj.ns, pod['NAME'])
+            if pod_spec['metadata']['uid'] not in new_uids:
+                print(f"{pod['NAME']} FOUND ACCORDING TO THE {pattern} BUT IS NOT IN new_uids {list(new_uids)} - ar")
+                return False
+
+            for cont_status in pod_spec['status']['containerStatuses']:
+                print(f"POD {pod['NAME']}, IMAGE {cont_status['image']:70} IS {list(cont_status['state'].keys())}")
+                if "running" not in cont_status['state']:
+                    return False
+        return True
+
+
+    def get_if_gates_are_set(pattern) -> bool:
+        nonlocal new_uids
+        pods = kutil.ls_po(test_obj.ns, pattern=pattern)
+        for pod in pods:
+            pod_spec = kutil.get_po(test_obj.ns, pod['NAME'])
+            if pod_spec['metadata']['uid'] not in new_uids:
+                print(f"{pod['NAME']} FOUND ACCORDING TO THE {pattern} BUT IS NOT IN new_uids {list(new_uids)} - gs")
+                return False
+
+            cond_configured = False
+            cond_ready = False
+            for condition in pod_spec['status']['conditions']:
+                if condition['type'] == 'mysql.oracle.com/configured':
+                   cond_configured = True
+                elif condition['type'] == 'mysql.oracle.com/ready':
+                   cond_ready = True
+            print(f"{pod['NAME']} configured={cond_configured} ready={cond_ready}")
+            if not cond_configured or not cond_ready:
+                return False
+        return True
+
+
+    def waiter() -> bool:
+        new_instances = get_instances()
+
+        test_obj.wait(lambda : get_if_pods_uids_completely_changed(pattern, new_instances), timeout=timeout, delay=delay)
+        test_obj.wait(lambda : get_if_pods_container_statuses_all_running(pattern, new_instances), timeout=timeout, delay=delay)
+        if is_server:
+           test_obj.wait(lambda : get_if_gates_are_set(pattern), timeout=timeout, delay=delay)
+
+    return waiter
+
+
+def get_sts_rollover_update_waiter(test_obj: OperatorTest, cluster_name: str, timeout: int, delay: int):
+    return get_rollover_update_waiter(test_obj, f"{cluster_name}", "-\d", True, timeout, delay)
+
+
+def get_deploy_rollover_update_waiter(test_obj: OperatorTest, cluster_name:str, timeout: int, delay: int):
+    return get_rollover_update_waiter(test_obj, f"{cluster_name}-router", "-*",False, timeout, delay)

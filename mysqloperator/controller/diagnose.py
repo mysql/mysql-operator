@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -91,8 +91,7 @@ def diagnose_instance(pod: MySQLPod, logger, dba: 'Dba' = None) -> InstanceStatu
 
                 # Check status of the pod
                 pod.reload()
-                logger.info(
-                    f"{pod.endpoint}: pod.phase={pod.phase}  deleting={pod.deleting}")
+                logger.debug(f"{pod.endpoint}: pod.phase={pod.phase}  deleting={pod.deleting}")
                 if pod.phase != "Running" or not pod.check_containers_ready() or pod.deleting:
                     # not ONLINE for sure if the Pod is not running
                     status.status = InstanceDiagStatus.OFFLINE
@@ -107,7 +106,9 @@ def diagnose_instance(pod: MySQLPod, logger, dba: 'Dba' = None) -> InstanceStatu
         status.gtid_executed = dba.session.run_sql("select @@gtid_executed").fetch_one()[0]
 
         try:
-            cluster = dba.get_cluster(None, {"connectToPrimary": False})
+            # TODO: we want to check from individual Pod's/Server's perspective
+            #       it will now check based from primary N times
+            cluster = dba.get_cluster()
         except mysqlsh.Error as e:
             logger.info(f"get_cluster() error for {pod.endpoint}: error={e}")
 
@@ -182,6 +183,7 @@ def diagnose_instance(pod: MySQLPod, logger, dba: 'Dba' = None) -> InstanceStatu
             elif mystate == "UNREACHABLE":
                 status.status = InstanceDiagStatus.UNREACHABLE
             else:
+                logger.error(f"{pod.endpoint}: bad state {mystate}")
                 assert False, f"{pod.endpoint}: bad state {mystate}"
         except mysqlsh.Error as e:
             if shellutils.check_fatal(
@@ -464,17 +466,16 @@ def do_diagnose_cluster(cluster: InnoDBCluster, logger) -> ClusterStatus:
     last_known_quorum = cluster.get_last_known_quorum()
 
     # TODO last known quorum tracking
-    logger.debug(
-        f"Diagnosing cluster {cluster.name}  deleting={cluster.deleting}  last_known_quorum={last_known_quorum}...")
+    log_msg = f"Diagnosing cluster {cluster.name}  deleting={cluster.deleting}  last_known_quorum={last_known_quorum}..."
 
     # Check if the cluster has already been initialized
     create_time = cluster.get_create_time()
-    logger.debug(f"create_time={create_time}  deleting={cluster.deleting}")
+    log_msg += f"create_time={create_time}  deleting={cluster.deleting}"
 
     if not create_time and not cluster.deleting:
         cluster_status = ClusterStatus()
         cluster_status.status = ClusterDiagStatus.INITIALIZING
-        logger.debug(f"Cluster {cluster.name}  status={cluster_status.status}")
+        log_msg += f"\nCluster {cluster.name}  status={cluster_status.status}"
         return cluster_status
 
     all_member_pods = set()
@@ -490,8 +491,7 @@ def do_diagnose_cluster(cluster: InnoDBCluster, logger) -> ClusterStatus:
 #            logger.info(f"instance {pod} is deleting")
 #            continue
         status = diagnose_instance(pod, logger)
-        logger.info(
-            f"diag instance {pod} --> {status.status} quorum={status.in_quorum} gtid_executed={status.gtid_executed}")
+        log_msg += f"\ndiag instance {pod} --> {status.status} quorum={status.in_quorum} gtid_executed={status.gtid_executed}"
 
         gtid_executed[pod.index] = status.gtid_executed
 
@@ -512,8 +512,7 @@ def do_diagnose_cluster(cluster: InnoDBCluster, logger) -> ClusterStatus:
             logger.error(f"Internal error processing pod {pod}")
             assert False
 
-    logger.info(
-        f"{cluster.name}: all={all_pods}  members={all_member_pods}  online={online_pods}  offline={offline_pods}  unsure={unsure_pods}")
+    log_msg += f"\n{cluster.name}: all={all_pods}  members={all_member_pods}  online={online_pods}  offline={offline_pods}  unsure={unsure_pods}"
 
     assert online_pods.union(offline_pods, unsure_pods) == all_member_pods
 
@@ -524,8 +523,7 @@ def do_diagnose_cluster(cluster: InnoDBCluster, logger) -> ClusterStatus:
     if online_pods:
         active_partitions, blocked_partitions = find_group_partitions(
             online_pod_statuses, all_member_pods, logger)
-        logger.debug(
-            f"active_partitions={active_partitions}  blocked_partitions={blocked_partitions}")
+        log_msg += f"\nactive_partitions={active_partitions}  blocked_partitions={blocked_partitions}"
 
         if not active_partitions:
             # no quorum
@@ -569,6 +567,16 @@ def do_diagnose_cluster(cluster: InnoDBCluster, logger) -> ClusterStatus:
                     cluster_status.status = ClusterDiagStatus.OFFLINE
             else:
                 cluster_status.status = ClusterDiagStatus.UNKNOWN
+
+    if cluster_status.status in (ClusterDiagStatus.UNKNOWN,
+                                 ClusterDiagStatus.OFFLINE,
+                                 ClusterDiagStatus.OFFLINE_UNCERTAIN,
+                                 ClusterDiagStatus.SPLIT_BRAIN,
+                                 ClusterDiagStatus.SPLIT_BRAIN_UNCERTAIN,
+                                 ClusterDiagStatus.ONLINE_UNCERTAIN,
+                                 ClusterDiagStatus.NO_QUORUM,
+                                 ClusterDiagStatus.NO_QUORUM_UNCERTAIN):
+        logger.info(log_msg)
 
     logger.debug(f"Cluster {cluster.name}  status={cluster_status.status}")
 

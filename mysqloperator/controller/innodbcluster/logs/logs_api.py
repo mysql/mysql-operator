@@ -1,15 +1,16 @@
-# Copyright (c) 2023, Oracle and/or its affiliates.
+# Copyright (c) 2023, 2024, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
 from enum import Enum
-from typing import Optional, Union, List, Callable, Dict
+from typing import Optional, Union, List, Callable, Dict, Tuple
 from logging import Logger
 from ...api_utils import dget_dict, dget_str, dget_list, ApiSpecError
 from ...kubeutils import client as api_client
 from .logs_collector_fluentd_api import FluentdSpec
 from .logs_types_api import ServerLogType, GeneralLogSpec, ErrorLogSpec, SlowQueryLogSpec, MySQLLogSpecBase
+#from ..cluster_api import AddToStsHandler
 
 lc_default_container_name = "logcollector"
 
@@ -65,13 +66,13 @@ class LogCollectorSpec:
                 raise ApiSpecError(f"No collector configured")
             self.collector.remove_from_sts_spec(sts, self.container_name, self.image_name, self.envs, logger)
 
-    def add_to_sts_spec(self, sts: Union[dict, api_client.V1StatefulSet], logHandlers: Dict[ServerLogType, MySQLLogSpecBase], logger: Logger) -> None:
+    def add_to_sts_spec(self, sts: Union[dict, api_client.V1StatefulSet], patcher: 'InnoDBClusterObjectModifier', logHandlers: Dict[ServerLogType, MySQLLogSpecBase], add: bool, logger: Logger) -> None:
         if self.collect(logHandlers):
             if self.collector is None:
                 raise ApiSpecError(f"No collector configured")
-            self.collector.add_to_sts_spec(sts, self.container_name, self.image_name, self.envs, logger)
+            self.collector.add_to_sts_spec(sts, patcher, self.container_name, self.image_name, self.envs, add, logger)
 
-    def get_config_maps(self, logHandlers: Dict[ServerLogType, MySQLLogSpecBase]) -> List:
+    def get_config_maps(self, logHandlers: Dict[ServerLogType, MySQLLogSpecBase]) -> List[Dict]:
         return self.collector.get_config_maps(logHandlers) if self.collect(logHandlers) and self.collector else []
 
 
@@ -118,16 +119,17 @@ class LogsSpec:
     def get_remove_from_sts_cb(self) -> Optional[Callable[[Union[dict, api_client.V1StatefulSet], Logger], None]]:
         return (lambda sts, logger: self.collector.remove_from_sts_spec(sts, self.logs, logger))
 
-    def get_add_to_sts_cb(self) -> Optional[Callable[[Union[dict, api_client.V1StatefulSet], Logger], None]]:
-        def cb(sts: Union[dict, api_client.V1StatefulSet], logger: Logger) -> None:
+    def get_add_to_sts_cb(self) -> Optional['AddToStsHandler']:
+        def cb(sts: Union[dict,api_client.V1StatefulSet], patcher: 'InnoDBClusterObjectModifier', logger: Logger) -> None:
+            enabled = self.enabled
             for logName in self.logs:
                 container_name = "mysql"
-                self.logs[logName].add_to_sts_spec(sts, container_name, self.cm_name, logger)
-            self.collector.add_to_sts_spec(sts, self.logs, logger)
+                self.logs[logName].add_to_sts_spec(sts, patcher, container_name, self.cm_name, enabled, logger)
+            self.collector.add_to_sts_spec(sts, patcher, self.logs, enabled, logger)
         return cb
 
-    def get_configmaps_cb(self) -> Optional[Callable[[str, Logger], List[Dict]]]:
-        def cb(prefix: str, logger: Logger):
+    def get_configmaps_cb(self) -> Optional['GetConfigMapHandler']:
+        def cb(prefix: str, logger: Logger) -> Optional[List[Tuple[str, Optional[Dict]]]]:
 
             logs_configmap = {
                     'apiVersion' : "v1",
@@ -144,6 +146,6 @@ class LogsSpec:
                 for cm_key in cm_data:
                     logs_configmap["data"][f"{prefix}{cm_key}"] = cm_data[cm_key]
 
-            return [logs_configmap] + self.collector.get_config_maps(self.logs)
+            return [(self.cm_name, logs_configmap)] + self.collector.get_config_maps(self.logs)
 
         return cb

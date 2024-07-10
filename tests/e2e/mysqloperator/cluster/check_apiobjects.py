@@ -7,6 +7,7 @@ import time
 from setup import defaults
 from utils import kutil
 from utils.tutil import get_pod_container
+from setup.config import g_ts_cfg
 
 def check_pod_labels(test, pod, cluster, role):
     test.assertEqual(pod["metadata"]["labels"]["component"],
@@ -127,7 +128,7 @@ def check_pod_spec_compliant(test, icobj, pod):
     # hardcoded/expected values
     spec = pod["spec"]
 
-    test.assertEqual(spec["terminationGracePeriodSeconds"], 120)
+    test.assertEqual(spec["terminationGracePeriodSeconds"], g_ts_cfg.get_expected_termination_grace_period())
     test.assertEqual(spec["restartPolicy"], "Always")
     test.assertEqual(spec["subdomain"], icobj["metadata"]["name"]+"-instances")
 

@@ -175,9 +175,9 @@ spec:
                         "imagePullPolicy": "IfNotPresent"
                     }
                 }
+        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
         kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
-        #It takes at least 120 seconds for a pod to restart due to grace period being 120 seconds
-        sleep(10)
+        waiter()
 
         kutil.delete_ic(self.ns, "mycluster")
 
@@ -494,7 +494,7 @@ metadata:
 spec:
   instances: 1
   router:
-    instances: 0
+    instances: 1
   secretName: mypwds
   edition: community
   tlsUseSelfSigned: true
@@ -582,7 +582,7 @@ metadata:
 spec:
   instances: 1
   router:
-    instances: 0
+    instances: 1
   secretName: mypwds
   edition: community
   tlsUseSelfSigned: true
@@ -603,6 +603,8 @@ spec:
         self.wait_ic("mycluster", ["PENDING", "INITIALIZING", "ONLINE"])
 
         self.wait_pod("mycluster-0", "Running")
+        # to be sure that the cluster is up and running
+        self.wait_routers("mycluster-router-*", 1)
 
         self.wait_ic("mycluster", "ONLINE")
 
@@ -650,13 +652,13 @@ spec:
                 }
             },
         ]
-
+        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
         kutil.patch_ic(self.ns, "mycluster", patch, type="json", data_as_type='json')
-        # We have set the terminationGracePeriodSeconds to 1s, so the pod should die quickly and be
-        # scheduled a new also quickly
-        sleep(10)
-        self.wait_pod("mycluster-0", "Running")
-        self.wait_ic("mycluster", "ONLINE")
+        waiter()
+        server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
+        pod_names = [server["NAME"] for server in server_pods]
+        for pod_name in pod_names:
+            self.wait_pod(pod_name, "Running")
 
     def test_05_check_ic(self):
         labels = kutil.get_ic(self.ns, "mycluster")["spec"]["podLabels"]
@@ -720,6 +722,7 @@ spec:
 
         self.wait_pod_gone("mycluster-0")
         self.wait_ic_gone("mycluster")
+        self.wait_routers_gone("mycluster-router-*")
         kutil.delete_secret(self.ns, "mypwds")
 
 

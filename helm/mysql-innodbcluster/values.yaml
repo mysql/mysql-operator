@@ -107,8 +107,7 @@ baseServerId: 1000
 #      management: "<identifier>-management.kms.<region>.oraclecloud.com"
 #      vaults: "vaults.<region>.oci.oraclecloud.com"
 #      secrets: "secrets.vaults.<region>.oci.oraclecloud.com"
-      
-    
+
 
 #podSpec:
 #  containers:
@@ -227,3 +226,6 @@ baseServerId: 1000
 # to turn disableLookups on as during `helm template` Helm won't contact the kube API
 # and all lookups will thus fail
 disableLookups: false
+
+# Set explicit FQDN for MySQL instances
+# serviceFqdnTemplate: "{service}.{namespace}.svc.{domain}"

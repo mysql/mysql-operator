@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -6,12 +6,13 @@
 from shlex import quote
 from .cluster_api import InnoDBCluster, InnoDBClusterSpec
 from ..kubeutils import client as api_client, ApiException
-from .. import config, utils
+from .. import config, fqdn, utils, shellutils
+import mysqlsh
 import yaml
 from ..kubeutils import api_apps, api_core, k8s_cluster_domain
 import kopf
 from logging import Logger
-from typing import Optional
+from typing import Optional, Callable
 
 
 def prepare_router_service(spec: InnoDBClusterSpec) -> dict:
@@ -124,6 +125,7 @@ def prepare_router_deployment(cluster: InnoDBCluster, logger, *,
 
     (router_bootstrap_options, router_tls_exists, ca_and_tls) = get_bootstrap_and_tls_options(cluster)
     router_command = ['mysqlrouter', *spec.router.options]
+    router_target = fqdn.idc_service_fqdn(cluster, logger)
 
 # spec.template.spec.containers[1].image was: {config.DEFAULT_IMAGE_REPOSITORY}/{config.MYSQL_ROUTER_IMAGE}:{config.DEFAULT_ROUTER_VERSION_TAG}{config.IMAGE_TAG}
 # image here is hard coded to our docker.io repo
@@ -190,7 +192,7 @@ spec:
             - ALL
         env:
         - name: MYSQL_HOST
-          value: {spec.name}-instances.{spec.namespace}.svc.{k8s_cluster_domain(logger)}
+          value: {router_target}
         - name: MYSQL_PORT
           value: "3306"
         - name: MYSQL_USER
@@ -298,11 +300,11 @@ spec:
     return deployment
 
 
-def update_labels_or_annotations(what: str, what_value: dict, cluster: InnoDBCluster, logger: Logger) -> None:
+def patch_metadata(cluster: InnoDBCluster, value: dict, logger: Logger) -> None:
     deploy = cluster.get_router_deployment()
     # if the size is 0 it might not exist. In this case the proper labels and annotations will be set when eventually created
     if deploy:
-        patch = {"spec": {"template": { "metadata" : { what : what_value }}}}
+        patch = {"spec": {"template": { "metadata" : value }}}
         api_apps.patch_namespaced_deployment(deploy.metadata.name, deploy.metadata.namespace, body=patch)
 
 
@@ -312,17 +314,19 @@ def get_size(cluster: InnoDBCluster) -> int:
         return deploy.spec.replicas
     return None
 
-def update_size(cluster: InnoDBCluster, size: int, logger: Logger) -> None:
+
+def update_size(cluster: InnoDBCluster, size: int, return_patch: bool, logger: Logger) -> dict:
+    patch = {}
     deploy = cluster.get_router_deployment()
     if deploy:
         if size:
             patch = {"spec": {"replicas": size}}
-            api_apps.patch_namespaced_deployment(
-                deploy.metadata.name, deploy.metadata.namespace, body=patch)
+            if return_patch == False:
+              api_apps.patch_namespaced_deployment(
+                  deploy.metadata.name, deploy.metadata.namespace, body=patch)
         else:
-            logger.info(f"Deleting Router Deployment")
-            api_apps.delete_namespaced_deployment(
-                f"{cluster.name}-router", cluster.namespace)
+          logger.info(f"Deleting Router Deployment")
+          api_apps.delete_namespaced_deployment(f"{cluster.name}-router", cluster.namespace)
     else:
         if size:
             logger.info(f"Creating Router Deployment with replicas={size}")
@@ -331,6 +335,9 @@ def update_size(cluster: InnoDBCluster, size: int, logger: Logger) -> None:
             kopf.adopt(router_deployment)
             api_apps.create_namespaced_deployment(
                 namespace=cluster.namespace, body=router_deployment)
+
+    if return_patch == True:
+      return patch
 
 
 
@@ -341,6 +348,7 @@ def update_deployment_spec(dpl: api_client.V1Deployment, patch: dict) -> None:
 
 def update_router_container_template_property(dpl: api_client.V1Deployment,
                                               property_name: str, property_value: str,
+                                              patcher,
                                               logger: Logger) -> None:
     patch = {"spec": {"template":
                       {"spec": {
@@ -351,41 +359,38 @@ def update_router_container_template_property(dpl: api_client.V1Deployment,
                       }
                     }
             }
-    update_deployment_spec(dpl, patch)
+#    if patcher is not None:
+    patcher.patch_deploy(patch)
+#       return
+#    update_deployment_spec(dpl, patch)
 
 
-def update_router_image(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, logger: Logger) -> None:
-    update_router_container_template_property(dpl, "image", spec.router_image, logger)
+def update_router_image(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, patcher, logger: Logger) -> None:
+    return update_router_container_template_property(dpl, "image", spec.router_image, patcher, logger)
 
 
-def update_router_version(cluster: InnoDBCluster, logger: Logger) -> None:
-    dpl = cluster.get_router_deployment()
-    if dpl:
-        return update_router_image(dpl, cluster.parsed_spec, logger)
-
-
-def update_pull_policy(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, logger: Logger) -> None:
+def update_pull_policy(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, patcher, logger: Logger) -> None:
     # NOTE: We are using spec.mysql_image_pull_policy and not spec.router_image_pull_policy
     #       (both are decorated), becase the latter will read the value from the Router Deployment
     #       and thus the value will be constant. We are using the former to push the value down
-    update_router_container_template_property(dpl, "imagePullPolicy", spec.mysql_image_pull_policy, logger)
+    update_router_container_template_property(dpl, "imagePullPolicy", spec.mysql_image_pull_policy, patcher, logger)
 
 
-def update_deployment_template_spec_property(dpl: api_client.V1Deployment, property_name: str, property_value: str) -> None:
-    patch = {"spec": {"template": {"spec": { property_name: property_value }}}}
-    update_deployment_spec(dpl, patch)
+def get_update_deployment_template_spec_property(dpl: api_client.V1Deployment, property_name: str, property_value: str) -> str:
+    return {"spec": {"template": {"spec": { property_name: property_value }}}}
 
-def update_bootstrap_options(dpl: api_client.V1Deployment, cluster: InnoDBCluster, logger: Logger) -> None:
+
+def update_bootstrap_options(dpl: api_client.V1Deployment, cluster: InnoDBCluster, patcher, logger: Logger) -> dict:
     (router_bootstrap_options, _, _) = get_bootstrap_and_tls_options(cluster)
     patch = [{
         "name": "MYSQL_ROUTER_BOOTSTRAP_EXTRA_OPTIONS",
         "value": router_bootstrap_options
     }]
-    update_router_container_template_property(dpl, "env", patch, logger)
+    return update_router_container_template_property(dpl, "env", patch, patcher, logger)
 
-def update_options(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, logger: Logger) -> None:
+def update_options(dpl: api_client.V1Deployment, spec: InnoDBClusterSpec, patcher, logger: Logger) -> dict:
     router_command = ["mysqlrouter", *spec.router.options]
-    update_router_container_template_property(dpl, "args", router_command, logger)
+    return update_router_container_template_property(dpl, "args", router_command, patcher, logger)
 
 def update_service(svc: api_client.V1Deployment, spec: InnoDBClusterSpec,
                    logger: Logger) -> None:
@@ -436,3 +441,37 @@ def restart_deployment_for_tls(dpl: api_client.V1Deployment, router_tls_crt, rou
 
     logger.info("TLS data hasn't changed. Deployment doesn't need a restart")
     return False
+
+
+def update_router_account(cluster: InnoDBCluster, on_nonupdated: Optional[Callable], logger: Logger) -> None:
+      if not cluster.ready:
+          logger.info(f"Cluster {cluster.namespace}/{cluster.name} not ready. Skipping router account update.")
+          return
+
+      try:
+          user, password = cluster.get_router_account()
+      except ApiException as e:
+          if e.status == 404:
+              # Should not happen, as cluster.ready should be False for a cluster with missing router account
+              # In any case handle this case and skip
+              logger.warning(f"Could not find router account of {cluster.name} in {cluster.namespace}")
+              return
+          raise
+
+      updated = False
+
+      for pod in cluster.get_pods():
+          if pod.deleting:
+              continue
+          try:
+              with shellutils.DbaWrap(shellutils.connect_dba(pod.endpoint_co, logger, max_tries=3)) as dba:
+                  dba.get_cluster().setup_router_account(user, {"update": True})
+                  updated = True
+                  break
+
+          except mysqlsh.Error as e:
+              logger.warning(f"Could not connect to {pod.endpoint_co}: {e}")
+              continue
+
+      if not updated and on_nonupdated:
+          on_nonupdated()

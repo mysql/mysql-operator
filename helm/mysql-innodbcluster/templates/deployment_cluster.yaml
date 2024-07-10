@@ -419,6 +419,14 @@ spec:
 {{- if ((.Values).logs) }}
   logs: {{ toYaml ((.Values).logs) | nindent 4 }}
 {{- end }}
+  # Service
+{{- if ((.Values).service) }}
+  service: {{ toYaml ((.Values).service) | nindent 4 }}
+{{- end }}
+  # Metrics
+{{- if ((.Values).metrics) }}
+  metrics: {{ toYaml ((.Values).metrics) | nindent 4 }}
+{{- end }}
   # Read Replicas
 {{- if ((.Values).readReplicas) }}
   readReplicas:
@@ -459,4 +467,7 @@ spec:
     podLabels: {{ toYaml $replica.podLabels | nindent 6 }}
     {{- end }}
   {{- end }}
+{{- end }}
+{{- if ((.Values).serviceFqdnTemplate) }}
+  serviceFqdnTemplate:  {{ (.Values).serviceFqdnTemplate | quote }}
 {{- end }}

@@ -529,21 +529,21 @@ def delete(ns, rsrc, name, timeout, wait=True):
     kubectl("delete", rsrc, [name] + args, timeout=timeout, ignore=["NotFound"], timeout_diagnostics=lambda: store_diagnostics(ns, rsrc, name))
 
 
-def delete_ic(ns, name, timeout=300):
+def delete_ic(ns, name, timeout=600):
     delete(ns, "ic", name, timeout=timeout)
 
 
-def delete_mbk(ns, name, timeout=200):
+def delete_mbk(ns, name, timeout=240):
     delete(ns, "mbk", name, timeout=timeout)
 
-def delete_mbks(ns, prefix, timeout=200):
+def delete_mbks(ns, prefix, timeout=240):
     mbks = ls_mbk(ns)
     for mbk in mbks:
         if mbk["NAME"].startswith(prefix):
             delete_mbk(ns, mbk["NAME"], timeout)
 
 
-def delete_po(ns, name, timeout=120):
+def delete_po(ns, name, timeout=240):
     delete(ns, "po", name, timeout=timeout)
 
 
@@ -563,15 +563,15 @@ def delete_svc(ns, name, timeout=5):
     delete(ns, "svc", name, timeout=timeout)
 
 
-def delete_pvc(ns, name, timeout=500, wait=True):
+def delete_pvc(ns, name, timeout=600, wait=True):
     delete(ns, "pvc", name, timeout=timeout, wait=wait)
 
 
-def delete_pv(name, timeout=500):
+def delete_pv(name, timeout=600):
     delete(None, "pv", name, timeout=timeout)
 
 
-def delete_ns(ns, timeout=500):
+def delete_ns(ns, timeout=600):
     delete(None, "ns", ns, timeout=timeout)
 
 

@@ -86,7 +86,7 @@ def listFilesInSubdir(String subdir) {
 	def files = findFiles glob: "**/${subdir}/*"
 	def dirContents = "${subdir} contains ${files.length} file(s):\n"
 	files.each { file ->
-		dirContents += "${file.name} ${file.length}\n"
+		dirContents += "${file.name} ${file.length} byte(s)\n"
 	}
 	echo dirContents
 }
@@ -96,7 +96,7 @@ def prepareCredentials(String credentialsDir) {
 		error "The directory with credentials ${credentialsDir} does not exist!"
 	}
 
-	return sh(script: "tar cj -C \$(dirname ${credentialsDir}) \$(basename ${credentialsDir}) | base64", returnStdout: true)
+	return sh(script: "tar cpj --owner=\$USER --group=\$(id -gn) -C ${credentialsDir} . | base64", returnStdout: true)
 }
 
 def initEnv() {
@@ -260,6 +260,18 @@ def getWorkerJobPath(String k8sEnv) {
 	return workerJobPath
 }
 
+def getK8sEnvBinaryPath(String k8sEnv, String preferredK8sEnvBinaryPath) {
+	// we have custom k8s-env binaries like e.g. minikube-v1.31.2, k3d-v5.6.0, or
+	// kind-v0.20.0 on our local CI machine only
+	if (isLocalExecutionEnvironment() || !canRunOnOci(k8sEnv)) {
+		return preferredK8sEnvBinaryPath
+	}
+	// on the OCI instances, we have at our disposal only the newest k8s-env binary and
+	// its name is identical to the k8s-environment, i.e. [minikube|k3d|kind]
+	def ociK8sEnvBinaryPath = k8sEnv
+	return ociK8sEnvBinaryPath
+}
+
 def getJobBadge(String k8sEnv, String k8sVersion = '', String nodesCount = '', String ipFamily = '') {
 	def jobBadge = k8sEnv
 	if (k8sVersion) {
@@ -271,40 +283,56 @@ def getJobBadge(String k8sEnv, String k8sVersion = '', String nodesCount = '', S
 	if (ipFamily && (ipFamily != "ipv4")) {
 		jobBadge += "-$ipFamily"
 	}
-	return jobBadge
+	return jobBadge.replaceAll(/[.:\/]/, '_')
 }
 
-// function returns a tuple [executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory]
-def getExecutionParams(String k8sEnv, String maxClustersPerInstance, String nodesPerCluster) {
+// function returns a tuple [executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster]
+def getExecutionParams(String k8sEnv, String preferredClustersPerInstance, String nodesPerCluster) {
 	if (isLocalExecutionEnvironment() || !canRunOnOci(k8sEnv)) {
 		def localInstanceLabel = 'operator-ci'
 		def localInstanceCount = 1
-		def localInstanceNodeMemory = '8192'
 		return [
 			localInstanceLabel,
 			localInstanceCount,
-			maxClustersPerInstance,
-			nodesPerCluster,
-			localInstanceNodeMemory
+			preferredClustersPerInstance,
+			nodesPerCluster
 		]
 	}
 
-	// OCI VM: ['nodes count'] => ['agent template label', 'count of instances', 'memory per node in MB']
-	// by default we assume, number of nodes is equal to number of cores
+	// by default we assume, the number of nodes is equal to the number of cores;
+	// in the test suite we have tests lasting for long e.g. Cluster[1|3]Defaults or quite short like all
+	// tests from cluster_badspec_t.py
+	// at each run, we shuffle tests into random groups, so a worker may get a few short tests, or be
+	// unlucky and get a few quite a long, therefore we spread tests among more OCI instances that we have
+	// at disposal actually to saturate available power (e.g. run 14 instances while having only 10 VMs)
+	// the more fine-grained the tests are the better for equal distribution, sooner or later the big test
+	// cases like the mentioned Cluster[1|3]Defaults should be split into smaller ones
+	//
+	// by default agent limit for all templates (e.g. Shell_VM_8core_OL9_IAD) is 4
+	// for Shell_VM_1core_OL9_IAD and Shell_VM_8core_OL9_IAD we have custom limit 10
+	// see eventum tickets for more details:
+	// #79571 k8s-operator: new shell VMs with OL9
+	// #79871 k8s-operator: higher limit of agents for Shell VM
+	//
+	// we have at disposal the following machines:
+	// Shell_VM_1core_OL9_IAD, 1 core, 8GB RAM, agents limit 10
+	// Shell_VM_2core_OL9_IAD, 2 cores, 16GB RAM, agents limit 10
+	// Shell_VM_8core_OL9_IAD, 8 cores, 32GB RAM, agents limit 4
+	//
+	// OCI VM: ['nodes count'] => ['agent template label', 'count of instances']
 	def nodesToVM = [
-		'1': ['Shell_VM_1core_OL9_IAD', 4, '4096'],
-		'2': ['Shell_VM_8core_OL9_IAD', 4, '4096'],
-		'8': ['Shell_VM_8core_OL9_IAD', 4, '4096']
+		'1': ['Shell_VM_1core_OL9_IAD', 14],
+		'2': ['Shell_VM_2core_OL9_IAD', 14],
+		'8': ['Shell_VM_8core_OL9_IAD', 8]
 	]
-	def (ociInstanceLabel, ociInstanceCount, ociInstanceNodeMemory) = nodesToVM[nodesPerCluster]
+	def (ociInstanceLabel, ociInstanceCount) = nodesToVM[nodesPerCluster]
 
 	def clustersPerOciInstance = '1'
 	return [
 		ociInstanceLabel,
 		ociInstanceCount,
 		clustersPerOciInstance,
-		nodesPerCluster,
-		ociInstanceNodeMemory
+		nodesPerCluster
 	]
 }
 
@@ -326,18 +354,18 @@ def generateTestSuiteSubsets(int executionInstanceCount, String jobBadge) {
 }
 
 def getInstanceTestSuitePath(String jobBadge, int instanceIndex) {
-	return "${env.INSTANCES_DIR}/${jobBadge}-${env.INSTANCE_TESTSUITE_INFIX}-${instanceIndex}.txt"
+	def instanceIndexPadded = instanceIndex.toString().padLeft(2, '0')
+	return "${env.INSTANCES_DIR}/${jobBadge}-${env.INSTANCE_TESTSUITE_INFIX}-${instanceIndexPadded}.txt"
 }
 
 def prepareInstanceTestSuite(String jobBadge, int instanceIndex) {
 	def instanceTestSuitePath = getInstanceTestSuitePath(jobBadge, instanceIndex)
-	echo instanceTestSuitePath
 	def instanceTestSuite = ""
 	if (fileExists(instanceTestSuitePath)) {
 		instanceTestSuite = readFile(instanceTestSuitePath)
 	}
-	echo instanceTestSuite
-	return sh(script: "bzip2 -c $instanceTestSuitePath | base64", returnStdout: true)
+	echo "$instanceTestSuitePath:\n$instanceTestSuite"
+	return sh(script: "bzip2 -9 -c $instanceTestSuitePath | base64", returnStdout: true)
 }
 
 def delayLocalJob(int interval) {
@@ -385,13 +413,30 @@ def getMergedReports(String reportPattern) {
 	}
 
 	def reportSummary = reportSummaryRaw.split('\n').sort().join('\n')
-	echo "report summary:\n${reportSummary}"
 	return reportSummary
 }
 
+def storeTestSuiteMergedSubReport(String contents, String suffix) {
+	if (!contents) {
+		return null
+	}
+	def reportPath = "${env.LOG_DIR}/test_suite_${suffix}.txt"
+	writeFile file: reportPath, text: contents
+	echo "$reportPath:\n$contents"
+	return reportPath
+}
+
 def getMergedStatsReports() {
-	statsPattern = "*-build-*-stats.log"
-	return getMergedReports(statsPattern)
+	def statsPattern = "*-build-*-stats.log"
+	def rawStats = getMergedReports(statsPattern)
+	def rawStatsPath = storeTestSuiteMergedSubReport(rawStats, 'stats_raw')
+	def stats = null
+	if (rawStatsPath) {
+		def mergeStatsScript = "${env.CI_SUBDIR}/pipeline/auxiliary/merge_test_suite_stats.py"
+		stats = sh script: "cat $rawStatsPath | python3 $mergeStatsScript", returnStdout: true
+		storeTestSuiteMergedSubReport(stats, 'stats')
+	}
+	return stats
 }
 
 def getTestSuiteReport() {
@@ -492,7 +537,9 @@ def anyResultsAvailable() {
 
 def getMergedIssuesReports() {
 	issuesPattern = "*-build-*-issues.log"
-	return getMergedReports(issuesPattern)
+	issues = getMergedReports(issuesPattern)
+	storeTestSuiteMergedSubReport(issues, 'issues')
+	return issues
 }
 
 def getTestsSuiteIssuesByEnv(String k8s_env, String result) {
@@ -671,6 +718,14 @@ def getBuildSummary() {
 	])
 
 	return attachments
+}
+
+def archiveArtifact() {
+	listFilesInSubdir(env.LOG_SUBDIR)
+	if (anyResultsAvailable()) {
+		sh "cd ${env.LOG_DIR} && tar cjf ${ARTIFACT_PATH} *"
+		archiveArtifacts artifacts: "${ARTIFACT_FILENAME}", fingerprint: true
+	}
 }
 
 def pruneOldBuilds() {

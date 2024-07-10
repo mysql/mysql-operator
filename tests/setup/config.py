@@ -10,6 +10,7 @@ from utils import auxutil
 from setup import defaults
 import tempfile
 from typing import Dict
+from enum import Enum
 
 class Config:
     # k8s environment
@@ -66,13 +67,8 @@ class Config:
     azure_config_file_is_tmp = False
     azure_container_name = defaults.AZURE_CONTAINER_NAME
 
-    fluentd_image_name = defaults.FLUENTD_IMAGE_NAME
-
     # vault
     vault_cfg_path = defaults.OCI_VAULT_CONFIG_PATH
-
-    # metrics sidecar
-    metrics_image_name = defaults.METRICS_IMAGE_NAME
 
     # runtime environment
     workspace_dir = None
@@ -104,6 +100,8 @@ class Config:
     local_path_provisioner_install = False
     local_path_provisioner_manifest_url = "https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.24/deploy/local-path-storage.yaml"
     local_path_provisioner_shared_path = "/tmp/local-path-shared"
+
+    expected_termination_grace_period = 120
 
     def __del__(self):
         if self.azure_config_file_is_tmp:
@@ -207,8 +205,27 @@ class Config:
             diagnostics_dir = os.path.join(diagnostics_dir, ns)
         return diagnostics_dir
 
-    def get_fluentd_image(self) -> str:
-        return f"{self.image_registry}{'/' if self.image_registry else ''}{self.fluentd_image_name}"
+    class Image(Enum):
+        AZURE_STORAGE = 0
+        AZURE_CLI = 1
+        FLUENTD = 2
+        METRICS = 3
+
+    def image_to_name(self, image: Image) -> str:
+        if image == Config.Image.AZURE_STORAGE:
+            return defaults.AZURE_STORAGE_IMAGE_NAME
+        elif image == Config.Image.AZURE_CLI:
+            return defaults.AZURE_CLI_IMAGE_NAME
+        elif image == Config.Image.FLUENTD:
+            return defaults.FLUENTD_IMAGE_NAME
+        elif image == Config.Image.METRICS:
+            return defaults.METRICS_IMAGE_NAME
+        else:
+            return None
+
+    def get_image(self, image: Image) -> str:
+        image_name = self.image_to_name(image)
+        return f"{self.image_registry}{'/' if self.image_registry else ''}{image_name}"
 
     def get_custom_operator_ns_labels(self) -> Dict[str, str]:
         return self.custom_operator_ns_labels
@@ -243,24 +260,29 @@ class Config:
     def get_local_path_provisioner_manifest_url(self) -> str:
         return self.local_path_provisioner_manifest_url
 
+    def get_expected_termination_grace_period(self) -> int:
+        return self.expected_termination_grace_period
+
     def __str__(self):
         return f"""
-Image registry:                      : {g_ts_cfg.get_image_registry_repository()}
-Operator image                       : {g_ts_cfg.get_operator_image()}
-Server image / old image             : {g_ts_cfg.get_server_image()} / {g_ts_cfg.get_old_server_image()}
-Router image / old image             : {g_ts_cfg.get_router_image()} / {g_ts_cfg.get_old_router_image()}
-Fluentd image                        : {g_ts_cfg.get_fluentd_image()}
-Custom test ns labels                : {g_ts_cfg.get_custom_test_ns_labels()}
-Custom operator ns labels            : {g_ts_cfg.get_custom_operator_ns_labels()}
-Custom STS podspec                   : {g_ts_cfg.get_custom_sts_podspec()}
-Custom IC Server version             : {g_ts_cfg.get_custom_ic_server_version()}
-Custom IC Server version override all: {g_ts_cfg.get_custom_ic_server_version_override()}
-Custom IC Router version             : {g_ts_cfg.get_custom_ic_router_version()}
-Custom IC Router version override all: {g_ts_cfg.get_custom_ic_server_version_override()}
-Total containers per router pod      : {g_ts_cfg.get_router_total_containers_per_pod()}
-Local path provisioner install       : {g_ts_cfg.local_path_provisioner_install}
-Local path provisioner shared path   : {g_ts_cfg.get_local_path_provisioner_shared_path()}
-Local path provisioner manifest URL  : {g_ts_cfg.get_local_path_provisioner_manifest_url()}"""
+Image registry:                      : {self.get_image_registry_repository()}
+Operator image                       : {self.get_operator_image()}
+Server image / old image             : {self.get_server_image()} / {self.get_old_server_image()}
+Router image / old image             : {self.get_router_image()} / {self.get_old_router_image()}
+Fluentd image                        : {self.get_image(Config.Image.FLUENTD)}
+Metrics image                        : {self.get_image(Config.Image.METRICS)}
+Custom test ns labels                : {self.get_custom_test_ns_labels()}
+Custom operator ns labels            : {self.get_custom_operator_ns_labels()}
+Custom STS podspec                   : {self.get_custom_sts_podspec()}
+Custom IC Server version             : {self.get_custom_ic_server_version()}
+Custom IC Server version override all: {self.get_custom_ic_server_version_override()}
+Custom IC Router version             : {self.get_custom_ic_router_version()}
+Custom IC Router version override all: {self.get_custom_ic_server_version_override()}
+Total containers per router pod      : {self.get_router_total_containers_per_pod()}
+Local path provisioner install       : {self.local_path_provisioner_install}
+Local path provisioner shared path   : {self.get_local_path_provisioner_shared_path()}
+Local path provisioner manifest URL  : {self.get_local_path_provisioner_manifest_url()}
+Expected termination grace period    : {self.get_expected_termination_grace_period()}"""
 
 # test-suite configuration
 g_ts_cfg = Config()

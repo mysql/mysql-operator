@@ -11,8 +11,10 @@ def minikubeRuns = 0
 def k3dRuns = 0
 def kindRuns = 0
 
-// job ids to copy proper artifact for a given build
-def jobIds = [:];
+// job ids per each environment, to copy related artifacts
+def minikubeJobs = [:]
+def k3dJobs = [:]
+def kindJobs = [:]
 
 pipeline {
 	agent {
@@ -100,15 +102,15 @@ pipeline {
 					// https://github.com/kubernetes/kubernetes/releases
 					// curl -L https://dl.k8s.io/release/v1.23.14/bin/linux/amd64/kubectl -o kubectl-v1.23.14
 					// curl -L https://github.com/kubernetes/minikube/releases/download/v1.27.1/minikube-linux-amd64 -o minikube-v1.27.1
-					// format of values: 'minikube-binary;k8s-version;kubectl-version;clusters-per-instance;nodes-per-cluster;ip-family',
-					//				e.g. 'minikube-v1.22.0;v1.21.5;kubectl-v1.21.14;5;1;ipv4' - 5 clusters per execution instance with 1 node each
-					// 					 'minikube-v1.25.2;v1.23.4;kubectl-v1.23.4;3;2;ipv4' - 3 clusters per execution instance with 2 nodes each
+					// format of values: 'minikube-binary;k8s-version;kubectl-version;clusters-per-instance;nodes-per-cluster;node-memory-limit;ip-family',
+					//				e.g. 'minikube-v1.22.0;v1.21.5;kubectl-v1.21.14;5;1;8192;ipv4' - 5 clusters per execution instance with 1 node each, 8GB limit per node
+					// 					 'minikube-v1.25.2;v1.23.4;kubectl-v1.23.4;3;2;4096;ipv4' - 3 clusters per execution instance with 2 nodes each, 4GB limit per node
 					axis {
 						name 'K8S_VERSION'
-						values 'minikube-v1.31.2;v1.23.4;kubectl-v1.23.4;4;1;ipv4',
-							'minikube-v1.31.2;v1.25.5;kubectl-v1.25.6;4;1;ipv4',
-							'minikube-v1.31.2;v1.27.0;kubectl-v1.27.0;4;1;ipv4',
-							'minikube-v1.31.2;v1.27.4;kubectl-v1.28.2;4;1;ipv4'
+						values 'minikube-v1.31.2;v1.23.4;kubectl-v1.23.4;4;1;4096;ipv4',
+							'minikube-v1.31.2;v1.25.5;kubectl-v1.25.6;4;1;4096;ipv4',
+							'minikube-v1.31.2;v1.27.0;kubectl-v1.27.0;4;1;4096;ipv4',
+							'minikube-v1.31.2;v1.27.4;kubectl-v1.28.2;4;1;4096;ipv4'
 					}
 				}
 				stages {
@@ -116,62 +118,74 @@ pipeline {
 						steps {
 							script {
 								minikubeRuns++
-								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, maxClustersPerInstance, expectedNodesPerCluster, ipFamily) =
+								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, preferredClustersPerInstance, expectedNodesPerCluster, nodeMemory, ipFamily) =
 									K8S_VERSION.split(';')
-								def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory) =
-									utils.getExecutionParams(K8S_ENVIRONMENT, maxClustersPerInstance, expectedNodesPerCluster)
+								def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster) =
+									utils.getExecutionParams(K8S_ENVIRONMENT, preferredClustersPerInstance, expectedNodesPerCluster)
 								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [ \
 									${executionInstanceLabel}, \
 									${k8sEnvBinaryPath}, \
 									${k8sVersion}, \
 									${kubectlPath}, \
-									${maxClustersPerInstance}, \
+									${preferredClustersPerInstance}, \
 									${clustersPerInstance}, \
 									${expectedNodesPerCluster}, \
 									${nodesPerCluster}, \
 									${nodeMemory}, \
 									${ipFamily} \
 								]"
-								def k8sJob = null
-								catchError {
-									k8sJob = build job: utils.getWorkerJobPath(K8S_ENVIRONMENT), parameters: [
-										string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
-										string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
-										string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
-										string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
-										string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
-										string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
-										string(name: 'OPERATOR_ENV_BINARY_PATH', value: k8sEnvBinaryPath),
-										string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
-										[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstanceLabel],
-										string(name: 'OPERATOR_K8S_VERSION', value: k8sVersion),
-										string(name: 'OPERATOR_KUBECTL_PATH', value: kubectlPath),
-										string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersPerInstance),
-										string(name: 'OPERATOR_NODES_PER_CLUSTER', value: nodesPerCluster),
-										string(name: 'OPERATOR_NODE_MEMORY', value: nodeMemory),
-										string(name: 'OPERATOR_IP_FAMILY', value: ipFamily)
-									], propagate: false
+								def jobs = [:]
+								def jobBadge = utils.getJobBadge(K8S_ENVIRONMENT, k8sVersion, nodesPerCluster, ipFamily)
+								executionInstanceCount = utils.generateTestSuiteSubsets(executionInstanceCount, jobBadge)
+								for (int i = 0; i < executionInstanceCount; i++) {
+									def k8sJobInstanceIndex = i
+									def k8sJobInstance = "${K8S_ENVIRONMENT}(${K8S_VERSION})-${k8sJobInstanceIndex}"
+									jobs[i] = {
+										minikubeJobs["${k8sJobInstance}"] = null
+										def k8sJob = build job: utils.getWorkerJobPath(K8S_ENVIRONMENT), parameters: [
+											string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
+											string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
+											string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+											string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
+											string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
+											string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
+											string(name: 'OPERATOR_ENV_BINARY_PATH', value: utils.getK8sEnvBinaryPath(K8S_ENVIRONMENT, k8sEnvBinaryPath)),
+											string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
+											[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstanceLabel],
+											string(name: 'OPERATOR_K8S_VERSION', value: k8sVersion),
+											string(name: 'OPERATOR_KUBECTL_PATH', value: kubectlPath),
+											string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersPerInstance),
+											string(name: 'OPERATOR_NODES_PER_CLUSTER', value: nodesPerCluster),
+											string(name: 'OPERATOR_NODE_MEMORY', value: nodeMemory),
+											string(name: 'OPERATOR_IP_FAMILY', value: ipFamily),
+											[$class: 'StringParameterValue', name: 'OPERATOR_CREDENTIALS', value: env.OTE_CREDENTIALS],
+											[$class: 'StringParameterValue', name: 'OPERATOR_TEST_SUITE', value: utils.prepareInstanceTestSuite(jobBadge, k8sJobInstanceIndex)]
+										], propagate: false
+										if (k8sJob != null) {
+											minikubeJobs["${k8sJobInstance}"] = k8sJob.getNumber()
+											echo "${k8sJobInstance} completed (build #${k8sJob.getNumber()})"
+										}
+									}
 								}
-								if (k8sJob != null) {
-									jobIds[K8S_VERSION] = k8sJob.getNumber()
-									echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) completed (build #${k8sJob.getNumber()})"
-								}
+								parallel jobs
 							}
 						}
 						post {
 							always {
 								script {
-									def k8sJob = jobIds[K8S_VERSION]
-									if (k8sJob) {
-										echo "copy ${K8S_ENVIRONMENT}(${K8S_VERSION}) results for build #${k8sJob}"
-										catchError {
-											copyArtifacts fingerprintArtifacts: true,
-												projectName: utils.getWorkerJobPath(K8S_ENVIRONMENT),
-												selector: specific(buildNumber: "${k8sJob}"),
-												target: "${env.LOG_SUBDIR}"
+									minikubeJobs.each { k8sJobInstance, k8sJobId ->
+										if (k8sJobId) {
+											echo "copy ${k8sJobInstance} results for build #${k8sJobId}"
+											catchError {
+												copyArtifacts fingerprintArtifacts: true,
+													projectName: utils.getWorkerJobPath(K8S_ENVIRONMENT),
+													selector: specific(buildNumber: "${k8sJobId}"),
+													target: "${env.LOG_SUBDIR}"
+												echo "successfully copied ${k8sJobInstance} results for build #${k8sJobId}"
+											}
+										} else {
+											echo "no results for ${k8sJobInstance}, job id not found"
 										}
-									} else {
-										echo "no results for ${K8S_ENVIRONMENT}(${K8S_VERSION}), job id not found"
 									}
 								}
 							}
@@ -198,15 +212,15 @@ pipeline {
 					// https://github.com/k3d-io/k3d/releases
 					// https://hub.docker.com/r/rancher/k3s/tags
 					// curl -L https://github.com/k3d-io/k3d/releases/download/v5.4.6/k3d-linux-amd64 -o k3d-v5.4.6
-					// format of values: 'k3d-binary;k8s-version-image;kubectl-version;;clusters-per-instance;nodes-per-cluster;ip-family',
-					//				e.g. 'k3d-v5.2.2;rancher/k3s:v1.21.11-k3s1;kubectl-v1.21.14;3;3;ipv4' - 3 clusters per execution instance with 3 nodes each
-					// 					 'k3d-v5.4.4;rancher/k3s:v1.23.5-k3s1;kubectl-v1.23.14;5;1;ipv4' - 5 clusters per execution instance with 1 node each
+					// format of values: 'k3d-binary;k8s-version-image;kubectl-version;;clusters-per-instance;nodes-per-cluster;node-memory-limit;ip-family',
+					//				e.g. 'k3d-v5.2.2;rancher/k3s:v1.21.11-k3s1;kubectl-v1.21.14;3;3;4096;ipv4' - 3 clusters per execution instance with 3 nodes each, 4GB limit per node
+					// 					 'k3d-v5.4.4;rancher/k3s:v1.23.5-k3s1;kubectl-v1.23.14;5;1;8192;ipv4' - 5 clusters per execution instance with 1 node each, 8GB limit per node
 					axis {
 						name 'K8S_VERSION'
-						values 'k3d-v5.6.0;rancher/k3s:v1.22.7-k3s1;kubectl-v1.22.17;6;1;ipv4',
-							'k3d-v5.6.0;rancher/k3s:v1.24.7-k3s1;kubectl-v1.24.4;2;4;ipv4',
-							'k3d-v5.6.0;rancher/k3s:v1.26.0-k3s1;kubectl-v1.26.0;2;3;ipv4',
-							'k3d-v5.6.0;rancher/k3s:v1.27.4-k3s1;kubectl-v1.28.2;6;1;ipv4'
+						values 'k3d-v5.6.0;rancher/k3s:v1.22.7-k3s1;kubectl-v1.22.17;6;1;2048;ipv4',
+							'k3d-v5.6.0;rancher/k3s:v1.24.7-k3s1;kubectl-v1.24.4;2;4;2048;ipv4',
+							'k3d-v5.6.0;rancher/k3s:v1.26.0-k3s1;kubectl-v1.26.0;2;3;2048;ipv4',
+							'k3d-v5.6.0;rancher/k3s:v1.27.4-k3s1;kubectl-v1.28.2;6;1;2048;ipv4'
 					}
 				}
 				stages {
@@ -214,62 +228,74 @@ pipeline {
 						steps {
 							script {
 								k3dRuns++
-								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, maxClustersPerInstance, expectedNodesPerCluster, ipFamily) =
+								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, preferredClustersPerInstance, expectedNodesPerCluster, nodeMemory, ipFamily) =
 									K8S_VERSION.split(';')
-								def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory) =
-									utils.getExecutionParams(K8S_ENVIRONMENT, maxClustersPerInstance, expectedNodesPerCluster)
+								def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster) =
+									utils.getExecutionParams(K8S_ENVIRONMENT, preferredClustersPerInstance, expectedNodesPerCluster)
 								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [ \
 									${executionInstanceLabel}, \
 									${k8sEnvBinaryPath}, \
 									${k8sVersion}, \
 									${kubectlPath}, \
-									${maxClustersPerInstance}, \
+									${preferredClustersPerInstance}, \
 									${clustersPerInstance}, \
 									${expectedNodesPerCluster}, \
 									${nodesPerCluster}, \
 									${nodeMemory}, \
 									${ipFamily} \
 								]"
-								def k8sJob = null
-								catchError {
-									k8sJob = build job: utils.getWorkerJobPath(K8S_ENVIRONMENT), parameters: [
-										string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
-										string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
-										string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
-										string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
-										string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
-										string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
-										string(name: 'OPERATOR_ENV_BINARY_PATH', value: k8sEnvBinaryPath),
-										string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
-										[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstanceLabel],
-										string(name: 'OPERATOR_K8S_VERSION', value: k8sVersion),
-										string(name: 'OPERATOR_KUBECTL_PATH', value: kubectlPath),
-										string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersPerInstance),
-										string(name: 'OPERATOR_NODES_PER_CLUSTER', value: nodesPerCluster),
-										string(name: 'OPERATOR_NODE_MEMORY', value: nodeMemory),
-										string(name: 'OPERATOR_IP_FAMILY', value: ipFamily)
-									], propagate: false
+								def jobs = [:]
+								def jobBadge = utils.getJobBadge(K8S_ENVIRONMENT, k8sVersion, nodesPerCluster, ipFamily)
+								executionInstanceCount = utils.generateTestSuiteSubsets(executionInstanceCount, jobBadge)
+								for (int i = 0; i < executionInstanceCount; i++) {
+									def k8sJobInstanceIndex = i
+									def k8sJobInstance = "${K8S_ENVIRONMENT}(${K8S_VERSION})-${k8sJobInstanceIndex}"
+									jobs[i] = {
+										k3dJobs["${k8sJobInstance}"] = null
+										def k8sJob = build job: utils.getWorkerJobPath(K8S_ENVIRONMENT), parameters: [
+											string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
+											string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
+											string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+											string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
+											string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
+											string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
+											string(name: 'OPERATOR_ENV_BINARY_PATH', value: utils.getK8sEnvBinaryPath(K8S_ENVIRONMENT, k8sEnvBinaryPath)),
+											string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
+											[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstanceLabel],
+											string(name: 'OPERATOR_K8S_VERSION', value: k8sVersion),
+											string(name: 'OPERATOR_KUBECTL_PATH', value: kubectlPath),
+											string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersPerInstance),
+											string(name: 'OPERATOR_NODES_PER_CLUSTER', value: nodesPerCluster),
+											string(name: 'OPERATOR_NODE_MEMORY', value: nodeMemory),
+											string(name: 'OPERATOR_IP_FAMILY', value: ipFamily),
+											[$class: 'StringParameterValue', name: 'OPERATOR_CREDENTIALS', value: env.OTE_CREDENTIALS],
+											[$class: 'StringParameterValue', name: 'OPERATOR_TEST_SUITE', value: utils.prepareInstanceTestSuite(jobBadge, k8sJobInstanceIndex)]
+										], propagate: false
+										if (k8sJob != null) {
+											k3dJobs["${k8sJobInstance}"] = k8sJob.getNumber()
+											echo "${k8sJobInstance} completed (build #${k8sJob.getNumber()})"
+										}
+									}
 								}
-								if (k8sJob != null) {
-									jobIds[K8S_VERSION] = k8sJob.getNumber()
-									echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) completed (build #${k8sJob.getNumber()})"
-								}
+								parallel jobs
 							}
 						}
 						post {
 							always {
 								script {
-									def k8sJob = jobIds[K8S_VERSION]
-									if (k8sJob) {
-										echo "copy ${K8S_ENVIRONMENT}(${K8S_VERSION}) results for build #${k8sJob}"
-										catchError {
-											copyArtifacts fingerprintArtifacts: true,
-												projectName: utils.getWorkerJobPath(K8S_ENVIRONMENT),
-												selector: specific(buildNumber: "${k8sJob}"),
-												target: "${env.LOG_SUBDIR}"
+									k3dJobs.each { k8sJobInstance, k8sJobId ->
+										if (k8sJobId) {
+											echo "copy ${k8sJobInstance} results for build #${k8sJobId}"
+											catchError {
+												copyArtifacts fingerprintArtifacts: true,
+													projectName: utils.getWorkerJobPath(K8S_ENVIRONMENT),
+													selector: specific(buildNumber: "${k8sJobId}"),
+													target: "${env.LOG_SUBDIR}"
+												echo "successfully copied ${k8sJobInstance} results for build #${k8sJobId}"
+											}
+										} else {
+											echo "no results for ${k8sJobInstance}, job id not found"
 										}
-									} else {
-										echo "no results for ${K8S_ENVIRONMENT}(${K8S_VERSION}), job id not found"
 									}
 								}
 							}
@@ -296,13 +322,13 @@ pipeline {
 					// https://github.com/kubernetes-sigs/kind/releases
 					// curl -L https://github.com/kubernetes-sigs/kind/releases/download/v0.17.0/kind-linux-amd64 -o kind-v0.17.0
 					// node images related to a given release are listed in its description (section 'New Features')
-					// format of values: 'kind-binary;k8s-version-image;kubectl-version;clusters-per-instance;nodes-per-cluster;ip-family',
-					//				e.g. 'kind-v0.18.0;;kubectl-v1.26.1;2;1;ipv6' - 2 clusters per execution instance with 1 node each
-					// 					 'kind-v0.17.0;;kubectl-v1.26.1;1;2;dual' - 1 clusters per execution instance with 2 nodes each
+					// format of values: 'kind-binary;k8s-version-image;kubectl-version;clusters-per-instance;nodes-per-cluster;node-memory-limit;ip-family',
+					//				e.g. 'kind-v0.18.0;;kubectl-v1.26.1;2;1;8192;ipv6' - 2 clusters per execution instance with 1 node each, 8GB limit per node
+					// 					 'kind-v0.17.0;;kubectl-v1.26.1;1;2;4096;dual' - 1 clusters per execution instance with 2 nodes each, 4GB limit per node
 					axis {
 						name 'K8S_VERSION'
-						values 'kind-v0.20.0;;kubectl-v1.26.1;2;1;ipv6',
-							'kind-v0.20.0;;kubectl-v1.27.2;2;2;dual'
+						values 'kind-v0.20.0;;kubectl-v1.26.1;2;1;4096;ipv6',
+							'kind-v0.20.0;;kubectl-v1.27.2;2;2;4096;dual'
 					}
 				}
 				stages {
@@ -310,62 +336,74 @@ pipeline {
 						steps {
 							script {
 								kindRuns++
-								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, maxClustersPerInstance, expectedNodesPerCluster, ipFamily) =
+								def (k8sEnvBinaryPath, k8sVersion, kubectlPath, preferredClustersPerInstance, expectedNodesPerCluster, nodeMemory, ipFamily) =
 									K8S_VERSION.split(';')
-								def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster, nodeMemory) =
-									utils.getExecutionParams(K8S_ENVIRONMENT, maxClustersPerInstance, expectedNodesPerCluster)
+								def (executionInstanceLabel, executionInstanceCount, clustersPerInstance, nodesPerCluster) =
+									utils.getExecutionParams(K8S_ENVIRONMENT, preferredClustersPerInstance, expectedNodesPerCluster)
 								echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) [ \
 									${executionInstanceLabel}, \
 									${k8sEnvBinaryPath}, \
 									${k8sVersion}, \
 									${kubectlPath}, \
-									${maxClustersPerInstance}, \
+									${preferredClustersPerInstance}, \
 									${clustersPerInstance}, \
 									${expectedNodesPerCluster}, \
 									${nodesPerCluster}, \
 									${nodeMemory}, \
 									${ipFamily} \
 								]"
-								def k8sJob = null
-								catchError {
-									k8sJob = build job: utils.getWorkerJobPath(K8S_ENVIRONMENT), parameters: [
-										string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
-										string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
-										string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
-										string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
-										string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
-										string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
-										string(name: 'OPERATOR_ENV_BINARY_PATH', value: k8sEnvBinaryPath),
-										string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
-										[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstanceLabel],
-										string(name: 'OPERATOR_K8S_VERSION', value: k8sVersion),
-										string(name: 'OPERATOR_KUBECTL_PATH', value: kubectlPath),
-										string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersPerInstance),
-										string(name: 'OPERATOR_NODES_PER_CLUSTER', value: nodesPerCluster),
-										string(name: 'OPERATOR_NODE_MEMORY', value: nodeMemory),
-										string(name: 'OPERATOR_IP_FAMILY', value: ipFamily)
-									], propagate: false
+								def jobs = [:]
+								def jobBadge = utils.getJobBadge(K8S_ENVIRONMENT, k8sVersion, nodesPerCluster, ipFamily)
+								executionInstanceCount = utils.generateTestSuiteSubsets(executionInstanceCount, jobBadge)
+								for (int i = 0; i < executionInstanceCount; i++) {
+									def k8sJobInstanceIndex = i
+									def k8sJobInstance = "${K8S_ENVIRONMENT}(${K8S_VERSION})-${k8sJobInstanceIndex}"
+									jobs[i] = {
+										kindJobs["${k8sJobInstance}"] = null
+										def k8sJob = build job: utils.getWorkerJobPath(K8S_ENVIRONMENT), parameters: [
+											string(name: 'OPERATOR_GIT_REPO_URL', value: params.OPERATOR_GIT_REPO_URL),
+											string(name: 'OPERATOR_GIT_REPO_NAME', value: params.OPERATOR_GIT_REPO_NAME),
+											string(name: 'OPERATOR_GIT_REVISION', value: params.OPERATOR_GIT_REVISION),
+											string(name: 'OPERATOR_GIT_REFSPEC', value: params.OPERATOR_GIT_REFSPEC),
+											string(name: 'OPERATOR_IMAGE', value: env.OPERATOR_COMMUNITY_IMAGE),
+											string(name: 'OPERATOR_ENTERPRISE_IMAGE', value: params.OPERATOR_ENTERPRISE_IMAGE),
+											string(name: 'OPERATOR_ENV_BINARY_PATH', value: utils.getK8sEnvBinaryPath(K8S_ENVIRONMENT, k8sEnvBinaryPath)),
+											string(name: 'OPERATOR_TRIGGERED_BY', value: params.OPERATOR_TRIGGERED_BY),
+											[$class: 'LabelParameterValue', name: 'OPERATOR_EXECUTION_INSTANCE', label: executionInstanceLabel],
+											string(name: 'OPERATOR_K8S_VERSION', value: k8sVersion),
+											string(name: 'OPERATOR_KUBECTL_PATH', value: kubectlPath),
+											string(name: 'OPERATOR_CLUSTERS_COUNT', value: clustersPerInstance),
+											string(name: 'OPERATOR_NODES_PER_CLUSTER', value: nodesPerCluster),
+											string(name: 'OPERATOR_NODE_MEMORY', value: nodeMemory),
+											string(name: 'OPERATOR_IP_FAMILY', value: ipFamily),
+											[$class: 'StringParameterValue', name: 'OPERATOR_CREDENTIALS', value: env.OTE_CREDENTIALS],
+											[$class: 'StringParameterValue', name: 'OPERATOR_TEST_SUITE', value: utils.prepareInstanceTestSuite(jobBadge, k8sJobInstanceIndex)]
+										], propagate: false
+										if (k8sJob != null) {
+											kindJobs["${k8sJobInstance}"] = k8sJob.getNumber()
+											echo "${k8sJobInstance} completed (build #${k8sJob.getNumber()})"
+										}
+									}
 								}
-								if (k8sJob != null) {
-									jobIds[K8S_VERSION] = k8sJob.getNumber()
-									echo "${K8S_ENVIRONMENT}(${K8S_VERSION}) completed (build #${k8sJob.getNumber()})"
-								}
+								parallel jobs
 							}
 						}
 						post {
 							always {
 								script {
-									def k8sJob = jobIds[K8S_VERSION]
-									if (k8sJob) {
-										echo "copy ${K8S_ENVIRONMENT}(${K8S_VERSION}) results for build #${k8sJob}"
-										catchError {
-											copyArtifacts fingerprintArtifacts: true,
-												projectName: utils.getWorkerJobPath(K8S_ENVIRONMENT),
-												selector: specific(buildNumber: "${k8sJob}"),
-												target: "${env.LOG_SUBDIR}"
+									kindJobs.each { k8sJobInstance, k8sJobId ->
+										if (k8sJobId) {
+											echo "copy ${k8sJobInstance} results for build #${k8sJobId}"
+											catchError {
+												copyArtifacts fingerprintArtifacts: true,
+													projectName: utils.getWorkerJobPath(K8S_ENVIRONMENT),
+													selector: specific(buildNumber: "${k8sJobId}"),
+													target: "${env.LOG_SUBDIR}"
+												echo "successfully copied ${k8sJobInstance} results for build #${k8sJobId}"
+											}
+										} else {
+											echo "no results for ${k8sJobInstance}, job id not found"
 										}
-									} else {
-										echo "no results for ${K8S_ENVIRONMENT}(${K8S_VERSION}), job id not found"
 									}
 								}
 							}
@@ -418,12 +456,6 @@ pipeline {
 			script {
 				env.BUILD_DURATION = utils.getBuildDuration()
 				env.CHANGE_LOG = utils.getChangeLog()
-
-				utils.listFilesInSubdir(env.LOG_SUBDIR)
-				if (utils.anyResultsAvailable()) {
-					sh "cd ${env.LOG_DIR} && tar cjf ${ARTIFACT_PATH} *"
-					archiveArtifacts artifacts: "${ARTIFACT_FILENAME}", fingerprint: true
-				}
 			}
 		}
 		changed {
@@ -472,6 +504,7 @@ pipeline {
 					color: utils.getBuildResultColor(),
 					attachments: utils.getBuildSummary()
 
+				utils.archiveArtifact()
 				utils.pruneOldBuilds()
 			}
 		}

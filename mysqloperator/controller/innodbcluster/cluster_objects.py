@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -6,12 +6,13 @@
 from logging import Logger, getLogger
 import kopf
 from typing import List, Dict, Optional
-from ..kubeutils import client as api_client, ApiException
+from ..kubeutils import client as api_client
 from .. import utils, config, consts
 from .cluster_api import InnoDBCluster, AbstractServerSetSpec, InnoDBClusterSpec, ReadReplicaSpec, InnoDBClusterSpecProperties
-from . import cluster_controller
+from .. import fqdn
 import yaml
-from ..kubeutils import api_core, api_apps, api_customobj, k8s_cluster_domain
+from ..kubeutils import api_core, api_apps, api_customobj, k8s_cluster_domain, ApiException
+from . import router_objects
 import base64
 
 # TODO replace app field with component (mysqld,router) and tier (mysql)
@@ -19,7 +20,7 @@ import base64
 # This service includes all instances, even those that are not ready
 
 
-def prepare_cluster_service(spec: AbstractServerSetSpec) -> dict:
+def prepare_cluster_service(spec: AbstractServerSetSpec, logger: Logger) -> dict:
     extra_label = ""
     if type(spec) is InnoDBClusterSpec:
         instance_type = "group-member"
@@ -40,8 +41,6 @@ metadata:
     mysql.oracle.com/cluster: {spec.cluster_name}
     mysql.oracle.com/instance-type: {instance_type}
     {extra_label}
-  annotations:
-    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
 spec:
   clusterIP: None
   publishNotReadyAddresses: true
@@ -55,7 +54,6 @@ spec:
   - name: gr-xcom
     port: {spec.mysql_grport}
     targetPort: {spec.mysql_grport}
-{utils.indent(spec.metrics_service_port, 2)}
   selector:
     component: mysqld
     tier: mysql
@@ -64,7 +62,15 @@ spec:
     {extra_label}
   type: ClusterIP
 """
-    return yaml.safe_load(tmpl)
+
+    svc = yaml.safe_load(tmpl)
+    for subsystem in spec.get_add_to_svc_cbs:
+        print(f"\t\tChecking subsystem {subsystem}")
+        for add_to_svc_cb in spec.get_add_to_svc_cbs[subsystem]:
+            print(f"\t\tAdding {subsystem} SVC bits")
+            add_to_svc_cb(svc, logger)
+
+    return svc
 
 
 def prepare_secrets(spec: InnoDBClusterSpec) -> dict:
@@ -155,6 +161,8 @@ def prepare_cluster_stateful_set(spec: AbstractServerSetSpec, logger: Logger) ->
     # on the safe side
     cluster_domain = k8s_cluster_domain(logger)
 
+    fqdn_template = fqdn.idc_service_fqdn_template(spec)
+
     extra_label = ""
     if type(spec) is InnoDBClusterSpec:
         instance_type = "group-member"
@@ -173,6 +181,8 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {spec.name}
+  annotations:
+      mysql.oracle.com/fqdn-template: '{fqdn_template}'
   labels:
     tier: mysql
     mysql.oracle.com/cluster: {spec.cluster_name}
@@ -203,6 +213,8 @@ spec:
       kubernetes.io/arch: {config.ARCH}
   template:
     metadata:
+      annotations:
+        mysql.oracle.com/fqdn-template: '{fqdn_template}'
       labels:
         component: mysqld
         tier: mysql
@@ -477,7 +489,6 @@ spec:
           mountPath: /tmp
 {utils.indent(spec.extra_volume_mounts, 8)}
 
-{utils.indent(spec.metrics_sidecar, 6)}
       volumes:
       - name: mycnfdata
         emptyDir: {{}}
@@ -500,7 +511,6 @@ spec:
       - name: sidecar-tmp
         emptyDir: {{}}
 {utils.indent(spec.extra_volumes, 6)}
-{utils.indent(spec.metrics_volumes, 6)}
   volumeClaimTemplates:
   - metadata:
       name: datadir
@@ -525,13 +535,14 @@ spec:
         utils.merge_patch_object(statefulset["spec"]["template"], {"metadata" : metadata })
 
     if spec.keyring:
-        print("\t\tAdding keyring bits")
+        print("\t\tAdding keyring STS bit")
         spec.keyring.add_to_sts_spec(statefulset)
 
     for subsystem in spec.add_to_sts_cbs:
+        print(f"\t\tadd_to_sts_cb: Checking subsystem {subsystem}")
         for add_to_sts_cb in spec.add_to_sts_cbs[subsystem]:
-            print(f"\t\tAdding {subsystem} bits")
-            add_to_sts_cb(statefulset, logger)
+            print(f"\t\tAdding {subsystem} STS bits")
+            add_to_sts_cb(statefulset, None, logger)
 
     if spec.podSpec:
         print("\t\tAdding podSpec")
@@ -598,12 +609,12 @@ roleRef:
 def prepare_additional_configmaps(spec: AbstractServerSetSpec, logger: Logger) -> List[Dict]:
     configmaps = []
     prefix = ''
-    for subsystem in spec.get_configmap_cbs:
-        for cb in spec.get_configmap_cbs[subsystem]:
-            cm = cb(prefix, logger)
-            if cm:
-                configmaps.extend(cm)
-
+    for subsystem in spec.get_configmaps_cbs:
+        for cb in spec.get_configmaps_cbs[subsystem]:
+            if cms := cb(prefix, logger):
+              for (cm_name, cm) in cms:
+                  if cm:
+                      configmaps.append(cm)
     return configmaps
 
 
@@ -791,54 +802,33 @@ data:
 
     return cm
 
-def prepare_metrics_service_monitor(cluster: InnoDBCluster, logger: Logger) -> List[Dict]:
-    monitor = f"""
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: {cluster.name}
-spec:
-  selector:
-    matchLabels:
-      mysql.oracle.com/cluster: {cluster.name}
-      tier: mysql
-  endpoints:
-  - port: metrics
-    path: /metrics
-"""
-    monitor = yaml.safe_load(monitor)
+def prepare_metrics_service_monitors(spec: AbstractServerSetSpec, logger: Logger) -> List[Dict]:
+    monitors = []
+    prefix = ''
+    for subsystem in spec.get_svc_monitor_cbs:
+        for cb in spec.get_svc_monitor_cbs[subsystem]:
+            (monitor_name, monitor) = cb(logger)
+            if monitor:
+                monitors.append(monitor)
 
-    if cluster.parsed_spec.metrics and cluster.parsed_spec.metrics.monitor_spec:
-        utils.merge_patch_object(monitor["spec"],
-                                 cluster.parsed_spec.metrics.monitor_spec,
-                                 "spec.metrics.monitorSpec")
-
-    return monitor
-
-
-def reconcile_stateful_set(cluster: InnoDBCluster, logger: Logger) -> None:
-    logger.info("reconcile_stateful_set")
-    patch = prepare_cluster_stateful_set(cluster.parsed_spec, logger)
-
-    logger.info(f"reconcile_stateful_set: patch={patch}")
-    api_apps.patch_namespaced_stateful_set(
-        cluster.name, cluster.namespace, body=patch)
+    return monitors
 
 
 def update_stateful_set_spec(sts : api_client.V1StatefulSet, patch: dict) -> None:
     api_apps.patch_namespaced_stateful_set(
         sts.metadata.name, sts.metadata.namespace, body=patch)
 
-
 def update_mysql_image(sts: api_client.V1StatefulSet, cluster: InnoDBCluster,
-                       spec: AbstractServerSetSpec, logger: Logger) -> None:
+                       spec: AbstractServerSetSpec,
+                       patcher,
+                       logger: Logger) -> None:
     """Update MySQL Server image
 
     This will also update the sidecar container to the current operator version,
     so that a single rolling upgrade covers both and we don't require a restart
     for upgrading sidecar.
     """
-
+    logger.info("update_mysql_image")
     # Operators <= 8.0.32-2.0.8 don't set this environment variable, we have to make sure it is there
     cluster_domain_env = [{
         "name": "MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN",
@@ -877,26 +867,31 @@ def update_mysql_image(sts: api_client.V1StatefulSet, cluster: InnoDBCluster,
     keyring_update = spec.keyring.upgrade_to_component(sts, spec, logger)
 
     if keyring_update:
+        logger.info("Need to upgrade keyring from plugin to component")
         (cm, key_sts_patch) = keyring_update
         utils.merge_patch_object(patch["spec"]["template"], key_sts_patch)
 
         kopf.adopt(cm)
-        api_core.create_namespaced_config_map(spec.namespace, cm)
+        patcher.create_configmap(spec.namespace, cm["metadata"]["name"], cm, on_apiexception_generic_handler)
+        #api_core.create_namespaced_config_map(spec.namespace, cm)
 
         initconf_patch = [{"op": "remove", "path": "/data/03-keyring-oci.cnf"}]
-        try:
-            api_core.patch_namespaced_config_map(f"{spec.cluster_name}-initconf",
-                                                    spec.namespace, initconf_patch)
-        except ApiException as exc:
-            # This might happen during a retry or some other case where it was
-            # removed already
-            logger.info(f"Failed to remove keyring config from initconf, ignoring: {exc}")
+        #try:
+        #    api_core.patch_namespaced_config_map(f"{spec.cluster_name}-initconf",
+        #                                            spec.namespace, initconf_patch)
+        #except ApiException as exc:
+        #    # This might happen during a retry or some other case where it was
+        #    # removed already
+        #    logger.info(f"Failed to remove keyring config from initconf, ignoring: {exc}")
+        patcher.patch_configmap(spec.namespace, f"{spec.cluster_name}-initconf", initconf_patch, on_apiexception_404_handler)
 
     cm = prepare_initconf(cluster, spec, logger)
-    api_core.patch_namespaced_config_map(
-        cm['metadata']['name'], sts.metadata.namespace, body=cm)
+    patcher.patch_configmap(spec.namespace, cm['metadata']['name'], cm, on_apiexception_generic_handler)
+    #api_core.patch_namespaced_config_map(
+    #    cm['metadata']['name'], sts.metadata.namespace, body=cm)
 
-    update_stateful_set_spec(sts, patch)
+    patcher.patch_sts(patch)
+#    update_stateful_set_spec(sts, patch)
 
 
 def update_operator_image(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec) -> None:
@@ -913,7 +908,7 @@ def update_operator_image(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec
     update_stateful_set_spec(sts, patch)
 
 
-def update_pull_policy(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec, logger: Logger) -> None:
+def update_pull_policy(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec, logger: Logger) -> dict:
     patch = {"spec": {"template":
                       {"spec": {
                           "initContainers": [
@@ -925,105 +920,130 @@ def update_pull_policy(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec, l
                                {"name": "mysql", "imagePullPolicy": spec.mysql_image_pull_policy}
                           ]}
                        }}}
-    update_stateful_set_spec(sts, patch)
+    return patch
 
 def update_template_property(sts: api_client.V1StatefulSet, property_name: str, property_value: str, logger: Logger) -> None:
     patch = {"spec": {"template": {"spec": { property_name: property_value }}}}
     update_stateful_set_spec(sts, patch)
 
 
-def update_metrics(sts: api_client.V1StatefulSet,
-                   service: api_client.V1Service,
-                   cluster: InnoDBCluster, logger: Logger) -> None:
+def update_objects_for_subsystem(subsystem: InnoDBClusterSpecProperties,
+                                 cluster: InnoDBCluster,
+                                 patcher: 'InnoDBClusterObjectModifier',
+                                 logger: Logger) -> None:
+    logger.info(f"update_objects_for_subsystem: {subsystem}")
+
+    sts = cluster.get_stateful_set()
+    svc = cluster.get_service()
+
     spec = cluster.parsed_spec
 
-    # Changes to the metrics user will be handled by the ClusterController and
-    # should be done before this is being called
+    if subsystem in spec.get_configmaps_cbs:
+        print(f"\t\tWalking over get_configmaps_cbs len={len(spec.get_configmaps_cbs[subsystem])}")
+        #TODO: This won't delete old CMs but only replace old ones, if are still in use, with new content
+        #      or create new ones. The solution is to use tuple returning like get_svc_monitor_cbs, where
+        #      the cm name will be returned as first tuple element and second will be just None. This will
+        #      signal that this CM should be removed, as not in use anymore.
+        for get_configmap_cb in spec.get_configmaps_cbs[subsystem]:
+            prefix = ''
+            new_configmaps = get_configmap_cb(prefix, logger)
+            if not new_configmaps:
+                continue
+            for (cm_name, new_cm) in new_configmaps:
+                current_cm = cluster.get_configmap(cm_name)
+                if current_cm:
+                    if not new_cm:
+                        print(f"\t\t\tDeleting CM {cluster.namespace}/{cm_name}")
+                        #patcher.delete_configmap(cluster.namespace, cm_name, on_apiexception_404_handler)
+                        cluster.delete_configmap(cm_name)
+                        continue
 
-    # Here we are first removing old sidecar and volumes, if they exist and
-    # then add current as needed
+                    data_differs = current_cm.data != new_cm["data"]
+                    if data_differs:
+                        print(f"\t\t\tReplacing CM {cluster.namespace}/{cm_name}")
+                        current_cm.data = new_cm["data"]
+                        #patcher.replace_configmap(cluster.namespace, cm_name, current_cm, on_apiexception_404_handler)
+                        api_core.replace_namespaced_config_map(cm_name, cluster.namespace, body=current_cm)
+                else:
+                    print(f"\t\t\tNo such cm exists. Creating {cluster.namespace}/{new_cm}")
+                    kopf.adopt(new_cm)
+                    #patcher.create_configmap(cluster.namespace, new_cm['metadata']['name'], new_cm, on_apiexception_generic_handler)
+                    api_core.create_namespaced_config_map(cluster.namespace, new_cm)
 
-    sts.spec.template.spec.containers = list(filter(
-        lambda container: container.name != "metrics",
-        sts.spec.template.spec.containers
-    ))
+    if subsystem in spec.add_to_sts_cbs:
+        print(f"\t\tCurrent container count: {len(sts.spec.template.spec.containers)}")
+        print(f"\t\tWalking over add_to_sts_cbs len={len(spec.add_to_sts_cbs[subsystem])}")
+        changed = False
+        sts.spec = spec_to_dict(sts.spec)
+        for add_to_sts_cb in spec.add_to_sts_cbs[subsystem]:
+            changed = True
+            print("\t\t\tPatching STS")
+            add_to_sts_cb(sts, patcher, logger)
+        if changed:
+            new_container_names = [c["name"] for c in patcher.get_sts_path('/spec/template/spec/containers') if c["name"] not in ["mysql", "sidecar"]]
+            print(f"\t\t\tNew containers: {new_container_names}")
+            new_volumes_names = [c["name"] for c in patcher.get_sts_path('/spec/template/spec/volumes')]
+            print(f"\t\t\tNew volumes: {new_volumes_names}")
+            new_volume_mounts = [(c["name"], c["volumeMounts"]) for c in patcher.get_sts_path('/spec/template/spec/containers') if c["name"] not in ["mysql", "sidecar"]]
+            print(f"\t\t\tNew volume mounts: {new_volume_mounts}")
 
-    sts.spec.template.spec.volumes = list(filter(
-        lambda volume: volume.name not in ['metrics-web-config', 'metrics-tls'],
-        sts.spec.template.spec.volumes
-    ))
+            # There might be configmap changes, which when mounted will change the server, so we rollover
+            # For fine grained approache the get_configmap should return whether there are such changes that require
+            # a restart. With a restart, for example, the Cluster1LFSGeneralLogEnableDisableEnable test will hang
+            restart_patch = {"spec":{"template":{"metadata":{"annotations":{"kubectl.kubernetes.io/restartedAt":utils.isotime()}}}}}
+            patcher.patch_sts(restart_patch)
+            #patcher.submit_patches(restart_sts=True)
 
-    if spec.metrics and spec.metrics.enable:
-        sts.spec.template.spec.containers += yaml.safe_load(spec.metrics_sidecar)
-        if spec.metrics_volumes:
-            sts.spec.template.spec.volumes += yaml.safe_load(spec.metrics_volumes)
+        print(f"\t\t\tSTS {'patched' if changed else 'unchanged. No rollover upgrade!'}")
 
-    logger.info("Updating StatefulSet")
-    api_apps.replace_namespaced_stateful_set(
-        sts.metadata.name, sts.metadata.namespace, body=sts)
+    if subsystem in spec.get_add_to_svc_cbs:
+        print(f"\t\tWalking over get_add_to_svc_cbs len={len(spec.get_add_to_svc_cbs[subsystem])}")
+        changed = False
+        for add_to_svc_cb in spec.get_add_to_svc_cbs[subsystem]:
+            changed = True
+            print("\t\t\tPatching SVC")
+            add_to_svc_cb(svc, logger)
+        if changed:
+            api_core.replace_namespaced_service(svc.metadata.name, svc.metadata.namespace, svc)
 
-    # Same with the instance service, first remove old port and then re-add
-    # if needed
+        print(f"\t\t\tSVC {'patched' if changed else 'unchanged'}")
 
-    service.spec.ports = list(filter(
-        lambda port: port.name != "metrics",
-        service.spec.ports))
+    if subsystem in spec.get_svc_monitor_cbs:
+      for subsystem in spec.get_svc_monitor_cbs:
+          for cb in spec.get_svc_monitor_cbs[subsystem]:
+              (monitor_name, monitor) = cb(logger)
+              # monitor could be empty, this means - delete old monitor with monitor_name
+              print(f"\t\t\tChecking for old ServiceMonitor {monitor_name}")
+              if cluster.get_service_monitor(monitor_name):
+                  print(f"\t\t\tRemoving old ServiceMonitor {monitor_name}")
+                  try:
+                      api_customobj.delete_namespaced_custom_object("monitoring.coreos.com", "v1", cluster.namespace,
+                                                                    "servicemonitors", monitor_name)
+                  except Exception as exc:
+                      print(f"\t\t\tPrevious ServiceMonitor {monitor_name} was not removed. Reason: {exc}")
+              if monitor:
+                  kopf.adopt(monitor)
+                  print(f"\t\t\tCreating ServiceMonitor {monitor} ...")
+                  try:
+                      api_customobj.create_namespaced_custom_object("monitoring.coreos.com", "v1", cluster.namespace,
+                                                                    "servicemonitors", monitor)
+                  except Exception as exc:
+                      # This might be caused by Prometheus Operator missing
+                      # we won't fail for that
+                      print(f"\t\t\tServiceMonitor {monitor_name} NOT created!")
+                      print(exc)
+                      cluster.warn(action="CreateCluster", reason="CreateResourceFailed", message=f"{exc}")
+              else:
+                  print(f"\t\t\tNew ServiceMonitor {monitor_name} will not be created. Monitoring disabled.")
 
-    if spec.metrics and spec.metrics.enable:
-        service.spec.ports += yaml.safe_load(spec.metrics_service_port)
 
-    logger.info("Updating Service")
-    api_core.replace_namespaced_service(
-        service.metadata.name, service.metadata.namespace, service)
-
-    try:
-        api_customobj.delete_namespaced_custom_object(
-            "monitoring.coreos.com", "v1", spec.namespace, "servicemonitors", spec.cluster_name)
-    except Exception as exc:
-        # This may fail for a variety of reasons
-        # Most likely: It wasn't enabled before, but might also have failed to
-        # create due to missign Prometheus Operator or some other reason
-        print(f"Previous  ServiceMonitor was not removed. This is usually ok. Reason: {exc}")
-
-    if spec.metrics and spec.metrics.enable and spec.metrics.monitor:
-        monitor = prepare_metrics_service_monitor(cluster, logger)
-        kopf.adopt(monitor)
-        api_customobj.create_namespaced_custom_object(
-            "monitoring.coreos.com", "v1", spec.namespace, "servicemonitors",
-            monitor)
-
-def update_objects_for_logs(sts: api_client.V1StatefulSet, cluster: InnoDBCluster, logger: Logger) -> None:
-    logger.info(f"update_sts_for_logs")
-
+def update_objects_for_logs(cluster: InnoDBCluster, patcher: 'InnoDBClusterObjectModifier', logger: Logger) -> None:
     subsystem = InnoDBClusterSpecProperties.LOGS.value
-    spec = cluster.parsed_spec
+    update_objects_for_subsystem(subsystem, cluster, patcher, logger)
 
-    for get_configmap_cb in spec.get_configmap_cbs[subsystem]:
-        prefix = ''
-        new_configmaps = get_configmap_cb(prefix, logger)
-        for new_cm in new_configmaps:
-            cm_name = new_cm["metadata"]["name"]
-            current_cm = cluster.get_configmap(cm_name)
-            if current_cm:
-                data_differs = current_cm.data != new_cm["data"]
-                if data_differs:
-                    print(f"\t\tReplacing {cluster.namespace}/{cm_name}")
-                    current_cm.data = new_cm["data"]
-                    api_core.replace_namespaced_config_map(cm_name, cluster.namespace, body=current_cm)
-            else:
-                print(f"\t\tNo such cm exists. Creating {cluster.namespace}/{new_cm}")
-                kopf.adopt(new_cm)
-                api_core.create_namespaced_config_map(cluster.namespace, new_cm)
-
-    print(f"\t\tWalking over add_to_sts_cbs len={len(spec.add_to_sts_cbs[subsystem])}")
-    for add_to_sts_cb in spec.add_to_sts_cbs[subsystem]:
-        print("\t\tPatching STS")
-        add_to_sts_cb(sts, logger)
-        if not hasattr(sts.spec.template.metadata, "annotations") or sts.spec.template.metadata.annotations is None:
-            setattr(sts.spec.template.metadata, "annotations", {})
-        sts.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = utils.isotime()
-        print("\t\tReplacing STS")
-        api_apps.replace_namespaced_stateful_set(sts.metadata.name, sts.metadata.namespace, body=sts)
+def update_objects_for_metrics(cluster: InnoDBCluster, patcher: 'InnoDBClusterObjectModifier', logger: Logger) -> None:
+    subsystem = InnoDBClusterSpecProperties.METRICS.value
+    update_objects_for_subsystem(subsystem, cluster, patcher, logger)
 
 
 def remove_read_replica(cluster: InnoDBCluster, name: str):
@@ -1043,7 +1063,6 @@ def remove_read_replica(cluster: InnoDBCluster, name: str):
         print(f"StatefulSet for ReadReplica  {name} was not removed. This is usually ok. Reason: {exc}")
 
 
-
 def on_first_cluster_pod_created(cluster: InnoDBCluster, logger: Logger) -> None:
     # Add finalizer to the cluster object to prevent it from being deleted
     # until the last pod is properly deleted.
@@ -1056,3 +1075,257 @@ def on_last_cluster_pod_removed(cluster: InnoDBCluster, logger: Logger) -> None:
     logger.info(
         f"Last pod for cluster {cluster.name} was deleted, removing cluster finalizer...")
     cluster.remove_cluster_finalizer()
+
+
+from enum import Enum
+from typing import Callable, cast
+from .. import kubeutils
+
+class PatchTarget(Enum):
+    STS = "STS"
+    DEPLOY = "DEPLOYMENT"
+    CM = "CONFIGMAP"
+
+class ApiCommandType(Enum):
+    PATCH_STS = "PATCH_STS"
+    PATCH_DEPLOY = "PATCH_DEPLOY"
+    CREATE_CM = "CREATE_CM"
+    DELETE_CM = "DELETE_CM"
+    REPLACE_CM = "REPLACE_CM"
+    PATCH_CM = "PATCH_CM"
+
+OnApiExceptionHandler = Callable[[ApiException, Logger], None]
+
+def on_apiexception_404_handler(exc: ApiException, logger: Logger):
+    if exc.status == 404:
+        logger.warning("Object not found! Exception: {exc}")
+        return
+    raise exc
+
+def on_apiexception_generic_handler(exc: ApiException, logger: Logger):
+    logger.warning("ApiException: {exc}")
+
+
+class ApiCommand:
+    def __init__(self,
+                 type: ApiCommandType,
+                 namespace: str,
+                 name: str,
+                 body: Optional[dict] = None,
+                 on_api_exception: Optional[OnApiExceptionHandler] = None):
+        self.type = type
+        self.namespace = namespace
+        self.name = name
+        self.body = body
+        self.on_api_exception = on_api_exception
+
+    def run(self, logger: Logger) -> Optional[api_client.V1Status]:
+        try:
+            if self.type == ApiCommandType.CREATE_CM:
+                status = cast(api_client.V1Status,
+                              api_core.create_namespaced_config_map(self.namespace, self.body))
+            elif self.type == ApiCommandType.DELETE_CM:
+                delete_body = api_client.V1DeleteOptions(grace_period_seconds=0)
+                status = cast(api_client.V1Status,
+                              api_core.delete_namespaced_config_map(self.name, self.namespace, body=delete_body))
+                return status
+            elif self.type == ApiCommandType.REPLACE_CM:
+                status = cast(api_client.V1Status,
+                              api_core.replace_namespaced_config_map(self.name, self.namespace, body=self.body))
+            elif self.type == ApiCommandType.PATCH_CM:
+                status = cast(api_client.V1Status,
+                              api_core.patch_namespaced_config_map(self.name, self.namespace, self.body))
+        except kubeutils.ApiException as exc:
+            if self.on_api_exception is not None:
+                self.on_api_exception(exc, logger)
+            else:
+                raise
+
+        return status
+
+
+def snail_to_camel(s: str) -> str:
+    if s.find("_") == -1:
+        return s
+    # Special case for '_exec'
+    # For some reason for preStop with `exec` when dict-ified we get `pre_stop`` with `_exec`
+    #  'lifecycle': {
+    #    'post_start': None,
+    #     'pre_stop': {'_exec': {'command': ['sh', '-c', 'sleep 60 && mysqladmin -ulocalroot shutdown']},
+    # If we don't handle that it becomes `Exec`
+    if len(s) and s[0] == "_":
+        s = s[1:]
+
+    words = s.split("_")
+    ret = words[0] + "".join(word.title() for word in words[1:])
+    return ret
+
+def item_snail_to_camel(item):
+    if isinstance(item, dict):
+        # k8s API will return some fields as None, like
+        # spec.containers[1].readinessProbe` : Required value: must specify a handler type
+        # spec.containers[1].startupProbe: Required value: must specify a handler type
+        # So we strip here the None values. Might hit somewhere where None is legit but for now it works!
+        return {snail_to_camel(key):item_snail_to_camel(value) for key, value in item.items() if value is not None}
+    if isinstance(item, list):
+        return [item_snail_to_camel(value) for value in item]
+    return item
+
+def spec_to_dict(spec) -> dict:
+    return item_snail_to_camel(spec.to_dict())
+
+def strategic_merge(original, patch):
+    if isinstance(original, dict) and isinstance(patch, dict):
+        return merge_dicts(original, patch)
+    elif isinstance(original, list) and isinstance(patch, list):
+        return original + patch
+    return patch
+
+def merge_dicts(original, patch):
+    for key, value in patch.items():
+        if key in original:
+            original[key] = strategic_merge(original[key], value)
+        else:
+            original[key] = value
+    return original
+
+
+class InnoDBClusterObjectModifier:
+    def __init__(self, cluster: InnoDBCluster, logger: Logger):
+        self.server_sts_patch = {}
+        self.sts_changed = False
+        self.sts_template_changed = False
+        self.deploy_changed = False
+        self.router_deploy_patch = {}
+        self.cluster = cluster
+        self.logger = logger
+        self.commands: list[ApiCommand] = []
+        self.sts = self.cluster.get_stateful_set()
+        self.sts.spec = spec_to_dict(self.sts.spec)
+        self.sts_spec_changed = False
+
+    def _apply_server_sts_patch_to_sts_spec_if_needed(self):
+        if len(self.server_sts_patch):
+            # update with accumulated patches before overwriting
+            self.logger.info(f"Applying accumulated patches {self.server_sts_patch['spec']} to sts.spec")
+            utils.merge_patch_object(self.sts.spec, self.server_sts_patch["spec"], none_deletes=True)
+            self.sts_spec_changed = True
+            self.server_sts_patch = {}
+
+    def _get_or_patch_sts_path(self, path: str, patch: Optional[dict] = None):
+        self.logger.info(f"get_sts_path: patch_path={path}\n")
+        # patches could be cached in self.server_sts_patch, so apply them, if any, before returning parts of self.sts.spec
+        self._apply_server_sts_patch_to_sts_spec_if_needed()
+        base = self.sts.spec
+        # first is leading backslash, then is 'spec', so we skip
+        path_elements = path.split("/")[2:]
+        if len(path) > 1:
+            for path_element in path_elements[0:-1]:
+                #self.logger.info(f"{path_element} in base = {path_element in base}\n")
+                assert path_element in base
+                base = base[path_element]
+            if patch is not None:
+                base[path_elements[-1]] = patch
+                self.logger.info(f"get_sts_path: after patching self.sts.spec={self.sts.spec}")
+        return base[path_elements[-1]]
+
+    def get_sts_path(self, path: str):
+        return self._get_or_patch_sts_path(path, None)
+
+    def patch_sts(self, patch: dict) -> None:
+        self.sts_changed = True
+        if "template" in patch:
+            self.sts_template_changed = True
+        self.logger.info(f"Accumulating patch={patch}\n")
+        # cache the patches without merging into self.sts.spec
+        # in case there is no call to patch_sts_overwrite then we won't "replace"
+        # the existing sts object but "patch" it
+        # if an sts_overwrite happens, we have to apply the patches to the self.sts.spec before overwriting
+        utils.merge_patch_object(self.server_sts_patch, patch, none_deletes=True)
+
+    def patch_sts_overwrite(self, patch: dict, patch_path: str) -> None:
+        self.sts_changed = True
+        if "template" in patch:
+            self.sts_template_changed = True
+
+        self.sts_spec_changed = True
+        self._get_or_patch_sts_path(patch_path, patch)
+        return
+
+        if len(self.server_sts_patch):
+            # update with accumulated patches before overwriting
+            self.logger.info(f"Applying accumulated patches before applying overwriting patch patch={self.server_sts_patch['spec']}")
+            #self.logger.info(f"STS.spec before apply={self.sts.spec}")
+            utils.merge_patch_object(self.sts.spec, self.server_sts_patch["spec"], none_deletes=True)
+            #self.logger.info(f"STS.spec after  apply={self.sts.spec}")
+            self.server_sts_patch = {}
+
+        #self.logger.info(f"patch_sts_overwrite: patch_path={patch_path} patch={patch}\n")
+
+        base = self.sts.spec
+        # first is leading backslash, then is spec, so we skip
+        patch_path_elements = patch_path.split("/")[2:]
+        if len(patch_path) > 1:
+            for patch_path_element in patch_path_elements[0:-1]:
+                #self.logger.info(f"{patch_path_element} in base = {patch_path_element in base}")
+                assert patch_path_element in base
+                base = base[patch_path_element]
+            #  base[]
+            #self.logger.info(f"\nExchanging {base[patch_path_elements[-1]]} \nwith\n{patch}")
+            base[patch_path_elements[-1]] = patch
+            self.logger.info(f"\n\nself.sts.spec={self.sts.spec}\n\n")
+
+
+    def patch_deploy(self, patch: dict) -> None:
+        self.deploy_changed = True
+        self.logger.info(f"patch={patch}")
+        utils.merge_patch_object(self.router_deploy_patch, patch, none_deletes=True)
+
+    def create_configmap(self, namespace: str, name: str, body: dict, on_api_exception: Optional[OnApiExceptionHandler]) -> None:
+        self.commands.append(ApiCommand(ApiCommandType.CREATE_CM, namespace, name, body, on_api_exception))
+
+    def delete_configmap(self, namespace: str, name: str, on_api_exception: Optional[OnApiExceptionHandler]) -> None:
+        self.commands.append(ApiCommand(ApiCommandType.DELETE_CM, namespace, name, None, on_api_exception))
+
+    def replace_configmap(self, namespace: str, name: str, body: dict, on_api_exception: Optional[OnApiExceptionHandler]) -> None:
+        self.commands.append(ApiCommand(ApiCommandType.REPLACE_CM, namespace, name, body, on_api_exception))
+
+    def patch_configmap(self, namespace: str, name: str, patch: dict, on_api_exception: Optional[OnApiExceptionHandler]) -> None:
+        self.commands.append(ApiCommand(ApiCommandType.PATCH_CM, namespace, name, patch, on_api_exception))
+
+    def submit_patches(self) -> None:
+        self.logger.info(f"InnoDBClusterObjectModifier::submit_patches sts_changed={self.sts_changed} sts_spec_changed={self.sts_spec_changed} len(router_deploy_patch)={len(self.router_deploy_patch)} len(commands)={len(self.commands)}")
+        if (self.sts_changed or len(self.router_deploy_patch) or len(self.commands)):
+              if len(self.commands):
+                  for command in self.commands:
+                      command.run(self.logger)
+              if self.sts_changed:
+                  if self.sts_spec_changed:
+                      # this should apply server_sts_patch over self.sts.spec and empty self.server_sts_patch
+                      # in the next step we will `replace` the STS and not `patch` it
+                      # Only if the self.sts.spec is not touched should be server_sts_patch be applied, as otherwise
+                      # changes to self.sts.spec will be skipped/forgotten
+                      self._apply_server_sts_patch_to_sts_spec_if_needed()
+
+                  if len(self.server_sts_patch):
+                      self.logger.info(f"Patching STS.spec with {self.server_sts_patch}")
+                      if self.sts_template_changed:
+                          restart_patch = {"spec":{"template":{"metadata":{"annotations":{"kubectl.kubernetes.io/restartedAt":utils.isotime()}}}}}
+                          utils.merge_patch_object(self.server_sts_patch, restart_patch)
+                      api_apps.patch_namespaced_stateful_set(self.sts.metadata.name, self.sts.metadata.namespace, body=self.server_sts_patch)
+                      self.server_sts_patch = {}
+                  else:
+                      self.logger.info(f"Replacing STS.spec with {self.sts.spec}")
+                      # only if template has been changed. It could be that only scale up/down (spec['replica'] changed) has happened
+                      # in that case if we set an annotation in the template the whole STS will be rolled over and this is not
+                      # what is wanted. If replica count is increased only new pods are needed, respectively when replica is decreased.
+                      # if replica is up and we set the annotation actually what will happen is rollover update and then scale up - we disturb the cluster
+                      # (and tests will fail)
+                      if self.sts_template_changed:
+                          if not "annotations" in self.sts.spec["template"]["metadata"] or self.sts.spec["template"]["metadata"]["annotations"] is None:
+                              self.sts.spec["template"]["metadata"]["annotations"] = {}
+                          self.sts.spec["template"]["metadata"]["annotations"]["kubectl.kubernetes.io/restartedAt"] = utils.isotime()
+                      api_apps.replace_namespaced_stateful_set(self.sts.metadata.name, self.sts.metadata.namespace, body=self.sts)
+              if len(self.router_deploy_patch) and (deploy:= self.cluster.get_router_deployment()):
+                  self.logger.info(f"Patching Deployment with {self.router_deploy_patch}")
+                  router_objects.update_deployment_spec(deploy, self.router_deploy_patch)

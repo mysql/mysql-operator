@@ -13,18 +13,19 @@
 
 set -vx
 
-if [ "$#" -ne 5 ]; then
-	echo "usage: <kubectl-path> <k8s-context> <registry-url> <azure-config-file> <azure-container-name>"
+if [ "$#" -ne 6 ]; then
+	echo "usage: <kubectl-path> <k8s-context> <azurite-image> <azure-cli-image> <azure-config-file> <azure-container-name>"
 	exit 1
 fi
 
 KUBECTL_PATH=$1
 K8S_CONTEXT=$2
-REGISTRY_URL=$3
-AZURE_CONFIG_FILE=$4
-AZURE_CONTAINER_NAME=$5
+AZURITE_IMAGE=$3
+AZURE_CLI_IMAGE=$4
+AZURE_CONFIG_FILE=$5
+AZURE_CONTAINER_NAME=$6
 
-AZURITE_IMAGE=${REGISTRY_URL}/mcr.microsoft.com/azure-storage/azurite
+AZURITE_IMAGE=${AZURITE_IMAGE}
 for i in $(eval echo "{1..180}"); do
     ${KUBECTL_PATH} --context=${K8S_CONTEXT} run --image=${AZURITE_IMAGE} azurite -- azurite --blobHost 0.0.0.0
     if [[ $? -eq 0 ]]; then
@@ -43,7 +44,7 @@ done
 
 ${KUBECTL_PATH} --context=${K8S_CONTEXT} run \
     --attach \
-    --image=${REGISTRY_URL}/mcr.microsoft.com/azure-cli \
+    --image=${AZURE_CLI_IMAGE} \
     --restart=Never \
     --env AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://${AZURE_POD_IP}:10000/devstoreaccount1;" \
     azure \

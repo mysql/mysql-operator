@@ -497,7 +497,7 @@ spec:
         ic_ev_num = len(kutil.get_ic_ev(self.ns, "mycluster"))
 
         kutil.patch_ic(self.ns, "mycluster", {"spec": {
-            "version": "8.8.8"
+            "version": "100.8.8"
         }}, type="merge")
 
         # ensure cluster is still healthy
@@ -513,9 +513,9 @@ spec:
 
         # there should be events for the cluster resource indicating the update problem
         self.assertGotClusterEvent(
-            "mycluster", type="Normal", reason="Logging", msg=rf"Propagating spec.version=8.8.8 for {self.ns}/mycluster \(was None\)")
+            "mycluster", type="Normal", reason="Logging", msg=rf"Propagating spec.version=100.8.8 for {self.ns}/mycluster \(was None\)")
         self.assertGotClusterEvent(
-            "mycluster", type="Error", reason="Logging", msg="Handler 'on_innodbcluster_field_version/spec.version' failed permanently: version 8.8.8 must be between .*")
+            "mycluster", type="Error", reason="Logging", msg="Handler '.*?' failed permanently: version 100.8.8 must be between .*")
         self.assertGotClusterEvent(
             "mycluster", type="Normal", reason="Logging", msg="Updating is processed: 0 succeeded; 1 failed.")
 

@@ -1,2 +1,5 @@
 library/registry:2
 fluent/fluentd-kubernetes-daemonset:v1.16-debian-s3-amd64-1
+prom/mysqld-exporter:v0.14.0
+prom/mysqld-exporter:v0.15.0
+prom/mysqld-exporter:v0.15.1

@@ -14,6 +14,7 @@ import yaml
 from ..kubeutils import api_core, api_apps, api_customobj, k8s_cluster_domain, ApiException
 from . import router_objects
 import base64
+import os
 
 # TODO replace app field with component (mysqld,router) and tier (mysql)
 
@@ -640,6 +641,9 @@ def prepare_component_config_secrets(spec: AbstractServerSetSpec, logger: Logger
 
 def prepare_initconf(cluster: InnoDBCluster, spec: AbstractServerSetSpec, logger: Logger) -> dict:
 
+    with open(os.path.dirname(os.path.abspath(__file__))+'/router-entrypoint-run.sh.tpl', 'r') as entryfile:
+        router_entrypoint = "".join(entryfile.readlines())
+
     liveness_probe = """#!/bin/bash
 # Copyright (c) 2020, 2021, Oracle and/or its affiliates.
 
@@ -733,6 +737,9 @@ data:
 
   livenessprobe.sh: |
 {utils.indent(liveness_probe, 4)}
+
+  router-entrypoint-run.sh.tpl: |
+{utils.indent(router_entrypoint, 4)}
 
 
   my.cnf.in: |

@@ -6,4 +6,4 @@
 
 SUFFIX='aarch64'; [ -n "$1" ] && SUFFIX=${1}
 
-echo "9.0.0-2.2.0$SUFFIX"
+echo "8.4.1-2.1.4-$SUFFIX"

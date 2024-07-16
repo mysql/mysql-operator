@@ -70,7 +70,7 @@ spec:
         fsGroup: 27
       containers:
       - name: operator-backup-job
-        image: {spec.operator_image}{consts.ARCH}
+        image: {spec.operator_image}{config.ARCH}
         imagePullPolicy: {spec.operator_image_pull_policy}
         command: ["mysqlsh", "--pym", "mysqloperator", "backup",
                   "--command", "execute-backup",

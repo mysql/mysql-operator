@@ -174,7 +174,7 @@ def prepare_cluster_stateful_set(spec: AbstractServerSetSpec, logger: Logger) ->
     else:
         raise NotImplementedError(f"Unknown subtype {type(spec)} for creating StatefulSet")
 
-
+# DB mod lines 262 (from INFO to debug3) & 352 (add log-level=@debug3)
     # TODO re-add "--log-file=",
     tmpl = f"""
 apiVersion: apps/v1
@@ -193,6 +193,7 @@ metadata:
     app.kubernetes.io/component: database
     app.kubernetes.io/managed-by: mysql-operator
     app.kubernetes.io/created-by: mysql-operator
+    kubernetes.io/arch: {config.ARCH}
 spec:
   serviceName: {spec.name}-instances
   replicas: {spec.instances}
@@ -209,6 +210,7 @@ spec:
       app.kubernetes.io/component: database
       app.kubernetes.io/managed-by: mysql-operator
       app.kubernetes.io/created-by: mysql-operator
+      kubernetes.io/arch: {config.ARCH}
   template:
     metadata:
       annotations:
@@ -224,6 +226,7 @@ spec:
         app.kubernetes.io/component: database
         app.kubernetes.io/managed-by: mysql-operator
         app.kubernetes.io/created-by: mysql-operator
+        kubernetes.io/arch: {config.ARCH}
     spec:
       subdomain: {spec.name}
       readinessGates:
@@ -268,7 +271,7 @@ spec:
         image: {spec.operator_image}
         imagePullPolicy: {spec.sidecar_image_pull_policy}
         # For datadir see the datadir volum mount
-        command: ["mysqlsh", "--log-level=@INFO", "--pym", "mysqloperator", "init",
+        command: ["mysqlsh", "--log-level=@debug3", "--pym", "mysqloperator", "init",
                   "--pod-name", "$(POD_NAME)",
                   "--pod-namespace", "$(POD_NAMESPACE)",
                   "--datadir", "/var/lib/mysql"
@@ -358,7 +361,7 @@ spec:
       - name: sidecar
         image: {spec.operator_image}
         imagePullPolicy: {spec.sidecar_image_pull_policy}
-        command: ["mysqlsh", "--pym", "mysqloperator", "sidecar",
+        command: ["mysqlsh", "--log-level=@debug3", "--pym", "mysqloperator", "sidecar",
                   "--pod-name", "$(POD_NAME)",
                   "--pod-namespace", "$(POD_NAMESPACE)",
                   "--datadir", "/var/lib/mysql"

@@ -35,6 +35,7 @@ metadata:
     app.kubernetes.io/instance: idc-{spec.name}
     app.kubernetes.io/managed-by: mysql-operator
     app.kubernetes.io/created-by: mysql-operator
+    kubernetes.io/arch: "{config.ARCH}"
 data:
   backupUsername: {backup_user}
   backupPassword: {backup_pwd}
@@ -58,6 +59,7 @@ metadata:
     app.kubernetes.io/instance: idc-{spec.name}
     app.kubernetes.io/managed-by: mysql-operator
     app.kubernetes.io/created-by: mysql-operator
+    kubernetes.io/arch: "{config.ARCH}"
 spec:
   template:
     spec:
@@ -68,7 +70,7 @@ spec:
         fsGroup: 27
       containers:
       - name: operator-backup-job
-        image: {spec.operator_image}
+        image: {spec.operator_image}{consts.ARCH}
         imagePullPolicy: {spec.operator_image_pull_policy}
         command: ["mysqlsh", "--pym", "mysqloperator", "backup",
                   "--command", "execute-backup",
@@ -133,6 +135,7 @@ metadata:
     app.kubernetes.io/instance: idc-{cluster_name}
     app.kubernetes.io/managed-by: mysql-operator
     app.kubernetes.io/created-by: mysql-operator
+    kubernetes.io/arch: {config.ARCH}
 spec:
   clusterName: {cluster_name}
   backupProfileName: {backup_profile_name}
@@ -169,6 +172,7 @@ metadata:
     app.kubernetes.io/instance: idc-{cluster_name}
     app.kubernetes.io/managed-by: mysql-operator
     app.kubernetes.io/created-by: mysql-operator
+    kubernetes.io/arch: {config.ARCH}
 spec:
   clusterName: {cluster_name}
   backupProfile:
@@ -234,6 +238,7 @@ metadata:
     app.kubernetes.io/instance: idc-{spec.name}
     app.kubernetes.io/managed-by: mysql-operator
     app.kubernetes.io/created-by: mysql-operator
+    kubernetes.io/arch: {config.ARCH}
 spec:
   concurrencyPolicy: Forbid
   jobTemplate:
@@ -247,7 +252,7 @@ spec:
             fsGroup: 27
           containers:
           - name: operator-backup-job-cron
-            image: {spec.operator_image}
+            image: {spec.operator_image}{config.IMAGE_TAG}
             imagePullPolicy: {spec.operator_image_pull_policy}
             command: ["mysqlsh", "--pym", "mysqloperator", "backup",
                       "--command", "create-backup-object",

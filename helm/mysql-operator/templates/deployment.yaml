@@ -18,6 +18,7 @@ metadata:
     app.kubernetes.io/component: controller
     app.kubernetes.io/managed-by: helm
     app.kubernetes.io/created-by: helm
+    kubernetes.io/arch: "{{ if eq (((.Values).image).tag) "-aarch64" }}arm64{{ else }}amd64{{ end }}"
 spec:
   replicas: 1
   selector:

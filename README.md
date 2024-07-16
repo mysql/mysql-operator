@@ -1,3 +1,8 @@
+> [!WARNING]
+> This branch has been modified from the [`trunk`](https://github.com/IFeelFine/mysql-operator/tree/trunk) branch.
+> It includes changes that hardcode certain values.
+> Please review our [README](/README-aarch64.md) file for details of the changes.
+> 
 # MySQL Operator for Kubernetes
 
 ## Introduction

@@ -983,7 +983,9 @@ class RouterSpec:
     instances: int = 1
 
     # Router version, if user wants to override it (latest by default)
-    version: str = None # config.DEFAULT_ROUTER_VERSION_TAG
+# Edit by DB 3/8/24 explicitly set version     
+#    version: str = None # config.DEFAULT_ROUTER_VERSION_TAG
+    version: str = config.DEFAULT_ROUTER_VERSION_TAG
 
     podSpec: dict = {}
     podAnnotations: Optional[dict] = None
@@ -1314,8 +1316,8 @@ class AbstractServerSetSpec(abc.ABC):
 
     def format_image(self, image, version):
         if self.imageRepository:
-            return f"{self.imageRepository}/{image}:{version}"
-        return f"{image}:{version}"
+            return f"{self.imageRepository}/{image}:{version}{config.IMAGE_TAG}"
+        return f"{image}:{version}{config.IMAGE_TAG}"
 
     @property
     def mysql_image(self) -> str:

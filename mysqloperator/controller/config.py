@@ -20,16 +20,18 @@ else:
 
 
 # Constants
-OPERATOR_VERSION = "2.2.0"
+IMAGE_TAG = "-aarch64"
+ARCH="arm64"
+OPERATOR_VERSION = "2.1.4"
 OPERATOR_EDITION = Edition.community
 OPERATOR_EDITION_NAME_TO_ENUM = { edition.value : edition.name for edition in Edition }
 
-SHELL_VERSION = "9.0.0"
+SHELL_VERSION = "8.4.1"
 
 MIN_BASE_SERVER_ID = 1
 MAX_BASE_SERVER_ID = 4000000000
 
-DEFAULT_VERSION_TAG = "9.0.0"
+DEFAULT_VERSION_TAG = "8.4.1"
 
 DEFAULT_SERVER_VERSION_TAG = DEFAULT_VERSION_TAG
 MIN_SUPPORTED_MYSQL_VERSION = "8.0.27"
@@ -42,7 +44,7 @@ DISABLED_MYSQL_VERSION = {
 DEFAULT_ROUTER_VERSION_TAG = DEFAULT_VERSION_TAG
 
 # This is used for the sidecar. The operator version is deploy-operator.yaml
-DEFAULT_OPERATOR_VERSION_TAG = "9.0.0-2.2.0"
+DEFAULT_OPERATOR_VERSION_TAG = "8.4.1-2.1.4"
 
 DEFAULT_IMAGE_REPOSITORY = os.getenv(
     "MYSQL_OPERATOR_DEFAULT_REPOSITORY", default="container-registry.oracle.com/mysql").rstrip('/')
@@ -69,10 +71,10 @@ def log_config_banner(logger) -> None:
     logger.info(f"DEFAULT_VERSION_TAG={DEFAULT_VERSION_TAG}")
     logger.info(f"SIDECAR_VERSION_TAG={DEFAULT_OPERATOR_VERSION_TAG}")
     logger.info(f"DEFAULT_IMAGE_REPOSITORY   ={DEFAULT_IMAGE_REPOSITORY}")
+    logger.info(f"ARCH               ={ARCH}")
     for dist in pkg_resources.working_set:
         pkg = str(dist).split(" ")
         logger.info(f"{pkg[0]:20} = {pkg[1]:10}")
-
 
 def config_from_env() -> None:
     import mysqlsh

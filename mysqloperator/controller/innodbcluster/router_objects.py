@@ -127,12 +127,14 @@ def prepare_router_deployment(cluster: InnoDBCluster, logger, *,
     router_command = ['mysqlrouter', *spec.router.options]
     router_target = fqdn.idc_service_fqdn(cluster, logger)
 
+# spec.template.spec.containers[1].image was: {config.DEFAULT_IMAGE_REPOSITORY}/{config.MYSQL_ROUTER_IMAGE}:{config.DEFAULT_ROUTER_VERSION_TAG}{config.IMAGE_TAG}
+# image here is hard coded to our docker.io repo
     tmpl = f"""
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {spec.name}-router
-  label:
+  labels:
     tier: mysql
     mysql.oracle.com/cluster: {spec.name}
     app.kubernetes.io/name: mysql-innodbcluster
@@ -140,6 +142,7 @@ metadata:
     app.kubernetes.io/component: router
     app.kubernetes.io/managed-by: mysql-operator
     app.kubernetes.io/created-by: mysql-operator
+    kubernetes.io/arch: {config.ARCH}
 spec:
   replicas: {spec.router.instances or 1 if not init_only else 0}
   selector:
@@ -152,6 +155,7 @@ spec:
       app.kubernetes.io/component: router
       app.kubernetes.io/managed-by: mysql-operator
       app.kubernetes.io/created-by: mysql-operator
+      kubernetes.io/arch: {config.ARCH}
   template:
     metadata:
       labels:
@@ -163,6 +167,7 @@ spec:
         app.kubernetes.io/component: router
         app.kubernetes.io/managed-by: mysql-operator
         app.kubernetes.io/created-by: mysql-operator
+        kubernetes.io/arch: {config.ARCH}
     spec:
       serviceAccountName: {spec.serviceAccountName}
       securityContext:
@@ -171,7 +176,7 @@ spec:
         fsGroup: 999
       containers:
       - name: router
-        image: {spec.router_image}
+        image: docker.io/ifeelfine/community-router:8.3.0-aarch64
         imagePullPolicy: {spec.router_image_pull_policy}
         securityContext:
           # These can't go to spec.template.spec.securityContext

@@ -311,6 +311,14 @@ spec:
           mountPath: /mnt/mycnfdata
         - name: initconf-tmp
           mountPath: /tmp
+        - name: rootcreds
+          readOnly: true
+          # rootHost is not obligatory and thus might not exist in the secret
+          # Nevertheless K8s won't complain and instead of mounting an empty file
+          # will create a directory (/rootcreds/rootHost will be an empty directory)
+          # For more information see below the comment regarding rootcreds.
+          subPath: rootHost
+          mountPath: /rootcreds/rootHost
       - name: initmysql
         image: {spec.mysql_image}
         imagePullPolicy: {spec.mysql_image_pull_policy}
@@ -352,10 +360,6 @@ spec:
           mountPath: /tmp
         - name: varlibmysqlfiles # The entrypoint of the container `touch`-es 2 files there
           mountPath: /var/lib/mysql-files
-        - name: rootcreds
-          readOnly: true
-          subPath: rootHost
-          mountPath: /rootcreds/rootHost
       containers:
       - name: sidecar
         image: {spec.operator_image}
@@ -508,13 +512,17 @@ spec:
         emptyDir: {{}}
       - name: sidecar-tmp
         emptyDir: {{}}
+      # If we declare it and not use it anywhere as backing for a volumeMount K8s won't check
+      # if the volume exists. K8s seems to be lazy in that regard. We don't need the information
+      # from this secret directly, as the sidecar of pod 0 will fetch the information using the K8s API
+      # However, we won't not to be lazy in checking if the secret exists and make it easier for the
+      # administrator to find out if the secret is missing. If we mount it in a init or normal container,
+      # the pod # will get stuck into "Ready:0/2 Init:0/3" with
+      # Warning  FailedMount  XXs (....)  kubelet  "MountVolume.SetUp failed for volume "rootcreds" : secret ".........." not found" error to be seen in describe.
       - name: rootcreds
         secret:
           secretName: {spec.secretName}
           defaultMode: 0400
-          items:
-          - key: rootHost
-            path: rootHost
 {utils.indent(spec.extra_volumes, 6)}
   volumeClaimTemplates:
   - metadata:

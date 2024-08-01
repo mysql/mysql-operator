@@ -38,6 +38,9 @@ spec:
   tlsUseSelfSigned: {{ $use_self_signed }}
   router:
     instances: {{ required "router.instances is required" $routerInstances }}
+{{- if (((.Values).router).bootstrapOptions) }}
+    bootstrapOptions:  {{ toYaml (((.Values).router).bootstrapOptions) | nindent 4 }}
+{{- end }}
 {{- if (((.Values).router).podSpec) }}
     podSpec:  {{ toYaml (((.Values).router).podSpec) | nindent 6 }}
 {{- end }}

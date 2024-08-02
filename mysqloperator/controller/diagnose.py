@@ -118,7 +118,7 @@ def diagnose_instance(pod: MySQLPod, logger, dba: 'Dba' = None) -> InstanceStatu
             # metadata lacks the trx where it was removed
             if e.code == errors.SHERR_DBA_BADARG_INSTANCE_NOT_ONLINE:
                 status.status = InstanceDiagStatus.OFFLINE
-            elif e.code == errors.SHERR_DBA_BADARG_INSTANCE_NOT_MANAGED:
+            elif e.code in (errors.SHERR_DBA_BADARG_INSTANCE_NOT_MANAGED, errors.SHERR_DBA_METADATA_NOT_FOUND):
                 status.status = InstanceDiagStatus.NOT_MANAGED
             else:
                 if shellutils.check_fatal(

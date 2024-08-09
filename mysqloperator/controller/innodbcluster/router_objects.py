@@ -169,6 +169,7 @@ spec:
         runAsUser: 999
         runAsGroup: 999
         fsGroup: 999
+        runAsNonRoot: true
       containers:
       - name: router
         image: {spec.router_image}

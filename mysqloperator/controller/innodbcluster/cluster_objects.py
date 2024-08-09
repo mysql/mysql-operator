@@ -235,6 +235,7 @@ spec:
         runAsUser: 27
         runAsGroup: 27
         fsGroup: 27
+        runAsNonRoot: true
       terminationGracePeriodSeconds: 120
       initContainers:
       - name: fixdatadir
@@ -242,6 +243,8 @@ spec:
         imagePullPolicy: {spec.sidecar_image_pull_policy}
         command: ["bash", "-c", "chown 27:27 /var/lib/mysql && chmod 0700 /var/lib/mysql"]
         securityContext:
+          # make an exception for this one
+          runAsNonRoot: false
           runAsUser: 0
           # These can't go to spec.template.spec.securityContext
           # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodTemplateSpec / https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSpec
@@ -283,6 +286,8 @@ spec:
           allowPrivilegeEscalation: false
           privileged: false
           readOnlyRootFilesystem: true
+          # The value is is inherited from the PodSecurityContext but dumb sec checkers might not know that
+          runAsNonRoot: true
           capabilities:
             drop:
             - ALL
@@ -332,6 +337,8 @@ spec:
           allowPrivilegeEscalation: false
           privileged: false
           readOnlyRootFilesystem: true
+          # The value is is inherited from the PodSecurityContext but dumb sec checkers might not know that
+          runAsNonRoot: true
           capabilities:
             drop:
             - ALL
@@ -378,6 +385,8 @@ spec:
           allowPrivilegeEscalation: false
           privileged: false
           readOnlyRootFilesystem: true
+          # The value is is inherited from the PodSecurityContext but dumb sec checkers might not know that
+          runAsNonRoot: true
           capabilities:
             drop:
             - ALL
@@ -425,6 +434,8 @@ spec:
           allowPrivilegeEscalation: false
           privileged: false
           readOnlyRootFilesystem: true
+          # The value is is inherited from the PodSecurityContext but dumb sec checkers might not know that
+          runAsNonRoot: true
           capabilities:
             drop:
             - ALL

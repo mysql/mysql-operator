@@ -157,6 +157,8 @@ spec:
       labels:
         name: mysql-operator
     spec:
+      securityContext:
+        runAsNonRoot: true
       containers:
         - name: mysql-operator
           image: container-registry.oracle.com/mysql/community-operator:9.1.0-2.2.2
@@ -186,11 +188,15 @@ spec:
               mountPath: /mysqlsh
             - name: tmpdir
               mountPath: /tmp
+          capabilities:
+            drop:
+            - ALL
           securityContext:
             runAsUser: 2
             allowPrivilegeEscalation: false
             privileged: false
             readOnlyRootFilesystem: true
+            runAsNonRoot: true
       volumes:
         - name: mysqlsh-home
           emptyDir: {}

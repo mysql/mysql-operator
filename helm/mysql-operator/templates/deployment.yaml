@@ -28,6 +28,8 @@ spec:
       labels:
         name: mysql-operator
     spec:
+      securityContext:
+        runAsNonRoot: true
       containers:
         - name: mysql-operator
           image: {{ if (((.Values).image).registry) }}{{ trimSuffix "/" .Values.image.registry }}/{{- end }}{{- if (((.Values).image).repository) }}{{ trimSuffix "/" .Values.image.repository }}/{{ end }}{{ (required "image.name is required" ((.Values).image).name) }}:{{ default .Chart.AppVersion (((.Values).image).tag) }}
@@ -69,11 +71,15 @@ spec:
               mountPath: /mysqlsh
             - name: tmpdir
               mountPath: /tmp
+          capabilities:
+            drop:
+            - ALL
           securityContext:
             runAsUser: 2
             allowPrivilegeEscalation: false
             privileged: false
             readOnlyRootFilesystem: true
+            runAsNonRoot: true
       volumes:
         - name: mysqlsh-home
           emptyDir: {}

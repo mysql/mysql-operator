@@ -11,7 +11,7 @@ import argparse
 import mysqlsh
 from .controller import consts, utils, config, shellutils
 from .controller import storage_api
-from .controller.backup.backup_api import MySQLBackup
+from .controller.backup.backup_api import MySQLBackup, DumpInstance, Snapshot
 from .controller.backup import backup_objects
 
 from .controller.innodbcluster.cluster_api import InnoDBCluster
@@ -36,7 +36,7 @@ def get_dir_size(d):
     return size
 
 
-def execute_dump_instance(backup_source, profile, backupdir, backup_name, logger: logging.Logger):
+def execute_dump_instance(backup_source: dict, profile: DumpInstance, backupdir: Optional[str], backup_name: str, logger: logging.Logger):
     shell = mysqlsh.globals.shell
     util = mysqlsh.globals.util
 
@@ -136,11 +136,11 @@ def execute_dump_instance(backup_source, profile, backupdir, backup_name, logger
     return info
 
 
-def execute_clone_snapshot(backup_source, profile, backupdir: Optional[str], backup_name: str, logger: logging.Logger) -> dict:
+def execute_clone_snapshot(backup_source: dict, profile: Snapshot, backupdir: Optional[str], backup_name: str, logger: logging.Logger) -> dict:
     ...
 
 
-def pick_source_instance(cluster, logger: logging.Logger):
+def pick_source_instance(cluster: InnoDBCluster, logger: logging.Logger) -> dict:
     mysql = mysqlsh.mysql
 
     primary = None

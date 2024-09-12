@@ -188,10 +188,10 @@ spec:
               mountPath: /mysqlsh
             - name: tmpdir
               mountPath: /tmp
-          capabilities:
-            drop:
-            - ALL
           securityContext:
+            capabilities:
+              drop:
+              - ALL
             runAsUser: 2
             allowPrivilegeEscalation: false
             privileged: false

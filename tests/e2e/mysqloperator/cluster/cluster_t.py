@@ -186,6 +186,158 @@ spec:
         kutil.delete_secret(self.ns, "mypwds")
 
 
+class Cluster1FixDatadir(tutil.OperatorTest):
+    cluster_name = "mycluster"
+    default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    instances = 1
+
+    @classmethod
+    def setUpClass(cls):
+        cls.logger = logging.getLogger(__name__+":"+cls.__name__)
+        super().setUpClass()
+
+        for instance in range(0, cls.instances):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
+
+        cls.manifest_template = f"""
+apiVersion: mysql.oracle.com/v2
+kind: InnoDBCluster
+metadata:
+  name: {cls.cluster_name}
+spec:
+  instances: {cls.instances}
+  router:
+    instances: 0
+  secretName: mypwds
+  edition: community
+  tlsUseSelfSigned: true
+  podSpec:
+    terminationGracePeriodSeconds: 1
+"""
+
+    @classmethod
+    def tearDownClass(cls):
+        for instance in reversed(range(0, cls.instances)):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
+
+        super().tearDownClass()
+
+    def do_create(self, yaml):
+        """
+        Create cluster, check posted events.
+        """
+        print(yaml)
+        kutil.create_user_secrets(
+            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+
+        apply_time = isotime()
+        kutil.apply(self.ns, yaml)
+
+        self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
+
+        self.wait_pod(f"{self.cluster_name}-0", "Running")
+
+        self.wait_ic(self.cluster_name, "ONLINE")
+
+        self.assertGotClusterEvent(
+            self.cluster_name, after=apply_time, type="Normal",
+            reason="ResourcesCreated",
+            msg="Dependency resources created, switching status to PENDING")
+        # TODO - this event not getting posted, check if normal
+        #self.assertGotClusterEvent(
+        #    "mycluster", after=apply_time, type="Normal",
+        #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
+        self.assertGotClusterEvent(
+            self.cluster_name, after=apply_time, type="Normal",
+            reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
+
+    def do_checks(self, container_expected: bool, fsgroup_change_policy_extected: str):
+        print(f"Checking for {container_expected=} and {fsgroup_change_policy_extected=}")
+        server_pods = kutil.ls_po(self.ns, pattern=f'{self.cluster_name}-\d')
+        pod_names = [server['NAME'] for server in server_pods]
+        for pod_name in pod_names:
+            with self.subTest(pod_name):
+                pod = kutil.get_po(self.ns, pod_name)
+                print(pod['spec']['securityContext'])
+                self.assertTrue('runAsGroup' in pod['spec']['securityContext'])
+                self.assertEqual(pod['spec']['securityContext']['runAsGroup'], 27)
+                self.assertTrue('runAsUser' in pod['spec']['securityContext'])
+                self.assertEqual(pod['spec']['securityContext']['runAsUser'], 27)
+                self.assertTrue('fsGroup' in pod['spec']['securityContext'])
+                self.assertEqual(pod['spec']['securityContext']['fsGroup'], 27)
+                self.assertTrue('runAsNonRoot' in pod['spec']['securityContext'])
+                self.assertEqual(pod['spec']['securityContext']['runAsNonRoot'], True)
+
+                init_containers = [initc['name'] for initc in pod['spec']['initContainers']]
+                self.assertEqual('fixdatadir' in init_containers, container_expected)
+
+                fsgroup_change_policy_found = 'fsGroupChangePolicy' in pod['spec']['securityContext']
+                self.assertTrue(fsgroup_change_policy_found == bool(fsgroup_change_policy_extected))
+                if fsgroup_change_policy_extected and fsgroup_change_policy_found:
+                    self.assertEqual(pod['spec']['securityContext']['fsGroupChangePolicy'], fsgroup_change_policy_extected)
+
+    def test_00(self):
+        manifest = f"""{self.manifest_template}
+  datadirPermissions:
+    setRightsUsingInitContainer: false
+    fsGroupChangePolicy: "Always"
+"""
+        self.do_create(manifest)
+
+        self.do_checks(False, "Always")
+
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_pvc(self.ns, None)
+
+
+    def test_02(self):
+        manifest = f"""{self.manifest_template}
+  datadirPermissions:
+    setRightsUsingInitContainer: true
+    fsGroupChangePolicy: "OnRootMismatch"
+"""
+        self.do_create(manifest)
+
+        self.do_checks(True, "OnRootMismatch")
+
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_pvc(self.ns, None)
+
+
+    def test_04(self):
+        manifest = f"""{self.manifest_template}
+  datadirPermissions:
+    setRightsUsingInitContainer: true
+"""
+        self.do_create(manifest)
+
+        self.do_checks(True, "")
+
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_pvc(self.ns, None)
+
+    def test_06(self):
+        """
+        Testing defaults
+        """
+        manifest = self.manifest_template
+
+        self.do_create(manifest)
+
+        self.do_checks(True, "")
+
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_pvc(self.ns, None)
+
+
 class Cluster1ServiceAccountDefault(tutil.OperatorTest):
     cluster_name = "mycluster"
     sa_name = "mycluster-sidecar-sa"

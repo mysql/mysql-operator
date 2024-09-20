@@ -69,6 +69,17 @@ spec:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
                   description: "Template for a PersistentVolumeClaim, to be used as datadir"
+                datadirPermissions:
+                  type: object
+                  properties:
+                    setRightsUsingInitContainer:
+                      type: boolean
+                      default: true
+                      description: "Whether to use an init container to set at start the DataDir permissions "
+                    fsGroupChangePolicy:
+                      type: string
+                      description: "Optional fsGroupChangePolicy value to be set in the pod security context. Some possible values are OnRootMismatch and Always. For more information check the official Kubernetes documentation"
+                      default: ""
                 mycnf:
                   type: string
                   description: "Custom configuration additions for my.cnf"

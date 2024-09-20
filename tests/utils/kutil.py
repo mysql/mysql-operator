@@ -563,15 +563,15 @@ def delete_svc(ns, name, timeout=5):
     delete(ns, "svc", name, timeout=timeout)
 
 
-def delete_pvc(ns, name, timeout=600, wait=True):
+def delete_pvc(ns, name, timeout=300, wait=True):
     delete(ns, "pvc", name, timeout=timeout, wait=wait)
 
 
-def delete_pv(name, timeout=600):
+def delete_pv(name, timeout=300):
     delete(None, "pv", name, timeout=timeout)
 
 
-def delete_ns(ns, timeout=600):
+def delete_ns(ns, timeout=300):
     delete(None, "ns", ns, timeout=timeout)
 
 

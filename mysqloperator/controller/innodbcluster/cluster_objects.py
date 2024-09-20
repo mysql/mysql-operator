@@ -175,6 +175,41 @@ def prepare_cluster_stateful_set(spec: AbstractServerSetSpec, logger: Logger) ->
     else:
         raise NotImplementedError(f"Unknown subtype {type(spec)} for creating StatefulSet")
 
+    fixdatadir_container = ""
+    if spec.dataDirPermissions.setRightsUsingInitContainer:
+        fixdatadir_container = f"""
+- name: fixdatadir
+  image: {spec.operator_image}
+  imagePullPolicy: {spec.sidecar_image_pull_policy}
+  command: ["bash", "-c", "chown 27:27 /var/lib/mysql && chmod 0700 /var/lib/mysql"]
+  securityContext:
+    # make an exception for this one
+    runAsNonRoot: false
+    runAsUser: 0
+    # These can't go to spec.template.spec.securityContext
+    # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodTemplateSpec / https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSpec
+    # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSecurityContext - for pods (top level)
+    # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#Container
+    # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#SecurityContext - for containers
+    allowPrivilegeEscalation: false
+    privileged: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      add:
+      - CHOWN
+      - FOWNER
+      drop:
+      - ALL
+  volumeMounts:
+  - name: datadir
+    mountPath: /var/lib/mysql
+  env:
+  - name: MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN
+    value: {cluster_domain}
+  - name: MYSQLSH_CREDENTIAL_STORE_SAVE_PASSWORDS
+    value: never
+"""
+    logger.info(f"Fix data container {'EN' if fixdatadir_container else 'DIS'}ABLED")
 
     # TODO re-add "--log-file=",
     tmpl = f"""
@@ -235,39 +270,11 @@ spec:
         runAsUser: 27
         runAsGroup: 27
         fsGroup: 27
+{utils.indent("fsGroupChangePolicy: " + spec.dataDirPermissions.fsGroupChangePolicy, 8) if spec.dataDirPermissions.fsGroupChangePolicy else ""}
         runAsNonRoot: true
       terminationGracePeriodSeconds: 120
       initContainers:
-      - name: fixdatadir
-        image: {spec.operator_image}
-        imagePullPolicy: {spec.sidecar_image_pull_policy}
-        command: ["bash", "-c", "chown 27:27 /var/lib/mysql && chmod 0700 /var/lib/mysql"]
-        securityContext:
-          # make an exception for this one
-          runAsNonRoot: false
-          runAsUser: 0
-          # These can't go to spec.template.spec.securityContext
-          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodTemplateSpec / https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSpec
-          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSecurityContext - for pods (top level)
-          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#Container
-          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#SecurityContext - for containers
-          allowPrivilegeEscalation: false
-          privileged: false
-          readOnlyRootFilesystem: true
-          capabilities:
-            add:
-            - CHOWN
-            - FOWNER
-            drop:
-            - ALL
-        volumeMounts:
-        - name: datadir
-          mountPath: /var/lib/mysql
-        env:
-        - name: MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN
-          value: {cluster_domain}
-        - name: MYSQLSH_CREDENTIAL_STORE_SAVE_PASSWORDS
-          value: never
+{utils.indent(fixdatadir_container, 6)}
       - name: initconf
         image: {spec.operator_image}
         imagePullPolicy: {spec.sidecar_image_pull_policy}

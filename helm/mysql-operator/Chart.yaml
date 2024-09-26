@@ -1,5 +1,5 @@
 apiVersion: v2
-appVersion: "8.4.2-2.1.5"
+appVersion: "8.4.3-2.1.5"
 name: mysql-operator
 description: MySQL Operator Helm Chart for deploying MySQL InnoDB Cluster in Kubernetes
 type: application

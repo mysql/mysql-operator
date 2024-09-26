@@ -30,13 +30,13 @@ and attribution notices for these materials, please refer to the `LICENSE` file.
 First deploy the Custom Resource Definition (CRDs):
 
 ```sh
-$> kubectl apply -f https://raw.githubusercontent.com/mysql/mysql-operator/8.4.2-2.1.5/deploy/deploy-crds.yaml
+$> kubectl apply -f https://raw.githubusercontent.com/mysql/mysql-operator/8.4.3-2.1.5/deploy/deploy-crds.yaml
 ```
 
 Then deploy MySQL Operator for Kubernetes:
 
 ```sh
-$> kubectl apply -f https://raw.githubusercontent.com/mysql/mysql-operator/8.4.2-2.1.5/deploy/deploy-operator.yaml
+$> kubectl apply -f https://raw.githubusercontent.com/mysql/mysql-operator/8.4.3-2.1.5/deploy/deploy-operator.yaml
 ```
 
 Verify the operator is running by checking the deployment inside the `mysql-operator` namespace:

@@ -728,6 +728,8 @@ metadata:
 data:
   initdb-localroot.sql: |
     set sql_log_bin=0;
+    # Fix issue https://bugs.mysql.com/bug.php?id=116265
+    INSTALL PLUGIN auth_socket SONAME 'auth_socket.so';
     # Create socket authenticated localroot@localhost account
     CREATE USER localroot@localhost IDENTIFIED WITH auth_socket AS 'mysql';
     GRANT ALL ON *.* TO localroot@localhost WITH GRANT OPTION;

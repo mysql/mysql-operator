@@ -28,7 +28,6 @@ OPERATOR_EDITION_NAME_TO_ENUM = { edition.value : edition.name for edition in Ed
 
 SHELL_VERSION = "8.4.3"
 
-
 MIN_BASE_SERVER_ID = 1
 MAX_BASE_SERVER_ID = 4000000000
 

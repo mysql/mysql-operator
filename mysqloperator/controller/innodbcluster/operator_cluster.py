@@ -242,8 +242,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             if not ignore_404(cluster.get_service):
                 print("\tPreparing...")
                 service = cluster_objects.prepare_cluster_service(icspec, logger)
-                print(f"\tCreating Service {service['metadata']['name']}...{service}")
-                kopf.adopt(service)
+                print(f"\tCreating Service {service['metadata']['name']}...{service}")                kopf.adopt(service)
                 api_core.create_namespaced_service(namespace=namespace, body=service)
 
             print("5. Cluster ServiceAccount")

@@ -22,6 +22,7 @@ COPY mysqloperator/ /usr/lib/mysqlsh/python-packages/mysqloperator
 # See move here: https://github.com/kubernetes-client/python/issues/1718
 RUN sed -i "s/available_replicas=None,/available_replicas=0,/" /usr/lib/mysqlsh/python-packages/kubernetes/client/models/v1_stateful_set_status.py
 
+RUN mysqlsh --pym compileall /usr/lib/mysqlsh/python-packages
 
 USER 2
 

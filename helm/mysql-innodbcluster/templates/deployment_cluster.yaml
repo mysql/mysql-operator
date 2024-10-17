@@ -41,12 +41,12 @@ spec:
 {{- if (((.Values).router).podSpec) }}
     podSpec:  {{ toYaml (((.Values).router).podSpec) | nindent 6 }}
 {{- end }}
-{{ if (((.Values).router).podLabels) }}
+{{- if (((.Values).router).podLabels) }}
     podLabels: {{ toYaml (((.Values).router).podLabels) | nindent 6 }}
-{{ end }}
-{{ if (((.Values).router).podAnnotations) }}
+{{- end }}
+{{- if (((.Values).router).podAnnotations) }}
     podAnnotations: {{ toYaml (((.Values).router).podAnnotations) | nindent 6 }}
-{{ end }}
+{{- end }}
 {{- if not $use_self_signed }}
   {{- if and (((.Values).tls).routerCertAndPKsecretName) (((.Values).router).certAndPKsecretName) }}
     {{- if ne (((.Values).tls).routerCertAndPKsecretName) (((.Values).router).certAndPKsecretName) }}
@@ -112,6 +112,18 @@ spec:
     resources:
       requests:
         storage: "{{ .resources.requests.storage }}"
+    {{- end }}
+  {{- end }}
+{{- end }}
+  # datadirPermissions
+{{- if (.Values).datadirPermissions }}
+  {{- with .Values.datadirPermissions }}
+  datadirPermissions:
+    {{- if hasKey . "setRightsUsingInitContainer" }}
+    setRightsUsingInitContainer: {{ .setRightsUsingInitContainer }}
+    {{- end}}
+    {{- if .fsGroupChangePolicy }}
+    fsGroupChangePolicy: "{{ .fsGroupChangePolicy }}"
     {{- end }}
   {{- end }}
 {{- end }}
@@ -279,7 +291,7 @@ spec:
     snapshot:
         {{- else }}
           {{- fail "Impossible backup type" }}
-        {{ end }}
+        {{- end }}
         {{- if not (hasKey $backupProfile "storage") }}
           {{- fail "backup profile $profile.name has no storage section" }}
         {{- else if hasKey $backupProfile.storage "ociObjectStorage" }}

@@ -29,6 +29,10 @@ baseServerId: 1000
 #  podAnnotations:
 #  podLabels:
 
+#datadirPermissions:
+#  setRightsUsingInitContainer: false
+#  fsGroupChangePolicy: "Always"
+
 #logs:
 #  error:
 #    enabled: true

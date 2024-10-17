@@ -14,6 +14,7 @@ import yaml
 from ..kubeutils import api_core, api_apps, api_customobj, k8s_cluster_domain, ApiException
 from . import router_objects
 import base64
+import os
 
 # TODO replace app field with component (mysqld,router) and tier (mysql)
 
@@ -174,7 +175,42 @@ def prepare_cluster_stateful_set(spec: AbstractServerSetSpec, logger: Logger) ->
     else:
         raise NotImplementedError(f"Unknown subtype {type(spec)} for creating StatefulSet")
 
-# DB mod lines 262 (from INFO to debug3) & 352 (add log-level=@debug3)
+    fixdatadir_container = ""
+    if spec.dataDirPermissions.setRightsUsingInitContainer:
+        fixdatadir_container = f"""
+- name: fixdatadir
+  image: {spec.operator_image}
+  imagePullPolicy: {spec.sidecar_image_pull_policy}
+  command: ["bash", "-c", "chown 27:27 /var/lib/mysql && chmod 0700 /var/lib/mysql"]
+  securityContext:
+    # make an exception for this one
+    runAsNonRoot: false
+    runAsUser: 0
+    # These can't go to spec.template.spec.securityContext
+    # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodTemplateSpec / https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSpec
+    # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSecurityContext - for pods (top level)
+    # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#Container
+    # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#SecurityContext - for containers
+    allowPrivilegeEscalation: false
+    privileged: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      add:
+      - CHOWN
+      - FOWNER
+      drop:
+      - ALL
+  volumeMounts:
+  - name: datadir
+    mountPath: /var/lib/mysql
+  env:
+  - name: MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN
+    value: {cluster_domain}
+  - name: MYSQLSH_CREDENTIAL_STORE_SAVE_PASSWORDS
+    value: never
+"""
+    logger.info(f"Fix data container {'EN' if fixdatadir_container else 'DIS'}ABLED")
+
     # TODO re-add "--log-file=",
     tmpl = f"""
 apiVersion: apps/v1
@@ -237,36 +273,11 @@ spec:
         runAsUser: 27
         runAsGroup: 27
         fsGroup: 27
+{utils.indent("fsGroupChangePolicy: " + spec.dataDirPermissions.fsGroupChangePolicy, 8) if spec.dataDirPermissions.fsGroupChangePolicy else ""}
+        runAsNonRoot: true
       terminationGracePeriodSeconds: 120
       initContainers:
-      - name: fixdatadir
-        image: {spec.operator_image}
-        imagePullPolicy: {spec.sidecar_image_pull_policy}
-        command: ["bash", "-c", "chown 27:27 /var/lib/mysql && chmod 0700 /var/lib/mysql"]
-        securityContext:
-          runAsUser: 0
-          # These can't go to spec.template.spec.securityContext
-          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodTemplateSpec / https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSpec
-          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#PodSecurityContext - for pods (top level)
-          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#Container
-          # See: https://pkg.go.dev/k8s.io/api@v0.26.1/core/v1#SecurityContext - for containers
-          allowPrivilegeEscalation: false
-          privileged: false
-          readOnlyRootFilesystem: true
-          capabilities:
-            add:
-            - CHOWN
-            - FOWNER
-            drop:
-            - ALL
-        volumeMounts:
-        - name: datadir
-          mountPath: /var/lib/mysql
-        env:
-        - name: MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN
-          value: {cluster_domain}
-        - name: MYSQLSH_CREDENTIAL_STORE_SAVE_PASSWORDS
-          value: never
+{utils.indent(fixdatadir_container, 6)}
       - name: initconf
         image: {spec.operator_image}
         imagePullPolicy: {spec.sidecar_image_pull_policy}
@@ -285,6 +296,8 @@ spec:
           allowPrivilegeEscalation: false
           privileged: false
           readOnlyRootFilesystem: true
+          # The value is is inherited from the PodSecurityContext but dumb sec checkers might not know that
+          runAsNonRoot: true
           capabilities:
             drop:
             - ALL
@@ -313,6 +326,14 @@ spec:
           mountPath: /mnt/mycnfdata
         - name: initconf-tmp
           mountPath: /tmp
+        - name: rootcreds
+          readOnly: true
+          # rootHost is not obligatory and thus might not exist in the secret
+          # Nevertheless K8s won't complain and instead of mounting an empty file
+          # will create a directory (/rootcreds/rootHost will be an empty directory)
+          # For more information see below the comment regarding rootcreds.
+          subPath: rootHost
+          mountPath: /rootcreds/rootHost
       - name: initmysql
         image: {spec.mysql_image}
         imagePullPolicy: {spec.mysql_image_pull_policy}
@@ -326,17 +347,16 @@ spec:
           allowPrivilegeEscalation: false
           privileged: false
           readOnlyRootFilesystem: true
+          # The value is is inherited from the PodSecurityContext but dumb sec checkers might not know that
+          runAsNonRoot: true
           capabilities:
             drop:
             - ALL
         env:
         - name: MYSQL_INITIALIZE_ONLY
           value: "1"
-        - name: MYSQL_ROOT_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: {spec.secretName}
-              key: rootPassword
+        - name: MYSQL_RANDOM_ROOT_PASSWORD
+          value: "1"
         - name: MYSQLSH_USER_CONFIG_HOME
           value: /tmp
         volumeMounts:
@@ -375,6 +395,8 @@ spec:
           allowPrivilegeEscalation: false
           privileged: false
           readOnlyRootFilesystem: true
+          # The value is is inherited from the PodSecurityContext but dumb sec checkers might not know that
+          runAsNonRoot: true
           capabilities:
             drop:
             - ALL
@@ -422,6 +444,8 @@ spec:
           allowPrivilegeEscalation: false
           privileged: false
           readOnlyRootFilesystem: true
+          # The value is is inherited from the PodSecurityContext but dumb sec checkers might not know that
+          runAsNonRoot: true
           capabilities:
             drop:
             - ALL
@@ -488,7 +512,6 @@ spec:
         - name: mysql-tmp
           mountPath: /tmp
 {utils.indent(spec.extra_volume_mounts, 8)}
-
       volumes:
       - name: mycnfdata
         emptyDir: {{}}
@@ -510,6 +533,17 @@ spec:
         emptyDir: {{}}
       - name: sidecar-tmp
         emptyDir: {{}}
+      # If we declare it and not use it anywhere as backing for a volumeMount K8s won't check
+      # if the volume exists. K8s seems to be lazy in that regard. We don't need the information
+      # from this secret directly, as the sidecar of pod 0 will fetch the information using the K8s API
+      # However, we won't not to be lazy in checking if the secret exists and make it easier for the
+      # administrator to find out if the secret is missing. If we mount it in a init or normal container,
+      # the pod # will get stuck into "Ready:0/2 Init:0/3" with
+      # Warning  FailedMount  XXs (....)  kubelet  "MountVolume.SetUp failed for volume "rootcreds" : secret ".........." not found" error to be seen in describe.
+      - name: rootcreds
+        secret:
+          secretName: {spec.secretName}
+          defaultMode: 0400
 {utils.indent(spec.extra_volumes, 6)}
   volumeClaimTemplates:
   - metadata:
@@ -636,6 +670,9 @@ def prepare_component_config_secrets(spec: AbstractServerSetSpec, logger: Logger
 
 def prepare_initconf(cluster: InnoDBCluster, spec: AbstractServerSetSpec, logger: Logger) -> dict:
 
+    with open(os.path.dirname(os.path.abspath(__file__))+'/router-entrypoint-run.sh.tpl', 'r') as entryfile:
+        router_entrypoint = "".join(entryfile.readlines())
+
     liveness_probe = """#!/bin/bash
 # Copyright (c) 2020, 2021, Oracle and/or its affiliates.
 
@@ -729,6 +766,9 @@ data:
 
   livenessprobe.sh: |
 {utils.indent(liveness_probe, 4)}
+
+  router-entrypoint-run.sh.tpl: |
+{utils.indent(router_entrypoint, 4)}
 
 
   my.cnf.in: |

@@ -108,7 +108,7 @@ class ClusterController:
         else:
             return last_status
 
-    def probe_member_status(self, pod: MySQLPod, session: 'ClassicSession', joined: bool, logger) -> None:
+    def probe_member_status(self, pod: MySQLPod, session: 'ClassicSession', joined: bool, logger: Logger) -> None:
         # TODO use diagnose?
         minfo = shellutils.query_membership_info(session)
         member_id, role, status, view_id, version, mcount, rmcount = minfo

@@ -250,6 +250,7 @@ spec:
             runAsUser: 27
             runAsGroup: 27
             fsGroup: 27
+            runAsNonRoot: true
           containers:
           - name: operator-backup-job-cron
             image: {spec.operator_image}{config.IMAGE_TAG}
@@ -268,6 +269,8 @@ spec:
               allowPrivilegeEscalation: false
               privileged: false
               readOnlyRootFilesystem: true
+              # The value is is inherited from the PodSecurityContext but dumb sec checkers might not know that
+              runAsNonRoot: true
               capabilities:
                 drop:
                 - ALL

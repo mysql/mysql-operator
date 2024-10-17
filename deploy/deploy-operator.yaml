@@ -181,7 +181,7 @@ metadata:
     version: "1.0"
     app.kubernetes.io/name: mysql-operator
     app.kubernetes.io/instance: mysql-operator
-    app.kubernetes.io/version: 8.4.1-2.1.4
+    app.kubernetes.io/version: 8.4.3-2.1.5
     app.kubernetes.io/component: controller
     app.kubernetes.io/managed-by: mysql-operator
     app.kubernetes.io/created-by: mysql-operator
@@ -196,9 +196,11 @@ spec:
       labels:
         name: mysql-operator
     spec:
+      securityContext:
+        runAsNonRoot: true
       containers:
         - name: mysql-operator
-          image: container-registry.oracle.com/mysql/community-operator:8.4.1-2.1.4-aarch64
+          image: container-registry.oracle.com/mysql/community-operator:8.4.3-2.1.5-aarch64
           imagePullPolicy: IfNotPresent
           args:
             [
@@ -226,10 +228,14 @@ spec:
             - name: tmpdir
               mountPath: /tmp
           securityContext:
+            capabilities:
+              drop:
+              - ALL
             runAsUser: 2
             allowPrivilegeEscalation: false
             privileged: false
             readOnlyRootFilesystem: true
+            runAsNonRoot: true
       volumes:
         - name: mysqlsh-home
           emptyDir: {}

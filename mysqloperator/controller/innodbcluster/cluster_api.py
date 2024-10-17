@@ -1055,6 +1055,17 @@ class ServiceSpec:
         return ports[self.defaultPort]
 
 
+class DataDirPermissionsSpec:
+    setRightsUsingInitContainer: bool = True
+    fsGroupChangePolicy: Optional[str] = ""
+
+    def parse(self, spec: dict, prefix: str) -> None:
+        if "setRightsUsingInitContainer" in spec:
+            self.setRightsUsingInitContainer = dget_bool(spec, "setRightsUsingInitContainer", prefix)
+
+        if "fsGroupChangePolicy" in spec:
+            self.fsGroupChangePolicy = dget_str(spec, "fsGroupChangePolicy", prefix)
+
 
 # Must correspond to the names in the CRD
 class InnoDBClusterSpecProperties(Enum):
@@ -1098,6 +1109,7 @@ class AbstractServerSetSpec(abc.ABC):
     baseServerId: int
     # override volumeClaimTemplates for datadir in MySQL pods (optional)
     datadirVolumeClaimTemplate = None
+    dataDirPermissions: Optional[DataDirPermissionsSpec] = DataDirPermissionsSpec()
     # additional MySQL configuration options
     mycnf: str = ""
     # override pod template for MySQL (optional)
@@ -1257,7 +1269,10 @@ class AbstractServerSetSpec(abc.ABC):
                                                 "spec",
                                                 default_value="{service}.{namespace}.svc.{domain}")
 
-
+        self.dataDirPermissions = DataDirPermissionsSpec()
+        section = "datadirPermissions"
+        if section in spec_root:
+            self.dataDirPermissions.parse(dget_dict(spec_root, section, "spec"), f"spec.{section}")
 
     def print_backup_schedules(self) -> None:
         for schedule in self.backupSchedules:

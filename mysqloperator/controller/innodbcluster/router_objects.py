@@ -174,6 +174,7 @@ spec:
         runAsUser: 999
         runAsGroup: 999
         fsGroup: 999
+        runAsNonRoot: true
       containers:
       - name: router
         image: docker.io/ifeelfine/community-router:8.3.0-aarch64
@@ -195,21 +196,28 @@ spec:
           value: {router_target}
         - name: MYSQL_PORT
           value: "3306"
-        - name: MYSQL_USER
-          valueFrom:
-            secretKeyRef:
-              name: {spec.name}-router
-              key: routerUsername
-        - name: MYSQL_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: {spec.name}-router
-              key: routerPassword
+        - name: MYSQL_USER_FILE
+          value: /.routeruser
+        - name: MYSQL_PASSWORD_FILE
+          value: /.routerpw
         - name: MYSQL_CREATE_ROUTER_USER
           value: "0"
         volumeMounts:
         - name: tmpdir
           mountPath: /tmp
+        - name: initconfdir
+          subPath: router-entrypoint-run.sh.tpl
+          mountPath: /run.sh
+          readOnly: true
+        - name:  routercredentials
+          subPath: routerUsername
+          mountPath: /.routeruser
+          readOnly: true
+        - name:  routercredentials
+          subPath: routerPassword
+          mountPath: /.routerpw
+          readOnly: true
+
 {utils.indent(spec.extra_router_volume_mounts if router_tls_exists else spec.extra_router_volume_mounts_no_cert, 8)}
         ports:
         - containerPort: {spec.router_rwport}
@@ -241,6 +249,16 @@ spec:
       volumes:
       - name: tmpdir
         emptyDir: {{}}
+      - name: initconfdir
+        configMap:
+          name: {spec.name}-initconf
+          defaultMode: 0755
+      - name: routercredentials
+        secret:
+          secretName: {spec.name}-router
+          # the files are created by root but belonging to mysqlrouter group,
+          # thus we need read access for the group
+          defaultMode: 0440
 {utils.indent(spec.extra_router_volumes if router_tls_exists else spec.extra_router_volumes_no_cert, 6)}
 """
     deployment = yaml.safe_load(tmpl)

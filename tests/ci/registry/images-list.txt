@@ -202,12 +202,12 @@ community-operator:8.2.0-2.1.1
 mysql-operator:8.2.0-2.1.1
 1
 ---
-community-operator:8.3.0-2.1.2
-mysql-operator:8.3.0-2.1.2
+community-operator:8.4.3-2.1.5
+mysql-operator:8.4.3-2.1.5
 1
 ---
-community-operator:8.3.0-2.1.2
-mysql/community-operator:8.3.0-2.1.2
+community-operator:8.4.3-2.1.5
+mysql/community-operator:8.4.3-2.1.5
 1
 ---
 community-operator:8.4.0-2.1.3

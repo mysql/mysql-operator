@@ -27,7 +27,7 @@ OPERATOR_EE_IMAGE_NAME = os.getenv(
     "OPERATOR_TEST_EE_IMAGE_NAME", default="enterprise-operator")
 
 OPERATOR_VERSION_TAG = os.getenv(
-    "OPERATOR_TEST_VERSION_TAG", default="9.1.0-2.2.2")
+    "OPERATOR_TEST_VERSION_TAG", default="8.4.3-2.1.5")
 
 OPERATOR_OLD_VERSION_TAG = os.getenv(
     "OPERATOR_TEST_OLD_VERSION_TAG", default="8.0.31-2.0.7")

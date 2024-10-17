@@ -22,7 +22,7 @@ Build the image (on an ARM64 host):
 
 ```shell
 $ podman build \
-    -t ghcr.io/ifeelfine/community-operator:8.3.0-2.1.2-aarch64 \
+    -t ghcr.io/ifeelfine/community-operator:8.4.3-2.1.5-aarch64 \
     --label "org.opencontainers.image.source=https://github.com/ifeelfine/mysql-operator" \
     --label "org.opencontainers.image.description=MySQL Operator image hardcoded to aarch64 achitecture" \
     --label "org.opencontainers.image.licenses=MIT" \

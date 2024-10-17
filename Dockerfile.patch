@@ -1,3 +1,3 @@
-ARG BASE_VERSION=8.3.0-2.1.2-aarch64
+ARG BASE_VERSION=8.4.3-2.1.5-aarch64
 FROM container-registry.oracle.com/mysql/community-operator:$BASE_VERSION
 COPY mysqloperator/ /usr/lib/mysqlsh/python-packages/mysqloperator

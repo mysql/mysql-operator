@@ -3,5 +3,5 @@ appVersion: "8.4.3-2.1.5"
 name: mysql-operator
 description: MySQL Operator Helm Chart for deploying MySQL InnoDB Cluster in Kubernetes
 type: application
-version: "2.2.2"
+version: "2.1.4"
 icon: https://www.mysql.com/common/logos/logo-mysql-170x115.png

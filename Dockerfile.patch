@@ -1,3 +1,6 @@
 ARG BASE_VERSION=8.4.3-2.1.5-aarch64
 FROM container-registry.oracle.com/mysql/community-operator:$BASE_VERSION
+LABEL org.opencontainers.image.source="https://github.com/ifeelfine/mysql-operator"
+LABEL org.opencontainers.image.description="MySQL Operator image hardcoded to aarch64 achitecture"
+LABEL org.opencontainers.image.licenses="MIT"
 COPY mysqloperator/ /usr/lib/mysqlsh/python-packages/mysqloperator

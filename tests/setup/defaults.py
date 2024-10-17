@@ -6,7 +6,7 @@
 import os
 
 # version
-VERSION_TAG = "9.1.0"
+VERSION_TAG = "8.4.3"
 
 MIN_SUPPORTED_VERSION = "8.0.27"
 MAX_SUPPORTED_VERSION = "9.1.0"

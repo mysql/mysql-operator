@@ -3,3 +3,4 @@ __pycache__
 .vscode
 /Dockerfile
 .DS_Store
+.venv

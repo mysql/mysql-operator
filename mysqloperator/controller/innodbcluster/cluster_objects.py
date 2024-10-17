@@ -282,7 +282,7 @@ spec:
         image: {spec.operator_image}
         imagePullPolicy: {spec.sidecar_image_pull_policy}
         # For datadir see the datadir volum mount
-        command: ["mysqlsh", "--log-level=@debug3", "--pym", "mysqloperator", "init",
+        command: ["mysqlsh", "--log-level=@INFO", "--pym", "mysqloperator", "init",
                   "--pod-name", "$(POD_NAME)",
                   "--pod-namespace", "$(POD_NAMESPACE)",
                   "--datadir", "/var/lib/mysql"

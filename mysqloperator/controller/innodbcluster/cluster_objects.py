@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -7,7 +7,7 @@ import random
 import string
 from logging import Logger, getLogger
 import kopf
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, cast
 from ..kubeutils import client as api_client
 from .. import utils, config, consts
 from .cluster_api import InnoDBCluster, AbstractServerSetSpec, InnoDBClusterSpec, ReadReplicaSpec, InnoDBClusterSpecProperties
@@ -17,6 +17,7 @@ from ..kubeutils import api_core, api_apps, api_customobj, k8s_cluster_domain, A
 from . import router_objects
 import base64
 import os
+from ..backup import backup_objects
 
 # TODO replace app field with component (mysqld,router) and tier (mysql)
 
@@ -129,6 +130,169 @@ spec:
 
     return pdb
 
+def get_restore_container(cluster: InnoDBCluster, spec: InnoDBClusterSpec,
+                          cluster_domain: str):
+    if not spec.initDB or not spec.initDB.meb:
+        # No MEB Restore - no extra container
+        return ("", "")
+
+    container = f"""
+      - name: restore
+        command:
+        - mysqlsh
+        - --pym
+        - meb.restore_main
+        - --pod-name
+        - "$(POD_NAME)"
+        - --pod-namespace
+        - "$(POD_NAMESPACE)"
+        - --cluster-name
+        - "{spec.name}"
+        - --datadir
+        - /var/lib/mysql
+
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN
+          value: {cluster_domain}
+        - name: MYSQLSH_USER_CONFIG_HOME
+          value: /tmp
+        - name: MYSQLSH_CREDENTIAL_STORE_SAVE_PASSWORDS
+          value: never
+        image: {spec.mysql_image}
+        imagePullPolicy: {spec.mysql_image_pull_policy}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
+          readOnlyRootFilesystem: true
+          runAsGroup: 27
+          runAsUser: 27
+        volumeMounts:
+        - mountPath: /usr/lib/mysqlsh/lib/python3.9/site-packages/meb
+          name: mebcode
+        - mountPath: /var/lib/mysql
+          name: datadir
+        - mountPath: /tmp
+          # sharing with initconf to transfer restore information
+          name: initconf-tmp
+        - mountPath: /mysqlsh
+          name: mebmyslhshhome
+        - name: rundir
+          mountPath: /var/run/mysqld
+"""
+
+    volumes = f"""
+      - name: mebmyslhshhome
+        emptyDir: {{}}
+      - name: mebcode
+        configMap:
+            name: {cluster.name}-mebcode
+"""
+
+    return (container, volumes)
+
+
+def get_meb_container(cluster: InnoDBCluster, spec: InnoDBClusterSpec,
+                      cluster_domain: str):
+    if all(not getattr(profile, 'meb', None) for profile in spec.backupProfiles):
+        # No profile requests MEB
+        return ("", "")
+
+    if spec.tlsUseSelfSigned:
+        ssl_cert = "/var/lib/mysql/server-cert.pem"
+        ssl_key = "/var/lib/mysql/server-key.pem"
+        mount = ""
+    else:
+        ssl_cert = "//etc/mysql-ssl/tls.crt"
+        ssl_key = "/etc/mysql-ssl/tls.key"
+        mount = """
+        - mountPath: /etc/mysql-ssl"
+          name: ssldata
+       """
+
+    container = f"""
+      - name: meb
+        command:
+        - mysqlsh
+        - --pym
+        - meb.meb_main
+        - --pod-name
+        - "$(POD_NAME)"
+        - --pod-namespace
+        - "$(POD_NAMESPACE)"
+        - --datadir
+        - /var/lib/mysql
+        - --ssl-cert
+        - {ssl_cert}
+        - --ssl-key
+        - {ssl_key}
+
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN
+          value: {cluster_domain}
+        - name: MYSQLSH_USER_CONFIG_HOME
+          value: /tmp
+        - name: MYSQLSH_CREDENTIAL_STORE_SAVE_PASSWORDS
+          value: never
+        image: {spec.mysql_image}
+        imagePullPolicy: {spec.mysql_image_pull_policy}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
+          readOnlyRootFilesystem: true
+          runAsGroup: 27
+          runAsUser: 27
+        volumeMounts:
+        - mountPath: /usr/lib/mysqlsh/lib/python3.9/site-packages/meb
+          name: mebcode
+        - mountPath: /var/lib/mysql
+          name: datadir
+        - mountPath: /tmp
+          # sharing with initconf to transfer restore information
+          name: initconf-tmp
+        - mountPath: /mysqlsh
+          name: mebmyslhshhome
+        - name: rundir
+          mountPath: /var/run/mysqld
+        - name: mebtls
+          mountPath: /tls
+{mount}
+"""
+
+    volumes = f"""
+      - name: mebmyslhshhome
+        emptyDir: {{}}
+      - name: mebcode
+        configMap:
+            name: {cluster.name}-mebcode
+      - name: mebtls
+        secret:
+            secretName: {cluster.name}-meb-tls
+"""
+
+    return (container, volumes)
+
 
 # TODO - check if we need to add a finalizer to the sts and svc (and if so, what's the condition to remove them)
 # TODO - check if we need to make readinessProbe take into account innodb recovery times
@@ -229,6 +393,10 @@ def prepare_cluster_stateful_set(cluster: InnoDBCluster, spec: AbstractServerSet
 """
     logger.info(f"Fix data container {'EN' if fixdatadir_container else 'DIS'}ABLED")
 
+    # if meb  restore ...
+    (restore_container, restore_volumes) = get_restore_container(cluster, spec, cluster_domain)
+    (meb_container, meb_volumes) = get_meb_container(cluster, spec, cluster_domain)
+
     # TODO re-add "--log-file=",
     tmpl = f"""
 apiVersion: apps/v1
@@ -292,6 +460,7 @@ spec:
       terminationGracePeriodSeconds: 120
       initContainers:
 {utils.indent(fixdatadir_container, 6)}
+
       - name: initconf
         image: {spec.operator_image}
         imagePullPolicy: {spec.sidecar_image_pull_policy}
@@ -348,6 +517,9 @@ spec:
           # For more information see below the comment regarding rootcreds.
           subPath: rootHost
           mountPath: /rootcreds/rootHost
+
+{restore_container}
+
       - name: initmysql
         image: {spec.mysql_image}
         imagePullPolicy: {spec.mysql_image_pull_policy}
@@ -526,6 +698,7 @@ spec:
         - name: mysql-tmp
           mountPath: /tmp
 {utils.indent(spec.extra_volume_mounts, 8)}
+{meb_container}
       volumes:
       - name: mycnfdata
         emptyDir: {{}}
@@ -547,6 +720,8 @@ spec:
         emptyDir: {{}}
       - name: sidecar-tmp
         emptyDir: {{}}
+{meb_volumes}
+{restore_volumes}
       # If we declare it and not use it anywhere as backing for a volumeMount K8s won't check
       # if the volume exists. K8s seems to be lazy in that regard. We don't need the information
       # from this secret directly, as the sidecar of pod 0 will fetch the information using the K8s API
@@ -591,6 +766,16 @@ spec:
         for add_to_sts_cb in spec.add_to_sts_cbs[subsystem]:
             print(f"\t\tAdding {subsystem} STS bits")
             add_to_sts_cb(statefulset, None, logger)
+
+    if os.getenv("MYSQL_OPERATOR_GLOBAL_PODSPEC_CM"):
+        ps_cm_ns = os.getenv("MYSQL_OPERATOR_GLOBAL_PODSPEC_NS", "mysql-operator")
+        ps_cm_name = os.getenv("MYSQL_OPERATOR_GLOBAL_PODSPEC_CM")
+        ps_cm_item = os.getenv("MYSQL_OPERATOR_GLOBAL_PODSPEC_ITEM", "podspec.yaml")
+        ps_cm = api_core.get_namespaced_config_map(ps_cm_name, ps_cm_name)
+        ps_override = yaml.safe_load(ps_cm[ps_cm_item])
+        print("\t\tAdding global podSpec")
+        utils.merge_patch_object(statefulset["spec"]["template"]["spec"],
+                                 ps_override, f"{ps_cm_ns}.{ps_cm_name}.{ps_cm_item}")
 
     if spec.podSpec:
         print("\t\tAdding podSpec")
@@ -698,6 +883,18 @@ def prepare_additional_configmaps(spec: AbstractServerSetSpec, logger: Logger) -
               for (cm_name, cm) in cms:
                   if cm:
                       configmaps.append(cm)
+
+    # TODO: This should use the CB mechanism like other CMs above
+    if isinstance(spec, InnoDBClusterSpec):
+        clusterspec = cast(InnoDBClusterSpec, spec)
+        if  (clusterspec.initDB and clusterspec.initDB.meb) \
+                or any(getattr(profile, 'meb', None) for profile in clusterspec.backupProfiles):
+
+            if spec.edition != config.Edition.enterprise:
+                raise kopf.TemporaryError("A BackupProfile requires MySQL Enterprise Backup, but the cluster doesn't use Enterprise Edition")
+
+            configmaps.append(backup_objects.prepare_meb_code_configmap(clusterspec))
+
     return configmaps
 
 

@@ -157,7 +157,7 @@ class KubectlCmdOutputLogging(Enum):
     # don't write kubectl cmd output to logger regardless debug_kubectl is True
     MUTE = 3
 
-def kubectl(cmd, rsrc=None, args=None, timeout=None, check=True, ignore=[], timeout_diagnostics=None, cmd_output_log=KubectlCmdOutputLogging.STD):
+def kubectl(cmd, rsrc=None, args=None, timeout=None, check=True, ignore=[], timeout_diagnostics=None, cmd_output_log=KubectlCmdOutputLogging.STD) -> subprocess.CompletedProcess:
     argv = [g_ts_cfg.kubectl_path, f"--context={g_ts_cfg.k8s_context}", cmd]
     if rsrc:
         argv.append(rsrc)
@@ -644,7 +644,7 @@ def file_exists(ns, name, path, check="-f"):
     return result.returncode == 0
 
 
-def exec(ns, name, cmd):
+def exec(ns, name, cmd) -> subprocess.CompletedProcess:
     if type(name) is str:
         args = [name]
     else:

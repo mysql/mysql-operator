@@ -5,6 +5,7 @@
 
 from typing import List
 from logging import Logger
+import os
 import yaml
 import kopf
 from copy import deepcopy
@@ -12,8 +13,33 @@ from .backup_api import BackupProfile, BackupSchedule, MySQLBackupSpec
 from .. import utils, config, consts
 from .. innodbcluster.cluster_api import InnoDBClusterSpec
 from .. kubeutils import api_cron_job, k8s_cluster_domain
+from . import meb_cert
 
-def prepare_backup_secrets(spec: InnoDBClusterSpec) -> dict:
+def prepare_meb_code_configmap(spec: InnoDBClusterSpec) -> dict:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    directory_path = os.path.join(script_dir, "meb/")
+
+    data = {}
+    for filename in os.listdir(directory_path):
+        filepath = os.path.join(directory_path, filename)
+        if not filename.endswith(".py"):
+            continue
+
+        if os.path.isfile(filepath):
+            with open(filepath, 'r') as f:
+                data[filename] = f.read()
+
+    spec = {
+        "metadata": {
+            "name": spec.name+"-mebcode"
+        },
+        "data": data
+    }
+
+    return spec
+
+
+def _prepare_backup_auth_secret(spec: InnoDBClusterSpec) -> dict:
     """
     Secrets for authenticating backup tool with MySQL.
     """
@@ -41,6 +67,13 @@ data:
 """
     return yaml.safe_load(tmpl)
 
+def prepare_backup_secrets(spec: InnoDBClusterSpec) -> list[dict]:
+    secrets = [_prepare_backup_auth_secret(spec)]
+
+    if any(getattr(profile, 'meb', None) for profile in spec.backupProfiles):
+        secrets.append(meb_cert.prepare_meb_tls_secret(spec))
+
+    return secrets
 
 def prepare_backup_job(jobname: str, spec: MySQLBackupSpec) -> dict:
     cluster_domain = k8s_cluster_domain(None)
@@ -53,13 +86,21 @@ metadata:
   name: {jobname}
   labels:
     tier: mysql
-    mysql.oracle.com/cluster: {spec.name}
+    mysql.oracle.com/cluster: {spec.clusterName}
     app.kubernetes.io/name: mysql-innodbcluster-backup-task
-    app.kubernetes.io/instance: idc-{spec.name}
+    app.kubernetes.io/instance: idc-{spec.clusterName}
     app.kubernetes.io/managed-by: mysql-operator
     app.kubernetes.io/created-by: mysql-operator
 spec:
   template:
+    metadata:
+      labels:
+        tier: mysql
+        mysql.oracle.com/cluster: {spec.clusterName}
+        app.kubernetes.io/name: mysql-innodbcluster-backup-task
+        app.kubernetes.io/instance: idc-{spec.clusterName}
+        app.kubernetes.io/managed-by: mysql-operator
+        app.kubernetes.io/created-by: mysql-operator
     spec:
       serviceAccountName: {spec.serviceAccountName}
       securityContext:
@@ -115,6 +156,24 @@ spec:
         utils.merge_patch_object(job["spec"]["template"], {"metadata" : metadata })
 
     spec.add_to_pod_spec(job["spec"]["template"], "operator-backup-job")
+
+    # TODO REMOVE
+    utils.merge_patch_object(job["spec"]["template"]["spec"], {
+        "containers": [{
+            "name": "operator-backup-job",
+            "volumeMounts": [{
+                "name": "operator-source-volume",
+                "mountPath": "/usr/lib/mysqlsh/python-packages/mysqloperator"
+            }]
+        }],
+        "volumes": [{
+            "hostPath": {
+                "path": "/src/mysql-operator/mysqloperator",
+                "type": "Directory"
+            },
+            "name": "operator-source-volume"
+        }]
+    })
 
     return job
 

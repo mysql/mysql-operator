@@ -1,14 +1,18 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
-#
+
+import yaml
+
 from os import execl
 from logging import Logger
 from typing import List, Optional, cast
+
 from .. import consts
 from .. api_utils import dget_dict, dget_str, dget_int, dget_bool, dget_list, ApiSpecError
 from .. kubeutils import api_core, api_apps, api_customobj, ApiException
 from .. storage_api import StorageSpec
+from .. utils import merge_patch_object
 from .. innodbcluster import cluster_api
 
 
@@ -33,6 +37,41 @@ class Snapshot:
         return (other is not None \
                 and self.storage == other.storage)
 
+class MEB:
+    def __init__(self):
+        self.storage: Optional[str] = None
+        self.extra_options: Optional[list[str]] = None
+
+    def parse(self, spec: dict, prefix: str) -> None:
+        self.storage = dget_dict(spec, "storage", prefix)
+        self.extra_options = dget_list(spec, "extraOptions", prefix, [])
+
+    def __str__(self) -> str:
+        return f"Object MEBInstance: storage={self.storage}"
+
+    def __eq__(self, other: 'MEB') -> bool:
+        assert other is None or isinstance(other, DumpInstance)
+        return other is not None \
+               and self.storage == other.storage \
+               and self.extra_options == other.extra_options
+
+
+    def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
+        cluster_name = pod_spec['metadata']['labels']['mysql.oracle.com/cluster']
+        patch = f"""
+spec:
+  containers:
+  - name: {container_name}
+    volumeMounts:
+    - mountPath: /tls
+      name: mebtlsclient
+  volumes:
+  - name: mebtlsclient
+    secret:
+      defaultMode: 200
+      secretName: {cluster_name}-meb-tls
+"""
+        merge_patch_object(pod_spec, yaml.safe_load(patch))
 
 class DumpInstance:
     def __init__(self):
@@ -65,15 +104,18 @@ class BackupProfile:
         self.name: str = ""
         self.dumpInstance: Optional[DumpInstance] = None
         self.snapshot: Optional[Snapshot] = None
+        self.meb: Optional[MEB] = None
         self.podAnnotations: Optional[dict] = None
         self.podLabels: Optional[dict] = None
 
     def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
-        assert self.snapshot or self.dumpInstance
+        assert self.snapshot or self.dumpInstance or self.meb
         if self.snapshot:
             return self.snapshot.add_to_pod_spec(pod_spec, container_name)
         if self.dumpInstance:
             return self.dumpInstance.add_to_pod_spec(pod_spec, container_name)
+        if self.meb:
+            return self.meb.add_to_pod_spec(pod_spec, container_name)
 
     def parse(self, spec: dict, prefix: str, name_required: bool = True) -> None:
         self.name = dget_str(spec, "name", prefix, default_value= None if name_required else "")
@@ -92,14 +134,19 @@ class BackupProfile:
         if method_spec:
             self.snapshot = Snapshot()
             self.snapshot.parse(method_spec, prefix+".snapshot")
+        method_spec = dget_dict(spec, "meb", prefix, {})
+        if method_spec:
+            self.meb = MEB()
+            self.meb.parse(method_spec, prefix+".meb")
 
         if self.dumpInstance and self.snapshot:
+            # TODO MEB!
             raise ApiSpecError(
                 f"Only one of dumpInstance or snapshot may be set in {prefix}")
 
-        if not self.dumpInstance and not self.snapshot:
+        if not self.dumpInstance and not self.snapshot and not self.meb:
             raise ApiSpecError(
-                f"One of dumpInstance or snapshot must be set in a {prefix}")
+                f"One of dumpInstance, snapshot or meb must be set in a {prefix}")
 
     def __str__(self) -> str:
         return f"Object BackupProfile name={self.name} dumpInstance={self.dumpInstance} snapshot={self.snapshot} podAnnotations={self.podAnnotations} podLabels={self.podLabels}"
@@ -109,7 +156,8 @@ class BackupProfile:
         return (other is not None \
                 and self.name == other.name \
                 and self.dumpInstance == other.dumpInstance \
-                and self.snapshot == other.snapshot)
+                and self.snapshot == other.snapshot \
+                and self.meb == other.meb)
 
 class BackupSchedule:
     def __init__(self, cluster_spec):
@@ -193,7 +241,9 @@ class MySQLBackupSpec:
         self.addTimestampToBackupDirectory: bool = True
         self.operator_image: str = ""
         self.operator_image_pull_policy: str = ""
-        self.serviceAccountName : Optional[str] = None
+        self.serviceAccountName: Optional[str] = None
+        self.incremental: bool = False
+        self.incrementalBase: str = ""
         self.parse(spec)
 
     def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
@@ -207,6 +257,9 @@ class MySQLBackupSpec:
         self.deleteBackupData = dget_bool(spec, "deleteBackupData", "spec", default_value=False)
         self.timeZone = dget_str(spec, "timeZone", "spec", default_value="") #marking timeZone with default_value None will make it non-optional
         self.addTimestampToBackupDirectory = dget_bool(spec, "addTimestampToBackupDirectory", "spec", default_value=True)
+
+        self.incremental = dget_bool(spec, "incremental", "spec", default_value=False)
+        self.incrementalBase = dget_str(spec, "incrementalBase", "spec", default_value="last_backup")
 
         if self.backupProfileName and self.backupProfile:
             raise ApiSpecError("Only one of spec.backupProfileName or spec.backupProfile must be set")
@@ -229,6 +282,14 @@ class MySQLBackupSpec:
             if not self.backupProfile:
                 err_msg = f"Invalid backupProfileName '{self.backupProfileName}' in cluster {self.namespace}/{self.clusterName}"
                 raise ApiSpecError(err_msg)
+
+        if self.incremental:
+            if not self.backupProfile.meb:
+                raise ApiSpecError("Incremental Backup is only supported with a profile using MySQL Enterprise Backup")
+
+            if self.incrementalBase not in ('last_backup', 'last_full_backup'):
+                raise ApiSpecError("BackupBase must be last_backup or last_full_backup")
+
 
         return None
 

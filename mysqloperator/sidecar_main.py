@@ -58,8 +58,9 @@ from threading import Lock
 
 from .controller import utils, mysqlutils, k8sobject, fqdn, config
 from .controller.api_utils import Edition
+from .controller.backup import meb
 from .controller.innodbcluster import initdb
-from .controller.innodbcluster.cluster_api import CloneInitDBSpec, DumpInitDBSpec, InnoDBCluster, MySQLPod, ClusterSetInitDBSpec
+from .controller.innodbcluster.cluster_api import CloneInitDBSpec, DumpInitDBSpec, MebInitDBSpec, InnoDBCluster, MySQLPod, ClusterSetInitDBSpec
 from .controller.kubeutils import api_core, client as api_client
 from .controller.innodbcluster import router_objects
 from .controller.plugins import install_enterprise_plugins, install_enterprise_encryption, install_keyring_udf
@@ -102,7 +103,7 @@ def create_local_accounts(session: 'ClassicSession', logger: Logger):
     """
     sql = [
         "SET sql_log_bin=0;",
-        "CREATE USER IF NOT EXISTS localroot@localhost IDENTIFIED WITH auth_socket AS 'daemon';",
+        "CREATE USER IF NOT EXISTS localroot@localhost IDENTIFIED WITH auth_socket AS 'mysql';",
         "GRANT ALL ON *.* TO 'localroot'@localhost WITH GRANT OPTION;",
         "GRANT PROXY ON ''@'' TO 'localroot'@localhost WITH GRANT OPTION;",
         "SET sql_log_bin=1;"
@@ -198,6 +199,10 @@ def populate_with_clone(datadir: str, session: 'ClassicSession', cluster: InnoDB
     session.run_sql("SET PASSWORD FOR ?@'%'=?", [admin_user, admin_pass])
 
     wipe_old_innodb_cluster(session, logger)
+    # recreate metrics user if needed
+    create_metrics_account(session, cluster, logger)
+
+    create_admin_account(session, cluster, logger)
 
     return session
 
@@ -210,10 +215,89 @@ def populate_with_dump(datadir: str, session: 'ClassicSession', cluster: InnoDBC
     # create local accounts again since the donor may not have them
     create_local_accounts(session, logger)
 
-    # reset password of the IC admin account
-    admin_user, admin_pass = cluster.get_admin_account()
-    logger.info(f"Resetting password for {admin_user}@%")
-    session.run_sql("SET PASSWORD FOR ?@'%'=?", [admin_user, admin_pass])
+    wipe_old_innodb_cluster(session, logger)
+
+    wipe_old_innodb_cluster(session, logger)
+
+    return session
+
+def meb_do_pitr(datadir:str, session: 'ClassicSession', cluster: InnoDBCluster,
+                init_spec: MebInitDBSpec, pod: MySQLPod, logger: Logger):
+    """Do point-in-time-recovery (PITR)
+
+    For doing PITR we have to do those things:
+
+    In restore_main donme during init:
+
+    1) Extract the backup image so we get access to the binlogs
+    2) move them in as relay logs
+
+    To do here:
+
+    3) set GTIDs to skip, if any
+    4) apply relay logs (binlogs from backup) up to target gtid
+    5) hold further processing till done
+    6) cleanup extracted backup file
+    """
+
+
+    import time
+
+    def is_relay_log_fully_applied(session, logger):
+        res = session.run_sql("SHOW REPLICA STATUS")
+        replica_status = res.fetch_one()
+
+        if not replica_status:
+            raise Exception("This server is not configured as a MySQL replica.")
+
+        status = replica_status[44] # 'Replica_SQL_Running_State'
+
+        print(status)
+
+        return status == "Replica has read all relay log; waiting for more updates"
+
+    logger.info("Applying Binary Logs")
+
+    session.run_sql(f"CHANGE REPLICATION SOURCE TO RELAY_LOG_FILE='{cluster.name}-0-relay-bin-pitr.000001', RELAY_LOG_POS=1, SOURCE_HOST='pitr' FOR CHANNEL 'pitr'")
+
+    if (init_spec.pitr_end_term and init_spec.pitr_end_value):
+        session.run_sql(f"START REPLICA SQL_THREAD {init_spec.pitr_end_term} = ? FOR CHANNEL 'pitr'",
+                        [init_spec.pitr_end_value])
+    else:
+        session.run_sql("START REPLICA SQL_THREAD FOR CHANNEL 'pitr'")
+
+    def growing_sleep():
+        """When only short log is to be applied (especially in testcases likely
+        we don't want to wait long, however if there is a lot to do we don't
+        want to query too quickly (and in consequence spam the log)
+        The growth factor here is absolutely hand-wavy and not based on any
+        science
+        """
+        s = 0
+        while s < 5:
+            s += 0.5
+            yield time.sleep(s)
+
+        while s < 15:
+            s += 1
+            yield time.sleep(s)
+
+        while True:
+            yield time.sleep(15)
+
+    for _ in growing_sleep():
+        if is_relay_log_fully_applied(session, logger):
+            break
+
+    session.run_sql("STOP REPLICA SQL_THREAD FOR CHANNEL 'pitr'").fetch_all()
+    session.run_sql("RESET REPLICA ALL").fetch_all()
+
+
+def populate_with_meb(datadir: str, session: 'ClassicSession',
+                      cluster: InnoDBCluster, init_spec: MebInitDBSpec,
+                      pod: MySQLPod, logger: Logger):
+    if init_spec.pitr_backup_file and len(init_spec.pitr_backup_file):
+        meb_do_pitr(datadir, session, cluster, init_spec, pod, logger)
 
     wipe_old_innodb_cluster(session, logger)
 
@@ -287,6 +371,9 @@ def populate_db(datadir: str, session: 'ClassicSession', cluster: InnoDBCluster,
         elif cluster.parsed_spec.initDB.dump:
             logger.info("Populate with dump")
             return populate_with_dump(datadir, session, cluster, cluster.parsed_spec.initDB.dump, pod, logger)
+        elif cluster.parsed_spec.initDB.meb:
+            logger.info("PITR and cleanup after MEB")
+            return populate_with_meb(datadir, session, cluster, cluster.parsed_spec.initDB.meb, pod, logger)
         elif cluster.parsed_spec.initDB.cluster_set:
             logging.info("Joining InnoDB ClusterSet")
             return populate_by_joining_cluster_set(datadir, session, cluster, cluster.parsed_spec.initDB.cluster_set, pod, logger)
@@ -364,13 +451,8 @@ def create_admin_account(session, cluster, logger: Logger):
     # binlog has to be disabled for this, because we need to create the account
     # independently in all instances (so that we can run configure on them),
     # which would cause diverging GTID sets
-    attributes = {
-        'MySQL Operator Cluster': fqdn.idc_service_fqdn(cluster, logger),
-        'MySQL Operator Version': config.DEFAULT_VERSION_TAG,
-    }
-
-    session.run_sql("CREATE USER IF NOT EXISTS ?@? IDENTIFIED BY ? ATTRIBUTE ?",
-                    [user, host, password, json.dumps(attributes)])
+    session.run_sql("DROP USER IF EXISTS ?@?", [user, host])
+    session.run_sql("CREATE USER ?@? IDENTIFIED BY ?", [user, host, password])
     session.run_sql("GRANT ALL ON *.* TO ?@? WITH GRANT OPTION", [user, host])
     session.run_sql("GRANT PROXY ON ''@'' TO ?@? WITH GRANT OPTION", [user, host])
     logger.info("Admin account created")
@@ -511,14 +593,39 @@ def bootstrap(pod: MySQLPod, datadir: str, logger: Logger) -> int:
         logger.info(f"MySQL server was already initialized configured={gate}")
         return 0
 
+    cluster = pod.get_cluster()
+
+    # In most cases we have a fresh datadir at this point, where only a user
+    # localroot exists. A restore using MySQL Shell would only be done later.
+    # However if a restore was done using MEB the datadir will be populated
+    # with whatever data there was in the backup during init before this runs.
+    # In that case we have to get in using credentials passed by the user.
+    # We also must be careful about changs we do, as a PITR may follow and
+    # changes may break application of binlogs.
+    if pod.index == 0 and cluster.get_create_time() is None and cluster.parsed_spec.initDB and cluster.parsed_spec.initDB.meb:
+        logger.info("Detected MEB restore, giving ourselves access")
+        mebsession = None
+        user, _, password = get_root_account_info(cluster)
+        logger.info("Using account %s", user)
+        try:
+            mebsession = connect(user, password, logger, timeout=None)
+            create_local_accounts(mebsession, logger)
+        finally:
+            if mebsession:
+                mebsession.close()
+
     # Connect using localroot and check if the metadata schema already exists
 
     # note: we may have to wait for mysqld to startup, since the sidecar and
     # mysql containers are started at the same time.
     session = connect("localroot", "", logger, timeout=None)
 
+    # Restore from MEB is done in init and the Backup may contain old metadata
+    # mabe we could only check cluster create time in all cases, but that would
+    # need a lot more testing in restart situations
     mdver = metadata_schema_version(session, logger)
-    if mdver:
+    initdb_spec = cluster.parsed_spec.initDB
+    if mdver and not (initdb_spec and initdb_spec.meb and cluster.get_create_time() is None):
         logger.info(f"InnoDB Cluster metadata (version={mdver}) found, skipping configuration...")
         pod.update_member_readiness_gate("configured", True)
         return 0
@@ -529,7 +636,7 @@ def bootstrap(pod: MySQLPod, datadir: str, logger: Logger) -> int:
         f"Configuring mysql pod {namespace}/{name}, configured={gate} datadir={datadir}")
 
     try:
-        initialize(session, datadir, pod, pod.get_cluster(), logger)
+        initialize(session, datadir, pod, cluster, logger)
 
         pod.update_member_readiness_gate("configured", True)
 

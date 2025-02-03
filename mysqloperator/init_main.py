@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -6,20 +6,38 @@
 import subprocess
 import sys
 import os
+import json
 import logging
 import shutil
 import argparse
 from typing import cast
 import mysqlsh
-from .controller import fqdn, utils, k8sobject
-from .controller.innodbcluster.cluster_api import MySQLPod
+from .controller import fqdn, utils, k8sobject, config
+from .controller.api_utils import Edition
+from .controller.innodbcluster.cluster_api import MySQLPod, InnoDBCluster
 from .controller.kubeutils import k8s_cluster_domain
+from .controller.kubeutils import client as api_client, api_core, ApiException
 
 k8sobject.g_component = "initconf"
 k8sobject.g_host = os.getenv("HOSTNAME")
 
 
 mysql = mysqlsh.mysql
+
+def get_secret(secret_name: str, namespace: str, logger: logging.Logger) -> dict:
+    if not secret_name:
+        raise Exception(f"No secret provided")
+
+    ret = {}
+    try:
+        secret = cast(api_client.V1Secret, api_core.read_namespaced_secret(secret_name, namespace))
+        for k, v in secret.data.items():
+            ret[k] = utils.b64decode(v)
+    except Exception:
+        raise Exception(f"Secret {secret_name} in namespace {namespace} cannot be found")
+
+    return ret
+
 
 
 def init_conf(datadir: str, pod: MySQLPod, cluster, logger: logging.Logger):
@@ -75,6 +93,67 @@ def init_conf(datadir: str, pod: MySQLPod, cluster, logger: logging.Logger):
 
     logger.info("Configuration done")
 
+def init_meb_restore(pod: MySQLPod, cluster: InnoDBCluster, logger: logging.Logger):
+    """Check whether the restore container should restore or not
+
+    The restore container is based on MySQL Server, not Operator, thus has no
+    access to Kubernetes API etc. in here we make the decision whether this
+    is the first pod of a fresh InnoDB Cluster (i.e. not a recreated -0 for
+    an otherwise running cluster) and leave a marker.
+
+    We also use tha API to fetch Secrets with credentials for restoring the
+    backup, so that Secret may be deleted afterward"""
+
+    # Remove Marker as safe fallback
+    try:
+        os.remove('/tmp/meb_restore.json')
+    except FileNotFoundError:
+        # no problem if the file doesn't exist, this would still raise when
+        # failing to remove for permission issues etc which shouldn't happen
+        pass
+
+    # Check precoditions
+
+    if not cluster.parsed_spec.initDB or not cluster.parsed_spec.initDB.meb:
+        logger.error("No MySQL Enterprise Restore configured.")
+        return
+
+    if cluster.parsed_spec.edition != config.Edition.enterprise:
+        print("MySQL Enterprise Restore request, but this is not Enterprise Edition")
+        sys.exit(1)
+
+    if pod.index:
+        logger.info(f"Nothing to do for restore - restore happens only on Pod 0. this is {pod.name}")
+        return
+
+    if cluster.get_create_time() is not None:
+        logger.info("Nothing to do for restore - this is a restart")
+        return
+
+    if pod.instance_type != "group-member":
+        logger.info(f"Nothing to do for restore - this is not a group member but {pod.instance_type}")
+        return
+
+    # All preconditions are met. We should request a restore.
+
+    logger.info("We got to request a MEB restore")
+
+    mebspec = cluster.parsed_spec.initDB.meb
+
+    if mebspec.oci_credentials:
+        credentials = get_secret(mebspec.oci_credentials, cluster.namespace, logger)
+    elif mebspec.s3_credentials:
+        credentials = get_secret(mebspec.s3_credentials, cluster.namespace, logger)
+
+
+    meb_init_spec = {
+        "spec": cluster.spec["initDB"]["meb"],
+        "credentials": credentials
+    }
+
+    with open('/tmp/meb_restore.json', 'w') as f:
+        json.dump(meb_init_spec, f)
+
 
 def main(argv):
     # const - when there is an argument without value
@@ -117,6 +196,7 @@ def main(argv):
         cluster = pod.get_cluster()
 
         init_conf(datadir, pod, cluster, logger)
+        init_meb_restore(pod, cluster, logger)
     except Exception as e:
         import traceback
         traceback.print_exc()

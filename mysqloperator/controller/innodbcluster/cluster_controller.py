@@ -243,6 +243,8 @@ class ClusterController:
                     initial_data_source = f"dump={self.cluster.parsed_spec.initDB.dump.storage.persistentVolumeClaim}"
                 else:
                     assert 0, "Unknown Dump storage mechanism"
+            elif self.cluster.parsed_spec.initDB.meb:
+                initial_data_source = "meb"
             elif self.cluster.parsed_spec.initDB.cluster_set:
                 initial_data_source = f"clusterSet={self.cluster.parsed_spec.initDB.cluster_set.uri}"
             else:
@@ -516,6 +518,12 @@ class ClusterController:
         # With Shell Bug #33900165 fixed we should use "auto" by default
         # and remove the retry logic below
         recovery_method = "incremental"
+
+        if self.cluster.parsed_spec.initDB and self.cluster.parsed_spec.initDB.meb:
+            # With a restore from a MEB backup server might not find the right
+            # binlogs for incremental restore and provision an empty replica
+            # clone does the right thing
+            recovery_method = "clone"
 
         add_options = {
             "recoveryMethod": recovery_method,

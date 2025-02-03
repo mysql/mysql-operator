@@ -337,10 +337,12 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             print("14. Backup Secrets")
             if not ignore_404(cluster.get_backup_account):
                 print("\tPreparing...")
-                secret = backup_objects.prepare_backup_secrets(icspec)
+                secrets = backup_objects.prepare_backup_secrets(icspec)
                 print("\tCreating...")
-                kopf.adopt(secret)
-                api_core.create_namespaced_secret(namespace=namespace, body=secret)
+                for secret in secrets:
+                    print("\t\t", secret["metadata"]["name"])
+                    kopf.adopt(secret)
+                    api_core.create_namespaced_secret(namespace=namespace, body=secret)
 
             print("15. Service Monitors")
             monitors = cluster_objects.prepare_metrics_service_monitors(cluster.parsed_spec, logger)

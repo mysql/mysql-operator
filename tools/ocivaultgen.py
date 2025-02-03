@@ -123,7 +123,9 @@ print(f"Key picked: {key.display_name}")
 
 def ask_format():
     while True:
-        result = menu([["my.cnf", "mycnf"], ["Operator YAML", "yaml"], ["End", "end"]])
+        result = menu([["my.cnf (MySQL Plugin)", "mycnf"],
+                       ["component_keyring_oci.cnf (MySQL Component)", "component"],
+                       ["Operator YAML", "yaml"], ["End", "end"]])
         if result == "end":
             return
         yield result
@@ -175,3 +177,29 @@ keyring:
     -n YOUR_K8S_NAMESPACE oci-vault-key \\
     --from-file=privatekey={config['key_file']}
         """)
+
+    if format == "component":
+        import json
+
+        print("\n\033[0;32mYour MySQL Server Component Config \033[0;33mmysqld.my\033[0;32m:\033[0m")
+
+        mysqldmy = {"components": "file://component_keyring_oci"}
+        print(json.dumps(mysqldmy, indent=2))
+
+        print("\n\033[0;32mYour MySQL Server Component Config \033[0;33mcomponent_keyring_oci.cnf\033[0;32m:\033[0m")
+
+        component = {
+            "user": config['user'],
+            "key_file": config['key_file'],
+            "key_fingerprint": config['fingerprint'],
+            "tenancy":  config['tenancy'],
+            "compartment":  compartment.id,
+            "virtual_vault": vault.id,
+            "master_key": key.id,
+            "encryption_endpoint": no_https(vault.crypto_endpoint),
+            "management_endpoint": no_https(vault.management_endpoint),
+            "vaults_endpoint":  f"vaults.{config['region']}.oci.oraclecloud.com",
+            "secrets_endpoint": f"secrets.vaults.{config['region']}.oci.oraclecloud.com",
+        }
+
+        print(json.dumps(component, indent=2))

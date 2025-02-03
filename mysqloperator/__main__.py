@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -11,6 +11,8 @@ entrypoints = {
     "sidecar": ".sidecar_main",
     "init": ".init_main",
     "backup": ".backup_main",
+    "restore": ".restore_main",
+    "meb": ".meb_main",
     "csfo": ".clusterset_failover_main",
     "sleep": None
 }

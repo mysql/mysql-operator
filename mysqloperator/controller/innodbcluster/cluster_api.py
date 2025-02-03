@@ -9,6 +9,7 @@ from pathlib import PurePosixPath
 import typing, abc
 from typing import Optional, Union, List, Tuple, Dict, Callable, Any, cast, overload
 
+import kopf
 from kopf._cogs.structs.bodies import Body
 from logging import getLogger, Logger
 
@@ -368,6 +369,65 @@ class DumpInitDBSpec:
 
         self.loadOptions = dget_dict(spec, "options", prefix, default_value={})
 
+class MebInitDBSpec:
+    s3_region: Optional[str] = None
+    s3_bucket: Optional[str] = None
+    s3_object_key_prefix: Optional[str] = None
+    s3_credentials: Optional[str] = None
+    s3_host: Optional[str] = None
+
+    oci_credentials: Optional[str] = None
+
+    full_backup: Optional[str] = None
+    incremental_backups: Optional[List[str]] = []
+
+    pitr_backup_file: Optional[str] = None
+    pitr_binlog_name: Optional[str] = None
+    pitr_gtid_purge: Optional[str] = None
+    pitr_end_term: Optional[str] = None
+    pitr_end_value: Optional[str] = None
+
+    def parse(self, spec: dict, prefix: str) -> None:
+        # TODO other storage types ....
+        storagespec = dget_dict(spec, "storage", prefix)
+
+        if "ociObjectStorage" in storagespec:
+            ocistorage = dget_dict(storagespec, "ociObjectStorage", prefix+".storage")
+            self.oci_credentials = dget_str(ocistorage, "credentials", prefix+".storage.credentials")
+
+        if "s3" in storagespec:
+            s3storage = dget_dict(storagespec, "s3", prefix+".storage")
+            self.s3_region = dget_str(s3storage, "region", prefix+".storage.s3.region")
+            self.s3_bucket= dget_str(s3storage, "region", prefix+".storage.s3.bucket")
+            self.s3_object_key_prefix = dget_str(s3storage, "region", prefix+".storage.s3.object_key_prefix")
+            self.s3_credentials = dget_str(s3storage, "region", prefix+".storage.s3.credentials")
+            self.s3_host = dget_str(s3storage, "region", prefix+".storage.s3.host", default_value="")
+
+        if (not self.oci_credentials and not self.s3_bucket) or (self.oci_credentials and self.s3_bucket):
+            raise kopf.TemporaryError("Need one of either s3 or ociObjectStorage for MEB Restore")
+
+        self.full_backup = dget_str(spec, "fullBackup", prefix)
+        self.incremental_backups = dget_list(spec, "incrementalBackups", prefix, default_value = [])
+
+        if "pitr" in spec:
+            pitr_spec = dget_dict(spec, "pitr", prefix)
+            self.pitr_backup_file = dget_str(pitr_spec, "backupFile", prefix+".pitr", default_value="")
+            self.pitr_binlog_name = dget_str(pitr_spec, "binlogName", prefix+".pitr", default_value="") # cluster.name)
+            self.pitr_gtid_purge = dget_str(pitr_spec, "gtidPurge", prefix+".pitr", default_value="")
+
+            if "end" in pitr_spec:
+                pitr_end_spec = dget_dict(pitr_spec, "end")
+
+                if "afterGtid" in pitr_end_spec:
+                    self.pitr_end_term = "SQL_AFTER_GTIDS"
+                    self.pitr_end_value = dget_str(pitr_end_spec, "afterGtid",
+                                                   prefix+".pitr.end.afterGtid")
+                elif "beforeGtid" in pitr_end_spec:
+                    self.pitr_end_term = "SQL_BEFORE_GTIDS"
+                    self.pitr_end_value = dget_str(pitr_end_spec, "beforeGtid",
+                                                   prefix+".pitr.end.beforeGtid")
+
+
 
 class SQLInitDB:
     storage = None  # TODO type
@@ -383,15 +443,15 @@ class InitDB:
         dump = dget_dict(spec, "dump", "spec.initDB", {})
         clone = dget_dict(spec, "clone", "spec.initDB", {})
         snapshot = dget_dict(spec, "snapshot", "spec.initDB", {})
+        meb = dget_dict(spec, "meb", "spec.initDB", {})
         cluster_set = dget_dict(spec, "clusterSet", "spec.initDB", {})
 
-
-        if len([x for x in [dump, clone, snapshot, cluster_set] if x]) > 1:
+        if len([x for x in [dump, clone, snapshot, meb, cluster_set] if x]) > 1:
             raise ApiSpecError(
-                "Only one of dump, snapshot, clsuterSet, or clone may be specified in spec.initDB")
-        if not dump and not clone and not snapshot and not cluster_set:
+                "Only one of dump, snapshot, meb, clone, or clsuterSet may be specified in spec.initDB")
+        if not dump and not clone and not snapshot and not meb and not cluster_set:
             raise ApiSpecError(
-                "One of dump, snapshot, clusterSet, or clone may be specified in spec.initDB")
+                "One of dump, snapshot, meb, clone, or clusterSet may be specified in spec.initDB")
 
         if clone:
             self.clone = CloneInitDBSpec()
@@ -402,6 +462,9 @@ class InitDB:
         elif snapshot:
             self.snapshot = SnapshotInitDBSpec()
             self.snapshot.parse(snapshot, "spec.initDB.snapshot")
+        elif meb:
+            self.meb = MebInitDBSpec()
+            self.meb.parse(meb, "spec.initDB.meb")
         elif cluster_set:
             self.cluster_set = ClusterSetInitDBSpec()
             self.cluster_set.parse(cluster_set, "spec.initDB.clusterSet")

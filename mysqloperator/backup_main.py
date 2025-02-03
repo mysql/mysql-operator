@@ -1,22 +1,26 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
-
+import json
 import sys
 import os
 import multiprocessing
+import requests
 import argparse
+from urllib.parse import quote as urlquote
+
 import mysqlsh
 from .controller import consts, utils, config, shellutils
 from .controller import storage_api
-from .controller.backup.backup_api import MySQLBackup, DumpInstance, Snapshot
+from .controller.backup.backup_api import MySQLBackup, DumpInstance, Snapshot, MEB
 from .controller.backup import backup_objects
+from .controller.kubeutils import client as api_client, api_core, ApiException
 
 from .controller.innodbcluster.cluster_api import InnoDBCluster
 import logging
-from typing import Optional
+from typing import Optional, cast
 
 BACKUP_OCI_USER_NAME = "OCI_USER_NAME"
 BACKUP_OCI_FINGERPRINT = "OCI_FINGERPRINT"
@@ -27,6 +31,20 @@ OCI_CONFIG_NAME = "OCI_CONFIG_NAME"
 OCI_API_KEY_NAME = "OCI_API_KEY_NAME"
 OCI_CONFIG_FILE_NAME = "config"
 
+
+def get_secret(secret_name: str, namespace: str, logger: logging.Logger) -> dict:
+    if not secret_name:
+        raise Exception(f"No secret provided")
+
+    ret = {}
+    try:
+        secret = cast(api_client.V1Secret, api_core.read_namespaced_secret(secret_name, namespace))
+        for k, v in secret.data.items():
+            ret[k] = utils.b64decode(v)
+    except Exception:
+        raise Exception(f"Secret {secret_name} in namespace {namespace} cannot be found")
+
+    return ret
 
 def get_dir_size(d):
     size = 0
@@ -139,6 +157,53 @@ def execute_dump_instance(backup_source: dict, profile: DumpInstance, backupdir:
 def execute_clone_snapshot(backup_source: dict, profile: Snapshot, backupdir: Optional[str], backup_name: str, logger: logging.Logger) -> dict:
     ...
 
+def execute_meb(backup: MySQLBackup, backup_source: dict, backup_name: str, logger: logging.Logger) -> dict:
+    cert = ("/tls/client.pem", "/tls/client.key")
+    ca = "/tls/ca.pem"
+
+    backup_obj = MySQLBackup.read(backup.name, backup.namespace)
+
+    profile = backup_obj.get_profile().meb
+
+    request = {
+        "spec": profile,
+        "source": backup_source
+    }
+
+    if "s3" in profile.storage:
+        request["secret"] = get_secret(profile.storage["s3"]["credentials"],
+                                       backup.namespace, logger)
+    elif "oci" in profile.storage:
+        request["secret"] = get_secret(profile.storage["oci"]["credentials"],
+                                       backup.namespace, logger)
+    else:
+        raise Exception("Need either meb or s3 storage specification")
+
+    request["incremental"] = backup.parsed_spec.incremental
+    request["incremental_base"] = backup.parsed_spec.incrementalBase
+
+    request_s = json.dumps(request, default=lambda o: o.__dict__, indent=4)
+
+    name = urlquote(backup_name, safe="")
+    url = f"https://{backup_source['host']}:4443/backup/{name}"
+    logger.info(f"Triggering {url}")
+
+    response = requests.post(url, data=request_s,
+                             cert=cert, verify=False) #, verify=ca)
+
+    print(response.content.decode())
+
+    if response.status_code != 200:
+        raise Exception(f"Failed to take backup. Backup daemon returned {response.status_code}: {response.content}")
+
+    info = {
+        "method": "meb",
+        "source": f"{backup_source['user']}@{backup_source['host']}:{backup_source['port']}",
+        #"spaceAvailable": f"{gb_avail:.4}G",
+        #"size": f"{backup_size:.4}G"
+    }
+    return info
+
 
 def pick_source_instance(cluster: InnoDBCluster, logger: logging.Logger) -> dict:
     mysql = mysqlsh.mysql
@@ -152,6 +217,7 @@ def pick_source_instance(cluster: InnoDBCluster, logger: logging.Logger) -> dict
             continue
         try:
             with shellutils.DbaWrap(shellutils.connect_dba(pod.endpoint_co, logger, max_tries=3)) as dba:
+                # TODO - fix scheduling for meb incremental backup
                 try:
                     tmp = dba.get_cluster().status({"extended": 1})["defaultReplicaSet"]
                     cluster_status = tmp["status"]
@@ -201,9 +267,13 @@ def do_backup(backup : MySQLBackup, job_name: str, start, backupdir: Optional[st
 
     profile = backup.get_profile()
 
+    # select bh.backup_type, MEMBER_HOST from performance_schema.replication_group_members gm join mysql.backup_history bh on gm.MEMBER_ID = bh.server_uuid;
+    #
     backup_source = pick_source_instance(cluster, logger)
 
-    if profile.dumpInstance:
+    if profile.meb:
+        return execute_meb(backup, backup_source, job_name, logger)
+    elif profile.dumpInstance:
         return execute_dump_instance(backup_source, profile.dumpInstance, backupdir, job_name, logger)
     elif profile.snapshot:
         return execute_clone_snapshot(backup_source, profile.snapshot, backupdir, job_name, logger)
@@ -284,6 +354,7 @@ def command_do_create_backup(namespace, name, job_name: str, backup_dir: str, lo
     if logger:
         logger.info(f"Loading up MySQLBackup object {namespace}/{name}")
 
+    backup = None
     try:
         backup = MySQLBackup.read(name=name, namespace=namespace)
         backup.set_started(job_name, start)
@@ -295,7 +366,8 @@ def command_do_create_backup(namespace, name, job_name: str, backup_dir: str, lo
         import traceback
         traceback.print_exc()
         logger.error(f"Backup failed with an exception: {e}")
-        backup.set_failed(job_name, start, utils.isotime(), e)
+        if backup:
+            backup.set_failed(job_name, start, utils.isotime(), e)
 
         if debug:
             import time

@@ -734,6 +734,27 @@ class OperatorTest(unittest.TestCase):
         _, secondaries = self.get_instances_by_role(instance, user, password)
         return secondaries
 
+    def assertSetEqualRegex(self, set1:set[str], set2:set[str], set1_name:str, set2_name: str):
+        unmatched_set1 = set()
+        unmatched_set2 = set2.copy()
+
+        for set1_element in set1:
+            matched = False
+            for set2_element in set2:
+                if re.fullmatch(set1_element, set2_element):
+                    matched = True
+                    unmatched_set2.discard(set2_element)
+                    break
+            if not matched:
+                unmatched_set1.add(set1_element)
+        msg = ""
+        if unmatched_set1:
+            msg += f"\nElements in {set1_name} not found in {set2_name}: {unmatched_set1}"
+        if unmatched_set2:
+            msg += f"\nElements in {set2_name} not found in {set1_name}: {unmatched_set2}"
+        if msg:
+            self.assertTrue(False, f"============================================\n\n{set1_name}:{set1}\n============================================\n{set2_name}:{set2}\n============================================\n{msg}")
+
 
 def get_rollover_update_waiter(test_obj: OperatorTest, pattern_prefix: str, pattern_suffix: str, is_server: bool, timeout: int, delay: int):
     pattern = pattern_prefix + pattern_suffix

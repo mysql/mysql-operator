@@ -318,7 +318,6 @@ class ClusterController:
                             raise kopf.TemporaryError(
                                 "GR already running while creating cluster but could not stop it", delay=3)
                     raise
-
             # Only on first cluster! Not if this is supposed to join some other
             if not self.cluster.parsed_spec.initDB or not self.cluster.parsed_spec.initDB.cluster_set:
                 try:
@@ -333,7 +332,8 @@ class ClusterController:
             for routing_option in routing_options:
                 try:
                     routing_value = routing_options[routing_option]
-                    self.dba_cluster.set_routing_option(routing_option, routing_value)
+                    logger.info(f"Setting Router Option [{routing_option}] to [{routing_value}]")
+                    self.dba_cluster_set.set_routing_option(routing_option, routing_value)
                 except mysqlsh.Error as e:
                     # We don't fail when setting an option fails
                     logger.warning(f"Failed setting routing option {routing_option} to {routing_value}: {e}")
@@ -943,11 +943,19 @@ class ClusterController:
     def on_router_routing_option_chahnge(self, old: dict, new: dict, logger: Logger) -> None:
         self.connect_to_primary(None, logger)
 
+        dba = self.dba_cluster
+        try:
+            dba = self.dba_cluster.get_cluster_set()
+            logger.info("ClusterSet enabled cluster")
+        except:
+            logger.info("Old cluster without clusterset")
+            pass
+
         # Unset removed entries
         for key in old:
             if key not in new:
                 try:
-                    self.dba_cluster.set_routing_option(key, None)
+                    dba.set_routing_option(key, None)
                 except mysqlsh.Error as e:
                     # We don't fail when setting an option fails
                     logger.warning(f"Failed unsetting routing option {key}: {e}")
@@ -955,7 +963,7 @@ class ClusterController:
         # Set new values, this resets existing values
         for key in new:
             try:
-                self.dba_cluster.set_routing_option(key, new[key])
+                dba.set_routing_option(key, new[key])
             except mysqlsh.Error as e:
                 # We don't fail when setting an option fails
                 logger.warning(f"Failed setting routing option {key} to {new[key]}: {e}")

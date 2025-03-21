@@ -33,12 +33,6 @@ def prepare_cluster_service(spec: AbstractServerSetSpec, logger: Logger) -> dict
     else:
         raise NotImplementedError(f"Unknown subtype {type(spec)} for creating StatefulSet")
 
-#  annotations:
-#    service.cilium.io/global: "true"
-#    service.cilium.io/affinity: "remote"
-#    service.cilium.io/global-sync-endpoint-slices: "true"
-#    service.cilium.io/shared: "true"
-
     tmpl = f"""
 apiVersion: v1
 kind: Service
@@ -640,7 +634,7 @@ def prepare_service_account_patch_for_image_pull_secrets(spec: AbstractServerSet
     }
 
 
-def prepare_service_account_swichover(spec: AbstractServerSetSpec) -> dict:
+def prepare_service_account_switchover(spec: AbstractServerSetSpec) -> dict:
     account = f"""
 apiVersion: v1
 kind: ServiceAccount

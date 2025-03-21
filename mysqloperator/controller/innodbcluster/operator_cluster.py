@@ -266,7 +266,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             print("6. Switchover ServiceAccount")
             if not ignore_404(lambda: cluster.get_service_account_switchover(icspec)):
                 print("\tPreparing...")
-                sa = cluster_objects.prepare_service_account_swichover(icspec)
+                sa = cluster_objects.prepare_service_account_switchover(icspec)
                 print(f"\tCreating...{sa}")
                 kopf.adopt(sa)
                 api_core.create_namespaced_service_account(namespace=namespace, body=sa)

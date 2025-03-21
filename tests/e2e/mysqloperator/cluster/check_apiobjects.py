@@ -184,7 +184,7 @@ def check_kubectl_get_ic(test, ns, name, allow_others):
     if not allow_others:
         test.assertEqual(len(iclist), 1)
     test.assertEqual(list(iclist[0].keys()), [
-                     "NAME", "STATUS", "ONLINE", "INSTANCES", "ROUTERS", "AGE"], "expected columns")
+                     "NAME", "STATUS", "ONLINE", "INSTANCES", "ROUTERS", "TYPE", "AGE"], "expected columns")
     ic = {}
     for tmp in iclist:
         if tmp["NAME"] == name:

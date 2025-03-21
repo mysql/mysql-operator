@@ -12,6 +12,7 @@ from utils import mutil
 from setup import defaults
 import logging
 import json
+import re
 from . import check_apiobjects
 from . import check_group
 from . import check_adminapi
@@ -977,9 +978,16 @@ spec:
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
             accts = set([row[0] for row in s.query_sql(
                 "SELECT concat(user,'@',host) FROM mysql.user").fetch_all()])
-            self.assertSetEqual(accts, set(["root@%",
-                                            "localroot@localhost", "mysqladmin@%", "mysqlbackup@%", "mysqlrouter@%",
-                                            "mysqlhealthchecker@localhost", "mysql_innodb_cluster_1000@%"] + DEFAULT_MYSQL_ACCOUNTS))
+
+            expected_accounts = set(["root@%",
+                                     "localroot@localhost",
+                                     "mysqladmin-[\w\d]{10}@%",
+                                     "mysqlbackup@%",
+                                     "mysqlrouter-[\w\d]{10}@%",
+                                     "mysql_innodb_cs_[\w\d]+@%", # comes from mysqlsh
+                                     "mysqlhealthchecker@localhost",
+                                     "mysql_innodb_cluster_1000@%"] + DEFAULT_MYSQL_ACCOUNTS)
+            self.assertSetEqualRegex(expected_accounts, accts, "expected accounts", "existing accounts")
 
     def test_05_bad_changes(self):
         return  # TODO
@@ -1389,26 +1397,34 @@ spec:
         self.assertIn(":"+g_ts_cfg.version_tag, image, "router")
         self.assertIn(g_ts_cfg.router_image_name + ":", image, "router")
 
+
     def test_1_check_accounts(self):
         expected_accounts = set(["root@%",
-                                 "localroot@localhost", "mysqladmin@%", "mysqlbackup@%", "mysqlrouter@%",
-                                 "mysqlhealthchecker@localhost", "mysql_innodb_cluster_1000@%",
-                                 "mysql_innodb_cluster_1001@%", "mysql_innodb_cluster_1002@%"] + DEFAULT_MYSQL_ACCOUNTS)
+                                 "localroot@localhost",
+                                 "mysqladmin-[\w\d]{10}@%",
+                                 "mysqlbackup@%",
+                                 "mysqlrouter-[\w\d]{10}@%",
+                                 "mysql_innodb_cs_[\w\d]+@%", # comes from mysqlsh
+                                 "mysqlhealthchecker@localhost",
+                                 "mysql_innodb_cluster_1000@%",
+                                 "mysql_innodb_cluster_1001@%",
+                                 "mysql_innodb_cluster_1002@%"] + DEFAULT_MYSQL_ACCOUNTS)
 
         with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
             accts = set([row[0] for row in s.query_sql(
                 "SELECT concat(user,'@',host) FROM mysql.user").fetch_all()])
-            self.assertSetEqual(accts, expected_accounts)
+            self.assertSetEqualRegex(expected_accounts, accts, "expected accounts", "existing accounts")
 
         with mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s:
             accts = set([row[0] for row in s.query_sql(
                 "SELECT concat(user,'@',host) FROM mysql.user").fetch_all()])
-            self.assertSetEqual(accts, expected_accounts)
+            self.assertSetEqualRegex(expected_accounts, accts, "expected accounts", "existing accounts")
 
         with mutil.MySQLPodSession(self.ns, "mycluster-2", "root", "sakila") as s:
             accts = set([row[0] for row in s.query_sql(
                 "SELECT concat(user,'@',host) FROM mysql.user").fetch_all()])
-            self.assertSetEqual(accts, expected_accounts)
+            self.assertSetEqualRegex(expected_accounts, accts, "expected accounts", "existing accounts")
+
 
     def test_1_check_binlog_name(self):
         expected_name = "/var/lib/mysql/mycluster"

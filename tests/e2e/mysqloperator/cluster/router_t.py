@@ -23,7 +23,7 @@ def check_sidecar_health(test, ns, pod):
 def get_routing_options(ns, pod) -> dict:
     result = kutil.execp(ns, [pod, "sidecar"],
                          ["mysqlsh", "root:sakila@localhost", "--js", "-e",
-                          "print(dba.getCluster().routerOptions())",
+                          "print(dba.getClusterSet().routerOptions())",
                           "--quiet-start=2"])
     try:
         return json.loads(result)

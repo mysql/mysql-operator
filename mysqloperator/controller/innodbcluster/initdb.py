@@ -1,14 +1,15 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
 from typing import TYPE_CHECKING, cast
-from .cluster_api import DumpInitDBSpec, MySQLPod, InitDB, CloneInitDBSpec, InnoDBCluster
-from ..shellutils import SessionWrap
+from .cluster_api import DumpInitDBSpec, MySQLPod, InitDB, CloneInitDBSpec, InnoDBCluster, ClusterSetInitDBSpec
+from ..shellutils import SessionWrap, DbaWrap, connect_dba
 from .. import mysqlutils, utils
 from ..kubeutils import api_core, api_apps, api_customobj
 from ..kubeutils import client as api_client, ApiException
+from .. import fqdn
 from abc import ABC, abstractmethod
 import mysqlsh
 import time
@@ -33,8 +34,7 @@ def start_clone_seed_pod(session: 'ClassicSession',
     donor_root_co["user"] = clone_spec.root_user or "root"
     donor_root_co["password"] = clone_spec.get_password(cluster.namespace)
 
-    print(
-        f"CONNECTING WITH {donor_root_co} {isinstance(donor_root_co, dict)} {type(donor_root_co)}")
+    logger.info(f"CONNECTING {donor_root_co['user']}@{donor_root_co['host']}...")
 
     # Let's check if the donor has the CLONE plugin and if not install it
     # It's not possible to clone without this plugin being installed
@@ -297,3 +297,60 @@ def load_dump(session: 'ClassicSession', cluster: InnoDBCluster, pod: MySQLPod, 
         raise
     finally:
         del restore
+
+
+def join_innodb_cluster_set(session: 'ClassicSession', cluster: InnoDBCluster,
+                            init_spec: ClusterSetInitDBSpec, pod: MySQLPod,
+                            logger: Logger, create_admin_account):
+
+    primary_root_co = dict(mysqlsh.globals.shell.parse_uri(init_spec.uri))
+    # Here we get only the password from the cluster secret. The secret
+    # might contain also rootUser and rootHost (mask from where the user connects)
+    # shouldn't we respect rootUser and not ask for rootUser in clone_spec?
+    # Or...this is different kind of secret?
+    primary_root_co["user"] = init_spec.root_user or "root"
+
+    # don't print password by assigning later - but mind: user might provide password in URI ... is it their fault then?
+    print(
+        f"CONNECTING WITH {primary_root_co} {isinstance(primary_root_co, dict)} {type(primary_root_co)}")
+
+    primary_root_co["password"] = init_spec.get_password(cluster.namespace)
+
+    #import random
+    #import string
+    #characters = string.ascii_letters + string.digits
+    #suffix = ''.join(random.choice(characters) for _ in range(10))
+
+    with SessionWrap(primary_root_co) as primary_session:
+        # TODO the create_admin_Account function is passed as callback, quite a hack, need to decide where that has to live, probably the caller ins sidecar_main should establish the right session and preapre the user and then call this function ... or move it all to sidecar_main?
+        #  also other accounts are created per pod while binlog is disabled,we however have to make sure mysqladmin accoutns are replicated through tehe complete clusterset, so that current primary can be reached from anywhere, by the time of writing replicacluster can reach all (as here we write to primary), but primary can't reach replicaclsuters (as primary's account isn't replicated over)
+        create_admin_account(primary_session, cluster, logger)
+
+    with DbaWrap(connect_dba(primary_root_co, logger)) as dba:
+        cluster_set = dba.get_cluster().get_cluster_set()
+        add_instance_options = {
+            "recoveryProgress": True,
+            "recoveryMethod": "clone",
+            "timeout": 120
+        }
+        if not cluster.parsed_spec.tlsUseSelfSigned:
+            logger.info("Using TLS GR authentication")
+            rdns = cluster.get_tls_issuer_and_subject_rdns()
+            add_instance_options["certSubject"] = rdns["subject"]
+        else:
+            logger.info("Using PASSWORD GR authentication")
+        try:
+            pod_fqdn = fqdn.pod_fqdn(pod, logger)
+            logger.info(f"Creating replica cluster {cluster.name} attached to {pod_fqdn} with options {add_instance_options}")
+            cluster_set.create_replica_cluster(
+                pod_fqdn,
+                #TODO: don't hard code!
+                cluster.name,  # + '-' + suffix,
+                add_instance_options)
+        except:
+            logger.error("Exception when creating replica cluster")
+            raise
+        logger.info("Replica cluster created")
+
+
+    return session

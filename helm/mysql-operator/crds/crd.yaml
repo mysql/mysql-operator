@@ -193,6 +193,24 @@ spec:
                 initDB:
                   type: object
                   properties:
+                    clusterSet:
+                      type: object
+                      required: ["targetUrl", "secretKeyRef"]
+                      properties:
+                        targetUrl:
+                          type: string
+                          description: "URL of a cluster, which is a ClusterSet to join to"
+                        rootUser:
+                          type: string
+                          default: "root"
+                          description: "User name used for setup"
+                        secretKeyRef:
+                          type: object
+                          required: ["name"]
+                          properties:
+                            name:
+                              type: string
+                              description: "Secret name with key 'rootPassword' storing the password for the user specified in rootUser"
                     clone:
                       type: object
                       required: ["donorUrl", "secretKeyRef"]
@@ -906,6 +924,10 @@ spec:
           type: integer
           description: Number of Router instances configured for the InnoDB Cluster
           jsonPath: .spec.router.instances
+        - name: Type
+          type: string
+          description: Type of the cluster in a ClusterSet (PRIMARY, REPLICA, UNKNOWN)
+          jsonPath: .status.cluster.type
         - name: Age
           type: date
           jsonPath: .metadata.creationTimestamp
@@ -1071,6 +1093,72 @@ spec:
           type: string
           description: Name of the produced file/directory
           jsonPath: .status.output
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: mysqlclustersetfailovers.mysql.oracle.com
+spec:
+  group: mysql.oracle.com
+  scope: Namespaced
+  names:
+    kind: MySQLClusterSetFailover
+    listKind: MySQLClusterSetFailoverList
+    singular: mysqlclustersetfailover
+    plural: mysqlclustersetfailovers
+    shortNames:
+      - mfo
+  versions:
+    - name: v2
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required: ["clusterName"]
+              properties:
+                clusterName:
+                  type: string
+                force:
+                  type: boolean
+                  default: false
+                options:
+                  type: object
+                  properties:
+                    invalidateReplicaClusters:
+                      type: array
+                      items:
+                        type: string
+                    timeout:
+                      type: integer
+            status:
+              type: object
+              properties:
+                status:
+                  type: string
+                startTime:
+                  type: string
+                completionTime:
+                  type: string
+                elapsedTime:
+                  type: string
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Cluster
+          type: string
+          description: Name of the target cluster
+          jsonPath: .spec.clusterName
+        - name: Status
+          type: string
+          description: Status of the Failover
+          jsonPath: .status.status
         - name: Age
           type: date
           jsonPath: .metadata.creationTimestamp

@@ -3,6 +3,8 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
+import random
+import string
 from logging import Logger, getLogger
 import kopf
 from typing import List, Dict, Optional
@@ -20,7 +22,6 @@ import os
 
 # This service includes all instances, even those that are not ready
 
-
 def prepare_cluster_service(spec: AbstractServerSetSpec, logger: Logger) -> dict:
     extra_label = ""
     if type(spec) is InnoDBClusterSpec:
@@ -32,11 +33,17 @@ def prepare_cluster_service(spec: AbstractServerSetSpec, logger: Logger) -> dict
     else:
         raise NotImplementedError(f"Unknown subtype {type(spec)} for creating StatefulSet")
 
+#  annotations:
+#    service.cilium.io/global: "true"
+#    service.cilium.io/affinity: "remote"
+#    service.cilium.io/global-sync-endpoint-slices: "true"
+#    service.cilium.io/shared: "true"
+
     tmpl = f"""
 apiVersion: v1
 kind: Service
 metadata:
-  name: {spec.name}-instances
+  name: {spec.headless_service_name}
   namespace: {spec.namespace}
   labels:
     tier: mysql
@@ -90,7 +97,12 @@ def prepare_secrets(spec: InnoDBClusterSpec) -> dict:
     def encode(s):
         return base64.b64encode(bytes(s, "ascii")).decode("ascii")
 
-    admin_user = encode(config.CLUSTER_ADMIN_USER_NAME)
+    # TODO: should we share the suffix with router&backup and stor in IC?
+    # miught make it simpler to diagnose and remove
+    characters = string.ascii_letters + string.digits
+    suffix = ''.join(random.choice(characters) for _ in range(10))
+
+    admin_user = encode(config.CLUSTER_ADMIN_USER_NAME + '-' + suffix)
     admin_pwd = encode(utils.generate_password())
 
     tmpl = f"""
@@ -242,7 +254,7 @@ metadata:
     app.kubernetes.io/managed-by: mysql-operator
     app.kubernetes.io/created-by: mysql-operator
 spec:
-  serviceName: {spec.name}-instances
+  serviceName: {spec.headless_service_name}
   replicas: {spec.instances}
   podManagementPolicy: Parallel
   selector:
@@ -273,7 +285,6 @@ spec:
         app.kubernetes.io/managed-by: mysql-operator
         app.kubernetes.io/created-by: mysql-operator
     spec:
-      subdomain: {spec.name}
       readinessGates:
       - conditionType: "mysql.oracle.com/configured"
       - conditionType: "mysql.oracle.com/ready"
@@ -606,7 +617,7 @@ def update_stateful_set_size(cluster: InnoDBCluster, rr_spec: ReadReplicaSpec, l
             sts.metadata.name, sts.metadata.namespace, body=patch)
 
 
-def prepare_service_account(spec: AbstractServerSetSpec) -> dict:
+def prepare_service_account_sidecar(spec: AbstractServerSetSpec) -> dict:
     account = f"""
 apiVersion: v1
 kind: ServiceAccount
@@ -629,7 +640,21 @@ def prepare_service_account_patch_for_image_pull_secrets(spec: AbstractServerSet
     }
 
 
-def prepare_role_binding(spec: AbstractServerSetSpec) -> dict:
+def prepare_service_account_swichover(spec: AbstractServerSetSpec) -> dict:
+    account = f"""
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {spec.switchoverServiceAccountName}
+  namespace: {spec.namespace}
+"""
+
+    account = yaml.safe_load(account)
+
+    return account
+
+
+def prepare_role_binding_sidecar(spec: AbstractServerSetSpec) -> dict:
     rolebinding = f"""
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -642,6 +667,26 @@ subjects:
 roleRef:
   kind: ClusterRole
   name: mysql-sidecar
+  apiGroup: rbac.authorization.k8s.io
+"""
+    rolebinding = yaml.safe_load(rolebinding)
+
+    return rolebinding
+
+
+def prepare_role_binding_switchover(spec: AbstractServerSetSpec) -> dict:
+    rolebinding = f"""
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {spec.switchoverRoleBindingName}
+  namespace: {spec.namespace}
+subjects:
+  - kind: ServiceAccount
+    name: {spec.switchoverServiceAccountName}
+roleRef:
+  kind: ClusterRole
+  name: mysql-switchover
   apiGroup: rbac.authorization.k8s.io
 """
     rolebinding = yaml.safe_load(rolebinding)
@@ -1102,14 +1147,15 @@ def update_objects_for_metrics(cluster: InnoDBCluster, patcher: 'InnoDBClusterOb
     update_objects_for_subsystem(subsystem, cluster, patcher, logger)
 
 
-def remove_read_replica(cluster: InnoDBCluster, name: str):
+def remove_read_replica(cluster: InnoDBCluster, rr: ReadReplicaSpec):
+    name = rr['name']
     try:
         api_core.delete_namespaced_config_map(f"{cluster.name}-{name}-initconf", cluster.namespace)
     except Exception as exc:
         print(f"ConfigMap for ReadReplica {name} was not removed. This is usually ok. Reason: {exc}")
 
     try:
-        api_core.delete_namespaced_service(f"{cluster.name}-{name}-instances", cluster.namespace)
+        api_core.delete_namespaced_service(rr.headless_service_name, cluster.namespace)
     except Exception as exc:
         print(f"Service for ReadReplica {name} was not removed. This is usually ok. Reason: {exc}")
 

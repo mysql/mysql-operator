@@ -11,7 +11,7 @@ from ..shellutils import DbaWrap
 from . import cluster_objects, router_objects
 from .cluster_api import MySQLPod, InnoDBCluster, client
 import typing
-from typing import Optional, TYPE_CHECKING, Dict, cast, Callable
+from typing import Optional, TYPE_CHECKING, Dict, cast, Callable, Union
 from logging import Logger
 if TYPE_CHECKING:
     from mysqlsh.mysql import ClassicSession
@@ -72,15 +72,27 @@ class ClusterController:
         as a InnoDB Cluster compatible name."""
         return self.cluster.name.replace("-", "_").replace(".", "_")
 
-    def publish_status(self, diag: diagnose.ClusterStatus) -> None:
+    def publish_status(self, diag: diagnose.ClusterStatus, logger: Logger) -> None:
         cluster_status = self.cluster.get_cluster_status()
         if cluster_status and cluster_status["status"] != diag.status.name:
             self.cluster.info(action="ClusterStatus", reason="StatusChange",
                               message=f"Cluster status changed to {diag.status.name}. {len(diag.online_members)} member(s) ONLINE")
 
+        type = diag.type
+        if (diag.status == diagnose.ClusterDiagStatus.PENDING or diag.status == diagnose.ClusterDiagStatus.INITIALIZING):
+            if (not self.cluster.parsed_spec.initDB):
+                type = diagnose.ClusterInClusterSetType.PRIMARY
+            elif not self.cluster.parsed_spec.initDB.cluster_set:
+                type = diagnose.ClusterInClusterSetType.PRIMARY
+            else:
+                # TODO: Should we declare it a replica or wait it to be diagnosed as replica, if initDB.cluster_set succeeds?
+                type = diagnose.ClusterInClusterSetType.REPLICA_CANDIDATE
+
+        logger.info("Publishing cluster status")
         cluster_status = {
             "status": diag.status.name,
             "onlineInstances": len(diag.online_members),
+            "type": type.value,
             "lastProbeTime": utils.isotime()
         }
         self.cluster.set_cluster_status(cluster_status)
@@ -88,25 +100,25 @@ class ClusterController:
     def probe_status(self, logger: Logger) -> diagnose.ClusterStatus:
         diag = diagnose.diagnose_cluster(self.cluster, logger)
         if not self.cluster.deleting:
-            self.publish_status(diag)
-        logger.info(
-            f"cluster probe: status={diag.status} online={diag.online_members}")
+            self.publish_status(diag, logger)
+        logger.info(f"cluster probe: status={diag.status} online={diag.online_members}")
         return diag
 
     def probe_status_if_needed(self, changed_pod: MySQLPod, logger: Logger) -> diagnose.ClusterDiagStatus:
         cluster_probe_time = self.cluster.get_cluster_status("lastProbeTime")
-        member_transition_time = changed_pod.get_membership_info(
-            "lastTransitionTime")
+        member_transition_time = changed_pod.get_membership_info("lastTransitionTime")
         last_status = self.cluster.get_cluster_status("status")
         unreachable_states = (diagnose.ClusterDiagStatus.UNKNOWN,
                               diagnose.ClusterDiagStatus.ONLINE_UNCERTAIN,
                               diagnose.ClusterDiagStatus.OFFLINE_UNCERTAIN,
                               diagnose.ClusterDiagStatus.NO_QUORUM_UNCERTAIN,
                               diagnose.ClusterDiagStatus.SPLIT_BRAIN_UNCERTAIN)
-        if cluster_probe_time and member_transition_time and cluster_probe_time < member_transition_time or last_status in unreachable_states:
+        logger.info(f"cluster_probe_time={cluster_probe_time}  member_transition_time={member_transition_time}  last_status={last_status}")
+        if cluster_probe_time and member_transition_time and cluster_probe_time <= member_transition_time or last_status in unreachable_states:
             return self.probe_status(logger).status
-        else:
-            return last_status
+
+        logger.info("Returning last status")
+        return last_status
 
     def probe_member_status(self, pod: MySQLPod, session: 'ClassicSession', joined: bool, logger: Logger) -> None:
         # TODO use diagnose?
@@ -231,7 +243,10 @@ class ClusterController:
                     initial_data_source = f"dump={self.cluster.parsed_spec.initDB.dump.storage.persistentVolumeClaim}"
                 else:
                     assert 0, "Unknown Dump storage mechanism"
+            elif self.cluster.parsed_spec.initDB.cluster_set:
+                initial_data_source = f"clusterSet={self.cluster.parsed_spec.initDB.cluster_set.uri}"
             else:
+                print(f"{self.cluster.parsed_spec.initDB=} -> {self.cluster.parsed_spec.initDB.cluster_set=}")
                 assert 0, "Unknown initDB source"
         else:
             # We're creating the cluster from scratch, so GTID set is sure to be complete
@@ -304,6 +319,16 @@ class ClusterController:
                                 "GR already running while creating cluster but could not stop it", delay=3)
                     raise
 
+            # Only on first cluster! Not if this is supposed to join some other
+            if not self.cluster.parsed_spec.initDB or not self.cluster.parsed_spec.initDB.cluster_set:
+                try:
+                    _ = self.dba_cluster.get_cluster_set()
+                    # maybe from a previous incomplete create attempt
+                    logger.info("ClusterSet already exists")
+                except:
+                    # TODO: what to do if this fails?
+                    self.dba_cluster_set = self.dba_cluster.create_cluster_set(self.dba_cluster_name)
+
             routing_options = self.cluster.parsed_spec.router.routingOptions
             for routing_option in routing_options:
                 try:
@@ -311,7 +336,7 @@ class ClusterController:
                     self.dba_cluster.set_routing_option(routing_option, routing_value)
                 except mysqlsh.Error as e:
                     # We don't fail when setting an option fails
-                    logger.warn(f"Failed setting routing option {routing_option} to {routing_value}: {e}")
+                    logger.warning(f"Failed setting routing option {routing_option} to {routing_value}: {e}")
 
             self.probe_member_status(seed_pod, dba.session, True, logger)
 
@@ -321,6 +346,7 @@ class ClusterController:
             # need to wait until all pods have joined
             if self.cluster.parsed_spec.instances == 1:
                 self.post_create_actions(dba.session, self.dba_cluster, logger)
+                self.probe_member_status(seed_pod, dba.session, True, logger)
 
     def post_create_actions(self, session: 'ClassicSession', dba_cluster: 'Cluster', logger: Logger) -> None:
         logger.info("cluster_controller::post_create_actions")
@@ -339,11 +365,6 @@ class ClusterController:
             f"{'Updating' if update else 'Creating'} router account {user}")
         dba_cluster.setup_router_account(
             user, {"password": password, "update": update})
-
-        # create backup account
-        user, password = self.cluster.get_backup_account()
-        logger.debug(f"Creating backup account {user}")
-        mysqlutils.setup_backup_account(session, user, password)
 
         # update read replicas
         for rr in self.cluster.parsed_spec.readReplicas:
@@ -377,7 +398,31 @@ class ClusterController:
         for pod in pods:
             if pod.index != seed_pod_index:
                 with shellutils.connect_to_pod(pod, logger, timeout=5) as session:
-                    self.rejoin_instance(pod, session, logger)
+                    try:
+                        self.rejoin_instance(pod, session, logger)
+                    except:
+                        # TODO - verify this will be retried from elsewhere
+                        print("==================================================")
+                        print(f"INSTANCE  REJOIN FAILED for {pod.name}")
+                        print("=================================================")
+                        import traceback
+                        traceback.print_exc()
+
+        # TODO: May not be in a ClusterSet (old Cluster?)
+        cs = self.dba_cluster.get_cluster_set()
+        cs_status = cs.status()
+        # TODO: is there really a valid case where
+        #       cs_status["clusters"][name] won't exist?
+        if cs_status.get("clusters", {}).get(self.cluster.name, {}).get("globalStatus") == "INVALIDATED":
+            try:
+                cs.rejoin_cluster(self.cluster.name)
+            except:
+                print("========================")
+                print("CLUSTERSET REJOIN FAILED")
+                print("========================")
+
+                import traceback
+                traceback.print_exc()
 
         status = self.dba_cluster.status()
         logger.info(f"Cluster reboot successful. status={status}")
@@ -493,6 +538,9 @@ class ClusterController:
 
         pod.add_member_finalizer()
 
+        report_host = pod_dba_session.session.run_sql('SELECT @@report_host').fetch_one()[0]
+        print(f"DBA SESSION GOES TO {report_host}!")
+
         try:
             if pod.instance_type == "read-replica":
                 self.dba_cluster.add_replica_instance(pod.endpoint, add_options)
@@ -521,9 +569,17 @@ class ClusterController:
             # replication gives us limited information only
             pod.update_member_readiness_gate("ready", True)
         else:
-            minfo = self.probe_member_status(pod, pod_dba_session.session, True, logger)
-
-            member_id, role, status, view_id, version, member_count, reachable_member_count = minfo
+            with DbaWrap(shellutils.connect_dba(pod.endpoint_co, logger)) as dba_session:
+                # TODO: pod_dba_session may be invalid on caller side if the
+                #       pod was provisioned via clone, which may lead to future
+                #       bugs, also always using a new connection here is "inefficient"
+                #       to a small degree.
+                #       In case clone is used and we need a reconnect we have
+                #       to communicate that to the caller, else we see bugs in
+                #       futre
+                minfo = self.probe_member_status(pod, dba_session.session,
+                                                True, logger)
+                member_id, role, status, view_id, version, member_count, reachable_member_count = minfo
             logger.info(f"JOINED {pod.name}: {minfo}")
 
             # if the cluster size is complete, ensure routers are deployed
@@ -873,12 +929,16 @@ class ClusterController:
         mysqlutils.setup_metrics_user(self.dba.session, user, grants,
                                       max_connections)
 
-    def on_router_pod_delete(self, name: str, logger: Logger) -> None:
-        logger.info(f"Removing metadata for router {name} from {self.cluster.name}")
+    def on_router_pod_delete(self, name: Union[str, list], logger: Logger) -> None:
         self.connect_to_cluster(logger)
-
-        self.dba_cluster.remove_router_metadata(name + '::')
-
+        if type(name) is str:
+            router_list = [name]
+        elif type(name) is list:
+            router_list = name
+        for router_name in router_list:
+            logger.info(f"Removing metadata for router {router_name} from {self.cluster.name}")
+            ret = self.dba_cluster.remove_router_metadata(router_name + '::')
+            logger.info(f"remove_router_metadata returned {ret}")
 
     def on_router_routing_option_chahnge(self, old: dict, new: dict, logger: Logger) -> None:
         self.connect_to_primary(None, logger)
@@ -890,7 +950,7 @@ class ClusterController:
                     self.dba_cluster.set_routing_option(key, None)
                 except mysqlsh.Error as e:
                     # We don't fail when setting an option fails
-                    logger.warn(f"Failed unsetting routing option {key}: {e}")
+                    logger.warning(f"Failed unsetting routing option {key}: {e}")
 
         # Set new values, this resets existing values
         for key in new:
@@ -898,5 +958,5 @@ class ClusterController:
                 self.dba_cluster.set_routing_option(key, new[key])
             except mysqlsh.Error as e:
                 # We don't fail when setting an option fails
-                logger.warn(f"Failed setting routing option {key} to {new[key]}: {e}")
+                logger.warning(f"Failed setting routing option {key} to {new[key]}: {e}")
 

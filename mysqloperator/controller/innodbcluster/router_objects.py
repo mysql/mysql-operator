@@ -3,6 +3,9 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
+import string
+import random
+
 from shlex import quote
 from .cluster_api import InnoDBCluster, InnoDBClusterSpec
 from ..kubeutils import client as api_client, ApiException
@@ -77,7 +80,12 @@ spec:
 
 
 def prepare_router_secrets(spec: InnoDBClusterSpec) -> dict:
-    router_user = utils.b64encode(config.ROUTER_METADATA_USER_NAME)
+    # TODO: should we share the suffix with router&backup and stor in IC?
+    # miught make it simpler to diagnose and remove
+    characters = string.ascii_letters + string.digits
+    suffix = ''.join(random.choice(characters) for _ in range(10))
+
+    router_user = utils.b64encode(config.ROUTER_METADATA_USER_NAME + '-' + suffix)
     router_pwd = utils.b64encode(utils.generate_password())
 
     # We use a separate secrets object for the router, so that we don't need to

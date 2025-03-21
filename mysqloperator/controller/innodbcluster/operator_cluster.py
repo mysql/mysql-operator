@@ -19,6 +19,8 @@ from .cluster_controller import ClusterController, ClusterMutex
 from . import cluster_objects, router_objects, cluster_api
 from .cluster_api import InnoDBCluster, InnoDBClusterSpec, MySQLPod, get_all_clusters
 import kopf
+import mysqlsh
+import json
 from logging import Logger
 import time
 import traceback
@@ -98,12 +100,12 @@ def do_create_read_replica(cluster: InnoDBCluster, rr: cluster_objects.ReadRepli
         api_core.create_namespaced_config_map(namespace, configs)
 
     print(f"{indention}RR ServiceAccount")
-    existing_sa = ignore_404(lambda: cluster.get_service_account(rr))
+    existing_sa = ignore_404(lambda: cluster.get_service_account_sidecar(rr))
     print(f"{indention}\tExisting SA: {existing_sa}")
     print(f"{indention}\tImagePullSecrets: {rr.imagePullSecrets}")
     if not existing_sa:
         print(f"{indention}\tPreparing...")
-        sa = cluster_objects.prepare_service_account(rr)
+        sa = cluster_objects.prepare_service_account_sidecar(rr)
         print(f"{indention}\tCreating...{sa}")
         kopf.adopt(sa)
         api_core.create_namespaced_service_account(namespace=namespace, body=sa)
@@ -112,16 +114,16 @@ def do_create_read_replica(cluster: InnoDBCluster, rr: cluster_objects.ReadRepli
         print(f"{indention}\tPatching existing SA with {patch}")
         api_core.patch_namespaced_service_account(name=existing_sa.metadata.name, namespace=namespace, body=patch)
 
-    print(f"{indention}RR RoleBinding")
-    if not ignore_404(lambda: cluster.get_role_binding(rr)):
+    print(f"{indention}RR RoleBinding Sidecar")
+    if not ignore_404(lambda: cluster.get_role_binding_sidecar(rr)):
         print(f"{indention}\tPreparing...")
-        rb = cluster_objects.prepare_role_binding(rr)
+        rb = cluster_objects.prepare_role_binding_sidecar(rr)
         print(f"{indention}\tCreating RoleBinding {rb['metadata']['name']} {rb}...")
         kopf.adopt(rb)
         api_rbac.create_namespaced_role_binding(namespace=namespace, body=rb)
 
     print(f"{indention}RR Service")
-    if not ignore_404(lambda: cluster.get_read_replica_service(rr.name)):
+    if not ignore_404(lambda: cluster.get_read_replica_service(rr)):
         print(f"{indention}\tPreparing... {rr.name} Service")
         service = cluster_objects.prepare_cluster_service(rr, logger)
         print(f"{indention}\tCreating...{service}")
@@ -246,13 +248,13 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 kopf.adopt(service)
                 api_core.create_namespaced_service(namespace=namespace, body=service)
 
-            print("5. Cluster ServiceAccount")
-            existing_sa = ignore_404(lambda: cluster.get_service_account(icspec))
+            print("5. Sidecar ServiceAccount")
+            existing_sa = ignore_404(lambda: cluster.get_service_account_sidecar(icspec))
             print(f"\tExisting SA: {existing_sa}")
             print(f"\tImagePullSecrets: {icspec.imagePullSecrets}")
             if not existing_sa:
                 print("\tPreparing...")
-                sa = cluster_objects.prepare_service_account(icspec)
+                sa = cluster_objects.prepare_service_account_sidecar(icspec)
                 print(f"\tCreating...{sa}")
                 kopf.adopt(sa)
                 api_core.create_namespaced_service_account(namespace=namespace, body=sa)
@@ -261,15 +263,31 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 print(f"\tPatching existing SA with {patch}")
                 api_core.patch_namespaced_service_account(name=existing_sa.metadata.name, namespace=namespace, body=patch)
 
-            print("6. Cluster RoleBinding")
-            if not ignore_404(lambda: cluster.get_role_binding(icspec)):
+            print("6. Switchover ServiceAccount")
+            if not ignore_404(lambda: cluster.get_service_account_switchover(icspec)):
                 print("\tPreparing...")
-                rb = cluster_objects.prepare_role_binding(icspec)
+                sa = cluster_objects.prepare_service_account_swichover(icspec)
+                print(f"\tCreating...{sa}")
+                kopf.adopt(sa)
+                api_core.create_namespaced_service_account(namespace=namespace, body=sa)
+
+            print("7. Sidecar RoleBinding ")
+            if not ignore_404(lambda: cluster.get_role_binding_sidecar(icspec)):
+                print("\tPreparing...")
+                rb = cluster_objects.prepare_role_binding_sidecar(icspec)
                 print(f"\tCreating RoleBinding {rb['metadata']['name']} ...")
                 kopf.adopt(rb)
                 api_rbac.create_namespaced_role_binding(namespace=namespace, body=rb)
 
-            print("7. Cluster StatefulSet")
+            print("8. Switchover RoleBinding")
+            if not ignore_404(lambda: cluster.get_role_binding_switchover(icspec)):
+                print("\tPreparing...")
+                rb = cluster_objects.prepare_role_binding_switchover(icspec)
+                print(f"\tCreating RoleBinding {rb['metadata']['name']} ...")
+                kopf.adopt(rb)
+                api_rbac.create_namespaced_role_binding(namespace=namespace, body=rb)
+
+            print("9. Cluster StatefulSet")
             if not ignore_404(cluster.get_stateful_set):
                 print("\tPreparing...")
                 statefulset = cluster_objects.prepare_cluster_stateful_set(cluster, icspec, logger)
@@ -277,7 +295,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 kopf.adopt(statefulset)
                 api_apps.create_namespaced_stateful_set(namespace=namespace, body=statefulset)
 
-            print("8. Cluster PodDisruptionBudget")
+            print("10. Cluster PodDisruptionBudget")
             if not ignore_404(cluster.get_disruption_budget):
                 print("\tPreparing...")
                 disruption_budget = cluster_objects.prepare_cluster_pod_disruption_budget(icspec)
@@ -285,7 +303,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 kopf.adopt(disruption_budget)
                 api_policy.create_namespaced_pod_disruption_budget(namespace=namespace, body=disruption_budget)
 
-            print("9. Read Replica StatefulSets")
+            print("11. Read Replica StatefulSets")
             if len(icspec.readReplicas) > 0:
                 print(f"\t{len(icspec.readReplicas)} Read Replica STS ...")
                 for rr in icspec.readReplicas:
@@ -293,7 +311,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             else:
                 print("\tNo Read Replica")
 
-            print("10. Router Service")
+            print("12. Router Service")
             if not ignore_404(cluster.get_router_service):
                 print("\tPreparing...")
                 router_service = router_objects.prepare_router_service(icspec)
@@ -301,7 +319,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 kopf.adopt(router_service)
                 api_core.create_namespaced_service(namespace=namespace, body=router_service)
 
-            print("11. Router Deployment")
+            print("13. Router Deployment")
             if not ignore_404(cluster.get_router_deployment):
                 if icspec.router.instances > 0:
                     print("\tPreparing...")
@@ -316,7 +334,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                     # will create the deployment
                     print("\tRouter count is 0. No Deployment is created.")
 
-            print("12. Backup Secrets")
+            print("14. Backup Secrets")
             if not ignore_404(cluster.get_backup_account):
                 print("\tPreparing...")
                 secret = backup_objects.prepare_backup_secrets(icspec)
@@ -324,7 +342,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 kopf.adopt(secret)
                 api_core.create_namespaced_secret(namespace=namespace, body=secret)
 
-            print("13. Service Monitors")
+            print("15. Service Monitors")
             monitors = cluster_objects.prepare_metrics_service_monitors(cluster.parsed_spec, logger)
             if len(monitors) == 0:
                 print("\tNone requested")
@@ -356,6 +374,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             "cluster": {
                 "status":  diagnose.ClusterDiagStatus.PENDING.value,
                 "onlineInstances": 0,
+                "type": diagnose.ClusterInClusterSetType.PRIMARY.value if (not icspec.initDB or not icspec.initDB.cluster_set) else diagnose.ClusterInClusterSetType.REPLICA_CANDIDATE.value,
                 "lastProbeTime": utils.isotime()
             }})
 
@@ -370,13 +389,29 @@ def on_innodbcluster_delete(name: str, namespace: str, body: Body,
 
     g_group_monitor.remove_cluster(cluster)
 
-    # Scale down routers to 0
-    logger.info(f"Updating Router Deployment.replicas to 0")
-    router_objects.update_size(cluster, 0, False, logger)
+    # Notify routers for deletion. It will be too late in on_router_pod_delete.
+    # Do this first before getting STS to 0, which will kill the servers and the metadata can't be updated then
+    # At last scale down the clusters. If we scale down the Router Deployment to 0, should do the same but is async.
+    # This async process is a problem, as we need it to be finished before scaling down the STS to 0 / removing the
+    # cluster from the clusterset
+    # So, practically we duplicate on_router_pod_delete() here
+    routers = cluster.get_routers()
+    if routers:
+        logger.info(f"Time to notify router(s) {routers} for IC deletion")
+        controller = ClusterController(cluster)
+        try:
+            controller.on_router_pod_delete(routers, logger)
+        except Exception as exc:
+            # Ignore errors, there isn't much we could do
+            # and there is no point in retrying forever
+            logger.warning(f"on_innodbcluster_delete: Failed to remove metadata for {routers}: {exc}")
+            #print(traceback.format_exc())
+            logger.warning("on_innodbcluster_delete: Exception ignored, there might be stale metadata left")
 
     # Scale down the cluster to 0
     sts = cluster.get_stateful_set()
     if sts:
+        pods = cluster.get_pods()
         # First we need to check if there is only one pod there and whether it is being deleted
         # In case it is being deleted on_pod_delete() won't be called when we scale down the STS to 0
         # In this case the code that calls cluster finalizer removal won't be called too and the
@@ -385,15 +420,62 @@ def on_innodbcluster_delete(name: str, namespace: str, body: Body,
         # state and we won't know whether it was in Terminating beforehand. If it wasn't then
         # on_pod_delete() will be called and we will try to remove the finalizer again663/385000on_spec
         # then len(pods) == maxUnavailable and all pods should be inspected whether they are terminating
-        pods = cluster.get_pods()
         if len(pods) == 1 and pods[0].deleting:
             # if there is only one pod and it is deleting then on_pod_delete() won't be called
             # in this case the IC finalizer won't be removed and the IC will hang
             logger.info("on_innodbcluster_delete: The cluster's only one pod is already deleting. Removing cluster finalizer here")
             cluster.remove_cluster_finalizer()
 
+        if len(pods):
+            # TODO: this should be moved to controller or elsewhere
+            # TODO: try more pods, if one fails and more are avaialble
+            # TODO: if this is PRIMARY we got to do something ... maybe force a failover?
+            # TODO: this shouldn't block decomission (catch and log/ignore errors)
+            # TODO: remove admin/backup/metrics/router/... accounts as far as they are replicated to primary
+            with shellutils.DbaWrap(shellutils.connect_to_pod_dba(pods[0], logger)) as dba:
+                try:
+                    my_name = dba.get_cluster().name
+                    cs = dba.get_cluster_set()
+                    describe = cs.status(extended=1)
+                    logger.info(f"CSet={json.dumps(describe, indent=4)}")
+                    if describe["clusters"][my_name]["clusterRole"] == "PRIMARY" and len(describe["clusters"]) > 1:
+                        #raise kopf.TemporaryError(f"Cluster {my_name} is PRIMARY. Can not remove, trigger a failover first!")
+                        # Check if all REPLICAS are still there, if not there / stale, remove them
+                        invalidated = 0
+                        ok = {}
+                        for cluster_name, cluster_data in describe["clusters"].items():
+                            if cluster_data["clusterRole"] == "REPLICA":
+                                if cluster_data["globalStatus"] == "INVALIDATED" and cluster_data["status"] == "UNREACHABLE":
+                                    invalidated = invalidated + 1
+                                else:
+                                    # we can also throw here directly on first occurence, but let's just collect some data for the exception message
+                                    ok[cluster_name] = cluster_data
+
+                        # Without the primary
+                        if (len(describe["clusters"]) - 1) != invalidated:
+                            raise kopf.TemporaryError(f"Cluster {my_name} is PRIMARY. Can not remove, trigger a failover first! The following replicas seem to be ok {json.dumps(ok, indent=4)}")
+                            # else this is the only cluster in the clusterset and we are fine
+
+                        for cluster_name in describe["clusters"].keys():
+                            logger.info(f"Removing INVALIDATED and UNREACHABLE cluster {cluster_name} from the cluster")
+                            cs.remove_cluster(cluster_name, {"force": True})
+
+                    cs.remove_cluster(my_name)
+                except mysqlsh.Error as exc:
+                    # For whatever reaon we fail: this shouldn't stop us from
+                    # decomissioning our pods. Even if not unregistered.
+                    # TODO: maybe the only reason might be if this were the
+                    #       primary cluster, while other clusters exist ...
+                    #       but a) that is a user error and b) there shouldn't
+                    #       be an exception .. but let's keep an eye on it
+                    logger.error(f"Error while trying to check ClusterSet status for unregistering: {exc}")
+
         logger.info(f"Updating InnoDB Cluster StatefulSet.instances to 0")
         cluster_objects.update_stateful_set_spec(sts, {"spec": {"replicas": 0}})
+
+    # Scale down routers to 0
+    logger.info(f"Updating Router Deployment.replicas to 0")
+    router_objects.update_size(cluster, 0, False, logger)
 
 
 # TODO add a busy state and prevent changes while on it
@@ -630,7 +712,7 @@ def on_innodbcluster_read_replicas_changed(old: dict, new: dict, body: Body,
         # Remove read replica sets which were removed
         for rr in old:
             if rr['name'] not in map(lambda nrr: nrr['name'], new):
-                cluster_objects.remove_read_replica(cluster, rr['name'])
+                cluster_objects.remove_read_replica(cluster, rr)
 
         # Add or update read replica sets
         for rr in new:
@@ -719,9 +801,9 @@ def on_pod_event(event, body: Body, logger: Logger, **kwargs):
 
             member_info = pod.get_membership_info()
             ready = pod.check_containers_ready()
+            logger.debug(f"pod event: pod={pod.name} containers_ready={ready} deleting={pod.deleting} phase={pod.phase} member_info={member_info}")
             if pod.phase != "Running" or pod.deleting or not member_info:
-                logger.debug(
-                    f"ignored pod event: pod={pod.name} containers_ready={ready} deleting={pod.deleting} phase={pod.phase} member_info={member_info}")
+                logger.info(f"ignored pod event")
                 return
 
             mysql_restarts = pod.get_container_restarts("mysql")
@@ -738,16 +820,17 @@ def on_pod_event(event, body: Body, logger: Logger, **kwargs):
 
             cluster = pod.get_cluster()
             if not cluster:
-                logger.info(
-                    f"Ignoring event for pod {pod.name} belonging to a deleted cluster")
+                logger.info(f"Ignoring event for pod {pod.name} belonging to a deleted cluster")
                 return
             with ClusterMutex(cluster, pod):
                 cluster_ctl = ClusterController(cluster)
 
                 # Check if a container in the pod restarted
                 if ready and event == "mysql-restarted":
+                    logger.info("Pod got restarted")
                     cluster_ctl.on_pod_restarted(pod, logger)
 
+                    logger.info("Updating restart count")
                     g_ephemeral_pod_state.set(pod, "mysql-restarts", mysql_restarts, context="on_pod_event")
 
                 # Check if we should refresh the cluster status
@@ -775,7 +858,7 @@ def on_pod_delete(body: Body, logger: Logger, **kwargs):
     - cluster is being deleted
     - user deletes a pod by hand
     """
-    print("on_pod_delete")
+    logger.info("on_pod_delete")
     # TODO ensure that the pod is owned by us
     pod = MySQLPod.from_json(body)
 
@@ -792,7 +875,7 @@ def on_pod_delete(body: Body, logger: Logger, **kwargs):
             cluster_ctl.on_pod_deleted(pod, body, logger)
 
             if pod.index == 0 and cluster.deleting:
-                print("Last cluster removed being removed!")
+                print("Last cluster pod removed being removed!")
                 cluster_objects.on_last_cluster_pod_removed(cluster, logger)
     else:
         pod.remove_member_finalizer(body)
@@ -1003,9 +1086,82 @@ def on_innodbcluster_field_service_type(old: str, new: str, body: Body,
         router_objects.update_service(svc, cluster.parsed_spec, logger)
 
 
+@kopf.on.create(consts.GROUP, consts.VERSION,
+                "mysqlclustersetfailovers")  # type: ignore
+def on_failover_create(name: str, namespace: Optional[str], body: Body,
+                       logger: Logger, **kwargs) -> None:
+    # TODO: move this to a proper structure
+    logger.info(f'Fetching {body["spec"]["clusterName"]}')
+    cluster = cluster_api.InnoDBCluster.read(namespace, body["spec"]["clusterName"])
+    from ..fqdn import k8s_cluster_domain
+    cluster_domain = k8s_cluster_domain(logger)
+
+    extras =", --force" if body["spec"]["force"] else ""
+
+    options = body["spec"].get("options")
+    if options:
+        extras += f", --timeout={options['timeout']}" if "timeout" in options else ""
+        # TODO shell escape! Probably it's better to have the pod read this itself
+        extras += f", --invalidate-replica-clusters={','.join(options['invalidateReplicaClusters'])}" if "invalidateReplicaClusters" in options else ""
+
+    job = f"""
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {name}
+  namespace: {namespace}
+spec:
+  template:
+    spec:
+      containers:
+      - name: failover
+        image: {cluster.parsed_spec.operator_image}
+        imagePullPolicy: Always # has to come from cluster spec
+        command: ["mysqlsh",  "--pym", "mysqloperator", "csfo", --cluster-name, {cluster.name}, "--namespace", {cluster.namespace} {extras}]
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        env:
+        - name: MYSQLSH_USER_CONFIG_HOME
+          value: /tmp
+        - name: MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN
+          value: {cluster_domain}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+
+      serviceAccountName: mysql-switchover-sa
+
+      securityContext:
+        runAsUser: 27
+        runAsGroup: 27
+        fsGroup: 27
+
+      restartPolicy: Never # when basic testing is done: OnFailure? - Or shall we fail and ask user to retry themselves? This process deserves some monitoring ...
+
+      volumes:
+      - name: tmp
+        emptyDir: {{}}
+"""
+#      serviceAccountName: {cluster.parsed_spec.serviceAccountName}
+    print(job)
+    import yaml
+    from ..kubeutils import api_batch
+
+    body = yaml.safe_load(job)
+    kopf.adopt(body)
+
+    api_batch.create_namespaced_job(namespace, body=body)
+
+
 @kopf.on.delete("", "v1", "pods",
                 labels={"component": "mysqlrouter"})  # type: ignore
 def on_router_pod_delete(body: Body, logger: Logger, namespace: str, **kwargs):
+    logger.info("on_router_pod_delete")
     router_name = body["metadata"]["name"]
     try:
         cluster_name = body["metadata"]["labels"]["mysql.oracle.com/cluster"]
@@ -1016,6 +1172,6 @@ def on_router_pod_delete(body: Body, logger: Logger, namespace: str, **kwargs):
     except Exception as exc:
         # Ignore errors, there isn't much we could do
         # and there is no point in retrying forever
-        logger.warn(f"Failed to remove metadata for {router_name}: {exc}")
-        print(traceback.format_exc())
-        logger.warn("Exception ignored, there might be stale metadata left")
+        logger.warning(f"on_router_pod_delete: Failed to remove metadata for {router_name}: {exc}")
+        #print(traceback.format_exc())
+        logger.warning("on_router_pod_delete: Exception ignored, there might be stale metadata left")

@@ -102,6 +102,11 @@ class RetryLoop:
                 else:
                     return None
             except mysqlsh.Error as err:
+                #import traceback
+                #print("=====")
+                #print(traceback.format_exc())
+                #print("=====")
+
                 if self.is_retriable and not self.is_retriable(err):
                     raise
 
@@ -111,6 +116,10 @@ class RetryLoop:
                     time.sleep(delay)
                     total_wait += delay
                     delay = self.backoff(delay)
+
+                    # TODO - do we want it this way? need it for debug now
+                    import traceback
+                    print(traceback.format_exc())
                 else:
                     self.logger.error(
                         f"Error executing {f.__qualname__}, giving up: {err}")
@@ -174,6 +183,10 @@ def connect_dba(target: dict, logger: Logger, **kwargs) -> 'Dba':
     return RetryLoop(logger, **kwargs).call(mysqlsh.connect_dba, target)
 
 
+def connect_to_pod_dba(pod: MySQLPod, logger: Logger, **kwargs) -> 'Dba':
+    return connect_dba(pod.endpoint_co, logger)
+
+
 def connect_to_pod(pod: MySQLPod, logger: Logger, **kwargs):
     def connect(target):
         session = mysqlsh.mysql.get_session(target)
@@ -219,6 +232,49 @@ def jump_to_primary(session, account):
 
     return None
 
+def jump_to_primary_cluster(session, account):
+    # TODO - Do we ereally need this!?
+
+    """Return a primary_session to the primary instance of the primary cluster
+    This is especially relevant in a ClusterSet, it might create an intermediate
+    connection in case it picks a secondary of the primary cluster first.
+
+    Returns None if no instance can bereached or if priamry can not be reached
+    """
+
+    # TODO see if we can use cs.describe()
+    # TODO consider being in a partition etc (https://corparch-core-srv.slack.com/archives/CK025KBV1/p1712577673711939)
+
+    res = session.run_sql("""
+        SELECT instances.xendpoint
+          FROM mysql_innodb_cluster_metadata.v2_instances instances
+          JOIN mysql_innodb_cluster_metadata.v2_cs_members cs_primary ON instances.cluster_id = cs_primary.cluster_id
+          JOIN mysql_innodb_cluster_metadata.v2_cs_members cs_members ON cs_primary.clusterset_id = cs_members.clusterset_id AND cs_primary.member_role = 'PRIMARY'
+          JOIN  mysql_innodb_cluster_metadata.v2_this_instance this ON cs_members.cluster_id=this.cluster_id
+         WHERE instances.instance_type = 'group-member'
+                          """)
+
+
+    r = res.fetch_one()
+    while r:
+        co = mysqlsh.globals.shell.parse_uri(r[0]) # session.uri)
+        print(co)
+        co["user"], co["password"] = account
+        #co["host"] = r[0]
+        print(co)
+        try:
+            print(f"Trying to connect to {r[0]} on primary cluster")
+            tmp_session = mysqlx.get_session(co)
+            primary_session = jump_to_primary(tmp_session, account)
+            if tmp_session != primary_session:
+                tmp_session.close()
+            return primary_session
+        except mysqlsh.Error as e:
+            print(f"Could not connect to {co['host']}:{co['port']}: {e}")
+
+        r = res.fetch_one()
+
+    return None
 
 def get_valid_cluster_handle(cluster, logger):
     """

@@ -148,11 +148,10 @@ spec:
 
     def test_4_remove_router_metadata(self):
         def list_routers() -> dict:
-            # TODO - with ClusterSet we got to change from cluster to clusterset
             router_list = kutil.execp(self.ns, ("mycluster-0", "sidecar"),
                                       ["mysqlsh", "root:sakila@localhost",
                                        "--quiet-start=2", "--",
-                                       "cluster", "list-routers"])
+                                       "clusterset", "list-routers"])
             return json.loads(router_list)["routers"]
 
         def assert_metadata_matches_running_pods(expected_count):

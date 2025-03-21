@@ -312,7 +312,7 @@ class CloneInitDBSpec:
     root_user: Optional[str] = None
 
     def parse(self, spec: dict, prefix: str) -> None:
-        self.uri = dget_str(spec, "donorUrl", prefix)  # TODO make mandatory
+        self.uri = dget_str(spec, "donorUrl", prefix)
         self.root_user = dget_str(
             spec, "rootUser", prefix, default_value="root")
         key_ref = dget_dict(spec, "secretKeyRef", prefix)
@@ -325,6 +325,24 @@ class CloneInitDBSpec:
 
         return utils.b64decode(secret.data["rootPassword"])
 
+class ClusterSetInitDBSpec:
+    uri: str = ""
+    password_secret_name: Optional[str] = None
+    root_user: Optional[str] = None
+
+    def parse(self, spec: dict, prefix: str) -> None:
+        self.uri = dget_str(spec, "targetUrl", prefix)
+        self.root_user = dget_str(
+            spec, "rootUser", prefix, default_value="root")
+        key_ref = dget_dict(spec, "secretKeyRef", prefix)
+        self.password_secret_name = dget_str(
+            key_ref, "name", prefix+".secretKeyRef")
+
+    def get_password(self, ns: str) -> str:
+        secret = cast(api_client.V1Secret, api_core.read_namespaced_secret(
+            self.password_secret_name, ns))
+
+        return utils.b64decode(secret.data["rootPassword"])
 
 class SnapshotInitDBSpec:
     storage: Optional[StorageSpec] = None
@@ -359,17 +377,21 @@ class InitDB:
     clone: Optional[CloneInitDBSpec] = None
     snapshot: Optional[SnapshotInitDBSpec] = None
     dump: Optional[DumpInitDBSpec] = None
+    cluster_set: Optional[ClusterSetInitDBSpec] = None
 
     def parse(self, spec: dict, prefix: str) -> None:
         dump = dget_dict(spec, "dump", "spec.initDB", {})
         clone = dget_dict(spec, "clone", "spec.initDB", {})
         snapshot = dget_dict(spec, "snapshot", "spec.initDB", {})
-        if len([x for x in [dump, clone, snapshot] if x]) > 1:
+        cluster_set = dget_dict(spec, "clusterSet", "spec.initDB", {})
+
+
+        if len([x for x in [dump, clone, snapshot, cluster_set] if x]) > 1:
             raise ApiSpecError(
-                "Only one of dump, snapshot or clone may be specified in spec.initDB")
-        if not dump and not clone and not snapshot:
+                "Only one of dump, snapshot, clsuterSet, or clone may be specified in spec.initDB")
+        if not dump and not clone and not snapshot and not cluster_set:
             raise ApiSpecError(
-                "One of dump, snapshot or clone may be specified in spec.initDB")
+                "One of dump, snapshot, clusterSet, or clone may be specified in spec.initDB")
 
         if clone:
             self.clone = CloneInitDBSpec()
@@ -380,6 +402,9 @@ class InitDB:
         elif snapshot:
             self.snapshot = SnapshotInitDBSpec()
             self.snapshot.parse(snapshot, "spec.initDB.snapshot")
+        elif cluster_set:
+            self.cluster_set = ClusterSetInitDBSpec()
+            self.cluster_set.parse(cluster_set, "spec.initDB.clusterSet")
 
 
 class KeyringConfigStorage(Enum):
@@ -1212,6 +1237,8 @@ class AbstractServerSetSpec(abc.ABC):
 
         self.serviceAccountName = dget_str(spec_root, "serviceAccountName", "spec", default_value=f"{self.name}-sidecar-sa")
         self.roleBindingName = f"{self.name}-sidecar-rb"
+        self.switchoverServiceAccountName = "mysql-switchover-sa"
+        self.switchoverRoleBindingName = "mysql-switchover-rb"
 
         if "imageRepository" in spec_root:
             self.imageRepository = dget_str(spec_root, "imageRepository", "spec")
@@ -1444,7 +1471,6 @@ class AbstractServerSetSpec(abc.ABC):
             return f"imagePullSecrets:\n{yaml.safe_dump(self.imagePullSecrets)}"
         return ""
 
-
 class ReadReplicaSpec(AbstractServerSetSpec):
     def __init__(self, namespace: str, cluster_name: str, spec_root: dict,
                  spec_specific: dict, where_specific: str):
@@ -1455,6 +1481,10 @@ class ReadReplicaSpec(AbstractServerSetSpec):
     def load(self, spec_root: dict, spec_specific: dict, where_specific: str):
         self._load(spec_root, spec_specific, where_specific)
 
+    @property
+    def headless_service_name(self) -> str:
+        #self.name is actually "{cluster_name}-{rr_name}"
+        return f"{self.name}-instances"
 
 class InnoDBClusterSpec(AbstractServerSetSpec):
     service: ServiceSpec = ServiceSpec()
@@ -1647,6 +1677,9 @@ class InnoDBClusterSpec(AbstractServerSetSpec):
     def service_fqdn_template(self) -> Optional[str]:
         return self.serviceFqdnTemplate
 
+    @property
+    def headless_service_name(self) -> str:
+        return f"{self.name}-instances"
 
 
 class InnoDBCluster(K8sInterfaceObject):
@@ -1775,19 +1808,28 @@ class InnoDBCluster(K8sInterfaceObject):
         pods.sort(key=lambda pod: pod.index)
         return pods
 
+    def get_routers(self) -> typing.List[str]:
+        # get all pods that belong to the same container
+        objects = cast(api_client.V1PodList, api_core.list_namespaced_pod(
+            self.namespace, label_selector=f"component=mysqlrouter,mysql.oracle.com/cluster={self.name}"))
+
+        pods = [o.metadata.name for o in objects.items]
+
+        return pods
+
     def get_service(self) -> typing.Optional[api_client.V1Service]:
         try:
             return cast(api_client.V1Service,
-                        api_core.read_namespaced_service(self.name+"-instances", self.namespace))
+                        api_core.read_namespaced_service(self.parsed_spec.headless_service_name, self.namespace))
         except ApiException as e:
             if e.status == 404:
                 return None
             raise
 
-    def get_read_replica_service(self, name: str) -> typing.Optional[api_client.V1Service]:
+    def get_read_replica_service(self, rr: ReadReplicaSpec) -> typing.Optional[api_client.V1Service]:
         try:
             return cast(api_client.V1Service,
-                        api_core.read_namespaced_service(name+"-instances", self.namespace))
+                        api_core.read_namespaced_service(rr.headless_service_name, self.namespace))
         except ApiException as e:
             if e.status == 404:
                 return None
@@ -1973,14 +2015,26 @@ class InnoDBCluster(K8sInterfaceObject):
                 utils.b64decode(secrets.data["clusterAdminPassword"]))
 
     @classmethod
-    def get_service_account(cls, spec: AbstractServerSetSpec) -> api_client.V1ServiceAccount:
+    def get_service_account_sidecar(cls, spec: AbstractServerSetSpec) -> api_client.V1ServiceAccount:
         return cast(api_client.V1ServiceAccount,
                     api_core.read_namespaced_service_account(spec.serviceAccountName, spec.namespace))
 
     @classmethod
-    def get_role_binding(cls, spec: AbstractServerSetSpec) -> api_client.V1RoleBinding:
+    def get_service_account_switchover(cls, spec: AbstractServerSetSpec) -> api_client.V1ServiceAccount:
+        # Not user configurable for now due to limited use. Also, only once per namespace, thus doesn't include cluster name
+        return cast(api_client.V1ServiceAccount,
+                    api_core.read_namespaced_service_account(spec.switchoverServiceAccountName, spec.namespace))
+
+    @classmethod
+    def get_role_binding_sidecar(cls, spec: AbstractServerSetSpec) -> api_client.V1RoleBinding:
+        # Not user configurable for now due to limited use. Also, only once per namespace, thus doesn't include cluster name
         return cast(api_client.V1RoleBinding,
                     api_rbac.read_namespaced_role_binding(spec.roleBindingName, spec.namespace))
+
+    @classmethod
+    def get_role_binding_switchover(cls, spec: AbstractServerSetSpec) -> api_client.V1RoleBinding:
+        return cast(api_client.V1RoleBinding,
+                    api_rbac.read_namespaced_role_binding(spec.switchoverRoleBindingName, spec.namespace))
 
     def delete_configmap(self, cm_name: str) -> typing.Optional[api_client.V1Status]:
         try:
@@ -2488,8 +2542,7 @@ class MySQLPod(K8sInterfaceObject):
     # TODO remove field
     def get_membership_info(self, field: str = None) -> typing.Optional[dict]:
         if self.metadata.annotations:
-            info = self.metadata.annotations.get(
-                "mysql.oracle.com/membership-info", None)
+            info = self.metadata.annotations.get("mysql.oracle.com/membership-info", None)
             if info:
                 info = json.loads(info)
                 if info and field:
@@ -2559,4 +2612,3 @@ class MySQLPod(K8sInterfaceObject):
             # modify the JSON data used internally by kopf to update its finalizer list
             if fin in pod_body["metadata"]["finalizers"]:
                 pod_body["metadata"]["finalizers"].remove(fin)
-

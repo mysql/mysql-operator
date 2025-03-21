@@ -7,6 +7,7 @@ from re import L
 from kubernetes.client.rest import ApiException
 from .innodbcluster.cluster_api import InnoDBCluster, MySQLPod
 import typing
+from enum import Enum
 from typing import Optional, TYPE_CHECKING, Tuple, List, Set, Dict, cast
 from . import shellutils, consts, errors
 import kopf
@@ -22,6 +23,12 @@ mysql = mysqlsh.mysql
 #
 # InnoDB Cluster Instance Diagnostic Statuses
 #
+class ClusterInClusterSetType(Enum):
+    PRIMARY = "PRIMARY"
+    REPLICA = "REPLICA"
+    PRIMARY_CANDIDATE = "PRIMARY_CANDIDATE"
+    REPLICA_CANDIDATE = "REPLICA_CANDIDATE"
+    UNKNOWN = "UNKNOWN"
 
 
 class InstanceDiagStatus(enum.Enum):
@@ -62,6 +69,7 @@ class InstanceStatus:
     in_quorum: Optional[bool] = None
     peers: Optional[dict] = None
     gtid_executed: Optional[str] = None
+    cluster_in_cluster_set_type: ClusterInClusterSetType = ClusterInClusterSetType.UNKNOWN
 
     def __repr__(self) -> str:
         return f"InstanceStatus: pod={self.pod} status={self.status} connect_error={self.connect_error} view_id={self.view_id} is_primary={self.is_primary} in_quorum={self.in_quorum} peers={self.peers}"
@@ -136,6 +144,13 @@ def diagnose_instance(pod: MySQLPod, logger, dba: 'Dba' = None) -> InstanceStatu
     if cluster:
         try:
             mstatus = cluster.status({"extended": 1})
+
+            if mstatus["clusterRole"] == "PRIMARY":
+                status.cluster_in_cluster_set_type = ClusterInClusterSetType.PRIMARY
+            elif mstatus["clusterRole"] == "REPLICA":
+                status.cluster_in_cluster_set_type = ClusterInClusterSetType.REPLICA
+            else:
+                status.cluster_in_cluster_set_type = ClusterInClusterSetType.UNKNOWN
 
             cluster_status = mstatus["defaultReplicaSet"]["status"]
             status.view_id = mstatus["defaultReplicaSet"]["groupViewId"]
@@ -455,6 +470,7 @@ class ClusterStatus:
     online_members: List[MySQLPod] = []
     quorum_candidates: Optional[list] = None
     gtid_executed: Dict[int,str] = {}
+    type: ClusterInClusterSetType = ClusterInClusterSetType.UNKNOWN
 
 
 def do_diagnose_cluster(cluster: InnoDBCluster, logger) -> ClusterStatus:
@@ -577,6 +593,9 @@ def do_diagnose_cluster(cluster: InnoDBCluster, logger) -> ClusterStatus:
                                  ClusterDiagStatus.NO_QUORUM,
                                  ClusterDiagStatus.NO_QUORUM_UNCERTAIN):
         logger.info(log_msg)
+        cluster_status.type = ClusterInClusterSetType.UNKNOWN
+    else:
+        cluster_status.type = status.cluster_in_cluster_set_type
 
     logger.debug(f"Cluster {cluster.name}  status={cluster_status.status}")
 

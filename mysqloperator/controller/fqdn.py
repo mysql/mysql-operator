@@ -58,7 +58,7 @@ def idc_service_fqdn(cluster: 'InnoDBCluster', logger: Logger) -> str:
         template = idc_service_fqdn_template(cluster.parsed_spec)
 
     return template.format(
-        service=f"{cluster.name}-instances",
+        service=f"{cluster.parsed_spec.headless_service_name}",
         namespace=cluster.namespace,
         domain=k8s_cluster_domain(logger)
     )

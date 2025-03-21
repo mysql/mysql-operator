@@ -100,6 +100,28 @@ rules:
     resources: ["mysqlbackups/status"]
     verbs: ["get", "patch", "update", "watch"]
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mysql-switchover
+rules:
+  # Kopf needs patch on secrets or the sidecar will throw
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+  - apiGroups: ["mysql.oracle.com"]
+    resources: ["innodbclusters"]
+    verbs: ["get"]
+  - apiGroups: ["mysql.oracle.com"]
+    resources: ["innodbclusters/status"]
+    verbs: ["get", "patch"]
+---
 # Give access to the operator
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

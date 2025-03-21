@@ -53,12 +53,13 @@ import time
 import asyncio
 import argparse
 import kopf
+import json
 from threading import Lock
 
-from .controller import utils, mysqlutils, k8sobject
+from .controller import utils, mysqlutils, k8sobject, fqdn, config
 from .controller.api_utils import Edition
 from .controller.innodbcluster import initdb
-from .controller.innodbcluster.cluster_api import CloneInitDBSpec, DumpInitDBSpec, InnoDBCluster, MySQLPod
+from .controller.innodbcluster.cluster_api import CloneInitDBSpec, DumpInitDBSpec, InnoDBCluster, MySQLPod, ClusterSetInitDBSpec
 from .controller.kubeutils import api_core, client as api_client
 from .controller.innodbcluster import router_objects
 from .controller.plugins import install_enterprise_plugins, install_enterprise_encryption, install_keyring_udf
@@ -109,7 +110,9 @@ def create_local_accounts(session: 'ClassicSession', logger: Logger):
     logger.info("Creating local accounts")
     for s in sql:
         try:
-            session.run_sql(s)
+            ret = session.run_sql(s)
+            if ret is not None and ret.warnings != []:
+                logger.warning(f"Warnings during execution of {s}: {ret.warnings}")
         except Exception as e:
             logger.error(f"Error executing {s}: {e}")
             raise Exception("Error creating local accounts")
@@ -194,9 +197,6 @@ def populate_with_clone(datadir: str, session: 'ClassicSession', cluster: InnoDB
     logger.info(f"Resetting password for {admin_user}@%")
     session.run_sql("SET PASSWORD FOR ?@'%'=?", [admin_user, admin_pass])
 
-    # recreate metrics user if needed
-    create_metrics_account(session, cluster, logger)
-
     wipe_old_innodb_cluster(session, logger)
 
     return session
@@ -220,6 +220,59 @@ def populate_with_dump(datadir: str, session: 'ClassicSession', cluster: InnoDBC
     return session
 
 
+def populate_by_joining_cluster_set(_, session: 'ClassicSession',
+                                    cluster: InnoDBCluster,
+                                    init_spec: ClusterSetInitDBSpec,
+                                    pod: MySQLPod, logger: Logger):
+
+    # recreate our accounts
+
+    #old_read_only = session.run_sql("SELECT @@super_read_only").fetch_one()[0]
+    # we are in a replica cluster, thus should be in super_Read_only mode, but let's play safe
+    #try:
+    #    # this is somewhat duplicated with initialize() - probably wise to factor out
+    #    session.run_sql("SET sql_log_bin=0")
+    #    create_local_accounts(session, logger)
+    #finally:
+    #    session.run_sql("SET GLOBAL super_read_only=?", [old_read_only])
+    #    session.run_sql("SET sql_log_bin=1")
+
+    logger.info(f"Joining InnoDB ClusterSet at {init_spec.uri}")
+    session = initdb.join_innodb_cluster_set(session, cluster, init_spec, pod,
+                                             logger, create_admin_account)
+
+    try:
+        user, host, password = get_root_account_info(cluster)
+    except Exception as e:
+        pod.error(action="InitDB", reason="InvalidArgument", message=f"{e}")
+        raise
+
+    logger.info(f"Connecting as {user}@{host}")
+    session = connect(user, password, logger)
+
+    # TODO we need to do some of those things below ...
+    return session
+
+
+    old_read_only = session.run_sql("SELECT @@super_read_only").fetch_one()[0]
+    print(f"checking value of previous super read only: {old_read_only=}")
+    try:
+        # this is somewhat duplicated with initialize() - probably wise to factor out
+        session.run_sql("SET sql_log_bin=0")
+        session.run_sql("SET GLOBAL super_read_only=0")
+
+        admin_user, admin_pass = cluster.get_admin_account()
+        logger.info(f"Resetting password for {admin_user}@%")
+        session.run_sql("SET PASSWORD FOR ?@'%'=?", [admin_user, admin_pass])
+
+    finally:
+        session.run_sql("SET GLOBAL super_read_only=?", [old_read_only])
+        session.run_sql("SET sql_log_bin=1")
+
+    return session
+
+
+
 def populate_db(datadir: str, session: 'ClassicSession', cluster: InnoDBCluster, pod, logger: Logger) -> 'ClassicSession':
     """
     Populate DB from source specified in the cluster spec.
@@ -233,12 +286,12 @@ def populate_db(datadir: str, session: 'ClassicSession', cluster: InnoDBCluster,
             return populate_with_clone(datadir, session, cluster, cluster.parsed_spec.initDB.clone, pod, logger)
         elif cluster.parsed_spec.initDB.dump:
             logger.info("Populate with dump")
-            return populate_with_dump(datadir, session, cluster, cluster.parsed_spec.initDB.dump, pod, logger)
+        elif cluster.parsed_spec.initDB.cluster_set:
+            logging.info("Joining InnoDB ClusterSet")
+            return populate_by_joining_cluster_set(datadir, session, cluster, cluster.parsed_spec.initDB.cluster_set, pod, logger)
         else:
-            logger.warning(
-                "spec.initDB ignored because no supported initialization parameters found")
-
-    create_root_account(session, pod, cluster, logger)
+            logger.warning("spec.initDB ignored because no supported initialization parameters found")
+    logger.info("InitDB not specified")
 
     return session
 
@@ -272,6 +325,7 @@ def create_root_account(session: 'ClassicSession', pod: MySQLPod, cluster: InnoD
     """
     Create general purpose root account (owned by user) as specified by user.
     """
+    logger.info("Creating root account")
     try:
         user, host, password = get_root_account_info(cluster)
     except Exception as e:
@@ -281,6 +335,8 @@ def create_root_account(session: 'ClassicSession', pod: MySQLPod, cluster: InnoD
 
     # DROP root@localhost which has random password in case create_root_account() is called from initialize
     # or drop the root@localhost from a initDB and set new password, as the one in the dump/clone might differ
+    # The `root` user might not have username root thus we need to drop root@localhost created by the MySQL --initialize-only
+    # It was created with random password we are not aware of but it doesn't matter. We create an user as specified in the secret
     ret = session.run_sql("DROP USER IF EXISTS root@localhost")
     logger.info(f"DROP USER root@localhost - Warnings {ret.warnings if ret is not None else []}")
 
@@ -307,7 +363,13 @@ def create_admin_account(session, cluster, logger: Logger):
     # binlog has to be disabled for this, because we need to create the account
     # independently in all instances (so that we can run configure on them),
     # which would cause diverging GTID sets
-    session.run_sql("CREATE USER IF NOT EXISTS ?@? IDENTIFIED BY ?", [user, host, password])
+    attributes = {
+        'MySQL Operator Cluster': fqdn.idc_service_fqdn(cluster, logger),
+        'MySQL Operator Version': config.DEFAULT_VERSION_TAG,
+    }
+
+    session.run_sql("CREATE USER IF NOT EXISTS ?@? IDENTIFIED BY ? ATTRIBUTE ?",
+                    [user, host, password, json.dumps(attributes)])
     session.run_sql("GRANT ALL ON *.* TO ?@? WITH GRANT OPTION", [user, host])
     session.run_sql("GRANT PROXY ON ''@'' TO ?@? WITH GRANT OPTION", [user, host])
     logger.info("Admin account created")
@@ -325,12 +387,22 @@ def create_metrics_account(session: 'ClassicSession', cluster: InnoDBCluster, lo
     max_connections = cluster.parsed_spec.metrics.dbuser_max_connections
     grants = cluster.parsed_spec.metrics.dbuser_grants
 
-    logger.info(f"Creating account {user}@{host}")
+    logger.info(f"Creating account {user}@{host} using {session.get_uri()}")
     # binlog has to be disabled for this, because we need to create the account
     # independently in all instances (so that metrics are available even on later config failure),
     # which would cause diverging GTID sets
     mysqlutils.setup_metrics_user(session, user, grants, max_connections)
     logger.info("Metrics account created")
+
+
+def create_backup_account(session: 'ClassicSession', cluster: InnoDBCluster, logger: Logger):
+    """
+    Create a user for backup
+    """
+    user, password = cluster.get_backup_account()
+    logger.debug(f"Creating backup account {user} using {session.get_uri()}")
+    mysqlutils.setup_backup_account(session, user, password)
+    logger.info("Backup account created")
 
 
 def connect(user: str, password: str, logger: Logger, timeout: Optional[int] = 60) -> 'ClassicSession':
@@ -363,7 +435,6 @@ def initialize(session: 'ClassicSession', datadir: str, pod: MySQLPod, cluster: 
     session.run_sql("SET sql_log_bin=0")
     create_root_account(session, pod, cluster, logger)
     create_admin_account(session, cluster, logger)
-    create_metrics_account(session, cluster, logger)
     session.run_sql("SET sql_log_bin=1")
 
     user, password = cluster.get_admin_account()
@@ -375,11 +446,22 @@ def initialize(session: 'ClassicSession', datadir: str, pod: MySQLPod, cluster: 
         # if this is the 1st pod of the cluster, then initialize it and create default accounts
         session = populate_db(datadir, session, cluster, pod, logger)
 
+    # TODO: This will fail after restarting server due to cloning - wonder why
+    #       I only noticed this with clusterSet not with plain clone
+    #
+    #        mysqlsh.DBError: MySQL Error (2013): ClassicSession.run_sql: Lost connection to MySQL server during query
+
     session.run_sql("SET sql_log_bin=0")
     old_read_only = session.run_sql("SELECT @@super_read_only").fetch_one()[0]
     session.run_sql("SET GLOBAL super_read_only=0")
 
     try:
+        # These need to be created on every pod and not replicated. Thus under sql_log_bin=0
+        # Not created earlier, as if there is initdb, for example from dump of clone, the
+        # creation will be overwritten and we will need to create them again in the populate method
+        create_metrics_account(session, cluster, logger)
+        create_backup_account(session, cluster, logger)
+
         # Some commands like INSTALL [PLUGIN|COMPONENT] are not being
         # replicated we run them on any restart, those have to be idempotent
 

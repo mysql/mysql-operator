@@ -225,11 +225,23 @@ spec:
     {{- end }}
   {{- end }}
 {{- end }}
-  # Init DB
+  # InitDB
 {{- if (.Values).initDB }}
-  {{- if and (and .Values.initDB.dump .Values.initDB.dump.name) (and .Values.initDB.clone .Values.initDB.donorUrl) }}
-    {{- fail "Dump and Clone are mutually exclusive" }}
+  ## InitDB
+ {{- if and (and (and .Values.initDB.dump .Values.initDB.dump.name) (and .Values.initDB.clone .Values.initDB.clone.donorUrl)) (and .Values.initDB.clusterSet .Values.initDB.clusterSet.targetUrl) }}
+    {{- fail "Dump, Clone and ClusterSet are mutually exclusive for initDB" }}
   {{- end }}
+  ## ClusterSet
+  {{- if (((.Values).initDB).clusterSet) }}
+    {{- with .Values.initDB.clusterSet }}
+  initDB:
+    clusterSet:
+      targetUrl: {{ required "initDB.clusterSet.targetUrl is required" .targetUrl }}
+      secretKeyRef:
+        name: {{ required "initDB.clusterSet.credentials is required" .credentials }}
+    {{- end }}
+  {{- end }}
+  ## Clone
   {{- if (((.Values).initDB).clone) }}
     {{- with .Values.initDB.clone }}
   initDB:
@@ -240,6 +252,7 @@ spec:
         name: {{ required "initDB.clone.credentials is required" .credentials }}
     {{- end }}
   {{- end }}
+  ## Dump
   {{- if (((.Values).initDB).dump) }}
     {{- with .Values.initDB.dump }}
       {{- if and .name (or .ociObjectStorage .s3 .azure .persistentVolumeClaim .options) }}

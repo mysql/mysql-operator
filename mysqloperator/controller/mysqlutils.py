@@ -98,6 +98,7 @@ def setup_backup_account(session, user, password):
     session.run_sql(
         f"GRANT backup_admin /*!80020 , show_routine */ ON *.* TO {user}")
 
+
 def setup_metrics_user(session: 'mysqlsh.ClassicSession', user: str,
                        grants: List, max_connections: int) -> None:
     host = "localhost"

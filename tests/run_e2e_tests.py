@@ -181,6 +181,14 @@ if __name__ == '__main__':
             g_ts_cfg.oci_config_path = arg.partition("=")[-1]
         elif arg.startswith("--oci-bucket="):
             g_ts_cfg.oci_bucket_name = arg.partition("=")[-1]
+        elif arg.startswith("--oci-s3-endpoint="):
+            g_ts_cfg.oci_s3_endpoint = arg.partition("=")[-1]
+        elif arg.startswith("--oci-s3-profile="):
+            g_ts_cfg.oci_s3_profile = arg.partition("=")[-1]
+        elif arg.startswith("--oci-s3-config-file="):
+            g_ts_cfg.oci_s3_config_path = arg.partition("=")[-1]
+        elif arg.startswith("--oci-s3-credentials-file="):
+            g_ts_cfg.oci_s3_credentials_path = arg.partition("=")[-1]
         elif arg == "--skip-azure":
             g_ts_cfg.azure_skip = True
         elif arg == "--start-azure":

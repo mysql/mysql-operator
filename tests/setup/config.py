@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -59,6 +59,10 @@ class Config:
     oci_skip = defaults.OCI_SKIP
     oci_config_path = defaults.OCI_CONFIG_PATH
     oci_bucket_name = defaults.OCI_BUCKET_NAME
+    oci_s3_endpoint = defaults.OCI_S3_ENDPOINT
+    oci_s3_profile = defaults.OCI_S3_PROFILE
+    oci_s3_config_path = defaults.OCI_S3_CONFIG_PATH
+    oci_s3_credentials_path = defaults.OCI_S3_CREDENTIALS_PATH
 
     # Azure BLOB Storage Backup
     azure_skip = defaults.AZURE_SKIP

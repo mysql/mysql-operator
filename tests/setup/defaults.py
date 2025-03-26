@@ -68,6 +68,18 @@ OCI_BUCKET_NAME = os.getenv(
 OCI_VAULT_CONFIG_PATH = os.getenv(
     "OPERATOR_TEST_VAULT_CONFIG_PATH", default=None)
 
+OCI_S3_ENDPOINT = os.getenv(
+    "OPERATOR_TEST_OCI_S3_ENDPOINT", default=None)
+
+OCI_S3_PROFILE = os.getenv(
+    "OPERATOR_TEST_OCI_S3_PROFILE", default=None)
+
+OCI_S3_CONFIG_PATH = os.getenv(
+    "OPERATOR_TEST_OCI_S3_CONFIG_PATH", default=None)
+
+OCI_S3_CREDENTIALS_PATH = os.getenv(
+    "OPERATOR_TEST_OCI_S3_CREDENTIALS_PATH", default=None)
+
 # azure backup
 AZURE_SKIP = os.getenv(
     "OPERATOR_TEST_SKIP_AZURE", default=False)

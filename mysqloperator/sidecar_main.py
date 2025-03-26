@@ -286,6 +286,7 @@ def populate_db(datadir: str, session: 'ClassicSession', cluster: InnoDBCluster,
             return populate_with_clone(datadir, session, cluster, cluster.parsed_spec.initDB.clone, pod, logger)
         elif cluster.parsed_spec.initDB.dump:
             logger.info("Populate with dump")
+            return populate_with_dump(datadir, session, cluster, cluster.parsed_spec.initDB.dump, pod, logger)
         elif cluster.parsed_spec.initDB.cluster_set:
             logging.info("Joining InnoDB ClusterSet")
             return populate_by_joining_cluster_set(datadir, session, cluster, cluster.parsed_spec.initDB.cluster_set, pod, logger)

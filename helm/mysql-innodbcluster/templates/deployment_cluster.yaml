@@ -5,6 +5,7 @@
 {{- $forbiddenVersions := list "8.0.29" }}
 {{- $imagePullPolicies := list "ifnotpresent" "always" "never" }}
 {{- $serverVersion := .Values.serverVersion | default .Chart.AppVersion }}
+{{- $install_namespace := .Release.Namespace }}
 {{- if and ((.Values).routerInstances) (((.Values).router).instances) }}
   {{- if ne ((.Values).routerInstances) (((.Values).router).instances) }}
     {{- $err := printf "routerInstances and router.instances both are specified and have different values %d and %d. Use only one" ((.Values).routerInstances) (((.Values).router).instances) }}
@@ -32,7 +33,7 @@ apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: {{ $cluster_name }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ $install_namespace }}
 spec:
   instances: {{ required "serverInstances is required" .Values.serverInstances | toString | atoi }}
   tlsUseSelfSigned: {{ $use_self_signed }}
@@ -62,8 +63,8 @@ spec:
   {{- end }}
   {{- $default_secret_name := printf "%s-router-tls" $cluster_name }}
   {{- $secret_name := coalesce ((.Values.tls).routerCertAndPKsecretName) ((.Values.router).certAndPKsecretName) $default_secret_name}}
-  {{- if and (not $disable_lookups) (not (lookup "v1" "Secret" .Release.Namespace $secret_name)) }}
-    {{- $err := printf "tls.routerCertAndPKsecretName: secret '%s' not found in namespace '%s'" $secret_name .Release.Namespace }}
+  {{- if and (not $disable_lookups) (not (lookup "v1" "Secret" $install_namespace $secret_name)) }}
+    {{- $err := printf "tls.routerCertAndPKsecretName: secret '%s' not found in namespace '%s'" $secret_name $install_namespace }}
     {{- fail $err }}
   {{- end }}
     tlsSecretName: {{ $secret_name }}
@@ -89,20 +90,34 @@ spec:
     {{- fail "image.repository provided but image.registry is not or is empty" }}
   {{- end }}
 
-  #TLS
+  # imagePullSecrets
+{{- if ((((.Values).image).pullSecrets).enabled) }}
+  imagePullSecrets:
+    {{- $secret_name := .Values.image.pullSecrets.secretName }}
+    {{- if not $secret_name }}
+      {{- fail "image.pullSecrets.secretName is required when pull secrets are enabled" }}
+    {{- end }}
+    {{- if and (not $disable_lookups) (not (lookup "v1" "Secret" $install_namespace $secret_name)) }}
+      {{- $err := printf "image.pullSecrets.secretName: secret '%s' not found in namespace '%s'" $secret_name $install_namespace }}
+      {{- fail $err }}
+    {{- end }}
+  - name: {{ $secret_name }}
+{{- end }}
+
+  # TLS
 {{- if not $use_self_signed }}
   {{- $default_secret_name := printf "%s-ca" $cluster_name }}
   {{- $secret_name := default $default_secret_name ((.Values.tls).caSecretName) }}
-  {{- if and (not $disable_lookups) (not (lookup "v1" "Secret" .Release.Namespace $secret_name)) }}
-    {{- $err := printf "tls.caSecretName: secret '%s' not found in namespace '%s'" $secret_name .Release.Namespace }}
+  {{- if and (not $disable_lookups) (not (lookup "v1" "Secret" $install_namespace $secret_name)) }}
+    {{- $err := printf "tls.caSecretName: secret '%s' not found in namespace '%s'" $secret_name $install_namespace }}
     {{- fail $err }}
   {{- end }}
   tlsCASecretName: {{ $secret_name }}
 
   {{- $default_secret_name := printf "%s-tls" $cluster_name }}
   {{- $secret_name := default $default_secret_name ((.Values.tls).serverCertAndPKsecretName) }}
-  {{- if and (not $disable_lookups) (not (lookup "v1" "Secret" .Release.Namespace $secret_name)) }}
-    {{- $err := printf "tls.serverCertAndPKsecretName: secret '%s' not found in namespace '%s'" $secret_name .Release.Namespace }}
+  {{- if and (not $disable_lookups) (not (lookup "v1" "Secret" $install_namespace $secret_name)) }}
+    {{- $err := printf "tls.serverCertAndPKsecretName: secret '%s' not found in namespace '%s'" $secret_name $install_namespace }}
     {{- fail $err }}
   {{- end }}
   tlsSecretName: {{ $secret_name }}
@@ -238,7 +253,7 @@ spec:
     clusterSet:
       targetUrl: {{ required "initDB.clusterSet.targetUrl is required" .targetUrl }}
       secretKeyRef:
-        name: {{ required "initDB.clusterSet.credentials is required" .credentials }}
+        name: {{ required "initDB.clusterSet.secretKeyRef.name is required" .secretKeyRef.name }}
     {{- end }}
   {{- end }}
   ## Clone

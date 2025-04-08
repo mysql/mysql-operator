@@ -641,6 +641,7 @@ kind: ServiceAccount
 metadata:
   name: {spec.switchoverServiceAccountName}
   namespace: {spec.namespace}
+{spec.image_pull_secrets}
 """
 
     account = yaml.safe_load(account)
@@ -889,6 +890,63 @@ data:
           prefix = prefix + 1
 
     return cm
+
+
+def prepare_service_failover_job(batchjob_name: str, force: str, options: dict, spec: InnoDBClusterSpec, logger: Logger) -> dict:
+    cluster_domain = k8s_cluster_domain(logger)
+
+    cluster_name = spec.cluster_name
+    namespace = spec.namespace
+    extras =", --force" if force else ""
+
+    if options:
+        extras += f", --timeout={options['timeout']}" if "timeout" in options else ""
+        # TODO shell escape! Probably it's better to have the pod read this itself
+        extras += f", --invalidate-replica-clusters={','.join(options['invalidateReplicaClusters'])}" if "invalidateReplicaClusters" in options else ""
+
+    job = f"""
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {batchjob_name}
+  namespace: {namespace}
+spec:
+  template:
+    spec:
+      serviceAccountName: mysql-switchover-sa
+      securityContext:
+        runAsUser: 27
+        runAsGroup: 27
+        fsGroup: 27
+      restartPolicy: Never
+      containers:
+      - name: failover
+        image: {spec.operator_image}
+        imagePullPolicy: {spec.mysql_image_pull_policy}
+        command: ["mysqlsh",  "--pym", "mysqloperator", "csfo", --cluster-name, {cluster_name}, "--namespace", {namespace} {extras}]
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        env:
+        - name: MYSQLSH_USER_CONFIG_HOME
+          value: /tmp
+        - name: MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN
+          value: {cluster_domain}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {{}}
+"""
+
+    return  yaml.safe_load(job)
+
+
 
 def prepare_metrics_service_monitors(spec: AbstractServerSetSpec, logger: Logger) -> List[Dict]:
     monitors = []

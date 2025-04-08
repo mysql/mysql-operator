@@ -12,7 +12,7 @@ from .. import consts, kubeutils, config, utils, errors, diagnose
 from .. import shellutils
 from ..group_monitor import g_group_monitor
 from ..utils import g_ephemeral_pod_state
-from ..kubeutils import api_core, api_apps, api_policy, api_rbac, api_customobj, api_cron_job, k8s_version
+from ..kubeutils import api_core, api_apps, api_policy, api_rbac, api_customobj, api_batch, k8s_version
 from ..backup import backup_objects
 from ..config import DEFAULT_OPERATOR_VERSION_TAG
 from .cluster_controller import ClusterController, ClusterMutex
@@ -1093,69 +1093,10 @@ def on_failover_create(name: str, namespace: Optional[str], body: Body,
     # TODO: move this to a proper structure
     logger.info(f'Fetching {body["spec"]["clusterName"]}')
     cluster = cluster_api.InnoDBCluster.read(namespace, body["spec"]["clusterName"])
-    from ..fqdn import k8s_cluster_domain
-    cluster_domain = k8s_cluster_domain(logger)
+    job = cluster_objects.prepare_service_failover_job(name, body["spec"]["force"], body["spec"].get("options"), cluster.parsed_spec, logger)
 
-    extras =", --force" if body["spec"]["force"] else ""
-
-    options = body["spec"].get("options")
-    if options:
-        extras += f", --timeout={options['timeout']}" if "timeout" in options else ""
-        # TODO shell escape! Probably it's better to have the pod read this itself
-        extras += f", --invalidate-replica-clusters={','.join(options['invalidateReplicaClusters'])}" if "invalidateReplicaClusters" in options else ""
-
-    job = f"""
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: {name}
-  namespace: {namespace}
-spec:
-  template:
-    spec:
-      containers:
-      - name: failover
-        image: {cluster.parsed_spec.operator_image}
-        imagePullPolicy: Always # has to come from cluster spec
-        command: ["mysqlsh",  "--pym", "mysqloperator", "csfo", --cluster-name, {cluster.name}, "--namespace", {cluster.namespace} {extras}]
-        securityContext:
-          allowPrivilegeEscalation: false
-          privileged: false
-          readOnlyRootFilesystem: true
-          capabilities:
-            drop:
-            - ALL
-        env:
-        - name: MYSQLSH_USER_CONFIG_HOME
-          value: /tmp
-        - name: MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN
-          value: {cluster_domain}
-        volumeMounts:
-        - name: tmp
-          mountPath: /tmp
-
-      serviceAccountName: mysql-switchover-sa
-
-      securityContext:
-        runAsUser: 27
-        runAsGroup: 27
-        fsGroup: 27
-
-      restartPolicy: Never # when basic testing is done: OnFailure? - Or shall we fail and ask user to retry themselves? This process deserves some monitoring ...
-
-      volumes:
-      - name: tmp
-        emptyDir: {{}}
-"""
-#      serviceAccountName: {cluster.parsed_spec.serviceAccountName}
-    print(job)
-    import yaml
-    from ..kubeutils import api_batch
-
-    body = yaml.safe_load(job)
-    kopf.adopt(body)
-
-    api_batch.create_namespaced_job(namespace, body=body)
+    kopf.adopt(job)
+    api_batch.create_namespaced_job(namespace, body=job)
 
 
 @kopf.on.delete("", "v1", "pods",

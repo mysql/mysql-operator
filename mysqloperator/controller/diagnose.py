@@ -145,12 +145,15 @@ def diagnose_instance(pod: MySQLPod, logger, dba: 'Dba' = None) -> InstanceStatu
         try:
             mstatus = cluster.status({"extended": 1})
 
-            if mstatus["clusterRole"] == "PRIMARY":
-                status.cluster_in_cluster_set_type = ClusterInClusterSetType.PRIMARY
-            elif mstatus["clusterRole"] == "REPLICA":
-                status.cluster_in_cluster_set_type = ClusterInClusterSetType.REPLICA
+            status.cluster_in_cluster_set_type = ClusterInClusterSetType.PRIMARY
+            if "clusterRole" in mstatus:
+                logger.info("9.3.0+ cluster, ClusterSet enabled")
+                if mstatus["clusterRole"] == "REPLICA":
+                    status.cluster_in_cluster_set_type = ClusterInClusterSetType.REPLICA
+                else:
+                    status.cluster_in_cluster_set_type = ClusterInClusterSetType.UNKNOWN
             else:
-                status.cluster_in_cluster_set_type = ClusterInClusterSetType.UNKNOWN
+                logger.info("pre 9.3.0 cluster, not ClusterSet enabled")
 
             cluster_status = mstatus["defaultReplicaSet"]["status"]
             status.view_id = mstatus["defaultReplicaSet"]["groupViewId"]

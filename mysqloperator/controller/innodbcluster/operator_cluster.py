@@ -436,33 +436,39 @@ def on_innodbcluster_delete(name: str, namespace: str, body: Body,
             # TODO: remove admin/backup/metrics/router/... accounts as far as they are replicated to primary
             with shellutils.DbaWrap(shellutils.connect_to_pod_dba(pods[0], logger)) as dba:
                 try:
-                    my_name = dba.get_cluster().name
-                    cs = dba.get_cluster_set()
-                    describe = cs.status(extended=1)
-                    logger.info(f"CSet={json.dumps(describe, indent=4)}")
-                    if describe["clusters"][my_name]["clusterRole"] == "PRIMARY" and len(describe["clusters"]) > 1:
-                        #raise kopf.TemporaryError(f"Cluster {my_name} is PRIMARY. Can not remove, trigger a failover first!")
-                        # Check if all REPLICAS are still there, if not there / stale, remove them
-                        invalidated = 0
-                        ok = {}
-                        for cluster_name, cluster_data in describe["clusters"].items():
-                            if cluster_data["clusterRole"] == "REPLICA":
-                                if cluster_data["globalStatus"] == "INVALIDATED" and cluster_data["status"] == "UNREACHABLE":
-                                    invalidated = invalidated + 1
-                                else:
-                                    # we can also throw here directly on first occurence, but let's just collect some data for the exception message
-                                    ok[cluster_name] = cluster_data
+                    cluster_status = dba.get_cluster().status({"extended": 1})
+                    if "clusterRole" in cluster_status:
+                        logger.info("9.3.0+ cluster, ClusterSet enabled")
+                        my_name = dba.get_cluster().name
+                        cs = dba.get_cluster_set()
+                        cs_status = cs.status(extended=1)
+                        logger.info(f"CSet={json.dumps(cs_status, indent=4)}")
+                        if cs_status["clusters"][my_name]["clusterRole"] == "PRIMARY" and len(cs_status["clusters"]) > 1:
+                            #raise kopf.TemporaryError(f"Cluster {my_name} is PRIMARY. Can not remove, trigger a failover first!")
+                            # Check if all REPLICAS are still there, if not there / stale, remove them
+                            invalidated = 0
+                            ok = {}
+                            for cluster_name, cluster_data in cs_status["clusters"].items():
+                                if cluster_data["clusterRole"] == "REPLICA":
+                                    if cluster_data["globalStatus"] == "INVALIDATED" and cluster_data["status"] == "UNREACHABLE":
+                                        invalidated = invalidated + 1
+                                    else:
+                                        # we can also throw here directly on first occurence, but let's just collect some data for the exception message
+                                        ok[cluster_name] = cluster_data
 
-                        # Without the primary
-                        if (len(describe["clusters"]) - 1) != invalidated:
-                            raise kopf.TemporaryError(f"Cluster {my_name} is PRIMARY. Can not remove, trigger a failover first! The following replicas seem to be ok {json.dumps(ok, indent=4)}")
-                            # else this is the only cluster in the clusterset and we are fine
+                            # Without the primary
+                            if (len(cs_status["clusters"]) - 1) != invalidated:
+                                raise kopf.TemporaryError(f"Cluster {my_name} is PRIMARY. Can not remove, trigger a failover first! The following replicas seem to be ok {json.dumps(ok, indent=4)}")
+                                # else this is the only cluster in the clusterset and we are fine
 
-                        for cluster_name in describe["clusters"].keys():
-                            logger.info(f"Removing INVALIDATED and UNREACHABLE cluster {cluster_name} from the cluster")
-                            cs.remove_cluster(cluster_name, {"force": True})
+                            for cluster_name in cs_status["clusters"].keys():
+                                logger.info(f"Removing INVALIDATED and UNREACHABLE cluster {cluster_name} from the cluster")
+                                cs.remove_cluster(cluster_name, {"force": True})
 
-                    cs.remove_cluster(my_name)
+                        cs.remove_cluster(my_name)
+                    else:
+                        logger.info("pre 9.3.0 cluster, not ClusterSet enabled")
+
                 except mysqlsh.Error as exc:
                     # For whatever reaon we fail: this shouldn't stop us from
                     # decomissioning our pods. Even if not unregistered.

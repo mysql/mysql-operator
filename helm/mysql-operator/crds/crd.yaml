@@ -297,6 +297,79 @@ spec:
                               description : "Specification of the PVC to be used. Used 'as is' in the cloning pod."
                               x-kubernetes-preserve-unknown-fields: true
                           x-kubernetes-preserve-unknown-fields: true
+                    meb:
+                      type: object
+                      required: ["storage", "fullBackup"]
+                      properties:
+                        storage:
+                          type: object
+                          #oneOf:
+                          #- required: ["ociObjectStorage", "s3"]
+                          properties:
+                            ociObjectStorage:
+                              type: object
+                              description: "Restore from OCI ObjectStorage using an PAR"
+                              required: ["credentials"]
+                              properties:
+                                credentials:
+                                  type: string
+                                  description: "Secret Containing PAR Base URL under key parBaseUrl"
+                            s3:
+                              description: "S3 style storage"
+                              type: object
+                              required: ['region', 'bucket', 'objectKeyPrefix', 'credentials']
+                              properties:
+                                region:
+                                  type: string
+                                  description: "S3 Region"
+                                bucket:
+                                  type: string
+                                  description: "S3 Bucket Name"
+                                objectKeyPrefix:
+                                  type: string
+                                  description: "S3 Object Key Prefix, this will be extended with the name of the actual backup"
+                                credentials:
+                                  type: string
+                                  description: "Name of a Secret holding iaccessKeyId and secretAccessKey properties"
+                                host:
+                                  type: string
+                                  description: "Override hostname for S3-compatible backends"
+                        fullBackup:
+                          type: string
+                          description: "Name of the full backup to restore"
+                        incrementalBackups:
+                          type: array
+                          description: "Incremental backups to apply on top of the fullBackup"
+                          items:
+                            type: string
+                        pitr:
+                          type: object
+                          description: "Point-in-time recovery using a backup file on top of fullBackup and optional incrementalBackups"
+                          required: ["backupFile"]
+                          properties:
+                            backupFile:
+                              type: string
+                              description: "Backup containing binary log to apply"
+                            binlogName:
+                              type: string
+                              description: "Basename of binlogs to use for PITR. Often this is the server_name of the backup source"
+                            end:
+                              type: object
+                              description: "End condition for not applying the full log"
+                              #oneOf: ['afterGtids', 'beforeGtids']
+                              properties:
+                                afterGtids:
+                                  type: string
+                                  description: "GTID set describing last transactions to apply, see SQL_AFTER_GTIDS in CHANGE REPLICATION SOURCE statement documentation"
+                                beforeGtids:
+                                  type: string
+                                  description: "GTID set describing last transactions to apply, see SQL_BEFORE_GTID in CHANGE REPLICATION SOURCE statement documentation"
+                        extraOptions:
+                          description: "Additonal Command Line Options being passed to MySQL Enterprise Backup"
+                          type: array
+                          items:
+                            type: string
+
                   x-kubernetes-preserve-unknown-fields: true
                 router:
                   type: object
@@ -514,6 +587,60 @@ spec:
                                 description : "Specification of the PVC to be used. Used 'as is' in pod executing the backup."
                                 x-kubernetes-preserve-unknown-fields: true
                             x-kubernetes-preserve-unknown-fields: true
+                      meb:
+                        type: object
+                        description: "MySQL Enterprise Backup"
+                        required: ["storage"]
+                        properties:
+                          storage:
+                            type: object
+                            description: "Configuration of storage for MySQL Enterprise Backup"
+                            properties:
+                              s3:
+                                description: "S3 style storage"
+                                type: object
+                                required: ['region', 'bucket', 'objectKeyPrefix', 'credentials']
+                                properties:
+                                  region:
+                                    type: string
+                                    description: "S3 Region"
+                                  bucket:
+                                    type: string
+                                    description: "S3 Bucket Name"
+                                  objectKeyPrefix:
+                                    type: string
+                                    description: "S3 Object Key Prefix, this will be extended with the name of the actual backup"
+                                  credentials:
+                                    type: string
+                                    description: "Name of a Secret holding iaccessKeyId and secretAccessKey properties"
+                                  host:
+                                    type: string
+                                    description: "Override hostname for S3-compatible backends"
+
+                              oci:
+                                type: object
+                                description: "Store MySQL Enterprise Backup on OCI Object Storage"
+                                required: ['bucketName', 'prefix', 'namespace', 'credentials']
+                                properties:
+                                  bucketName:
+                                    type: string
+                                    description: "Name of the OCI bucket where backup is stored"
+                                  prefix:
+                                    type: string
+                                    description: "Path in bucket where backup is stored"
+                                  namespace:
+                                    type: string
+                                    description: "OCI Namespace of Object Store"
+                                  credentials:
+                                    type: string
+                                    description: "Name of a Secret with data for accessing the bucket"
+                          extraOptions:
+                            description: "Additonal Command Line Options being passed to MySQL Enterprise Backup"
+                            type: array
+                            items:
+                              type: string
+
+
                       snapshot:
                         type: object
                         properties:
@@ -661,6 +788,58 @@ spec:
                                     description : "Specification of the PVC to be used. Used 'as is' in pod executing the backup."
                                     x-kubernetes-preserve-unknown-fields: true
                                 x-kubernetes-preserve-unknown-fields: true
+                          meb:
+                            type: object
+                            description: "MySQL Enterprise Backup"
+                            required: ["storage"]
+                            properties:
+                              storage:
+                                type: object
+                                description: "Configuration of storage for MySQL Enterprise Backup"
+                                properties:
+                                  s3:
+                                    description: "S3 style storage"
+                                    type: object
+                                    required: ['region', 'bucket', 'objectKeyPrefix', 'credentials']
+                                    properties:
+                                      region:
+                                        type: string
+                                        description: "S3 Region"
+                                      bucket:
+                                        type: string
+                                        description: "S3 Bucket Name"
+                                      objectKeyPrefix:
+                                        type: string
+                                        description: "S3 Object Key Prefix, this will be extended with the name of the actual backup"
+                                      credentials:
+                                        type: string
+                                        description: "Name of a Secret holding iaccessKeyId and secretAccessKey properties"
+                                      host:
+                                        type: string
+                                        description: "Override hostname for S3-compatible backends"
+
+                                  oci:
+                                    type: object
+                                    description: "Store MySQL Enterprise Backup on OCI Object Storage"
+                                    required: ['bucketName', 'prefix', 'namespace', 'credentials']
+                                    properties:
+                                      bucketName:
+                                        type: string
+                                        description: "Name of the OCI bucket where backup is stored"
+                                      prefix:
+                                        type: string
+                                        description: "Path in bucket where backup is stored"
+                                      namespace:
+                                        type: string
+                                        description: "OCI Namespace of Object Store"
+                                      credentials:
+                                        type: string
+                                        description: "Name of a Secret with data for accessing the bucket"
+                              extraOptions:
+                                description: "Additonal Command Line Options being passed to MySQL Enterprise Backup"
+                                type: array
+                                items:
+                                  type: string
                       deleteBackupData:
                         type: boolean
                         default: false
@@ -1043,6 +1222,67 @@ spec:
                               description : "Specification of the PVC to be used. Used 'as is' in pod executing the backup."
                               x-kubernetes-preserve-unknown-fields: true
                           x-kubernetes-preserve-unknown-fields: true
+                    meb:
+                      type: object
+                      description: "MySQL Enterprise Backup"
+                      required: ["storage"]
+                      properties:
+                        storage:
+                          type: object
+                          description: "Configuration of storage for MySQL Enterprise Backup"
+                          properties:
+                            s3:
+                              description: "S3 style storage"
+                              type: object
+                              required: ['region', 'bucket', 'objectKeyPrefix', 'credentials']
+                              properties:
+                                region:
+                                  type: string
+                                  description: "S3 Region"
+                                bucket:
+                                  type: string
+                                  description: "S3 Bucket Name"
+                                objectKeyPrefix:
+                                  type: string
+                                  description: "S3 Object Key Prefix, this will be extended with the name of the actual backup"
+                                credentials:
+                                  type: string
+                                  description: "Name of a Secret holding iaccessKeyId and secretAccessKey properties"
+                                host:
+                                  type: string
+                                  description: "Override hostname for S3-compatible backends"
+
+                            oci:
+                              type: object
+                              description: "Store MySQL Enterprise Backup on OCI Object Storage"
+                              required: ['bucketName', 'prefix', 'namespace', 'credentials']
+                              properties:
+                                bucketName:
+                                  type: string
+                                  description: "Name of the OCI bucket where backup is stored"
+                                prefix:
+                                  type: string
+                                  description: "Path in bucket where backup is stored"
+                                namespace:
+                                  type: string
+                                  description: "OCI Namespace of Object Store"
+                                credentials:
+                                  type: string
+                                  description: "Name of a Secret with data for accessing the bucket"
+                        extraOptions:
+                          description: "Additonal Command Line Options being passed to MySQL Enterprise Backup"
+                          type: array
+                          items:
+                            type: string
+                incremental:
+                  type: boolean
+                  default: false
+                  description: "MySQL Enterprise Backup only: Request taking an incremental backup"
+                incrementalBase:
+                  type: string
+                  description: "MySQL Enterprise Backup only: Base for incremental backup,  either last_backup or last_full_backup"
+                  enum: ["last_backup", "last_full_backup"]
+                  default: "last_backup"
                 addTimestampToBackupDirectory:
                   type: boolean
                   default: true

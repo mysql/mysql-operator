@@ -322,7 +322,7 @@ def join_innodb_cluster_set(session: 'ClassicSession', cluster: InnoDBCluster,
     #suffix = ''.join(random.choice(characters) for _ in range(10))
 
     with SessionWrap(primary_root_co) as primary_session:
-        # TODO the create_admin_Account function is passed as callback, quite a hack, need to decide where that has to live, probably the caller ins sidecar_main should establish the right session and preapre the user and then call this function ... or move it all to sidecar_main?
+        # TODO the create_admin_account function is passed as callback, quite a hack, need to decide where that has to live, probably the caller ins sidecar_main should establish the right session and preapre the user and then call this function ... or move it all to sidecar_main?
         #  also other accounts are created per pod while binlog is disabled,we however have to make sure mysqladmin accoutns are replicated through tehe complete clusterset, so that current primary can be reached from anywhere, by the time of writing replicacluster can reach all (as here we write to primary), but primary can't reach replicaclsuters (as primary's account isn't replicated over)
         create_admin_account(primary_session, cluster, logger)
 
@@ -342,11 +342,7 @@ def join_innodb_cluster_set(session: 'ClassicSession', cluster: InnoDBCluster,
         try:
             pod_fqdn = fqdn.pod_fqdn(pod, logger)
             logger.info(f"Creating replica cluster {cluster.name} attached to {pod_fqdn} with options {add_instance_options}")
-            cluster_set.create_replica_cluster(
-                pod_fqdn,
-                #TODO: don't hard code!
-                cluster.name,  # + '-' + suffix,
-                add_instance_options)
+            cluster_set.create_replica_cluster(pod_fqdn, cluster.name, add_instance_options)
         except:
             logger.error("Exception when creating replica cluster")
             raise

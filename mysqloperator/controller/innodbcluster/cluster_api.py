@@ -438,6 +438,7 @@ class InitDB:
     snapshot: Optional[SnapshotInitDBSpec] = None
     dump: Optional[DumpInitDBSpec] = None
     cluster_set: Optional[ClusterSetInitDBSpec] = None
+    meb: Optional[MebInitDBSpec] = None
 
     def parse(self, spec: dict, prefix: str) -> None:
         dump = dget_dict(spec, "dump", "spec.initDB", {})

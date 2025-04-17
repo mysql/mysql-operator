@@ -334,27 +334,7 @@ def populate_by_joining_cluster_set(_, session: 'ClassicSession',
     logger.info(f"Connecting as {user}@{host}")
     session = connect(user, password, logger)
 
-    # TODO we need to do some of those things below ...
     return session
-
-
-    old_read_only = session.run_sql("SELECT @@super_read_only").fetch_one()[0]
-    print(f"checking value of previous super read only: {old_read_only=}")
-    try:
-        # this is somewhat duplicated with initialize() - probably wise to factor out
-        session.run_sql("SET sql_log_bin=0")
-        session.run_sql("SET GLOBAL super_read_only=0")
-
-        admin_user, admin_pass = cluster.get_admin_account()
-        logger.info(f"Resetting password for {admin_user}@%")
-        session.run_sql("SET PASSWORD FOR ?@'%'=?", [admin_user, admin_pass])
-
-    finally:
-        session.run_sql("SET GLOBAL super_read_only=?", [old_read_only])
-        session.run_sql("SET sql_log_bin=1")
-
-    return session
-
 
 
 def populate_db(datadir: str, session: 'ClassicSession', cluster: InnoDBCluster, pod, logger: Logger) -> 'ClassicSession':

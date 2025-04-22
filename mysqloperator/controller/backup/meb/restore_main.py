@@ -85,6 +85,7 @@ def prepare_binlogs_as_relay_logs_for_pitr(datadir: str,
 
         pattern = re.compile(rf'^{re.escape(binlog_base)}\.\d{{6}}$')
         binlogs = [l for l in os.listdir(f"{tmpdir}/datadir") if pattern.match(l)]
+        binlogs.sort()
 
         logger.info("Trying to prepare binlogs from backup as relay logs")
 

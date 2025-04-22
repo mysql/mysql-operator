@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -245,23 +245,39 @@ def meb_do_pitr(datadir:str, session: 'ClassicSession', cluster: InnoDBCluster,
 
     def is_relay_log_fully_applied(session, logger):
         res = session.run_sql("SHOW REPLICA STATUS")
-        replica_status = res.fetch_one()
+        replica_status = res.fetch_one_object()
 
         if not replica_status:
             raise Exception("This server is not configured as a MySQL replica.")
 
-        status = replica_status[44] # 'Replica_SQL_Running_State'
+        io_running = replica_status["Replica_IO_Running"]
+        sql_running = replica_status["Replica_SQL_Running"]
+        sql_running_state = replica_status["Replica_SQL_Running_State"]
 
-        print(status)
+        # states by which we end may vary on sever version and exact reason for
+        # application of binlogs to end and we are tolerant here. In most cases
+        # with MySQL 9.0 and later we should have an empty string ("")
+        end_states = [
+            "",
+            "Slave has read all relay log; waiting for more updates",
+            "Replica has read all relay log; waiting for more updates",
+            "Replica has stopped"
+        ]
 
-        return status == "Replica has read all relay log; waiting for more updates"
+        logger.info((f"Applying PITR: IO Running: {io_running}, "
+                     f"SQL Running: {sql_running}, SQL State: {sql_running_state}"))
+
+        return io_running == "No" and sql_running == "No" and sql_running_state in end_states
+
 
     logger.info("Applying Binary Logs")
 
     session.run_sql(f"CHANGE REPLICATION SOURCE TO RELAY_LOG_FILE='{cluster.name}-0-relay-bin-pitr.000001', RELAY_LOG_POS=1, SOURCE_HOST='pitr' FOR CHANNEL 'pitr'")
 
     if (init_spec.pitr_end_term and init_spec.pitr_end_value):
-        session.run_sql(f"START REPLICA SQL_THREAD {init_spec.pitr_end_term} = ? FOR CHANNEL 'pitr'",
+        logger.info(f"START REPLICA SQL_THREAD UNTIL {init_spec.pitr_end_term} = ? FOR CHANNEL 'pitr'",
+                        [init_spec.pitr_end_value])
+        session.run_sql(f"START REPLICA SQL_THREAD UNTIL {init_spec.pitr_end_term} = ? FOR CHANNEL 'pitr'",
                         [init_spec.pitr_end_value])
     else:
         session.run_sql("START REPLICA SQL_THREAD FOR CHANNEL 'pitr'")
@@ -275,7 +291,7 @@ def meb_do_pitr(datadir:str, session: 'ClassicSession', cluster: InnoDBCluster,
         """
         s = 0
         while s < 5:
-            s += 0.5
+            s += 0.2
             yield time.sleep(s)
 
         while s < 15:

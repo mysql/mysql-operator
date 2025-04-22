@@ -157,24 +157,6 @@ spec:
 
     spec.add_to_pod_spec(job["spec"]["template"], "operator-backup-job")
 
-    # TODO REMOVE
-    utils.merge_patch_object(job["spec"]["template"]["spec"], {
-        "containers": [{
-            "name": "operator-backup-job",
-            "volumeMounts": [{
-                "name": "operator-source-volume",
-                "mountPath": "/usr/lib/mysqlsh/python-packages/mysqloperator"
-            }]
-        }],
-        "volumes": [{
-            "hostPath": {
-                "path": "/src/mysql-operator/mysqloperator",
-                "type": "Directory"
-            },
-            "name": "operator-source-volume"
-        }]
-    })
-
     return job
 
 

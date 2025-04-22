@@ -116,14 +116,12 @@ def serve_http(sslopts: dict, datadir: str):
 
     httpd = HTTPServer(server_address, handler_class)
 
-    httpd.socket = ssl.wrap_socket(httpd.socket,
-                                   server_side=True,
-                                   certfile=sslopts["cert"],
-                                   keyfile=sslopts["key"],
-                                   cert_reqs=ssl.CERT_REQUIRED,
-                                   ca_certs='/tls/ca.pem',
-                                   ssl_version=ssl.PROTOCOL_TLS)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(certfile=sslopts["cert"], keyfile=sslopts["key"])
+    context.load_verify_locations(cafile='/tls/ca.pem')
+    context.verify_mode = ssl.CERT_REQUIRED
 
+    httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
     httpd.serve_forever()
 
 def main(argv):

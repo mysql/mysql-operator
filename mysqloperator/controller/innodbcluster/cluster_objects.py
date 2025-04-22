@@ -178,7 +178,7 @@ def get_restore_container(cluster: InnoDBCluster, spec: InnoDBClusterSpec,
           runAsGroup: 27
           runAsUser: 27
         volumeMounts:
-        - mountPath: /usr/lib/mysqlsh/lib/python3.9/site-packages/meb
+        - mountPath: /usr/lib/mysqlsh/python-packages/meb
           name: mebcode
         - mountPath: /var/lib/mysql
           name: datadir
@@ -264,7 +264,7 @@ def get_meb_container(cluster: InnoDBCluster, spec: InnoDBClusterSpec,
           runAsGroup: 27
           runAsUser: 27
         volumeMounts:
-        - mountPath: /usr/lib/mysqlsh/lib/python3.9/site-packages/meb
+        - mountPath: /usr/lib/mysqlsh/python-packages/meb
           name: mebcode
         - mountPath: /var/lib/mysql
           name: datadir

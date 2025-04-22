@@ -416,16 +416,16 @@ class MebInitDBSpec:
             self.pitr_gtid_purge = dget_str(pitr_spec, "gtidPurge", prefix+".pitr", default_value="")
 
             if "end" in pitr_spec:
-                pitr_end_spec = dget_dict(pitr_spec, "end")
+                pitr_end_spec = dget_dict(pitr_spec, "end", prefix+".pitr.end")
 
-                if "afterGtid" in pitr_end_spec:
+                if "afterGtids" in pitr_end_spec:
                     self.pitr_end_term = "SQL_AFTER_GTIDS"
-                    self.pitr_end_value = dget_str(pitr_end_spec, "afterGtid",
-                                                   prefix+".pitr.end.afterGtid")
-                elif "beforeGtid" in pitr_end_spec:
+                    self.pitr_end_value = dget_str(pitr_end_spec, "afterGtids",
+                                                   prefix+".pitr.end.afterGtids")
+                elif "beforeGtids" in pitr_end_spec:
                     self.pitr_end_term = "SQL_BEFORE_GTIDS"
-                    self.pitr_end_value = dget_str(pitr_end_spec, "beforeGtid",
-                                                   prefix+".pitr.end.beforeGtid")
+                    self.pitr_end_value = dget_str(pitr_end_spec, "beforeGtids",
+                                                   prefix+".pitr.end.beforeGtids")
 
 
 

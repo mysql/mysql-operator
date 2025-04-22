@@ -14,7 +14,7 @@ from urllib.parse import quote as urlquote
 import mysqlsh
 from .controller import consts, utils, config, shellutils
 from .controller import storage_api
-from .controller.backup.backup_api import MySQLBackup, DumpInstance, Snapshot, MEB
+from .controller.backup.backup_api import MySQLBackup, DumpInstance, Snapshot, MEB, BackupProfile
 from .controller.backup import backup_objects
 from .controller.kubeutils import client as api_client, api_core, ApiException
 
@@ -205,7 +205,8 @@ def execute_meb(backup: MySQLBackup, backup_source: dict, backup_name: str, logg
     return info
 
 
-def pick_source_instance(cluster: InnoDBCluster, logger: logging.Logger) -> dict:
+def pick_source_instance(cluster: InnoDBCluster, backup: MySQLBackup,
+                         profile: BackupProfile, logger: logging.Logger) -> dict:
     mysql = mysqlsh.mysql
 
     primary = None
@@ -217,7 +218,49 @@ def pick_source_instance(cluster: InnoDBCluster, logger: logging.Logger) -> dict
             continue
         try:
             with shellutils.DbaWrap(shellutils.connect_dba(pod.endpoint_co, logger, max_tries=3)) as dba:
-                # TODO - fix scheduling for meb incremental backup
+                if backup.parsed_spec.incremental and profile.meb:
+                    # If an incremental backup is requested we schedule on the
+                    # same host as last full backup. This may be a busy primary.
+                    sql = """WITH last_full AS (
+                            SELECT
+                                MAX(consistency_time_utc) AS last_full_time
+                            FROM
+                                mysql.backup_history
+                            WHERE
+                                backup_type = "FULL" AND exit_state = "SUCCESS"
+                        )
+                        SELECT
+                            gm.MEMBER_HOST backup_host,
+                            bh.server_uuid backup_uuid,
+                            @@server_uuid this_uuid,
+                            MEMBER_STATE,
+                            exit_state
+                        FROM
+                            mysql.backup_history bh
+                        JOIN last_full
+                            ON bh.consistency_time_utc >= last_full.last_full_time
+                        LEFT JOIN performance_schema.replication_group_members gm
+                            ON gm.MEMBER_ID = bh.server_uuid
+                        WHERE
+                            bh.exit_state = "SUCCESS"
+                        ORDER BY  bh.consistency_time_utc DESC"""
+
+                    try:
+                        # TODO - if we are in a cronjob we may want to check
+                        #        amount of incremental backups or have a
+                        #        fallback for taking full backups
+                        incremental_info = dba.session.run_sql(sql).fetch_one_object()
+                        if incremental_info['backup_uuid'] == incremental_info['this_uuid']:
+                            # By definition we are online, thus not checking MEMBER_STATE
+                            return pod.endpoint_co
+                        else:
+                            continue
+
+                    except mysqlsh.Error as e:
+                        logger.warning(
+                            f"Could not get MEB backup status from {pod}: {e}")
+                        continue
+
                 try:
                     tmp = dba.get_cluster().status({"extended": 1})["defaultReplicaSet"]
                     cluster_status = tmp["status"]
@@ -231,9 +274,15 @@ def pick_source_instance(cluster: InnoDBCluster, logger: logging.Logger) -> dict
                     "SELECT COUNT_TRANSACTIONS_REMOTE_IN_APPLIER_QUEUE"
                     " FROM performance_schema.replication_group_member_stats"
                     " WHERE member_id = @@server_uuid").fetch_one()[0]
+
         except mysqlsh.Error as e:
             logger.warning(f"Could not connect to {pod}: {e}")
             continue
+
+
+        if backup.parsed_spec.incremental and profile.meb:
+            raise Exception(
+                f"No instances available to backup from in cluster {cluster.name}. Inremental backup has to be taken from the same host as the last full backup.")
 
         logger.info(
             f"Cluster status from {pod} is {cluster_status}, member_status={member_status} applier_queue_size={applier_queue_size}")
@@ -269,7 +318,7 @@ def do_backup(backup : MySQLBackup, job_name: str, start, backupdir: Optional[st
 
     # select bh.backup_type, MEMBER_HOST from performance_schema.replication_group_members gm join mysql.backup_history bh on gm.MEMBER_ID = bh.server_uuid;
     #
-    backup_source = pick_source_instance(cluster, logger)
+    backup_source = pick_source_instance(cluster, backup, profile, logger)
 
     if profile.meb:
         return execute_meb(backup, backup_source, job_name, logger)

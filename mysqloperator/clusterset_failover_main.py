@@ -57,4 +57,4 @@ def main(argv):
         logger.info("Probing cluster status after the change")
         controller.probe_status(logger)
     except Exception as exc:
-        printing(f"{exc}")
+        print(f"{exc}")

@@ -243,18 +243,8 @@ spec:
   # InitDB
 {{- if (.Values).initDB }}
   ## InitDB
- {{- if and (and (and .Values.initDB.dump .Values.initDB.dump.name) (and .Values.initDB.clone .Values.initDB.clone.donorUrl)) (and .Values.initDB.clusterSet .Values.initDB.clusterSet.targetUrl) }}
-    {{- fail "Dump, Clone and ClusterSet are mutually exclusive for initDB" }}
-  {{- end }}
-  ## ClusterSet
-  {{- if (((.Values).initDB).clusterSet) }}
-    {{- with .Values.initDB.clusterSet }}
-  initDB:
-    clusterSet:
-      targetUrl: {{ required "initDB.clusterSet.targetUrl is required" .targetUrl }}
-      secretKeyRef:
-        name: {{ required "initDB.clusterSet.secretKeyRef.name is required" .secretKeyRef.name }}
-    {{- end }}
+ {{- if and (and (and .Values.initDB.dump .Values.initDB.dump.name) (and .Values.initDB.clone .Values.initDB.clone.donorUrl)) }}
+    {{- fail "Dump and Clone are mutually exclusive for initDB" }}
   {{- end }}
   ## Clone
   {{- if (((.Values).initDB).clone) }}

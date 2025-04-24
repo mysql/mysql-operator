@@ -1,0 +1,92 @@
+{{- $imagePullPolicies := list "ifnotpresent" "always" "never" }}
+{{- if (((.Values).image).pullPolicy) }}
+  {{- if not (has (lower (((.Values).image).pullPolicy)) ($imagePullPolicies)) }}
+    {{- $err := printf "Unknown image pull policy %s. Must be one of %v" (((.Values).image).pullPolicy) $imagePullPolicies }}
+    {{- fail $err }}
+  {{- end }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-operator
+  namespace: {{ if and (.Release.IsInstall) (eq .Release.Namespace "default") }}{{ fail "Please provide a namespace with -n/--namespace" }}{{ else }}{{  .Release.Namespace }}{{ end }}
+  labels:
+    version: "{{ default .Chart.AppVersion }}"
+    app.kubernetes.io/name: mysql-operator
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: "{{ default .Chart.AppVersion }}"
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/managed-by: helm
+    app.kubernetes.io/created-by: helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: mysql-operator
+  template:
+    metadata:
+      labels:
+        name: mysql-operator
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: mysql-operator
+          image: {{ if (((.Values).image).registry) }}{{ trimSuffix "/" .Values.image.registry }}/{{- end }}{{- if (((.Values).image).repository) }}{{ trimSuffix "/" .Values.image.repository }}/{{ end }}{{ (required "image.name is required" ((.Values).image).name) }}:{{ default .Chart.AppVersion (((.Values).image).tag) }}
+          imagePullPolicy: {{ required "image.pullPolicy is required" (((.Values).image).pullPolicy) }}
+          {{ if and ( and ((.Values).debugger) (((.Values).debugger).enabled) ) ( and (((.Values).debugger).bindip) (((.Values).debugger).bindport) )}}
+          args: ["mysqlsh", "--log-level=@INFO", "--pym", "debugpy", "--listen", "{{.Values.debugger.bindip}}:{{.Values.debugger.bindport}}", "-m", "mysqloperator", "operator"]
+          {{ else }}
+          args: ["mysqlsh", "--log-level=@INFO", "--pym", "mysqloperator", "operator"]
+          {{- end }}
+          env:
+          - name: MYSQLSH_USER_CONFIG_HOME
+            value: /mysqlsh
+          - name: MYSQLSH_CREDENTIAL_STORE_SAVE_PASSWORDS
+            value: never
+          {{ if (((.Values).envs).imagesDefaultRegistry) }}
+          - name: MYSQL_OPERATOR_DEFAULT_REPOSITORY
+            value: {{ trimSuffix "/" .Values.envs.imagesDefaultRegistry }}{{ if .Values.envs.imagesDefaultRepository }}/{{ trimSuffix "/" .Values.envs.imagesDefaultRepository }}{{ end }}
+          {{ else if (((.Values).envs).imagesDefaultRepository) }}
+          - name: MYSQL_OPERATOR_DEFAULT_REPOSITORY
+            value: {{ trimSuffix "/" .Values.envs.imagesDefaultRepository }}
+          {{ end }}
+          {{- if (((.Values).envs).imagesPullPolicy) }}
+            {{- if not (has (lower .Values.envs.imagesPullPolicy) ($imagePullPolicies)) }}
+              {{- $err := printf "Unknown envs.imagesPullPolicy %s. Must be one of %v" .Values.envs.imagesPullPolicy $imagePullPolicies}}
+              {{- fail $err }}
+            {{- end }}
+          - name: MYSQL_OPERATOR_IMAGE_PULL_POLICY
+            value: {{ .Values.envs.imagesPullPolicy }}
+          {{- end }}
+          {{ if (((.Values).envs).k8sClusterDomain) }}
+          - name: MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN
+            value: {{ .Values.envs.k8sClusterDomain }}
+          {{ end }}
+          readinessProbe:
+            exec:
+              command:
+              - cat
+              - /tmp/mysql-operator-ready
+            initialDelaySeconds: 1
+            periodSeconds: 3
+          volumeMounts:
+            - name: mysqlsh-home
+              mountPath: /mysqlsh
+            - name: tmpdir
+              mountPath: /tmp
+          securityContext:
+            capabilities:
+              drop:
+              - ALL
+            runAsUser: 2
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+      volumes:
+        - name: mysqlsh-home
+          emptyDir: {}
+        - name: tmpdir
+          emptyDir: {}
+      serviceAccountName: mysql-operator-sa

@@ -1,0 +1,17 @@
+# Give access to the operator
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mysql-operator-rolebinding
+subjects:
+  - kind: ServiceAccount
+    name: mysql-operator-sa
+    namespace: {{ if and (.Release.IsInstall) (eq .Release.Namespace "default") }}{{ fail "Please provide a namespace with -n/--namespace" }}{{ else }}{{  .Release.Namespace }}{{ end }}
+  # TODO The following entry is for dev purposes only and must be deleted
+  #- kind: Group
+  #  name: system:serviceaccounts
+  #  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: mysql-operator
+  apiGroup: rbac.authorization.k8s.io

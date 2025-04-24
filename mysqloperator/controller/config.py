@@ -18,10 +18,14 @@ if _pull_policy:
 else:
     default_image_pull_policy = ImagePullPolicy.Always
 
+_edition = os.getenv("MYSQL_OPERATOR_ENTERPRISE")
+if _edition:
+    OPERATOR_EDITION = Edition.enterprise
+else
+    OPERATOR_EDITION = Edition.community
 
 # Constants
 OPERATOR_VERSION = "2.2.5"
-OPERATOR_EDITION = Edition.community
 OPERATOR_EDITION_NAME_TO_ENUM = { edition.value : edition.name for edition in Edition }
 
 DEFAULT_VERSION_TAG = "9.4.0"

@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -18,10 +18,14 @@ if _pull_policy:
 else:
     default_image_pull_policy = ImagePullPolicy.Always
 
+_edition = os.getenv("MYSQL_OPERATOR_ENTERPRISE")
+if _edition:
+    OPERATOR_EDITION = Edition.enterprise
+else
+    OPERATOR_EDITION = Edition.community
 
 # Constants
 OPERATOR_VERSION = "2.2.4"
-OPERATOR_EDITION = Edition.community
 OPERATOR_EDITION_NAME_TO_ENUM = { edition.value : edition.name for edition in Edition }
 
 DEFAULT_VERSION_TAG = "9.3.0"

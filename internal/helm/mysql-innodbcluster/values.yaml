@@ -1,0 +1,256 @@
+image:
+#  registry: container-registry.oracle.com
+#  repository: mysql
+  pullPolicy: IfNotPresent
+  pullSecrets:
+    enabled: false
+    secretName:
+
+
+credentials:
+  root:
+    user: root
+#    password: sakila
+    host: "%"
+
+tls:
+  useSelfSigned: false
+#  caSecretName:
+#  serverCertAndPKsecretName:
+#  routerCertAndPKsecretName: # our use router.certAndPKsecretName
+
+#serverVersion: 8.0.31
+serverInstances: 3
+routerInstances: 1 # or use router.instances
+baseServerId: 1000
+
+#router:
+#  instances: 1
+#  options:
+#  - option1: value1
+#  - option2: value2
+#  bootstrapOptions:
+#  - bootstrapOption1: value1
+#  - bootstrapOption2: value2
+#  certAndPKsecretName:
+#  podSpec:
+#  podAnnotations:
+#  podLabels:
+
+#instanceService:
+#  annotations:
+#    ann1: "is_avalue1"
+#  labels:
+#    l1: "is_lvalue1"
+
+#service:
+#  type: "ClusterIP"
+#  annotations:
+#    ann1: "es_avalue1"
+#  labels:
+#    l1: "es_lvalue1"
+
+#datadirPermissions:
+#  setRightsUsingInitContainer: false
+#  fsGroupChangePolicy: "Always"
+
+#logs:
+#  error:
+#    enabled: true
+#    collect: false
+#  general:
+#    enabled: false
+#    collect: false
+#  slowQuery:
+#    enabled: false
+#    longQueryTime: 2.5
+#  collector:
+#    image: "192.168.20.198:5000/fluentd-es:v1.16"
+#    fluentd:
+#      forwarding:
+#        enabled: false
+#        forwarderSpec:
+#          podSpec:
+#            terminationGracePeriod: 42
+#          podAnnotations:
+#            forwarderAnnotation1: forwarderAnnotation1Value
+#          podLabels:
+#            forwarderLabel1: forwarderLabel1Value
+#      generalLog:
+#        tag: "genLogTag"
+##        options:
+#      errorLog:
+#        tag: "errLogTag"
+##        options:
+##      slowLog:
+#        tag: "slowLogTag"
+##        options:
+#     recordAugmentation:
+#        enabled: false
+#        labels:
+#        - fieldName: "pod_name"
+#          labelName: "statefulset.kubernetes.io/pod-name"
+#        annotations:
+#        - fieldName: "membership-info"
+#          labelName: "mysql.oracle.com/membership-info"
+#        staticFields:
+#        - fieldName: "static_field_1"
+#          fieldValue: "static_field_1_value"
+#        resourceFields:
+#        - fieldName: "pod_ip"
+#          fieldPath: "status.podIP"
+#        - fieldName: "host_ip"
+#          fieldPath: "status.hostIP"
+#      additionalFilterConfiguration: |
+#        filterConfigValueLine1
+#        filterConfigValueLine1
+#      sink:
+##       rawConfig:
+
+
+#keyring:
+#  file:
+#    fileName:
+#    readOnly:
+#    storage:
+#  encryptedFile:
+#    fileName:
+#    readOnly:
+#    storage:
+#    password:
+#  oci:
+#    user: "ocid1.user.oc1..."
+#    keySecret: "oci-credentials"
+#    keyFingerprint: ""
+#    tenancy: "ocid1.tenancy.oc1..."
+#    compartment: "ocid1.compartment.oc1..."
+#    virtualVault: "ocid1.vault.oc1.."
+#    masterKey: "ocid1.key.oc1..."
+#    caCertificate: ""
+#    endpoints:
+#      encryption: "<identifier>-crypto.kms.<region>.oraclecloud.com"
+#      management: "<identifier>-management.kms.<region>.oraclecloud.com"
+#      vaults: "vaults.<region>.oci.oraclecloud.com"
+#      secrets: "secrets.vaults.<region>.oci.oraclecloud.com"
+
+
+#podSpec:
+#  containers:
+#  - name: mysql
+#    resources:
+#      requests:
+#        memory: "2048Mi"  # adapt to your needs
+#        cpu: "1800m"      # adapt to your needs
+#      limits:
+#        memory: "8192Mi"  # adapt to your needs
+#        cpu: "3600m"      # adapt to your needs
+#
+#podAnnotations:
+#podLabels:
+
+#serverConfig:
+#  mycnf: |
+#    [mysqld]
+#    core_file
+#    local_infile=off
+
+
+#datadirVolumeClaimTemplate:
+#  accessModes:
+#  resources:
+#    requests:
+#      storage:
+
+#initDB:
+#  dump:
+#    name:
+#    path:
+#    options:
+#      includeSchemas:
+#    ociObjectStorage:
+#      prefix:
+#      bucketName:
+#      credentials:
+#    s3:
+#      prefix:
+#      config:
+#      bucketName:
+#      profile:
+#      endpoint
+#    azure:
+#      prefix:
+#      config:
+#      containerName:
+#    persistentVolumeClaim:
+#  clone:
+#    donorUrl:
+#    rootUser:
+#    credentials:
+
+
+#backupProfiles:
+#- name: dump-instance-profile-pvc
+#  dumpInstance:
+#    dumpOptions:
+#      excludeSchemas: ["excludeme"]
+#    storage:
+#      persistentVolumeClaim:
+#        claimName: backup-volume-claim-1
+#- name: dump-instance-profile-oci
+#  dumpInstance:
+#    dumpOptions:
+#      excludeSchemas: ["excludeme"]
+#    storage:
+#      ociObjectStorage:
+#        prefix : /
+#        bucketName: idbcluster_backup
+#        credentials: oci-credentials
+#
+#- name: snapshot-profile-oci
+#  snapshot:
+#    storage:
+#      ociObjectStorage:
+#        prefix : /
+#        bucketName: idbcluster_backup
+#        credentials: oci-credentials
+#      s3:
+#        prefix:
+#        config:
+#        bucketName:
+#        profile:
+#        endpoint
+#      azure:
+#        prefix:
+#        config:
+#        containerName:
+#
+#backupSchedules:
+#- name: schedule-ref
+#  schedule: "*/1 * * * *"
+#  timeZone: "Europe/Amsterdam"
+#  deleteBackupData: false
+#  backupProfileName: dump-instance-profile-oci
+#  enabled: true
+#- name: schedule-inline
+#  schedule: "*/1 * * * *"
+#  timeZone: "Europe/Amsterdam"
+#  deleteBackupData: false
+#  enabled: true
+#  backupProfile:
+#    dumpInstance:
+#      dumpOptions:
+#        excludeSchemas: ["excludeme"]
+#      storage:
+#        ociObjectStorage:
+#          prefix : /
+#          bucketName: idbcluster_backup
+#          credentials: oci-credentials
+
+
+# If you would like to debug the Helm output with `helm template`, you need
+# to turn disableLookups on as during `helm template` Helm won't contact the kube API
+# and all lookups will thus fail
+disableLookups: false
+
+# Set explicit FQDN for MySQL instances
+# serviceFqdnTemplate: "{service}.{namespace}.svc.{domain}"

@@ -376,8 +376,27 @@ def main(argv):
     ret = False
     if command == "execute-backup":
         import subprocess
-        subprocess.run(["ls", "-la", "/"])
-        subprocess.run(["ls", "-l", "/.oci"])
+        mnt_dir = os.path.join(os.sep, "mnt")
+        print(f"========= {mnt_dir} ============")
+        if os.path.isdir(mnt_dir):
+            subprocess.run(["ls", "-la", mnt_dir])
+        dotoci_dir = os.path.join(os.sep, ".oci")
+        print(f"========= {dotoci_dir} ============")
+        if os.path.isdir(dotoci_dir):
+            subprocess.run(["ls", "-la", dotoci_dir])
+        mysqlshhome_dir = os.path.join(os.sep, "mysqlsh")
+        print(f"========= {mysqlshhome_dir} ============")
+        if os.path.isdir(mysqlshhome_dir):
+            subprocess.run(["ls", "-la", mysqlshhome_dir])
+            aws_dir = os.path.join(os.sep, mysqlshhome_dir, ".aws")
+            if os.path.isdir(aws_dir):
+                print(f"========= {aws_dir} ============")
+                subprocess.run(["ls", "-la", aws_dir])
+
+            azure_dir = os.path.join(os.sep, mysqlshhome_dir, ".azure")
+            if os.path.isdir(azure_dir):
+                print(f"========= {azure_dir} ============")
+                subprocess.run(["ls", "-la", azure_dir])
 
         namespace = args.namespace
         backup_object_name = args.backup_object_name

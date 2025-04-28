@@ -64,6 +64,14 @@ class Config:
     oci_s3_config_path = defaults.OCI_S3_CONFIG_PATH
     oci_s3_credentials_path = defaults.OCI_S3_CREDENTIALS_PATH
 
+    # S3 compatible storage, non oci
+    s3_skip = defaults.S3_SKIP
+    s3_bucket_name = defaults.S3_BUCKET_NAME
+    s3_endpoint = defaults.S3_ENDPOINT
+    s3_profile = defaults.S3_PROFILE
+    s3_config_path = defaults.S3_CONFIG_PATH
+    s3_credentials_path = defaults.S3_CREDENTIALS_PATH
+
     # Azure BLOB Storage Backup
     azure_skip = defaults.AZURE_SKIP
     start_azure = False

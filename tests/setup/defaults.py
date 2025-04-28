@@ -80,6 +80,25 @@ OCI_S3_CONFIG_PATH = os.getenv(
 OCI_S3_CREDENTIALS_PATH = os.getenv(
     "OPERATOR_TEST_OCI_S3_CREDENTIALS_PATH", default=None)
 
+# s3 compatible storage, non oci
+S3_SKIP = os.getenv(
+    "OPERATOR_TEST_SKIP_S3", default=False)
+
+S3_BUCKET_NAME = os.getenv(
+    "OPERATOR_TEST_S3_BUCKET", default=None)
+
+S3_ENDPOINT = os.getenv(
+    "OPERATOR_TEST_S3_ENDPOINT", default=None)
+
+S3_PROFILE = os.getenv(
+    "OPERATOR_TEST_S3_PROFILE", default=None)
+
+S3_CONFIG_PATH = os.getenv(
+    "OPERATOR_TEST_S3_CONFIG_PATH", default=None)
+
+S3_CREDENTIALS_PATH = os.getenv(
+    "OPERATOR_TEST_S3_CREDENTIALS_PATH", default=None)
+
 # azure backup
 AZURE_SKIP = os.getenv(
     "OPERATOR_TEST_SKIP_AZURE", default=False)

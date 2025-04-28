@@ -181,7 +181,7 @@ spec:
         self.endpoint = dget_str(spec, "endpoint", prefix, default_value = "")
 
     def __str__(self) -> str:
-        return f"Object S3StorageSpec self.bucketName={self.bucketName} self.profile={self.profile} self.endpoint={self.endpoint}"
+        return f"Object S3StorageSpec self.bucketName={self.bucketName} config={self.config} self.profile={self.profile} self.endpoint={self.endpoint}"
 
     def __eq__(self, other) -> bool:
         return (isinstance(other, S3StorageSpec) and \

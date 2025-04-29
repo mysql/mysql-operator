@@ -21,7 +21,7 @@ else:
 _edition = os.getenv("MYSQL_OPERATOR_ENTERPRISE")
 if _edition:
     OPERATOR_EDITION = Edition.enterprise
-else
+else:
     OPERATOR_EDITION = Edition.community
 
 # Constants

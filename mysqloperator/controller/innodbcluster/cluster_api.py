@@ -1392,28 +1392,31 @@ class AbstractServerSetSpec(abc.ABC):
         else:
             return ""
 
-    @property
-    def extra_volumes(self) -> str:
-        volumes = []
-        same_secret = self.tlsCASecretName == self.tlsSecretName
+    def get_extra_volumes(self, ca_and_tls) -> str:
+        volumes = ""
 
         if not self.tlsUseSelfSigned:
-            volume = f"""
+            ca_file_name = ca_and_tls["CA"]
+
+            volumes = f"""
 - name: ssldata
   projected:
     sources:
     - secret:
         name: {self.tlsSecretName}
-"""
-            if not same_secret:
-                volume += f"""
+        items:
+        - key: tls.crt
+          path: tls.crt
+        - key: tls.key
+          path: tls.key
     - secret:
         name: {self.tlsCASecretName}
+        items:
+        - key: {ca_file_name}
+          path: {ca_file_name}
 """
 
-            volumes.append(volume)
-
-        return "\n".join(volumes)
+        return volumes
 
     @property
     def extra_volume_mounts(self) -> str:
@@ -1561,40 +1564,42 @@ class InnoDBClusterSpec(AbstractServerSetSpec):
                     return rr
         return None
 
-    @property
-    def extra_router_volumes_no_cert(self) -> str:
-        volumes = []
+    def get_extra_router_volumes_no_cert(self, ca_and_tls) -> str:
+        volumes = ""
 
         if not self.tlsUseSelfSigned:
-            volumes.append(f"""
+            ca_file_name = ca_and_tls["CA"]
+            volumes += f"""
 - name: ssl-ca-data
   projected:
     sources:
     - secret:
         name: {self.tlsCASecretName}
-""")
+        items:
+        - key: {ca_file_name}
+          path: {ca_file_name}
+"""
 
-        return "\n".join(volumes)
+        return volumes
 
-    @property
-    def extra_router_volumes(self) -> str:
-        volumes = []
+    def get_extra_router_volumes(self, ca_and_tls) -> str:
+        volumes = self.get_extra_router_volumes_no_cert(ca_and_tls)
 
         if not self.tlsUseSelfSigned:
-            volumes.append(f"""
-- name: ssl-ca-data
-  projected:
-    sources:
-    - secret:
-        name: {self.tlsCASecretName}
+            volumes += f"""
 - name: ssl-key-data
   projected:
     sources:
     - secret:
         name: {self.router.tlsSecretName}
-""")
+        items:
+        - key: tls.crt
+          path: tls.crt
+        - key: tls.key
+          path: tls.key
+"""
 
-        return "\n".join(volumes)
+        return volumes
 
     @property
     def extra_router_volume_mounts_no_cert(self) -> str:
@@ -1887,6 +1892,7 @@ class InnoDBCluster(K8sInterfaceObject):
                                      self.parsed_spec.tlsSecretName, self.namespace))
 
         except ApiException as e:
+            print(f"Secret {self.parsed_spec.tlsSecretName} NOT found")
             if e.status == 404:
                 return {}
             raise
@@ -1896,7 +1902,7 @@ class InnoDBCluster(K8sInterfaceObject):
         if "tls.key" in server_tls_secret.data:
             ret["tls.key"] = utils.b64decode(server_tls_secret.data["tls.key"])
 
-        if self.parsed_spec.tlsSecretName == self.parsed_spec.tlsCASecretName:
+        if ("ca.pem" in server_tls_secret.data or "ca.crt" in server_tls_secret.data or self.parsed_spec.tlsSecretName == self.parsed_spec.tlsCASecretName):
             ca_secret = server_tls_secret
             same_secret_for_ca_and_tls = True
         else:
@@ -1904,6 +1910,7 @@ class InnoDBCluster(K8sInterfaceObject):
                 ca_secret = cast(api_client.V1Secret, api_core.read_namespaced_secret(
                                  self.parsed_spec.tlsCASecretName, self.namespace))
             except ApiException as e:
+                print(f"Secret {self.parsed_spec.tlsCASecretName} NOT found")
                 if e.status == 404:
                     return ret
                 raise

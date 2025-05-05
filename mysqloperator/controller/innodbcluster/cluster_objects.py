@@ -163,7 +163,7 @@ spec:
 # this checks that the server is still healthy. If it fails above the threshold
 # (e.g. because of a deadlock), the container is restarted.
 #
-def prepare_cluster_stateful_set(spec: AbstractServerSetSpec, logger: Logger) -> dict:
+def prepare_cluster_stateful_set(spec: AbstractServerSetSpec, cluster: InnoDBCluster, logger: Logger) -> dict:
     init_mysql_argv = ["mysqld", "--user=mysql"]
 #    if config.enable_mysqld_general_log:
 #        init_mysql_argv.append("--general-log=1")
@@ -553,7 +553,7 @@ spec:
         secret:
           secretName: {spec.secretName}
           defaultMode: 0400
-{utils.indent(spec.extra_volumes, 6)}
+{utils.indent(spec.get_extra_volumes(cluster.get_ca_and_tls()), 6)}
   volumeClaimTemplates:
   - metadata:
       name: datadir

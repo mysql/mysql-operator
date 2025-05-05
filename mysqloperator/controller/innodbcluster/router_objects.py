@@ -254,7 +254,7 @@ spec:
           # the files are created by root but belonging to mysqlrouter group,
           # thus we need read access for the group
           defaultMode: 0440
-{utils.indent(spec.extra_router_volumes if router_tls_exists else spec.extra_router_volumes_no_cert, 6)}
+{utils.indent(spec.get_extra_router_volumes(ca_and_tls) if router_tls_exists else spec.get_extra_router_volumes_no_cert(ca_and_tls), 6)}
 """
     deployment = yaml.safe_load(tmpl)
 

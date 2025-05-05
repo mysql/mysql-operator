@@ -131,7 +131,7 @@ def do_create_read_replica(cluster: InnoDBCluster, rr: cluster_objects.ReadRepli
     print(f"{indention}RR STS")
     if not ignore_404(lambda: cluster.get_read_replica_stateful_set(rr.name)):
         print(f"{indention}\tPreparing {rr.name} StatefulSet")
-        statefulset = cluster_objects.prepare_cluster_stateful_set(rr, logger)
+        statefulset = cluster_objects.prepare_cluster_stateful_set(rr, cluster, logger)
         if set_replicas_to_zero:
             # This is initial startup where scaling the read reaplica is delayed
             # till the clsuter is read
@@ -144,7 +144,7 @@ def do_create_read_replica(cluster: InnoDBCluster, rr: cluster_objects.ReadRepli
 def do_reconcile_read_replica(cluster: InnoDBCluster,
                               rr: cluster_objects.ReadReplicaSpec,
                               logger: Logger) -> None:
-    statefulset = cluster_objects.prepare_cluster_stateful_set(rr, logger)
+    statefulset = cluster_objects.prepare_cluster_stateful_set(rr, cluster, logger)
     kopf.adopt(statefulset)
     api_apps.patch_namespaced_stateful_set(namespace=cluster.namespace,
                                            name=rr.name,
@@ -272,7 +272,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
             print("7. Cluster StatefulSet")
             if not ignore_404(cluster.get_stateful_set):
                 print("\tPreparing...")
-                statefulset = cluster_objects.prepare_cluster_stateful_set(icspec, logger)
+                statefulset = cluster_objects.prepare_cluster_stateful_set(icspec, cluster, logger)
                 print(f"\tCreating...{statefulset}")
                 kopf.adopt(statefulset)
                 api_apps.create_namespaced_stateful_set(namespace=namespace, body=statefulset)
@@ -583,7 +583,7 @@ def on_innodbcluster_field_backup_schedules(old: str, new: str, body: Body,
 
 def on_sts_field_update(cluster: InnoDBCluster, field: str, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
     cluster.parsed_spec.validate(logger)
-    patcher.patch_sts(cluster_objects.prepare_cluster_stateful_set(cluster.parsed_spec, logger))
+    patcher.patch_sts(cluster_objects.prepare_cluster_stateful_set(cluster.parsed_spec, cluster, logger))
 
 
 def on_innodbcluster_field_tls_use_self_signed(old: dict, new: dict, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:

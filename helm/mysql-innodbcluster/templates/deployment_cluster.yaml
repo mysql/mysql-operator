@@ -34,10 +34,10 @@ metadata:
   name: {{ $cluster_name }}
   namespace: {{ .Release.Namespace }}
 spec:
-  instances: {{ required "serverInstances is required" .Values.serverInstances }}
+  instances: {{ required "serverInstances is required" .Values.serverInstances | toString | atoi }}
   tlsUseSelfSigned: {{ $use_self_signed }}
   router:
-    instances: {{ required "router.instances is required" $routerInstances }}
+    instances: {{ required "router.instances is required" $routerInstances | toString | atoi  }}
 {{- if (((.Values).router).podSpec) }}
     podSpec:  {{ toYaml (((.Values).router).podSpec) | nindent 6 }}
 {{- end }}
@@ -70,7 +70,7 @@ spec:
 {{- end }}
   secretName: {{ .Release.Name }}-cluster-secret
   imagePullPolicy : {{ .Values.image.pullPolicy }}
-  baseServerId: {{ required "baseServerId is required" .Values.baseServerId }}
+  baseServerId: {{ required "baseServerId is required" .Values.baseServerId | toString | atoi }}
   version: {{ .Values.serverVersion | default .Chart.AppVersion }}
   {{- if ((.Values).edition) }}
   edition: {{ .Values.edition | quote }}
@@ -470,7 +470,7 @@ spec:
     {{- if hasKey $replica "version" }}
     version: {{ $replica.version | quote }}
     {{- end }}
-    baseServerId: {{ $replica.baseServerId }}
+    baseServerId: {{ $replica.baseServerId | toString | atoi }}
     {{- if hasKey $replica "datadirVolumeClaimTemplate" }}
       {{- with $replica.datadirVolumeClaimTemplate }}
     datadirVolumeClaimTemplate:

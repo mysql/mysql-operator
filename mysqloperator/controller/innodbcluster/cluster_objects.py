@@ -130,8 +130,11 @@ spec:
 
     return pdb
 
-def get_restore_container(cluster: InnoDBCluster, spec: InnoDBClusterSpec,
-                          cluster_domain: str):
+def get_restore_container(cluster: InnoDBCluster, spec: AbstractServerSetSpec, cluster_domain: str):
+    if not isinstance(spec, InnoDBClusterSpec):
+        # restore happens on a primary, read replica doesn't need a restore container
+        return ("", "")
+
     if not spec.initDB or not spec.initDB.meb:
         # No MEB Restore - no extra container
         return ("", "")

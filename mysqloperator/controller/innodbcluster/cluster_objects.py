@@ -207,6 +207,10 @@ def get_restore_container(cluster: InnoDBCluster, spec: AbstractServerSetSpec, c
 
 def get_meb_container(cluster: InnoDBCluster, spec: InnoDBClusterSpec,
                       cluster_domain: str):
+    if not isinstance(spec, InnoDBClusterSpec):
+        # Currently backup can't be done on RRs
+        return ("", "")
+
     if all(not getattr(profile, 'meb', None) for profile in spec.backupProfiles):
         # No profile requests MEB
         return ("", "")

@@ -298,6 +298,12 @@ def load_dump(session: 'ClassicSession', cluster: InnoDBCluster, pod: MySQLPod, 
     finally:
         del restore
 
+# This is a dupe of ClusterController::dba_cluster_name
+# TODO: Needs to be refactored so both places use one function
+def cannonical_dba_cluster_name(name: str) -> str:
+    """Return the name of the cluster as defined in the k8s resource
+    as a InnoDB Cluster compatible name."""
+    return name.replace("-", "_").replace(".", "_")
 
 def join_innodb_cluster_set(session: 'ClassicSession', cluster: InnoDBCluster,
                             init_spec: ClusterSetInitDBSpec, pod: MySQLPod,
@@ -342,7 +348,7 @@ def join_innodb_cluster_set(session: 'ClassicSession', cluster: InnoDBCluster,
         try:
             pod_fqdn = fqdn.pod_fqdn(pod, logger)
             logger.info(f"Creating replica cluster {cluster.name} attached to {pod_fqdn} with options {add_instance_options}")
-            cluster_set.create_replica_cluster(pod_fqdn, cluster.name, add_instance_options)
+            cluster_set.create_replica_cluster(pod_fqdn, cannonical_dba_cluster_name(cluster.name), add_instance_options)
         except:
             logger.error("Exception when creating replica cluster")
             raise

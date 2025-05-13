@@ -163,7 +163,7 @@ spec:
 # this checks that the server is still healthy. If it fails above the threshold
 # (e.g. because of a deadlock), the container is restarted.
 #
-def prepare_cluster_stateful_set(spec: AbstractServerSetSpec, cluster: InnoDBCluster, logger: Logger) -> dict:
+def prepare_cluster_stateful_set(cluster: InnoDBCluster, spec: AbstractServerSetSpec, logger: Logger) -> dict:
     init_mysql_argv = ["mysqld", "--user=mysql"]
 #    if config.enable_mysqld_general_log:
 #        init_mysql_argv.append("--general-log=1")

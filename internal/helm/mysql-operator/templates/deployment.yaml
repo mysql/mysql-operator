@@ -44,6 +44,8 @@ spec:
             value: /mysqlsh
           - name: MYSQLSH_CREDENTIAL_STORE_SAVE_PASSWORDS
             value: never
+          - name: MYSQL_OPERATOR_ENTERPRISE
+            value: "1"
           {{ if (((.Values).envs).imagesDefaultRegistry) }}
           - name: MYSQL_OPERATOR_DEFAULT_REPOSITORY
             value: {{ trimSuffix "/" .Values.envs.imagesDefaultRegistry }}{{ if .Values.envs.imagesDefaultRepository }}/{{ trimSuffix "/" .Values.envs.imagesDefaultRepository }}{{ end }}

@@ -1490,21 +1490,16 @@ class AbstractServerSetSpec(abc.ABC):
             ca_file_name = ca_and_tls["CA"]
 
             volumes = f"""
-- name: ssldata
+- name: ssl-ca-data
+  projected:
+    sources:
+    - secret:
+        name: {self.tlsCASecretName}
+- name: ssl-key-data
   projected:
     sources:
     - secret:
         name: {self.tlsSecretName}
-        items:
-        - key: tls.crt
-          path: tls.crt
-        - key: tls.key
-          path: tls.key
-    - secret:
-        name: {self.tlsCASecretName}
-        items:
-        - key: {ca_file_name}
-          path: {ca_file_name}
 """
 
         return volumes
@@ -1513,10 +1508,13 @@ class AbstractServerSetSpec(abc.ABC):
     def extra_volume_mounts(self) -> str:
         mounts = []
         if not self.tlsUseSelfSigned:
-            mounts.append(f"""
-- mountPath: /etc/mysql-ssl
-  name: ssldata
-""")
+            mounts.append("""
+- mountPath: /etc/mysql-ssl/ca
+  name: ssl-ca-data""")
+            mounts.append("""
+- mountPath: /etc/mysql-ssl/key
+  name: ssl-key-data""")
+
         return "\n".join(mounts)
 
     @property
@@ -1524,9 +1522,12 @@ class AbstractServerSetSpec(abc.ABC):
         mounts = []
         if not self.tlsUseSelfSigned:
             mounts.append("""
-- mountPath: /etc/mysql-ssl
-  name: ssldata
-""")
+- mountPath: /etc/mysql-ssl/ca
+  name: ssl-ca-data""")
+            mounts.append("""
+- mountPath: /etc/mysql-ssl/key
+  name: ssl-key-data""")
+
         return "\n".join(mounts)
 
     @property
@@ -1669,9 +1670,6 @@ class InnoDBClusterSpec(AbstractServerSetSpec):
     sources:
     - secret:
         name: {self.tlsCASecretName}
-        items:
-        - key: {ca_file_name}
-          path: {ca_file_name}
 """
 
         return volumes
@@ -1686,11 +1684,6 @@ class InnoDBClusterSpec(AbstractServerSetSpec):
     sources:
     - secret:
         name: {self.router.tlsSecretName}
-        items:
-        - key: tls.crt
-          path: tls.crt
-        - key: tls.key
-          path: tls.key
 """
 
         return volumes
@@ -1845,6 +1838,11 @@ class InnoDBCluster(K8sInterfaceObject):
     def parse_spec(self) -> None:
         self._parsed_spec = InnoDBClusterSpec(self.namespace, self.name, self.spec)
 
+    def validate_spec(self, logger) -> None:
+        self.parsed_spec.validate(logger)
+        # If CA and TLS secrets are missing in non self signed mode, this will throw
+        self.get_ca_and_tls(raise_on_missing_secret=True)
+
     def reload(self) -> None:
         self.obj = self._get(self.namespace, self.name)
 
@@ -1985,41 +1983,32 @@ class InnoDBCluster(K8sInterfaceObject):
                 return None
             raise
 
-    def get_ca_and_tls(self) -> Dict:
+    def get_ca_and_tls(self, raise_on_missing_secret = False) -> Dict:
         if self.parsed_spec.tlsUseSelfSigned:
             return {}
 
         ca_secret = None
         server_tls_secret = None
-        same_secret_for_ca_and_tls = False
         ret = {}
         try:
-            server_tls_secret = cast(api_client.V1Secret, api_core.read_namespaced_secret(
-                                     self.parsed_spec.tlsSecretName, self.namespace))
+            secret_name = self.parsed_spec.tlsCASecretName
+            ca_secret = cast(api_client.V1Secret, api_core.read_namespaced_secret(secret_name, self.namespace))
+
+            secret_name = self.parsed_spec.tlsSecretName
+            server_tls_secret = cast(api_client.V1Secret, api_core.read_namespaced_secret(secret_name, self.namespace))
 
         except ApiException as e:
-            print(f"Secret {self.parsed_spec.tlsSecretName} NOT found")
+            print(f"Secret {secret_name} NOT found")
             if e.status == 404:
-                return {}
+                if raise_on_missing_secret == True:
+                    raise ApiSpecError(f'Secret "{secret_name}" NOT found')
+                return None
             raise
 
         if "tls.crt" in server_tls_secret.data:
             ret["tls.crt"] = utils.b64decode(server_tls_secret.data["tls.crt"])
         if "tls.key" in server_tls_secret.data:
             ret["tls.key"] = utils.b64decode(server_tls_secret.data["tls.key"])
-
-        if ("ca.pem" in server_tls_secret.data or "ca.crt" in server_tls_secret.data or self.parsed_spec.tlsSecretName == self.parsed_spec.tlsCASecretName):
-            ca_secret = server_tls_secret
-            same_secret_for_ca_and_tls = True
-        else:
-            try:
-                ca_secret = cast(api_client.V1Secret, api_core.read_namespaced_secret(
-                                 self.parsed_spec.tlsCASecretName, self.namespace))
-            except ApiException as e:
-                print(f"Secret {self.parsed_spec.tlsCASecretName} NOT found")
-                if e.status == 404:
-                    return ret
-                raise
 
         ca_file_name = None
         if "ca.pem" in ca_secret.data:
@@ -2030,7 +2019,11 @@ class InnoDBCluster(K8sInterfaceObject):
         ret["CA"] = ca_file_name
         if ca_file_name:
             ret[ca_file_name] = utils.b64decode(ca_secret.data[ca_file_name])
-            ret['same_secret_for_ca_and_tls'] = same_secret_for_ca_and_tls
+
+        ret["ca_additional_mounts"] = []
+        for item_key in list(set(ca_secret.data.keys()) - set(["tls.key", "tls.crt", ca_file_name])):
+            ret[item_key] = utils.b64decode(ca_secret.data[item_key])
+            ret["ca_additional_mounts"].append(item_key)
 
         # When using HELM a secret should exist, when using bare manifests the secret might
         # not exist (not mentioned directly or using the default name) and so it is not mounted
@@ -2040,6 +2033,12 @@ class InnoDBCluster(K8sInterfaceObject):
                                      self.parsed_spec.router.tlsSecretName, self.namespace))
             ret["router_tls.crt"] = utils.b64decode(router_tls_secret.data["tls.crt"])
             ret["router_tls.key"] = utils.b64decode(router_tls_secret.data["tls.key"])
+
+            ret["router_additional_mounts"] = []
+            for item_key in list(set(router_tls_secret.data.keys()) - set(["tls.key", "tls.crt", ca_file_name])):
+                ret[f"router_{item_key}"] = utils.b64decode(ca_secret.data[item_key])
+                ret["router_additional_mounts"].append(item_key)
+
         except ApiException as e:
             if e.status != 404:
                 raise

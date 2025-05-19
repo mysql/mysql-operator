@@ -123,7 +123,7 @@ def get_bootstrap_and_tls_options(cluster: InnoDBCluster) -> tuple:
 
     return (" ".join(map(quote, router_bootstrap_options)), router_tls_exists, ca_and_tls)
 
-def prepare_router_deployment(cluster: InnoDBCluster, logger, *,
+def prepare_router_deployment(cluster: InnoDBCluster, logger: Logger, *,
                               init_only: bool = False) -> dict:
     # Start the router deployment with 0 replicas and only set it to the desired
     # value once the cluster is ONLINE, otherwise the router bootstraps could

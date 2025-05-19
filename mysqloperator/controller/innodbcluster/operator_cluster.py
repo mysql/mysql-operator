@@ -175,7 +175,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
 
     try:
         cluster.parse_spec()
-        cluster.parsed_spec.validate(logger)
+        cluster.validate_spec(logger)
     except ApiSpecError as e:
         cluster.set_status({
             "cluster": {
@@ -189,7 +189,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
 
     icspec = cluster.parsed_spec
 
-    #print(f"Default operator IC edition: {config.MYSQL_OPERATOR_DEFAULT_IC_EDITION} Edition")
+    logger.info(f"Operator edition: {config.OPERATOR_EDITION.value} edition")
     cluster.log_cluster_info(logger)
 
     cluster.update_cluster_fqdn()
@@ -490,7 +490,7 @@ def on_innodbcluster_delete(name: str, namespace: str, body: Body,
 
 
 def on_innodbcluster_field_instances(old, new, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
-    cluster.parsed_spec.validate(logger)
+    cluster.validate_spec(logger)
     patcher.patch_sts({
                 "spec": {
                     "replicas": new
@@ -519,7 +519,7 @@ def on_innodbcluster_field_version(old, new, body: Body,
         # should not be earlier, as on_server_version_change() checks also for the version and raises
         # a PermanentError while validate() raises ApiSpecError which is turned by Kopf to a TemporaryError
         # spec.version requires this special handling
-        cluster.parsed_spec.validate(logger)
+        cluster.validate_spec(logger)
         cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, patcher, logger)
 
         router_deploy = cluster.get_router_deployment()
@@ -542,7 +542,7 @@ def on_innodbcluster_field_image_repository(old, new, body: Body,
         except:
             # revert version in the spec
             raise
-        cluster.parsed_spec.validate(logger)
+        cluster.validate_spec(logger)
         cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, patcher, logger)
         cluster_objects.update_operator_image(sts, cluster.parsed_spec)
         router_deploy = cluster.get_router_deployment()
@@ -552,7 +552,7 @@ def on_innodbcluster_field_image_repository(old, new, body: Body,
 
 
 def on_innodbcluster_field_image_pull_policy(old: dict, new: dict, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
-    cluster.parsed_spec.validate(logger)
+    cluster.validate_spec(logger)
     sts = cluster.get_stateful_set()
     patcher.patch_sts(cluster_objects.update_pull_policy(sts, cluster.parsed_spec, logger))
     router_deploy = cluster.get_router_deployment()
@@ -577,17 +577,17 @@ def on_innodbcluster_field_image(old, new, body: Body,
         except:
             # revert version in the spec
             raise
-        cluster.parsed_spec.validate(logger)
+        cluster.validate_spec(logger)
         cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, patcher, logger)
 
 
 def on_innodbcluster_field_router_instances(old: dict, new: dict, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
-    cluster.parsed_spec.validate(logger)
+    cluster.validate_spec(logger)
     patcher.patch_deploy(router_objects.update_size(cluster, new, True, logger))
 
 
 def on_innodbcluster_field_router_version(old: dict, new: dict, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
-    cluster.parsed_spec.validate(logger)
+    cluster.validate_spec(logger)
     try:
         cluster_ctl = ClusterController(cluster)
         cluster_ctl.on_router_upgrade(logger)
@@ -600,14 +600,14 @@ def on_innodbcluster_field_router_version(old: dict, new: dict, body: Body, clus
 
 
 def on_innodbcluster_field_router_bootstrap_options(old: dict, new: dict, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
-    cluster.parsed_spec.validate(logger)
+    cluster.validate_spec(logger)
     router_deploy = cluster.get_router_deployment()
     if router_deploy:
         router_objects.update_bootstrap_options(router_deploy, cluster, patcher, logger)
 
 
 def on_innodbcluster_field_router_container_options(old: dict, new: dict, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
-    cluster.parsed_spec.validate(logger)
+    cluster.validate_spec(logger)
     router_deploy = cluster.get_router_deployment()
     if router_deploy:
         router_objects.update_options(router_deploy, cluster.parsed_spec, patcher, logger)
@@ -629,7 +629,7 @@ def on_innodbcluster_field_router_options(old: dict, new: dict, body: Body,
             "Ignoring spec.router.routingOptions change for unready cluster")
         return
 
-    cluster.parsed_spec.validate(logger)
+    cluster.validate_spec(logger)
     with ClusterMutex(cluster):
         if old is None:
             old = {}
@@ -666,13 +666,13 @@ def on_innodbcluster_field_backup_schedules(old: str, new: str, body: Body,
     if not cluster.get_create_time():
         raise kopf.TemporaryError("The cluster is not ready. Will create the schedules once the first instance is up and running", delay=10)
 
-    cluster.parsed_spec.validate(logger)
+    cluster.validate_spec(logger)
     with ClusterMutex(cluster):
         backup_objects.update_schedules(cluster.parsed_spec, old, new, logger)
 
 
 def on_sts_field_update(cluster: InnoDBCluster, field: str, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
-    cluster.parsed_spec.validate(logger)
+    cluster.validate_spec(logger)
     patcher.patch_sts(cluster_objects.prepare_cluster_stateful_set(cluster, cluster.parsed_spec, logger))
 
 
@@ -709,7 +709,7 @@ def on_innodbcluster_read_replicas_changed(old: dict, new: dict, body: Body,
     if not cluster.get_create_time():
         raise kopf.TemporaryError("The cluster is not ready. Will retry", delay=30)
 
-    cluster.parsed_spec.validate(logger)
+    cluster.validate_spec(logger)
 
     if old is None:
         old = []
@@ -946,7 +946,7 @@ def on_innodbcluster_field_logs(old: str, new: str, body: Body,
                                    cluster: InnoDBCluster,
                                    patcher: cluster_objects.InnoDBClusterObjectModifier,
                                    logger: Logger):
-    cluster.parsed_spec.validate(logger)
+    cluster.validate_spec(logger)
     cluster_objects.update_objects_for_logs(cluster, patcher, logger)
 
 
@@ -955,7 +955,7 @@ def on_innodbcluster_field_metrics(old: str, new: str, body: Body,
                                    patcher: cluster_objects.InnoDBClusterObjectModifier,
                                    logger: Logger):
 
-    cluster.parsed_spec.validate(logger)
+    cluster.validate_spec(logger)
     # We have to edit the user account first, else the server might go away
     # whie we are trying to change the user
 
@@ -1056,7 +1056,7 @@ def on_spec(body: Body, diff, old, new, logger: Logger, **kwargs):
     patcher = cluster_objects.InnoDBClusterObjectModifier(cluster, logger)
 
     # TODOA: Enable and test this
-    #cluster.parsed_spec.validate(logger)
+    #cluster.validate_spec(logger)
     handle_fields(old, new, body, cluster, patcher, spec_tld_handlers, "spec.", logger)
 
     old_router, new_router = change_between_old_and_new(old, new, "router", lambda: {})

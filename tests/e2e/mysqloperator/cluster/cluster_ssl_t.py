@@ -9,6 +9,7 @@ from utils import kutil
 from utils import mutil
 import logging
 from utils.tutil import g_full_log
+from utils.auxutil import isotime
 from utils.optesting import COMMON_OPERATOR_ERRORS
 from .cluster_t import check_all
 import os
@@ -58,12 +59,12 @@ def check_ssl(self, ns, pod, ca=None, crl=None, ssl_cert_days=None, check_gr_acc
         row = s.query_sql("select @@global.ssl_ca, @@global.ssl_capath, @@global.ssl_cert, @@global.ssl_crl, @@global.ssl_crlpath, @@global.ssl_key").fetch_one()
 
         if not self_signed:
-            self.assertEqual("/etc/mysql-ssl/ca.pem", row[0], f"{pod}: ssl_ca")
+            self.assertEqual("/etc/mysql-ssl/ca/ca.pem", row[0], f"{pod}: ssl_ca")
             self.assertFalse(row[1], f"{pod}: ssl_capath")
-            self.assertEqual("/etc/mysql-ssl/tls.crt", row[2], f"{pod}: ssl_cert")
-            self.assertEqual("/etc/mysql-ssl/crl.pem" if crl else None, row[3], f"{pod}: ssl_crl")
+            self.assertEqual("/etc/mysql-ssl/key/tls.crt", row[2], f"{pod}: ssl_cert")
+            self.assertEqual("/etc/mysql-ssl/ca/crl.pem" if crl else None, row[3], f"{pod}: ssl_crl")
             self.assertFalse(row[4], f"{pod}: ssl_crlpath")
-            self.assertEqual("/etc/mysql-ssl/tls.key", row[5], f"{pod}: ssl_key")
+            self.assertEqual("/etc/mysql-ssl/key/tls.key", row[5], f"{pod}: ssl_key")
         else:
             self.assertEqual("ca.pem", row[0], f"{pod}: ssl_ca")
             self.assertFalse(row[1], f"{pod}: ssl_capath")
@@ -85,10 +86,10 @@ def check_ssl(self, ns, pod, ca=None, crl=None, ssl_cert_days=None, check_gr_acc
         self.assertEqual("REQUIRED" if self_signed else "VERIFY_IDENTITY", row[0], f"{pod}: group_replication_ssl_mode")
         self.assertEqual(1, row[1], f"{pod}: group_replication_recovery_use_ssl")
         self.assertEqual(0 if self_signed else 1, row[2], f"{pod}: group_replication_recovery_ssl_verify_server_cert")
-        self.assertEqual("" if self_signed else "/etc/mysql-ssl/ca.pem", row[3], f"{pod}: group_replication_recovery_ssl_ca")
+        self.assertEqual("" if self_signed else "/etc/mysql-ssl/ca/ca.pem", row[3], f"{pod}: group_replication_recovery_ssl_ca")
         self.assertFalse(row[4], f"{pod}: group_replication_recovery_ssl_capath")
-        self.assertEqual("" if self_signed else "/etc/mysql-ssl/tls.crt", row[5], f"{pod}: group_replication_recovery_ssl_cert")
-        self.assertEqual("" if self_signed else "/etc/mysql-ssl/tls.key", row[8], f"{pod}: group_replication_recovery_ssl_key")
+        self.assertEqual("" if self_signed else "/etc/mysql-ssl/key/tls.crt", row[5], f"{pod}: group_replication_recovery_ssl_cert")
+        self.assertEqual("" if self_signed else "/etc/mysql-ssl/key/tls.key", row[8], f"{pod}: group_replication_recovery_ssl_key")
 
         self.assertFalse(row[6], f"{pod}: group_replication_recovery_ssl_crl")
         self.assertFalse(row[7], f"{pod}: group_replication_recovery_ssl_crlpath")
@@ -407,39 +408,30 @@ spec:
     instances: {self.routers}
   secretName: mypwds
 """
-
+        start_time = isotime()
         kutil.apply(self.ns, yaml)
 
-        self.wait_ic("mycluster", "PENDING", 0)
+        self.wait_ic("mycluster", "INVALID", 0)
 
-        for instance in range(0, self.instances):
-            self.wait_pod(f"mycluster-{instance}", "Pending")
+        SECRET_TLS_NOT_FOUND='Secret "mycluster-tls" NOT found'
+        SECRET_CA_NOT_FOUND='Secret "mycluster-ca" NOT found'
 
-        SECRET_TLS_NOT_FOUND='secret "mycluster-tls" not found'
-        SECRET_CA_NOT_FOUND='secret "mycluster-ca" not found'
-        def check_error():
-            out = kutil.describe_po(self.ns, "mycluster-0")
-            matched_lines=''
-            for line in out.split('\n'):
-                if SECRET_TLS_NOT_FOUND in line or SECRET_TLS_NOT_FOUND in line:
-                    matched_lines += f"{line}'\n"
-            return matched_lines
+        self.wait_got_cluster_event("mycluster", after=start_time, timeout=120, delay=15,
+                                    type="Error", reason="InvalidArgument", msg=SECRET_CA_NOT_FOUND)
 
-        # cluster will be stuck at PENDING because of the missing secret
-        matched_lines = self.wait(check_error)
-        self.assertIn(SECRET_TLS_NOT_FOUND, matched_lines)
-        self.assertIn(SECRET_CA_NOT_FOUND, matched_lines)
-
-
-    def test_1_create_cluster_missing_ssl_recover(self):
-        """
-        Recover from no-certificates by creating the missing certs
-        """
         kutil.create_ssl_ca_secret(self.ns, "mycluster-ca",
             os.path.join(tutil.g_test_data_dir, "ssl/out/ca.pem"))
+
+        update_time = isotime()
+
+        self.wait_got_cluster_event("mycluster", after=update_time, timeout=120, delay=15,
+                                    type="Error", reason="InvalidArgument", msg=SECRET_TLS_NOT_FOUND)
+
         kutil.create_ssl_cert_secret(self.ns, "mycluster-tls",
             os.path.join(tutil.g_test_data_dir, "ssl/out/server-cert.pem"),
             os.path.join(tutil.g_test_data_dir, "ssl/out/server-key.pem"))
+
+        self.wait_ic("mycluster", "ONLINE", 0)
 
         for instance in range(0, self.instances):
             self.wait_pod(f"mycluster-{instance}", "Running")

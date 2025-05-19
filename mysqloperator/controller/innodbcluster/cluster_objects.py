@@ -220,11 +220,11 @@ def get_meb_container(cluster: InnoDBCluster, spec: InnoDBClusterSpec,
         ssl_key = "/var/lib/mysql/server-key.pem"
         mount = ""
     else:
-        ssl_cert = "//etc/mysql-ssl/tls.crt"
-        ssl_key = "/etc/mysql-ssl/tls.key"
+        ssl_cert = "/etc/mysql-ssl/key/tls.crt"
+        ssl_key = "/etc/mysql-ssl/key/tls.key"
         mount = """
-        - mountPath: /etc/mysql-ssl"
-          name: ssldata
+        - mountPath: /etc/mysql-ssl/key"
+          name: ssl-key-data
        """
 
     container = f"""
@@ -1066,18 +1066,18 @@ data:
     # SSL configurations
     # Do not edit.
     [mysqld]
-    {"# " if spec.tlsUseSelfSigned else ""}ssl-ca=/etc/mysql-ssl/{ca_file_name}
-    {"# " if not has_crl else ""}ssl-crl=/etc/mysql-ssl/crl.pem
-    {"# " if spec.tlsUseSelfSigned else ""}ssl-cert=/etc/mysql-ssl/tls.crt
-    {"# " if spec.tlsUseSelfSigned else ""}ssl-key=/etc/mysql-ssl/tls.key
+    {"# " if spec.tlsUseSelfSigned else ""}ssl-ca=/etc/mysql-ssl/ca/{ca_file_name}
+    {"# " if not has_crl else ""}ssl-crl=/etc/mysql-ssl/ca/crl.pem
+    {"# " if spec.tlsUseSelfSigned else ""}ssl-cert=/etc/mysql-ssl/key/tls.crt
+    {"# " if spec.tlsUseSelfSigned else ""}ssl-key=/etc/mysql-ssl/key/tls.key
 
     loose_group_replication_recovery_use_ssl=1
     {"# " if spec.tlsUseSelfSigned else ""}loose_group_replication_recovery_ssl_verify_server_cert=1
 
-    {"# " if spec.tlsUseSelfSigned else ""}loose_group_replication_recovery_ssl_ca=/etc/mysql-ssl/{ca_file_name}
-    #{"# " if not has_crl else ""}loose_group_replication_recovery_ssl_crl=/etc/mysql-ssl/crl.pem
-    {"# " if spec.tlsUseSelfSigned else ""}loose_group_replication_recovery_ssl_cert=/etc/mysql-ssl/tls.crt
-    {"# " if spec.tlsUseSelfSigned else ""}loose_group_replication_recovery_ssl_key=/etc/mysql-ssl/tls.key
+    {"# " if spec.tlsUseSelfSigned else ""}loose_group_replication_recovery_ssl_ca=/etc/mysql-ssl/ca/{ca_file_name}
+    #{"# " if not has_crl else ""}loose_group_replication_recovery_ssl_crl=/etc/mysql-ssl/ca/crl.pem
+    {"# " if spec.tlsUseSelfSigned else ""}loose_group_replication_recovery_ssl_cert=/etc/mysql-ssl/key/tls.crt
+    {"# " if spec.tlsUseSelfSigned else ""}loose_group_replication_recovery_ssl_key=/etc/mysql-ssl/key/tls.key
 
   99-extra.cnf: |
     # Additional user configurations taken from spec.mycnf in InnoDBCluster.

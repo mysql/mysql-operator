@@ -19,7 +19,7 @@ metadata:
     app.kubernetes.io/managed-by: helm
     app.kubernetes.io/created-by: helm
 spec:
-  replicas: 1
+  replicas: {{ ((.Values).replicas) | toString | atoi | default 1 }}
   selector:
     matchLabels:
       name: mysql-operator

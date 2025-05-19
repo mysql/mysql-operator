@@ -133,7 +133,7 @@ spec:
   router:
     instances: {cls.router_instances}
   secretName: mypwds
-  edition: community
+  edition: enterprise
   tlsUseSelfSigned: true
   baseServerId: 1000
 """
@@ -150,7 +150,7 @@ spec:
   router:
     instances: {cls.router_instances}
   secretName: {cls.secret_name}
-  edition: community
+  edition: enterprise
   tlsUseSelfSigned: true
   baseServerId: {baseServerId}
   initDB:

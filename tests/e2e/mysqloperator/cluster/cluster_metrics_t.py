@@ -62,7 +62,6 @@ spec:
   router:
     instances: 0
   secretName: mypwds
-  edition: community
   tlsUseSelfSigned: true
   metrics:
       enable: true

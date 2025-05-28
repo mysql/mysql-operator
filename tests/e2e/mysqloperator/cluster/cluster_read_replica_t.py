@@ -83,7 +83,6 @@ spec:
       router.mycluster.example.com/ann13: "ann13-value"
       router.mycluster.example.com/ann42: "ann42-value"
   secretName: mypwds
-  edition: community
   tlsUseSelfSigned: {self.use_self_signed}
   podLabels:
     mycluster-label1: "mycluster-label1-value"

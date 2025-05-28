@@ -65,7 +65,6 @@ metadata:
   name: mycluster
 spec:
   secretName: mypwds
-  edition: community
   bogus: 1234
   tlsUseSelfSigned: true
 """
@@ -284,7 +283,6 @@ metadata:
 spec:
   instances: 1
   secretName: mypwds
-  edition: community
   tlsUseSelfSigned: true
   version: "5.7.30"
   podSpec:

@@ -157,6 +157,13 @@ if __name__ == '__main__':
             ociutil.debug_ocicli = True
         elif arg == "--mount-operator" or arg == "-O":
             opt_mount_operator_path = os.path.join(os.path.dirname(basedir), "mysqloperator")
+        elif arg.startswith("--enterprise-operator="):
+            is_ee_operator = True if arg.partition("=")[-1] else False
+            g_ts_cfg.is_ee_operator = is_ee_operator
+            if is_ee_operator:
+                g_ts_cfg.operator_image_name = g_ts_cfg.operator_ee_image_name
+                g_ts_cfg.server_image_name = g_ts_cfg.server_ee_image_name
+                g_ts_cfg.router_image_name = g_ts_cfg.router_ee_image_name
         elif arg.startswith("--mount="):
             opt_mounts += [arg.partition("=")[-1]]
         elif arg.startswith("--custom-dns="):

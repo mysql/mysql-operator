@@ -36,7 +36,6 @@ spec:
   router:
     instances: 0
   secretName: mypwds
-  edition: community
   tlsUseSelfSigned: true
 """
 
@@ -263,7 +262,6 @@ spec:
   router:
     instances: 1
   secretName: mypwds
-  edition: community
   tlsUseSelfSigned: true
   podSpec:
     terminationGracePeriodSeconds: 5
@@ -555,7 +553,6 @@ spec:
   router:
     instances: 1
   secretName: mypwds
-  edition: community
   tlsUseSelfSigned: true
   podLabels:
     server-label1: "mycluster-server-label1-value"
@@ -822,7 +819,6 @@ spec:
   router:
     instances: 1
   secretName: mypwds
-  edition: community
   tlsUseSelfSigned: true
   podLabels:
     server-label1: "mycluster-server-label1-value"
@@ -1063,7 +1059,6 @@ spec:
   router:
     instances: 1
   secretName: mypwds
-  edition: community
   tlsUseSelfSigned: true
   podLabels:
     server-label1: "mycluster-server-label1-value"
@@ -1308,7 +1303,6 @@ spec:
   router:
     instances: 1
   secretName: mypwds
-  edition: community
   tlsUseSelfSigned: true
   podLabels:
     server-label1: "mycluster-server-label1-value"
@@ -1585,7 +1579,6 @@ spec:
   router:
     instances: 1
   secretName: mypwds
-  edition: community
   tlsUseSelfSigned: true
   podLabels:
     server-label1: "mycluster-server-label1-value"

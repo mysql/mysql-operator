@@ -57,7 +57,6 @@ spec:
     instances: 1
     baseServerId: 500
   secretName: mypwds
-  edition: community
   tlsUseSelfSigned: true
   # This template will remain a template, this is no f-string!
   serviceFqdnTemplate: '{service}.{namespace}'

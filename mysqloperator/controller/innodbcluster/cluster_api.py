@@ -393,15 +393,15 @@ class MebInitDBSpec:
 
         if "ociObjectStorage" in storagespec:
             ocistorage = dget_dict(storagespec, "ociObjectStorage", prefix+".storage")
-            self.oci_credentials = dget_str(ocistorage, "credentials", prefix+".storage.credentials")
+            self.oci_credentials = dget_str(ocistorage, "credentials", prefix+".storage.ociObjectStorage")
 
         if "s3" in storagespec:
             s3storage = dget_dict(storagespec, "s3", prefix+".storage")
-            self.s3_region = dget_str(s3storage, "region", prefix+".storage.s3.region")
-            self.s3_bucket= dget_str(s3storage, "region", prefix+".storage.s3.bucket")
-            self.s3_object_key_prefix = dget_str(s3storage, "region", prefix+".storage.s3.object_key_prefix")
-            self.s3_credentials = dget_str(s3storage, "region", prefix+".storage.s3.credentials")
-            self.s3_host = dget_str(s3storage, "region", prefix+".storage.s3.host", default_value="")
+            self.s3_region = dget_str(s3storage, "region", prefix+".storage.s3")
+            self.s3_bucket= dget_str(s3storage, "bucket", prefix+".storage.s3")
+            self.s3_object_key_prefix = dget_str(s3storage, "objectKeyPrefix", prefix+".storage.s3")
+            self.s3_credentials = dget_str(s3storage, "credentials", prefix+".storage.s3")
+            self.s3_host = dget_str(s3storage, "host", prefix+".storage", default_value="")
 
         if (not self.oci_credentials and not self.s3_bucket) or (self.oci_credentials and self.s3_bucket):
             raise kopf.TemporaryError("Need one of either s3 or ociObjectStorage for MEB Restore")

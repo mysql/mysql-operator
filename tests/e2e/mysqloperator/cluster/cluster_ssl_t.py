@@ -209,7 +209,6 @@ spec:
   router:
     instances: {self.routers}
   secretName: mypwds
-  edition: community
 """
 
         kutil.apply(self.ns, yaml)

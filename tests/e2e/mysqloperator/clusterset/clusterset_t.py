@@ -290,11 +290,14 @@ spec:
         self._99_destroy()
 
 
+@unittest.skipIf(g_ts_cfg.enterprise_skip, "Enterprise test cases are skipped")
 class ClusterSetWithOneInstance(ClusterSetBase):
     instances = 1
     def testit(self):
         self.runit()
 
+
+@unittest.skipIf(g_ts_cfg.enterprise_skip, "Enterprise test cases are skipped")
 class ClusterSetWithThreeInstances(ClusterSetBase):
     instances = 3
     def testit(self):

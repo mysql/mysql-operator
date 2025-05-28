@@ -61,7 +61,6 @@ spec:
   router:
     instances: 1
   secretName: {self.secret_name}
-  edition: community
   tlsUseSelfSigned: true
   service:
     defaultPort: mysql-rw-split
@@ -236,7 +235,6 @@ spec:
   router:
     instances: 1
   secretName: {self.secret_name}
-  edition: community
   tlsUseSelfSigned: true
   instanceService:
     labels:

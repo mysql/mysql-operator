@@ -142,7 +142,6 @@ spec:
   router:
     instances: 0
   secretName: mypwds
-  edition: community
   tlsUseSelfSigned: true
   imagePullPolicy: Always
 """
@@ -210,7 +209,6 @@ spec:
   router:
     instances: 0
   secretName: mypwds
-  edition: community
   tlsUseSelfSigned: true
   podSpec:
     terminationGracePeriodSeconds: 1
@@ -375,7 +373,6 @@ spec:
   router:
     instances: 0
   secretName: mypwds
-  edition: community
   tlsUseSelfSigned: true
   # don't specify serviceAccountName and see if the default one will be created
   podSpec:
@@ -468,7 +465,6 @@ spec:
   router:
     instances: 0
   secretName: mypwds
-  edition: community
   tlsUseSelfSigned: true
   imagePullSecrets:
   - name : {self.priv_registry_secret_name}
@@ -557,7 +553,6 @@ spec:
   router:
     instances: 0
   secretName: mypwds
-  edition: community
   tlsUseSelfSigned: true
   serviceAccountName: {self.sa_name}
   podSpec:
@@ -649,7 +644,6 @@ spec:
   router:
     instances: 1
   secretName: mypwds
-  edition: community
   tlsUseSelfSigned: true
   serviceAccountName: {self.sa_name}
   imagePullSecrets:
@@ -737,7 +731,6 @@ spec:
   router:
     instances: 1
   secretName: mypwds
-  edition: community
   tlsUseSelfSigned: true
   podLabels:
     server-label1: "mycluster-server-label1-value"
@@ -921,7 +914,6 @@ spec:
       router.mycluster.example.com/ann13: "ann13-value"
       router.mycluster.example.com/ann42: "ann42-value"
   secretName: mypwds
-  edition: community
   tlsUseSelfSigned: true
   podLabels:
     mycluster-label1: "mycluster-label1-value"
@@ -2117,7 +2109,6 @@ spec:
   router:
     instances: 1
   secretName: mypwds
-  edition: community
   version: "{g_ts_cfg.get_old_version_tag()}"
   baseServerId: 3210
   tlsUseSelfSigned: true
@@ -2225,7 +2216,6 @@ spec:
     instances: 1
   version: "{g_ts_cfg.get_old_version_tag()}"
   secretName: mypwds
-  edition: community
   tlsUseSelfSigned: true
   imagePullSecrets:
     - name: pullsecrets

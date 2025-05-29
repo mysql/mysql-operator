@@ -12,6 +12,14 @@ from .controller import shellutils
 from .controller.innodbcluster.cluster_api import InnoDBCluster
 from .controller.innodbcluster.cluster_controller import ClusterController
 
+# This is a dupe of ClusterController::dba_cluster_name, and initdb.cannonical_dba_cluster_name
+# TODO: Needs to be refactored so both places use one function
+def cannonical_dba_cluster_name(name: str) -> str:
+    """Return the name of the cluster as defined in the k8s resource
+    as a InnoDB Cluster compatible name."""
+    return name.replace("-", "_").replace(".", "_")
+
+
 def main(argv):
     logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s - [%(levelname)s] [%(name)s] %(message)s',
@@ -34,6 +42,8 @@ def main(argv):
 
     options = {}
 
+    cannonical_cluster_name = cannonical_dba_cluster_name(args.cluster_name)
+
     if args.timeout:
         options["timeout"] = args.timeout
 
@@ -41,15 +51,15 @@ def main(argv):
         invalidations = args.invalidate_replica_clusters.split(",")
         options["invalidateReplicaClusters"] = invalidations
 
-    logger.info(f"Trying to switch over to {args.cluster_name} . Options {options}")
+    logger.info(f"Trying to switch over to {cannonical_cluster_name} . Options {options}")
 
     with shellutils.DbaWrap(shellutils.connect_to_pod_dba(pod, logger)) as dba:
         cs = dba.get_cluster_set()
         logger.info(f"Before CSet={json.dumps(cs.status(), indent=4)}")
         if args.force:
-           cs.force_primary_cluster(args.cluster_name, options)
+           cs.force_primary_cluster(cannonical_cluster_name, options)
         else:
-            cs.set_primary_cluster(args.cluster_name, options)
+            cs.set_primary_cluster(cannonical_cluster_name, options)
         logger.info(f"After CSet={json.dumps(cs.status(), indent=4)}")
 
     controller = ClusterController(cluster)

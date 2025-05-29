@@ -87,9 +87,9 @@ def check_all(test, ns, name, instances, routers=None, primary=None, count_sessi
 
 class ClusterSetBase(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
-    primary_cluster_name = "mycluster1"
-    replica_1_cluster_name = "mycluster20"
-    replica_2_cluster_name = "mycluster21"
+    primary_cluster_name = "mycluster-1"
+    replica_1_cluster_name = "mycluster-20"
+    replica_2_cluster_name = "mycluster-21"
     root_user = "root"
     root_host = "%"
     root_pass = "sakila"

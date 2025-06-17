@@ -19,7 +19,7 @@ tls:
 #  serverCertAndPKsecretName:
 #  routerCertAndPKsecretName: # our use router.certAndPKsecretName
 
-#serverVersion: 8.0.31
+#serverVersion: 9.4.0
 serverInstances: 3
 routerInstances: 1 # or use router.instances
 baseServerId: 1000
@@ -33,7 +33,33 @@ baseServerId: 1000
 #  - bootstrapOption1: value1
 #  - bootstrapOption2: value2
 #  certAndPKsecretName:
+#  #IMPORTANT: Once podSpec is set it is carved into stone. If changed, the router deployment won't be rebuilt. podSpec is
+#  #           respected only when during the initial build of of the Innodbcluster and its Router Deployment. Later changes
+#  #           to the podSpec, in the Chart of directly in the IC CR/object won't be regarded, as the Operator doesn't watch
+#  #           for changes of router.podSpec.
 #  podSpec:
+#    affinity:
+#      podAntiAffinity:
+#        requiredDuringSchedulingIgnoredDuringExecution:
+#        # Ensure Router pods avoid nodes with operator deployment pods
+#        - labelSelector:
+#            matchLabels:
+#              app.kubernetes.io/name: mysql-operator
+#              app.kubernetes.io/instance: myoperator
+#          topologyKey: kubernetes.io/hostname
+#          namespaces: ["mysql-operator"]
+#        # Ensure Router pods avoid nodes with server (STS) pods (change mycluster1 with .Release.Name)
+#        - labelSelector:
+#            matchLabels:
+#              app.kubernetes.io/name: mysql-innodbcluster-mysql-server
+#              app.kubernetes.io/instance: mysql-innodbcluster-mycluster1-mysql-server
+#          topologyKey: kubernetes.io/hostname
+#        # Ensure Router pods are on different nodes from each other (change mycluster1 with .Release.Name)
+#        - labelSelector:
+#            matchLabels:
+#              app.kubernetes.io/name: mysql-router
+#              app.kubernetes.io/instance: mysql-innodbcluster-mycluster1-router
+#          topologyKey: kubernetes.io/hostname
 #  podAnnotations:
 #  podLabels:
 
@@ -134,6 +160,10 @@ baseServerId: 1000
 #      secrets: "secrets.vaults.<region>.oci.oraclecloud.com"
 
 
+#IMPORTANT: Once podSpec is set it is carved into stone. If changed, the IC StatefulSet won't be rebuilt. podSpec is
+#           respected only when during the initial build of of the Innodbcluster. Later changes to the podSpec, in the Chart
+#           of directly in the IC CR/object won't be regarded, as the Operator doesn't watch for changes of podSpec.
+#
 #podSpec:
 #  containers:
 #  - name: mysql
@@ -145,6 +175,22 @@ baseServerId: 1000
 #        memory: "8192Mi"  # adapt to your needs
 #        cpu: "3600m"      # adapt to your needs
 #
+#  affinity:
+#    podAntiAffinity:
+#      requiredDuringSchedulingIgnoredDuringExecution:
+#      # Ensure STS pods avoid nodes with operator deployment pods
+#      - labelSelector:
+#          matchLabels:
+#            app.kubernetes.io/name: mysql-operator
+#            app.kubernetes.io/instance: myoperator
+#        topologyKey: kubernetes.io/hostname
+#        namespaces: ["mysql-operator"]
+#      # Ensure STS pods are on different nodes from each other (change mycluster1 with .Release.Name)
+#      - labelSelector:
+#          matchLabels:
+#            app.kubernetes.io/instance: mysql-innodbcluster-mycluster1-mysql-server
+#        topologyKey: kubernetes.io/hostname
+
 #podAnnotations:
 #podLabels:
 

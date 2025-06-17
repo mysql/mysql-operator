@@ -92,6 +92,7 @@ spec:
                 podSpec:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
+                  description: "Customization specification to be merged into the InnoDBCluster StatefulSet pod template. IMPORTANT: podSpec is regarded only during StatefulSet buildup and the operator neither checks the values in podSpec nor later watches for changes of this field. Thus if changes are made to this field the InnoDBCluster StatefulSet will not be updated"
                 podAnnotations:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
@@ -390,6 +391,7 @@ spec:
                     podSpec:
                       type: object
                       x-kubernetes-preserve-unknown-fields: true
+                      description: "Customization specification to be merged into the Router Deployment pod template. IMPORTANT: podSpec is regarded only during Deployment buildup and the operator neither checks the values in podSpec nor later watches for changes of this field. Thus if changes are made to this field the Router Deployment will not be updated"
                     podAnnotations:
                       type: object
                       x-kubernetes-preserve-unknown-fields: true
@@ -1071,6 +1073,7 @@ spec:
                       podSpec:
                         type: object
                         x-kubernetes-preserve-unknown-fields: true
+                        description: "Customization specification to be merged into the InnoDBCluster StatefulSet pod template. IMPORTANT: podSpec is regarded only during StatefulSet buildup and the operator neither checks the values in podSpec nor later watches for changes of this field. Thus if changes are made to this field the InnoDBCluster StatefulSet will not be updated"
                       podAnnotations:
                         type: object
                         x-kubernetes-preserve-unknown-fields: true

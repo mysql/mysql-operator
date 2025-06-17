@@ -34,9 +34,9 @@ spec:
         - name: mysql-operator
           image: {{ if (((.Values).image).registry) }}{{ trimSuffix "/" .Values.image.registry }}/{{- end }}{{- if (((.Values).image).repository) }}{{ trimSuffix "/" .Values.image.repository }}/{{ end }}{{ (required "image.name is required" ((.Values).image).name) }}:{{ default .Chart.AppVersion (((.Values).image).tag) }}
           imagePullPolicy: {{ required "image.pullPolicy is required" (((.Values).image).pullPolicy) }}
-          {{ if and ( and ((.Values).debugger) (((.Values).debugger).enabled) ) ( and (((.Values).debugger).bindip) (((.Values).debugger).bindport) )}}
+          {{- if and ( and ((.Values).debugger) (((.Values).debugger).enabled) ) ( and (((.Values).debugger).bindip) (((.Values).debugger).bindport) )}}
           args: ["mysqlsh", "--log-level=@INFO", "--pym", "debugpy", "--listen", "{{.Values.debugger.bindip}}:{{.Values.debugger.bindport}}", "-m", "mysqloperator", "operator"]
-          {{ else }}
+          {{- else }}
           args: ["mysqlsh", "--log-level=@INFO", "--pym", "mysqloperator", "operator"]
           {{- end }}
           env:
@@ -46,13 +46,13 @@ spec:
             value: never
           - name: MYSQL_OPERATOR_ENTERPRISE
             value: "1"
-          {{ if (((.Values).envs).imagesDefaultRegistry) }}
+          {{- if (((.Values).envs).imagesDefaultRegistry) }}
           - name: MYSQL_OPERATOR_DEFAULT_REPOSITORY
             value: {{ trimSuffix "/" .Values.envs.imagesDefaultRegistry }}{{ if .Values.envs.imagesDefaultRepository }}/{{ trimSuffix "/" .Values.envs.imagesDefaultRepository }}{{ end }}
-          {{ else if (((.Values).envs).imagesDefaultRepository) }}
+          {{- else if (((.Values).envs).imagesDefaultRepository) }}
           - name: MYSQL_OPERATOR_DEFAULT_REPOSITORY
             value: {{ trimSuffix "/" .Values.envs.imagesDefaultRepository }}
-          {{ end }}
+          {{- end }}
           {{- if (((.Values).envs).imagesPullPolicy) }}
             {{- if not (has (lower .Values.envs.imagesPullPolicy) ($imagePullPolicies)) }}
               {{- $err := printf "Unknown envs.imagesPullPolicy %s. Must be one of %v" .Values.envs.imagesPullPolicy $imagePullPolicies}}
@@ -61,10 +61,10 @@ spec:
           - name: MYSQL_OPERATOR_IMAGE_PULL_POLICY
             value: {{ .Values.envs.imagesPullPolicy }}
           {{- end }}
-          {{ if (((.Values).envs).k8sClusterDomain) }}
+          {{- if (((.Values).envs).k8sClusterDomain) }}
           - name: MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN
             value: {{ .Values.envs.k8sClusterDomain }}
-          {{ end }}
+          {{- end }}
           readinessProbe:
             exec:
               command:
@@ -92,3 +92,9 @@ spec:
         - name: tmpdir
           emptyDir: {}
       serviceAccountName: mysql-operator-sa
+      {{- if ((.Values).affinity) }}
+      affinity: {{ toYaml .Values.affinity | nindent 8 }}
+      {{- end }}
+      {{- if ((.Values).nodeSelector) }}
+      nodeSelector: {{ toYaml .Values.nodeSelector | nindent 8 }}
+      {{- end }}

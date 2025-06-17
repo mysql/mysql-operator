@@ -1,0 +1,39 @@
+# Copyright (c) 2025, Oracle and/or its affiliates.
+#
+# Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
+#
+# This sample creates a simple InnoDB Cluster. It's similar to sample-cluster.yaml
+# but also defines additional Pod specification values that will be merged
+# into each MySQL Server Pod specification.
+#
+# In this case a nodeSelector is used, which ensures that all Server Pods
+# are scheduled on a Node having a specific label.
+#
+apiVersion: mysql.oracle.com/v2
+kind: InnoDBCluster
+metadata:
+  name: idc-with-affinity
+spec:
+  secretName: mypwds
+  instances: 3
+  router:
+    instances: 1
+  tlsUseSelfSigned: true
+
+  podSpec:
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+        # Ensure STS pods avoid nodes with operator deployment pods
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: mysql-operator
+              app.kubernetes.io/instance: myoperator
+          topologyKey: kubernetes.io/hostname
+          namespaces: ["mysql-operator"]
+        # Ensure STS pods are on different nodes from each other (change idc-with-affinity with your cluster name)
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/instance: mysql-innodbcluster-idc-with-affinity-mysql-server
+          topologyKey: kubernetes.io/hostname
+

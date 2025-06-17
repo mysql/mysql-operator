@@ -47,7 +47,7 @@ spec:
           {{- if (((.Values).envs).imagesDefaultRegistry) }}
           - name: MYSQL_OPERATOR_DEFAULT_REPOSITORY
             value: {{ trimSuffix "/" .Values.envs.imagesDefaultRegistry }}{{ if .Values.envs.imagesDefaultRepository }}/{{ trimSuffix "/" .Values.envs.imagesDefaultRepository }}{{ end }}
-          {{- else if (((.Values).envs).imagesDefaultRepository) -}}
+          {{- else if (((.Values).envs).imagesDefaultRepository) }}
           - name: MYSQL_OPERATOR_DEFAULT_REPOSITORY
             value: {{ trimSuffix "/" .Values.envs.imagesDefaultRepository }}
           {{- end }}
@@ -90,3 +90,9 @@ spec:
         - name: tmpdir
           emptyDir: {}
       serviceAccountName: mysql-operator-sa
+      {{- if ((.Values).affinity) }}
+      affinity: {{ toYaml .Values.affinity | nindent 8 }}
+      {{- end }}
+      {{- if ((.Values).nodeSelector) }}
+      nodeSelector: {{ toYaml .Values.nodeSelector | nindent 8 }}
+      {{- end }}

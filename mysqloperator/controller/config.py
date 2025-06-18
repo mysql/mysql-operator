@@ -63,7 +63,6 @@ CLUSTER_ADMIN_USER_NAME = "mysqladmin"
 ROUTER_METADATA_USER_NAME = "mysqlrouter"
 BACKUP_USER_NAME = "mysqlbackup"
 
-
 def log_config_banner(logger) -> None:
     logger.info(f"KUBERNETES_VERSION ={k8s_version()}")
     logger.info(f"OPERATOR_VERSION   ={OPERATOR_VERSION}")

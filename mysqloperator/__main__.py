@@ -3,8 +3,25 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
+import ssl
 import sys
 import importlib
+
+from .controller.consts import TLS_VALID_CIPHERS
+
+
+# we limit cipher suites for the default SSL/TLS context, so that Kopf uses
+# only acceptable ciphers as client. This is explicitely done, again, in
+# our kubernetes utilities wrapper for our calls to kubernetes API
+
+def custom_create_default_context(purpose=ssl.Purpose.SERVER_AUTH, *, cafile=None, capath=None, cadata=None):
+    context = ssl._create_default_https_context(purpose, cafile=cafile, capath=capath, cadata=cadata)
+    context.set_ciphers(':'.join(TLS_VALID_CIPHERS))
+    return context
+
+ssl.create_default_context = custom_create_default_context
+
+
 
 entrypoints = {
     "operator": ".operator_main",

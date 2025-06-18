@@ -1,38 +1,66 @@
-# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
 import os
+import ssl
 import socket
 import sys
 import time
 from logging import Logger
+from urllib3 import PoolManager
 
 from typing import Callable, Optional, TypeVar
-from kubernetes.client.rest import ApiException
+from kubernetes.client.rest import ApiException, RESTClientObject
 from kubernetes import client, config
+
+from .consts import TLS_VALID_CIPHERS
+
+context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+context.set_ciphers(":".join(TLS_VALID_CIPHERS))
+context.check_hostname = True
+context.verify_mode = ssl.CERT_REQUIRED
+
+
+class CustomRESTClient(RESTClientObject):
+    def __init__(self, configuration):
+        super().__init__(configuration)
+        self.pool_manager = PoolManager(
+            num_pools=configuration.connection_pool_maxsize,
+            maxsize=configuration.connection_pool_maxsize,
+            cert_reqs=ssl.CERT_REQUIRED if configuration.verify_ssl else ssl.CERT_NONE,
+            ca_certs=configuration.ssl_ca_cert,
+            cert_file=configuration.cert_file,
+            key_file=configuration.key_file,
+            ssl_context=context,
+        )
+
+configuration = client.Configuration()
 
 try:
     # outside k8s
-    config.load_kube_config()
+    config.load_kube_config(client_configuration=configuration)
 except config.config_exception.ConfigException:
     try:
         # inside a k8s pod
-        config.load_incluster_config()
+        config.load_incluster_config(client_configuration=configuration)
     except config.config_exception.ConfigException:
         raise Exception(
             "Could not configure kubernetes python client")
 
-api_core: client.CoreV1Api = client.CoreV1Api()
-api_customobj: client.CustomObjectsApi = client.CustomObjectsApi()
-api_apps: client.AppsV1Api = client.AppsV1Api()
-api_batch: client.BatchV1Api = client.BatchV1Api()
-api_cron_job: client.BatchV1Api = client.BatchV1Api()
-api_policy: client.PolicyV1Api = client.PolicyV1Api()
-api_rbac: client.RbacAuthorizationV1Api = client.RbacAuthorizationV1Api()
-api_client: client.ApiClient = client.ApiClient()
-api_apis: client.ApisApi() = client.ApisApi()
+api_client = client.ApiClient(configuration=configuration)
+api_client.rest_client = CustomRESTClient(configuration)
+
+api_core: client.CoreV1Api = client.CoreV1Api(api_client)
+api_customobj: client.CustomObjectsApi = client.CustomObjectsApi(api_client)
+api_apps: client.AppsV1Api = client.AppsV1Api(api_client)
+api_batch: client.BatchV1Api = client.BatchV1Api(api_client)
+api_cron_job: client.BatchV1Api = client.BatchV1Api(api_client)
+api_policy: client.PolicyV1Api = client.PolicyV1Api(api_client)
+api_rbac: client.RbacAuthorizationV1Api = client.RbacAuthorizationV1Api(api_client)
+api_apis: client.ApisApi = client.ApisApi(api_client)
 
 T = TypeVar("T")
 

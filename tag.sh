@@ -6,4 +6,4 @@
 
 SUFFIX=''; [ -n "$1" ] && SUFFIX=${1}
 
-echo "8.0.43-2.0.19$SUFFIX"
+echo "8.0.44-2.0.20$SUFFIX"

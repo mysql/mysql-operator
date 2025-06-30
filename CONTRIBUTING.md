@@ -37,13 +37,13 @@ Building container images for the MySQL Operator with our provided `Dockerfile` 
 
 For changes only to the Operator code, which don't require changes to dependencies, an easy alternative is just to patch the images we provide adding your code changes. A way to facilitate is via a `Dockerfile` like this:
 
-    ARG BASE_VERSION=8.0.43-2.0.19
+    ARG BASE_VERSION=8.0.44-2.0.20
     FROM container-registry.oracle.com/mysql/community-operator:$BASE_VERSION
     COPY mysqloperator/ /usr/lib/mysqlsh/python-packages/
 
 After building an image like this:
 
-    docker build -t  mysql/community-operator:8.0.43-2.0.19 -f Dockerfile.patch .
+    docker build -t  mysql/community-operator:8.0.44-2.0.20 -f Dockerfile.patch .
 
 This can be passed to a local registry and used from there. Please refer to the MySQL Operator documentation and the documentation of your Kubernetes distribution of choice.
 

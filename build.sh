@@ -5,36 +5,28 @@
 #
 
 ARCH='amd64'
-if [[ $# -gt 0 && ! "$1" =~ ^- ]]; then
-  ARCH="$1"
-  shift
-fi
-
 IMG_TAG=$(./tag.sh)
 MAJOR_VERSION=${IMG_TAG:0:3}
 DOCKERFILE="Dockerfile"
 
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    -f|--file)
-      if [[ -n "${2-}" ]]; then
-        DOCKERFILE="$2"
-        shift 2
-      else
-        echo "Error: --file requires a filename argument" >&2
-        exit 1
-      fi
+while getopts "a:f:t:h" opt; do
+  case "$opt" in
+    a)
+      # Set architecture from -a option
+      ARCH="$OPTARG"
       ;;
-    -t|--tag)
-      TAG="$2"
-      shift 2
+    f)
+      # Set Dockerfile from -f option
+      DOCKERFILE="$OPTARG"
       ;;
-    -*)
-      echo "Unknown option: $1" >&2
+    t)
+      # Set image tag from -t option
+      TAG="$OPTARG"
+      ;;
+    \?)
+      # Unknown option handler
+      echo "Invalid option: -$OPTARG"
       exit 1
-      ;;
-    *)
-      shift
       ;;
   esac
 done

@@ -10,4 +10,22 @@ set -e
 IMG_TAG=$(./tag.sh)
 MAJOR_VERSION=${IMG_TAG:0:3}
 
-docker build --build-arg http_proxy=${http_proxy} --build-arg https_proxy=${https_proxy} --build-arg no_proxy=${no_proxy} -t mysql/community-operator:${MAJOR_VERSION}-$ARCH .
+while getopts "a:t:h" opt; do
+  case "$opt" in
+    a)
+      # Set architecture from -a option
+      ARCH="$OPTARG"
+      ;;
+    t)
+      # Set image tag from -t option
+      IMG_NAME="$OPTARG"
+      ;;
+    \?)
+      # Unknown option handler
+      echo "Invalid option: -$OPTARG"
+      exit 1
+      ;;
+  esac
+done
+
+docker build --build-arg http_proxy=${http_proxy} --build-arg https_proxy=${https_proxy} --build-arg no_proxy=${no_proxy} -t ${IMG_NAME}:${MAJOR_VERSION}-$ARCH .

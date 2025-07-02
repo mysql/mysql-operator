@@ -4,7 +4,19 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
-ARCH='amd64'; [ -n "$1" ] && ARCH="${1}"
+# Usage function
+print_usage() {
+cat <<EOF
+Usage: $0 -a <arch> -t <tag>
+
+Options:
+  -a  Architecture (amd64,arm64)
+  -t  Image tag (e.g., mysql/community-operator, mysql/enterprise-operator)
+  -h  Show this help message
+EOF
+}
+
+ARCH='amd64'
 set -e
 
 IMG_TAG=$(./tag.sh)
@@ -15,17 +27,37 @@ while getopts "a:t:h" opt; do
     a)
       # Set architecture from -a option
       ARCH="$OPTARG"
+      if [[ -z "$ARCH" || ! "$ARCH" =~ ^(amd64|arm64)$ ]]; then
+        echo "Error: Invalid architecture '$ARCH'" >&2
+        exit 1
+      fi
       ;;
     t)
       # Set image tag from -t option
       IMG_NAME="$OPTARG"
+      if [[ -z "$IMG_NAME" ]]; then
+        echo "Error: Image tag (-t) is required and cannot be empty." >&2
+        exit 1
+      fi
+      ;;
+    h)
+      print_usage
+      exit 0
       ;;
     \?)
-      # Unknown option handler
+      # Invalid option handler
       echo "Invalid option: -$OPTARG"
       exit 1
       ;;
   esac
 done
+
+#check if any unknown args passed to the script
+shift $((OPTIND - 1))
+if [[ $# -gt 0 ]]; then
+  echo "Error: Unknown arguments: $*" >&2
+  print_usage
+  exit 1
+fi
 
 docker build --build-arg http_proxy=${http_proxy} --build-arg https_proxy=${https_proxy} --build-arg no_proxy=${no_proxy} -t ${IMG_NAME}:${MAJOR_VERSION}-$ARCH .

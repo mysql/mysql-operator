@@ -446,6 +446,8 @@ def get_cj(ns, name, jpath=None, check=True):
 def get_sa(ns, name, jpath=None, check=True):
     return get(ns, "sa", name, check=check)
 
+def get_cm(ns, name):
+    return get(ns, "cm", name)
 
 def get_ev(ns, selector, *, after=None, fields=None):
     def lookup(obj, field):

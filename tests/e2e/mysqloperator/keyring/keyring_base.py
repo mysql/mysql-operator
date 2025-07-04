@@ -91,9 +91,8 @@ spec:
 {keyring_spec}
 """
         kutil.apply(self.ns, yaml)
-        self.wait_pod("mycluster-0", "Running")
-        self.wait_pod("mycluster-1", "Running")
-        self.wait_pod("mycluster-2", "Running")
+        for i in range(0, self.cluster_size):
+          self.wait_pod(f"mycluster-{i}", "Running")
 
         self.wait_ic("mycluster", "ONLINE", num_online=self.cluster_size)
 
@@ -160,7 +159,9 @@ data:
     def create_keyring(self, check_all_pods=True):
         self.__class__.keyring_name = self.generate_keyring_name()
         keyring_name = self.__class__.keyring_name
+        print(f"Keyring name is {keyring_name}")
 
+        print("Storing 'Secret string' with AES cipher into the keyring store on mycluster-0")
         with mutil.MySQLPodSession(self.ns, "mycluster-0", self.user, self.password) as s:
             self.assertTupleEqual(
                 s.query_sql(f"SELECT keyring_key_store('{keyring_name}', 'AES', 'Secret string')").fetch_one(),
@@ -171,23 +172,29 @@ data:
             pods_to_check += ['mycluster-1', 'mycluster-2']
             # On keyring_file/keyring_encrypted_file the values are cached, by
             # restarting we can read them from other nodes
+            print("Shutting down mycluster-1 and waiting to reach Terminating")
             with mutil.MySQLPodSession(self.ns, "mycluster-1", self.user, self.password) as s:
                 s.exec_sql("SHUTDOWN")
-                kutil.wait_pod(self.ns, "mycluster-1", "NotReady")
+                kutil.wait_pod(self.ns, "mycluster-1", "Terminating")
+
+            print("Shutting down mycluster-2 and waiting to reach Terminating")
             with mutil.MySQLPodSession(self.ns, "mycluster-2", self.user, self.password) as s:
                 s.exec_sql("SHUTDOWN")
-                kutil.wait_pod(self.ns, "mycluster-2", "NotReady")
+                kutil.wait_pod(self.ns, "mycluster-2", "Terminating")
 
+            print("Checking that mycluster-1 is back ready")
             kutil.wait_pod(self.ns, "mycluster-1", checkready=True)
+            print("Checking that mycluster-2 is back ready")
             kutil.wait_pod(self.ns, "mycluster-2", checkready=True)
 
-
+        print(f"Reading a key from {keyring_name} on pods {pods_to_check}")
         self.read_key(keyring_name, pods_to_check)
 
     def read_key(self, keyring_name,
                  pods_to_check=("mycluster-0", "mycluster-1", "mycluster-2")):
         for pod_name in pods_to_check:
             with self.subTest(pod_name=pod_name):
+                print(f"Checking key fetch on {pod_name}")
                 with mutil.MySQLPodSession(self.ns, pod_name, self.user, self.password) as s:
                     self.assertTupleEqual(
                         s.query_sql(f"SELECT CAST(keyring_key_fetch('{keyring_name}') AS CHAR(255))").fetch_one(),
@@ -196,6 +203,7 @@ data:
     def check_variables(self):
         for podname in ("mycluster-0", "mycluster-1", "mycluster-2"):
             with self.subTest(podname=podname):
+                print(f"Checking keyring_operations variable on {podname}")
                 with mutil.MySQLPodSession(self.ns, podname, self.user, self.password) as s:
                     self.check_variable(s, 'keyring_operations', 'ON')
 

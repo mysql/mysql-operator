@@ -1,4 +1,4 @@
-# Copyright (c) 2023, 2024, Oracle and/or its affiliates.
+# Copyright (c) 2023, 2025, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -8,17 +8,9 @@ from logging import Logger
 from ... import utils
 from ...api_utils import dget_bool, dget_dict, dget_list, dget_str
 from ...kubeutils import client as api_client
-from .logs_types_api import  ServerLogType, GeneralLogSpec, SlowQueryLogSpec, ErrorLogSpec
+from .logs_types_api import  ServerLogType, GeneralLogSpec, SlowQueryLogSpec, ErrorLogSpec, get_volume_name, get_container_name
 import yaml
 import os
-
-
-def get_volume_name(volume) -> Optional[str]:
-    return volume.get('name') if type(volume) == dict else volume.name #V1Volume
-
-def get_container_name(container) -> Optional[str]:
-    return container.get('name') if type(container) == dict else container.name #V1Container
-
 
 class FluentdMysqlLogSpec:
     def __init__(self, tag: str = None):
@@ -530,7 +522,7 @@ class FluentdSpec:
                 conf += additional_filter
 
             conf += self._get_sinks_fluent_conf()
-            cm_name = self.cluster_name + '-fluentd-conf' # must be the same as in get_config_maps_names
+            cm_name = self.cluster_name + '-fluentd-conf'
 
         cm = {
                 'apiVersion' : "v1",

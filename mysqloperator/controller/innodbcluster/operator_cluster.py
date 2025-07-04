@@ -79,17 +79,6 @@ def do_create_read_replica(cluster: InnoDBCluster, rr: cluster_objects.ReadRepli
                            set_replicas_to_zero: bool,
                            indention: str, logger: Logger) -> None:
     namespace = cluster.namespace
-    print(f"{indention}Components ConfigMaps and Secrets")
-    for cm in cluster_objects.prepare_component_config_configmaps(rr, logger):
-        if not cluster.get_configmap(cm['metadata']['name']):
-            print(f"{indention}\tCreating CM {cm['metadata']['name']} ...")
-            kopf.adopt(cm)
-            api_core.create_namespaced_config_map(namespace, cm)
-    for secret in cluster_objects.prepare_component_config_secrets(rr, logger):
-        if not cluster.get_secret(secret['metadata']['name']):
-            print(f"{indention}\tCreating Secret {secret['metadata']['name']} ...")
-            kopf.adopt(secret)
-            api_core.create_namespaced_secret(namespace, secret)
 
     print(f"{indention}Initconf")
     if not ignore_404(lambda: cluster.get_initconf(rr)):
@@ -196,25 +185,19 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
 
     if not cluster.ready:
         try:
-            print("0. Components ConfigMaps and Secrets")
-            for cm in cluster_objects.prepare_component_config_configmaps(icspec, logger):
-                if not cluster.get_configmap(cm['metadata']['name']):
-                    print(f"\tCreating CM {cm['metadata']['name']} ...")
-                    kopf.adopt(cm)
-                    api_core.create_namespaced_config_map(namespace, cm)
-
-            for secret in cluster_objects.prepare_component_config_secrets(icspec, logger):
-                if not cluster.get_secret(secret['metadata']['name']):
-                    print(f"\tCreating Secret {secret['metadata']['name']} ...")
-                    kopf.adopt(secret)
-                    api_core.create_namespaced_secret(namespace, secret)
-
-            print("0.5. Additional ConfigMaps")
+            print("0.1 Subsystems ConfigMaps")
             for cm in cluster_objects.prepare_additional_configmaps(icspec, logger):
                 if not cluster.get_configmap(cm['metadata']['name']):
-                    print(f"\tCreating CM {cm['metadata']['name']} ...")
+                    print(f"\tCreating CM {cm}")
                     kopf.adopt(cm)
                     api_core.create_namespaced_config_map(namespace, cm)
+
+            print("0.2. Subsystems Secrets")
+            for secret in cluster_objects.prepare_additional_secrets(icspec, logger):
+                if not cluster.get_secret(secret['metadata']['name']):
+                    print(f"\tCreating Secret {secret['metadata']['name']}...")
+                    kopf.adopt(secret)
+                    api_core.create_namespaced_secret(namespace, secret)
 
             print("1. Initial Configuration ConfigMap and Container Probes")
             if not ignore_404(lambda: cluster.get_initconf(icspec)):
@@ -510,7 +493,8 @@ def on_innodbcluster_field_version(old, new, body: Body,
 
         try:
             cluster_ctl = ClusterController(cluster)
-            cluster_ctl.on_router_upgrade(logger)
+            if new > old:
+                cluster_ctl.on_router_upgrade(logger)
             cluster_ctl.on_server_version_change(new)
         except:
             # revert version in the spec
@@ -520,6 +504,7 @@ def on_innodbcluster_field_version(old, new, body: Body,
         # a PermanentError while validate() raises ApiSpecError which is turned by Kopf to a TemporaryError
         # spec.version requires this special handling
         cluster.validate_spec(logger)
+        cluster_objects.on_upgrade(cluster, old, new, sts, patcher, logger)
         cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, patcher, logger)
 
         router_deploy = cluster.get_router_deployment()
@@ -543,6 +528,7 @@ def on_innodbcluster_field_image_repository(old, new, body: Body,
             # revert version in the spec
             raise
         cluster.validate_spec(logger)
+        cluster_objects.on_upgrade(cluster, patcher, logger)
         cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, patcher, logger)
         cluster_objects.update_operator_image(sts, cluster.parsed_spec)
         router_deploy = cluster.get_router_deployment()
@@ -578,19 +564,21 @@ def on_innodbcluster_field_image(old, new, body: Body,
             # revert version in the spec
             raise
         cluster.validate_spec(logger)
+        cluster_objects.on_upgrade(cluster, patcher, logger)
         cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, patcher, logger)
 
 
-def on_innodbcluster_field_router_instances(old: dict, new: dict, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
+def on_innodbcluster_field_router_instances(old: Any, new: Any, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
     cluster.validate_spec(logger)
     patcher.patch_deploy(router_objects.update_size(cluster, new, True, logger))
 
 
-def on_innodbcluster_field_router_version(old: dict, new: dict, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
+def on_innodbcluster_field_router_version(old: Any, new: Any, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
     cluster.validate_spec(logger)
     try:
         cluster_ctl = ClusterController(cluster)
-        cluster_ctl.on_router_upgrade(logger)
+        if new > old:
+            cluster_ctl.on_router_upgrade(logger)
     except:
         # revert version in the spec
         raise
@@ -883,12 +871,13 @@ def on_pod_delete(body: Body, logger: Logger, **kwargs):
             cluster_ctl.on_pod_deleted(pod, body, logger)
 
             if pod.index == 0 and cluster.deleting:
-                print("Last cluster pod removed being removed!")
+                logger.info("on_pod_delete: Last cluster pod removed being removed!")
                 cluster_objects.on_last_cluster_pod_removed(cluster, logger)
     else:
+        logger.info("on_pod_delete: Removing member finalizer")
         pod.remove_member_finalizer(body)
 
-        logger.error(f"Owner cluster for {pod.name} does not exist anymore")
+        logger.error(f"on_pod_delete: Owner cluster for {pod.name} does not exist anymore")
 
 # An example of a `when` hook for finding secrets belonging to a IC
 #
@@ -964,6 +953,13 @@ def on_innodbcluster_field_metrics(old: str, new: str, body: Body,
     cluster_ctl.on_change_metrics_user(logger)
     cluster_objects.update_objects_for_metrics(cluster, patcher, logger)
 
+def on_innodbcluster_field_keyring(old: str, new: str, body: Body,
+                                   cluster: InnoDBCluster,
+                                   patcher: cluster_objects.InnoDBClusterObjectModifier,
+                                   logger: Logger):
+    cluster.validate_spec(logger)
+    cluster_objects.update_objects_for_keyring(cluster, patcher, logger)
+
 
 def call_kopf_style_on_handler_if_needed(old_dict: dict, new_dict: dict, key: str, body: Body,
                                         cluster: InnoDBCluster,
@@ -1004,7 +1000,8 @@ spec_tld_handlers : OnFieldHandlerList = [\
     ("tlsSecretName",  lambda: None, on_innodbcluster_field_tls_secret_name),
     ("tlsCASecretName",lambda: None, on_innodbcluster_field_tls_ca_secret_name),
     ("logs",           lambda: {},   on_innodbcluster_field_logs),
-    ("metrics",        lambda: {},   on_innodbcluster_field_metrics)
+    ("metrics",        lambda: {},   on_innodbcluster_field_metrics),
+    ("keyring",        lambda: {},   on_innodbcluster_field_keyring)
 ]
 
 spec_router_handlers : OnFieldHandlerList = [\

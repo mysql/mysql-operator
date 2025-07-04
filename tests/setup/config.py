@@ -21,11 +21,14 @@ class Config:
     k8s_cluster = defaults.K8S_CLUSTER_NAME
     k8s_context = None
 
+    is_ee_operator = False
+
     # versions
     version_tag = defaults.VERSION_TAG
 
     min_supported_version = defaults.MIN_SUPPORTED_VERSION
     max_supported_version = defaults.MAX_SUPPORTED_VERSION
+    current_lts_version = defaults.CURRENT_LTS_VERSION
 
     # registry
     image_registry = defaults.IMAGE_REGISTRY
@@ -181,6 +184,9 @@ class Config:
 
     def get_old_version_tag(self):
         return self.min_supported_version
+
+    def get_current_lts_version(self):
+        return self.current_lts_version
 
     def get_image_registry_repository(self):
         if self.image_registry:

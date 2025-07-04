@@ -116,7 +116,7 @@ class LogsSpec:
 
         return cb
 
-    def get_remove_from_sts_cb(self) -> Optional[Callable[[Union[dict, api_client.V1StatefulSet], Logger], None]]:
+    def get_remove_from_sts_cb(self) -> Optional['RemoveFromStsHandler']:
         return (lambda sts, logger: self.collector.remove_from_sts_spec(sts, self.logs, logger))
 
     def get_add_to_sts_cb(self) -> Optional['AddToStsHandler']:
@@ -128,6 +128,9 @@ class LogsSpec:
             self.collector.add_to_sts_spec(sts, patcher, self.logs, enabled, logger)
         return cb
 
+    def get_secrets_cb(self) -> Optional['GetSecretsHandler']:
+        return None
+
     def get_configmaps_cb(self) -> Optional['GetConfigMapHandler']:
         def cb(prefix: str, logger: Logger) -> Optional[List[Tuple[str, Optional[Dict]]]]:
 
@@ -135,7 +138,7 @@ class LogsSpec:
                     'apiVersion' : "v1",
                     'kind': 'ConfigMap',
                     'metadata': {
-                        'name': self.cm_name, # must be the same as in get_config_maps_names
+                        'name': self.cm_name,
                     },
                     'data' : {
                     }

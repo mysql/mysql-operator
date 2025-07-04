@@ -1,4 +1,4 @@
-# Copyright (c) 2023, 2024 Oracle and/or its affiliates.
+# Copyright (c) 2023, 2025 Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -12,6 +12,31 @@ from ... import utils
 import yaml
 from abc import ABC, abstractmethod
 
+
+def get_volume_name(volume) -> Optional[str]:
+    return volume.get('name') if type(volume) == dict else volume.name #V1Volume
+
+def get_container_name(container) -> Optional[str]:
+    return container.get('name') if type(container) == dict else container.name #V1Container
+
+def get_getter(item):
+    if callable(getattr(item, '__getitem__', None)):
+        return lambda key: item.__getitem__(key)
+    elif hasattr(item, '__dict__') or hasattr(type(item), '__slots__'):
+        #return lambda key: getattr(item, snail_to_camel(key))
+        return lambda key: getattr(item, key)
+    else:
+        raise TypeError(f"Cannot get values from object of type {type(item).__name__}")
+
+def get_setter(item):
+    if callable(getattr(item, '__setitem__', None)):
+        return lambda key, value: item.__setitem__(key, value)
+    elif hasattr(item, '__dict__') or hasattr(type(item), '__slots__'):
+        #return lambda key, value: setattr(item, snail_to_camel(key), value)
+        return lambda key, value: setattr(item, key, value)
+    else:
+        raise TypeError(f"Cannot set values on object of type {type(item).__name__}")
+
 def snail_to_camel(s: str) -> str:
     if s.find("_") == -1:
         return s
@@ -19,110 +44,134 @@ def snail_to_camel(s: str) -> str:
     words = s.split("_")
     return words[0] + "".join(word.title() for word in words[1:])
 
+def camel_to_snail(s: str) -> str:
+    result = []
+    for char in s:
+        if char.isupper():
+            result.append('_' + char.lower())
+        else:
+            result.append(char)
+    return ''.join(result).lstrip('_')
+
+def is_snail(s: str) -> bool:
+    if not s or s[0] == '_' or s[-1] == '_':
+        return False
+    return s == s.lower()
+
+
 def get_object_attr(obj: Union[Dict, api_client.V1Container, api_client.V1Volume, api_client.V1ServicePort, api_client.V1PodSpec, Any], attr: str) -> Any:
     # When we get data from K8s it will be V1Container/V1Volume/V1ServicePort, however, as we patch the STS
     # the data may become Dict, because this is what merge_patch_object() produces
     # There are multiple log types and every each one of them works on the 'logcollector'
     # container as well as on the volume being mounted. The first one will see
     # V1Container, the next will see Dict.
-    return obj[snail_to_camel(attr)] if isinstance(obj, dict) else getattr(obj, attr)
+    if isinstance(obj, dict):
+        key = snail_to_camel(attr) if is_snail(attr) else attr
+        return obj[key]
+    else:
+        key = attr if is_snail(attr) else camel_to_snail(attr)
+        return getattr(obj, key)
 
 # Pass attr always as snail_case, not as camelCase
 def set_object_attr(obj: Union[Dict, api_client.V1Container, api_client.V1Volume, api_client.V1ServicePort, api_client.V1PodSpec, Any], attr: str, value: Any) -> None:
     if isinstance(obj, dict):
-        obj[snail_to_camel(attr)] = value
+        key = snail_to_camel(attr) if is_snail(attr) else attr
+        obj[key] = value
     else:
-        setattr(obj, attr, value)
+        key = attr if is_snail(attr) else camel_to_snail(attr)
+        setattr(obj, key, value)
 
 def has_object_attr(obj: Union[Dict, api_client.V1Container, api_client.V1Volume, api_client.V1ServicePort, api_client.V1PodSpec, Any], attr: str) -> bool:
-    return snail_to_camel(attr) in obj if isinstance(obj, dict) else hasattr(obj, attr)
+    if isinstance(obj, dict):
+        key = key = snail_to_camel(attr) if is_snail(attr) else attr
+        return snail_to_camel(key) in obj
+    else:
+        key = attr if is_snail(attr) else camel_to_snail(attr)
+        return hasattr(obj, key)
 
 def get_object_name(obj: Union[Dict, api_client.V1Container, api_client.V1Volume, api_client.V1ServicePort]) -> str:
     return get_object_attr(obj, "name")
 
 
 # Replaces whole container in sts.spec.template.spec.containers
-def patch_sts_spec_template_complex_attribute(sts: Union[dict, api_client.V1StatefulSet], patcher: 'InnoDBClusterObjectModifier', patch: dict, attr: str, add: bool) -> None:
-    #print(f"\npatch_sts_spec_template_complex_attribute attr={attr} add={add} patch={patch}")
+def patch_sts_spec_template_complex_attribute(sts: Union[dict, api_client.V1StatefulSet], patcher: 'InnoDBClusterObjectModifier', patch: dict, attr: str, add: bool, logger: Logger) -> None:
+    logger.debug(f"patch_sts_spec_template_complex_attribute attr={attr} add={add} patch={patch}")
     attr_c = snail_to_camel(attr)
     if patch is None or len(patch[attr_c]) == 0:
         return
     attr_names = [a["name"] for a in patch[attr_c]]
-    #print(f"\npatch_sts_spec_template_complex_attribute: attr_names={attr_names}\n")
     if isinstance(sts, dict):
-        # first filter out
-        #cleaned_up_attr = [a for a in sts["spec"]["template"]["spec"][attr_c] if a and get_object_name(a) not in attr_names]
-        #patcher.patch_sts_overwrite(cleaned_up_attr, f"/spec/template/spec/{attr_c}")
         # This is at startup, when we create ourselves. V1StatefulSet is only when we fetch from the server.
         # For now when we create ourselves we don't use the patcher
-        #print(f"\tpatch_sts_spec_template_complex_attribute Dict. Filtering out {attr_c}")
+        # 1. Filter out
         sts["spec"]["template"]["spec"][attr_c] = [a for a in sts["spec"]["template"]["spec"][attr_c] if a and get_object_name(a) not in attr_names]
+        # 2. Add if needed
         if add:
-            #print(f"STS is dict. Patching with {patch}")
-            #patcher.patch_sts({"spec":{"template":{"spec": patch}}})
-            #print(f"patch_sts_spec_template_complex_attribute: STS is Dict. Adding {attr_c} attribute by patching with {patch}\n")
             utils.merge_patch_object(sts["spec"]["template"]["spec"], patch)
     elif isinstance(sts, api_client.V1StatefulSet):
-        # first filter out
         # attribute should be here snail case
         path = f"/spec/template/spec/{attr_c}"
-        sts_path = patcher.get_sts_path(path)
-        cleaned_up_attr = [a for a in sts_path if a and get_object_name(a) not in attr_names]
-        #print(f"\tcleaned_up_attr     = {cleaned_up_attr}\n")
-        if cleaned_up_attr != sts_path:
+        sts_path_value = patcher.get_sts_path(path)
+        # 1. Filter out
+        cleaned_up_attr = [a for a in sts_path_value if a and get_object_name(a) not in attr_names]
+        if cleaned_up_attr != sts_path_value:
             patcher.patch_sts_overwrite(cleaned_up_attr, path)
-        #sts.spec["template"]["spec"][attr_c] = [a for a in sts.spec["template"]["spec"][attr_c] if a and get_object_name(a) not in attr_names]
+        # 2. Add if needed
         if add:
-            #print(f"patch_sts_spec_template_complex_attribute: STS is V1StatefulSet. Adding {attr_c} attribute by patching with {patch}\n")
             patcher.patch_sts({"spec": {"template": {"spec": patch}}})
-            #utils.merge_patch_object(sts.spec["template"]["spec"], patch)
 
 
 # Attribute should be snail_case
 # Replaces value of just one attribute of a container in sts.spec.template.spec.containers
 # Example is patching volume_mounts (the V1StatefulSet notation of YAML's volumeMounts)
-def patch_container_attribute(sts: Union[dict, api_client.V1StatefulSet], patcher: 'InnoDBClusterObjectModifier', patch: dict, attr: str, add: bool) -> None:
-    #print(f"\npatch_container_attribute attr={attr} add={add} patch={patch}")
+# x stands for none or init - thus this works for containers and initContainers
+def patch_container_attribute(sts: Union[dict, api_client.V1StatefulSet], patcher: 'InnoDBClusterObjectModifier', patch: dict, init: bool, attr: str, add: bool, logger: Logger) -> None:
+    logger.debug(f"patch_container_attribute attr={attr} add={add} patch={patch}")
+    containers_spec_name = "containers" if not init else "initContainers"
     attr_c = snail_to_camel(attr)
-    for container_idx in range(0, len(patch["containers"])):
-        container_name = patch["containers"][container_idx]["name"]
-        changed_obj_names = [ attr_v["name"] for attr_v in patch["containers"][container_idx][attr_c] ]
+    for container_idx in range(0, len(patch[containers_spec_name])):
+        container_name = patch[containers_spec_name][container_idx]["name"]
+        changed_obj_names = [ attr_v["name"] for attr_v in patch[containers_spec_name][container_idx][attr_c] ]
         found = False
         if isinstance(sts, dict):
-            #print("\npatch_container_attribute dict\n")
-            # first filter out
-            for container in sts["spec"]["template"]["spec"]["containers"]:
+            logger.debug("patch_container_attribute dict")
+
+            sts_spec = get_object_attr(sts, "spec")
+            template = get_object_attr(sts_spec, "template")
+            template_spec = get_object_attr(template, "spec")
+            containers_spec = get_object_attr(template_spec, containers_spec_name)
+            for container in containers_spec:
                 if get_object_name(container) == container_name:
                     current_value = get_object_attr(container, attr) if has_object_attr(container, attr) else []
-                    #print(f"\t\t\t\tcurrent_value({container_name}.{attr})={current_value}")
+                    # 1. Filter out
                     new_value = [v for v in current_value if (v and (get_object_name(v) not in changed_obj_names))]
+                    # 2. Add if needed
                     if add:
-                        new_value += patch["containers"][container_idx][attr_c]
-                    #print(f"\t\t\t\tnew_value({container_name}.{attr})={new_value}")
+                        new_value += patch[containers_spec_name][container_idx][attr_c]
                     set_object_attr(container, attr, new_value)
                     found = True
                     break
-            if found == False and add:
+            if add:
                 utils.merge_patch_object(sts["spec"]["template"]["spec"], patch)
         elif isinstance(sts, api_client.V1StatefulSet):
-            #print("\npatch_container_attribute V1StatefulSet\n")
-            for container in sts.spec["template"]["spec"]["containers"]:
+            logger.debug("patch_container_attribute V1StatefulSet")
+            sts_spec = get_object_attr(sts, "spec")
+            template = get_object_attr(sts_spec, "template")
+            template_spec = get_object_attr(template, "spec")
+            containers_spec = get_object_attr(template_spec, containers_spec_name)
+
+            for container in containers_spec:
                 if get_object_name(container) == container_name:
-                    current_value = get_object_attr(container, attr) if has_object_attr(container, attr) else []
-                    #print(f"\t\t\t\tcurrent_value({container_name}.{attr})={current_value}")
-                    new_value = [v for v in current_value if (v and (get_object_name(v) not in changed_obj_names))]
-                    #print(f"\new_value={new_value}")
+                    path = f"/spec/template/spec/{containers_spec_name}/{container_idx}/{attr_c}"
+                    sts_path_value = patcher.get_sts_path(path)
+                    # 1. Filter out
+                    cleaned_up_attr = [v for v in sts_path_value if (v and (get_object_name(v) not in changed_obj_names))]
+                    if cleaned_up_attr != sts_path_value:
+                        patcher.patch_sts_overwrite(cleaned_up_attr, path)
+                    # 2. Add if needed
                     if add:
-                        new_value += patch["containers"][container_idx][attr_c]
-                    #print(f"\t\t\t\tnew_value({container_name}.{attr})={new_value}")
-                    #print(f"\tset_object_attr={new_value}")
-                    set_object_attr(container, attr, new_value)
-                    found = True
+                        patcher.patch_sts({"spec": {"template": {"spec": patch}}})
                     break
-            if found == False and add:
-                #print(f"patch_container_attribute: STS is V1StatefulSet. Patching with {patch}")
-                patcher.patch_sts({"spec":{"template":{"spec": patch}}})
-                #utils.merge_patch_object(sts.spec["template"]["spec"]["containers"], patch)
 
 
 # Must correspond to the names in the CRD
@@ -169,7 +218,7 @@ class ConfigMapMountBase(ABC):
                 }
             ]
         }
-        patch_sts_spec_template_complex_attribute(sts, patcher, patch, "volumes", add)
+        patch_sts_spec_template_complex_attribute(sts, patcher, patch, "volumes", add, logger)
 
 
     def _add_containers_to_sts_spec(self,
@@ -192,7 +241,8 @@ class ConfigMapMountBase(ABC):
                 }
             ]
         }
-        patch_container_attribute(sts, patcher, patch, "volume_mounts", add)
+        initcontainer = False
+        patch_container_attribute(sts, patcher, patch, initcontainer, "volumeMounts", add, logger)
 
     def add_to_sts_spec(self,
                         sts: Union[dict, api_client.V1StatefulSet],

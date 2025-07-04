@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -23,17 +23,20 @@ from ..kubeutils import api_core, api_apps, api_customobj, api_policy, api_rbac,
 from ..kubeutils import client as api_client, ApiException
 from ..kubeutils import k8s_cluster_domain
 from .logs.logs_api import LogsSpec
-from .logs.logs_types_api import ConfigMapMountBase, get_object_name, patch_sts_spec_template_complex_attribute
+from .logs.logs_types_api import ConfigMapMountBase, get_object_name, patch_sts_spec_template_complex_attribute, patch_container_attribute
+from .logs.logs_collector_fluentd_api import get_container_name
 import json
 import yaml
 import datetime
 from cryptography import x509
 from kubernetes import client
 
+
 AddToInitconfHandler = Callable[[dict, str, Logger], None]
 RemoveFromStsHandler = Callable[[Union[dict, api_client.V1StatefulSet], Logger], None]
 AddToStsHandler = Callable[[Union[dict, 'InnoDBClusterObjectModifier', api_client.V1StatefulSet], Logger], None]
 GetConfigMapHandler = Callable[[str, Logger], Optional[list[tuple[str, Optional[dict]]]]]
+GetSecretsHandler   = Callable[[str, Logger], Optional[list[tuple[str, Optional[dict]]]]]
 AddToSvcHandler = Callable[[Union[dict, api_client.V1Service], Logger], None]
 GetSvcMonitorHandler = Callable[[Logger], tuple[str, Optional[dict]]]
 
@@ -41,6 +44,222 @@ MAX_CLUSTER_NAME_LEN = 28
 
 def escape_value_for_mycnf(value: str) -> str:
     return '"'+value.replace("\\", "\\\\").replace("\"", "\\\"")+'"'
+
+class StsModifier:
+    def __init__(self, name: str):
+        self.name = name
+        self.initcontainers: List[Union[dict, api_client.V1Container]] = []
+        self.containers: List[Union[dict, api_client.V1Container]] = []
+        self.volumes: List[Union[dict, api_client.V1Volume]] = []
+        self.volume_mounts:List[Union[dict, api_client.V1Container]] = []
+
+    def add_initcontainer(self, container: dict):
+        """Add an init container to the StatefulSet.
+
+        Args:
+            container: A dictionary defining the init container configuration with the following
+                structure:
+                {
+                    "name": str,                 # Init container name
+                    "image": str,                # Container image
+                    "command": list[str],        # Command to execute
+                    "env": list,                 # Environment variables
+                    "volumeMounts": list[dict],  # Volume mounts specific to this init container (optional)
+                    "resources": dict            # Resource limits and requests (optional)
+                    ...
+                }
+                Each volume mount in "volumeMounts" (if included) contains:
+                    {
+                        "name": str,  # Volume mount name
+                        "mountPath": str,  # Path where the volume is mounted
+                        "subPath": str  # Sub-path within the volume
+                    }
+                The init container may include its own volume mounts in the "volumeMounts" field.
+                However, if a volume is to be mounted across multiple containers (init or main),
+                it should be defined using `add_volume_mount()` instead of here. Init containers are
+                added to the StatefulSet before volume mounts from `add_volume_mount()` are processed.
+
+        Example:
+            ```python
+            {
+                "name": "....",
+                "image": "...",
+                "command": ["/bin/sh", "-c", "mysql --initialize"],
+                "env": [],
+                "volumeMounts": [],
+            }
+            ```
+        """
+        self.initcontainers.append(container)
+
+    def add_container(self, container: dict):
+        """Add an container to the StatefulSet.
+
+        Args:
+            container: A dictionary defining container configuration with the following
+                structure:
+                {
+                    "name": str,                 # Init container name
+                    "image": str,                # Container image
+                    "command": list[str],        # Command to execute
+                    "env": list,                 # Environment variables
+                    "volumeMounts": list[dict],  # Volume mounts specific to this init container (optional)
+                    "resources": dict            # Resource limits and requests (optional)
+                    ...
+                }
+                Each volume mount in "volumeMounts" (if included) contains:
+                    {
+                        "name": str,  # Volume mount name
+                        "mountPath": str,  # Path where the volume is mounted
+                        "subPath": str  # Sub-path within the volume
+                    }
+                The init container may include its own volume mounts in the "volumeMounts" field.
+                However, if a volume is to be mounted across multiple containers (init or main),
+                it should be defined using `add_volume_mount()` instead of here. Init containers are
+                added to the StatefulSet before volume mounts from `add_volume_mount()` are processed.
+
+        Example:
+            ```python
+            {
+                "name": "....",
+                "image": "...",
+                "command": ["/bin/sh", "-c", "mysql --initialize"],
+                "env": [],
+                "volumeMounts": [],
+            }
+            ```
+        """
+        self.containers.append(container)
+
+    def add_volume(self, volume: dict):
+        self.volumes.append(volume)
+
+    def add_volume_mount(self, volume_mount: dict):
+        """Add a volume mount to the list of volume mounts.
+
+        Args:
+            volume_mount: A dictionary containing volume mount configuration with the following structure:
+                {
+                    "initContainers": list[str],  # Names of init containers using the volume mount
+                    "containers": list[str],      # Names of main containers using the volume mount
+                    "mounts": list[dict]          # Volume mounts details
+                }
+                Each mount in "mounts" includes:
+                    {
+                        "name": str,      # Volume mount name
+                        "mountPath": str, # Path where the volume is mounted
+                        "subPath": str    # Sub-path within the volume
+                    }
+            Volume mounts can be specified either within the "mounts" field of this configuration
+            or separately via other mechanisms (e.g., add_container or add_initcontainer).
+        Example:
+            ```python
+            {
+                "initContainers": ["initmysql", "sleepyinit"],
+                "containers": [],
+                "mounts": [
+                    {
+                        "name": "myvolume",
+                        "mountPath": "/path/to/filexyz",
+                        "subPath": "filexyz"
+                    }
+                ]
+            }
+            ```
+        """
+        self.volume_mounts.append(volume_mount)
+
+    def _modify_sts_xcontainer_volume_mounts_spec(self, sts: Union[dict, api_client.V1StatefulSet],
+                                       patcher: 'InnoDBClusterObjectModifier',
+                                       volume_mounts_containers: List[str],
+                                       volume_mounts: List[Union[dict, api_client.V1VolumeMount]],
+                                       init: bool,
+                                       add: bool,
+                                       logger: Logger) -> None:
+        """Adds (or removes based on `add`) volume_mounts in all containers found in volume_mounts_containers"""
+        containers = []
+        for vmc in volume_mounts_containers:
+            containers.append(
+                {
+                    "name": vmc,
+                    # volumeMounts or volume_mounts?
+                    "volumeMounts": volume_mounts
+                }
+            )
+        patch = {
+            "initContainers" if init else "containers" : containers
+        }
+
+        patch_container_attribute(sts, patcher, patch, init, "volumeMounts", add, logger)
+
+    def _modify_sts_volumes_spec(self,
+                                 sts: Union[dict, api_client.V1StatefulSet],
+                                 patcher: 'InnoDBClusterObjectModifier',
+                                 volumes: List[Union[dict, api_client.V1Volume]],
+                                 add: bool,
+                                 logger: Logger) -> None:
+        patch = {
+            "volumes" : volumes
+        }
+        patch_sts_spec_template_complex_attribute(sts, patcher, patch, "volumes", add, logger)
+
+    def _add_or_remove_sts_containers(self, sts: Union[dict, api_client.V1StatefulSet],
+                                     patcher: 'InnoDBClusterObjectModifier',
+                                     containers: List[Union[dict, api_client.V1Container]],
+                                     init: bool,
+                                     add: bool,
+                                     logger: Logger) -> None:
+        key = "initContainers" if init else "containers"
+        patch = {
+            key : containers
+        }
+        patch_sts_spec_template_complex_attribute(sts, patcher, patch, key, add, logger)
+
+    def modify_sts_spec(self,
+                        sts: Union[dict, api_client.V1StatefulSet],
+                        patcher: 'InnoDBClusterObjectModifier',
+                        add: bool,
+                        logger: Logger) -> None:
+
+        logger.info(f"{self.name} : will {'add' if add else 'remove'} containers={self.containers}")
+        logger.info(f"{self.name} : will {'add' if add else 'remove'} volumes={self.volumes}")
+        logger.info(f"{self.name} : will {'add' if add else 'remove'} volume_mounts={self.volume_mounts}")
+
+        # First we add or remove the full-blown containers. Then we can attach additional volumeMounts to them, if they don't have them
+        if self.containers is not None and len(self.containers):
+            init = False
+            self._add_or_remove_sts_containers(sts, patcher, self.containers, init, add, logger)
+
+        if self.initcontainers is not None and len(self.initcontainers):
+            init = True
+            self._add_or_remove_sts_containers(sts, patcher, self.initcontainers, init, add, logger)
+
+        if self.volumes is not None and len(self.volumes):
+            self._modify_sts_volumes_spec(sts, patcher, self.volumes, add, logger)
+
+        # our container exists already, this is why we modify volume_mounts directly
+        if self.volume_mounts is not None and len(self.volume_mounts):
+            for vm in self.volume_mounts:
+                if "initContainers" in vm and len(vm["initContainers"]):
+                    init = True
+                    self._modify_sts_xcontainer_volume_mounts_spec(sts, patcher, vm["initContainers"], vm["mounts"], init, add, logger)
+                if "containers" in vm and len(vm["containers"]):
+                    init = False
+                    self._modify_sts_xcontainer_volume_mounts_spec(sts, patcher, vm["containers"], vm["mounts"], init, add, logger)
+
+
+    def get_add_to_sts_cb(self) -> Optional['AddToStsHandler']:
+        def cb(sts: Union[dict,api_client.V1StatefulSet], patcher: 'InnoDBClusterObjectModifier', logger: Logger) -> None:
+            add = True
+            self.modify_sts_spec(sts, patcher, add, logger)
+        return cb
+
+    def get_remove_from_sts_cb(self) -> Optional[RemoveFromStsHandler]:
+        def cb(sts: Union[dict,api_client.V1StatefulSet], patcher: 'InnoDBClusterObjectModifier', logger: Logger) -> None:
+            add = False
+            self.modify_sts_spec(sts, patcher, add, logger)
+        return cb
+
 
 class SecretData:
     secret_name: Optional[str] = None
@@ -179,7 +398,7 @@ class MetriscSpec:
             ]
         }
 
-        patch_sts_spec_template_complex_attribute(sts, patcher, patch, "containers", add)
+        patch_sts_spec_template_complex_attribute(sts, patcher, patch, "containers", add, logger)
 
     def _add_volumes_to_sts_spec(self, sts: Union[dict, api_client.V1StatefulSet], patcher: 'InnoDBClusterObjectModifier', add: bool, logger: Logger) -> None:
         volumes = []
@@ -210,7 +429,7 @@ class MetriscSpec:
             "volumes" : volumes
         }
 
-        patch_sts_spec_template_complex_attribute(sts, patcher, patch, "volumes", add)
+        patch_sts_spec_template_complex_attribute(sts, patcher, patch, "volumes", add, logger)
 
     def get_add_to_sts_cb(self) -> Optional[AddToStsHandler]:
         def cb(sts: Union[dict, api_client.V1StatefulSet], patcher: 'InnoDBClusterObjectModifier', logger: Logger) -> None:
@@ -218,6 +437,9 @@ class MetriscSpec:
             self._add_volumes_to_sts_spec(sts, patcher, self.enable, logger)
             self.config.add_to_sts_spec(sts, patcher, self.container_name, self.cm_name, self.enable, logger)
         return cb
+
+    def get_secrets_cb(self) -> Optional[GetSecretsHandler]:
+        return None
 
     def get_configmaps_cb(self) -> Optional[GetConfigMapHandler]:
         def cb(prefix: str, logger: Logger) -> Optional[List[Tuple[str, Optional[Tuple[str, Optional[Dict]]]]]]:
@@ -480,12 +702,18 @@ class KeyringSpecBase(ABC):
     def parse(self, spec: dict, prefix: str) -> None:
         ...
 
+    @property
     @abstractmethod
-    def add_to_sts_spec(self, statefulset: dict) -> None:
+    def name(self):
+        ...
+
+    @property
+    @abstractmethod
+    def is_component(self) -> bool:
         ...
 
     @abstractmethod
-    def add_to_global_manifest(self, manifest: dict) -> dict:
+    def add_to_global_manifest(self, manifest: dict) -> None:
         ...
 
     @abstractmethod
@@ -497,19 +725,20 @@ class KeyringSpecBase(ABC):
     def component_manifest_name(self) -> str:
         ...
 
-    # TODO [compat8.3.0] remove this when compatibility pre 8.3.0 isn't needed anymore
-    def upgrade_to_component(self, sts: api_client.V1StatefulSet, spec, logger: Logger) -> Optional[tuple[dict, dict]]:
-        # only exists for OCI keyring
-        pass
 
 class KeyringNoneSpec(KeyringSpecBase):
     def parse(self, spec: dict, prefix: str) -> None:
         ...
 
-    def add_to_sts_spec(self, statefulset: dict) -> None:
-        ...
+    @property
+    def name(self):
+        return "none"
 
-    def add_to_global_manifest(self, manifest: dict) -> dict:
+    @property
+    def is_component(self) -> bool:
+        return True
+
+    def add_to_global_manifest(self, manifest: dict) -> None:
         ...
 
     def add_component_manifest(self, data: dict, storage_type: KeyringConfigStorage) -> None:
@@ -530,77 +759,76 @@ class KeyringFileSpec(KeyringSpecBase):
         self.global_manifest_name = global_manifest_name
         self.component_config_configmap_name = component_config_configmap_name
         self.keyring_mount_path = keyring_mount_path
+        self.sts_modifier = StsModifier("KeyringFileSpec")
+
+    @property
+    def name(self) -> str:
+        return "file"
+
+    @property
+    def is_component(self) -> bool:
+        return True
 
     def parse(self, spec: dict, prefix: str) -> None:
         self.fileName = dget_str(spec, "fileName", prefix)
         self.readOnly = dget_bool(spec, "readOnly", prefix, default_value=False)
         self.storage = dget_dict(spec, "storage", prefix)
 
-    def add_to_sts_spec(self, statefulset: dict) -> None:
-        self.add_conf_to_sts_spec(statefulset)
-        self.add_storage_to_sts_spec(statefulset)
+        self.post_parse()
 
-
-    def add_conf_to_sts_spec(self, statefulset: dict) -> None:
+    def post_parse(self) -> None:
         cm_mount_name = "keyringfile-conf"
-        mounts = f"""
-- name: {cm_mount_name}
-  mountPath: "/usr/lib64/mysql/plugin/{self.component_manifest_name}"
-  subPath: "{self.component_manifest_name}"     #should be the same as the volume.items.path
-"""
 
-        volumes = f"""
-- name: {cm_mount_name}
-  configMap:
-    name: {self.component_config_configmap_name}
-    items:
-    - key: "{self.component_manifest_name}"
-      path: "{self.component_manifest_name}"
-"""
+        self.sts_modifier.add_volume({
+            "name": cm_mount_name,
+            "configMap": {
+                "name" : self.component_config_configmap_name,
+                "items": [
+                    {
+                        "key" : self.component_manifest_name,
+                        "path": self.component_manifest_name
+                    }
+                ]
+            }
+        })
 
-        patch = f"""
-spec:
-  initContainers:
-  - name: initmysql
-    volumeMounts:
-{utils.indent(mounts, 4)}
-  containers:
-  - name: mysql
-    volumeMounts:
-{utils.indent(mounts, 4)}
-  volumes:
-{utils.indent(volumes, 2)}
-"""
-        utils.merge_patch_object(statefulset["spec"]["template"], yaml.safe_load(patch))
+        self.sts_modifier.add_volume_mount({
+            "initContainers": ["initmysql"],
+            "containers": ["mysql"],
+            "mounts": [
+                {
+                    "name" : cm_mount_name,
+                    "mountPath": f"/usr/lib64/mysql/plugin/{self.component_manifest_name}",
+                    "subPath": self.component_manifest_name     #should be the same as the volume.configMap.items.path
+                }
+            ]
+        })
 
-    def add_storage_to_sts_spec(self, statefulset: dict) -> None:
-        if not self.storage:
-            return
-
-        storage_mount_name = "keyringfile-storage"
-        mounts = f"""
-- name: {storage_mount_name}
-  mountPath: {self.keyring_mount_path}
-
-"""
-
-        patch = f"""
-spec:
-  initContainers:
-  - name: initmysql
-    volumeMounts:
-{utils.indent(mounts, 6)}
-  containers:
-  - name: mysql
-    volumeMounts:
-{utils.indent(mounts, 6)}
-"""
-        utils.merge_patch_object(statefulset["spec"]["template"], yaml.safe_load(patch))
-
-        statefulset["spec"]["template"]["spec"]["volumes"].append({"name" : storage_mount_name, **self.storage})
+        if self.storage:
+            storage_mount_name = "keyringfile-storage"
+            self.sts_modifier.add_volume({
+                "name": storage_mount_name,
+                **self.storage
+            })
+            self.sts_modifier.add_volume_mount({
+                "initContainers": ["initmysql"],
+                "containers": ["mysql"],
+                "mounts": [
+                    {
+                        "name" : storage_mount_name,
+                        "mountPath": self.keyring_mount_path,
+                    }
+                ]
+            })
 
 
-    def add_to_global_manifest(self, manifest: dict) -> dict:
+    def get_add_to_sts_cb(self) -> Optional['AddToStsHandler']:
+        return self.sts_modifier.get_add_to_sts_cb()
+
+    def get_remove_from_sts_cb(self) -> Optional[RemoveFromStsHandler]:
+        return self.sts_modifier.get_remove_from_sts_cb()
+
+    def add_to_global_manifest(self, manifest: dict) -> None:
         component_name = "file://component_keyring_file"
         if not manifest.get("components"):
             manifest["components"] = f"{component_name}"
@@ -617,7 +845,7 @@ spec:
 
     @property
     def component_manifest_name(self) -> str:
-        return "component_keyring_file.cnf"
+        return f"component_keyring_{self.name}.cnf"
 
 
 class KeyringEncryptedFileSpec(KeyringSpecBase):
@@ -632,6 +860,15 @@ class KeyringEncryptedFileSpec(KeyringSpecBase):
         self.global_manifest_name = global_manifest_name
         self.component_config_configmap_name = component_config_configmap_name
         self.keyring_mount_path = keyring_mount_path
+        self.sts_modifier = StsModifier("KeyringEncryptedFileSpec")
+
+    @property
+    def name(self) -> str:
+        return "encrypted_file"
+
+    @property
+    def is_component(self) -> bool:
+        return True
 
     def parse(self, spec: dict, prefix: str) -> None:
         def get_password_from_secret(secret_name: str) -> str:
@@ -660,69 +897,58 @@ class KeyringEncryptedFileSpec(KeyringSpecBase):
 
         self.storage = dget_dict(spec, "storage", prefix)
 
-    def add_to_sts_spec(self, statefulset: dict) -> None:
-        self.add_conf_to_sts_spec(statefulset)
-        self.add_storage_to_sts_spec(statefulset)
+        self.post_parse()
 
-
-    def add_conf_to_sts_spec(self, statefulset: dict) -> None:
+    def post_parse(self) -> None:
         cm_mount_name = "keyringencfile-conf"
-        mounts = f"""
-- name: {cm_mount_name}
-  mountPath: "/usr/lib64/mysql/plugin/{self.component_manifest_name}"
-  subPath: "{self.component_manifest_name}"     #should be the same as the volume.items.path
-"""
 
-        volumes = f"""
-- name: {cm_mount_name}
-  secret:
-    secretName: {self.component_config_configmap_name}
-    items:
-    - key: "{self.component_manifest_name}"
-      path: "{self.component_manifest_name}"
-"""
+        self.sts_modifier.add_volume({
+            "name": cm_mount_name,
+            "secret": {
+                "secretName": self.component_config_configmap_name,
+                "items": [
+                    {
+                        "key" : self.component_manifest_name,
+                        "path": self.component_manifest_name
+                    }
+                ]
+            }
+        })
 
-        patch = f"""
-spec:
-  initContainers:
-  - name: initmysql
-    volumeMounts:
-{utils.indent(mounts, 4)}
-  containers:
-  - name: mysql
-    volumeMounts:
-{utils.indent(mounts, 4)}
-  volumes:
-{utils.indent(volumes, 2)}
-"""
-        utils.merge_patch_object(statefulset["spec"]["template"], yaml.safe_load(patch))
+        self.sts_modifier.add_volume_mount({
+            "initContainers": ["initmysql"],
+            "containers": ["mysql"],
+            "mounts": [
+                {
+                    "name": cm_mount_name,
+                    "mountPath": f"/usr/lib64/mysql/plugin/{self.component_manifest_name}",
+                    "subPath": self.component_manifest_name     #should be the same as the volume.configMap.items.path
+                }
+            ]
+        })
 
-    def add_storage_to_sts_spec(self, statefulset: dict) -> None:
-        if not self.storage:
-            return
+        if self.storage:
+            storage_mount_name = "keyringencfile-storage"
+            self.sts_modifier.add_volume({
+                "name": storage_mount_name,
+                **self.storage
+            })
+            self.sts_modifier.add_volume_mount({
+                "initContainers": ["initmysql"],
+                "containers": ["mysql"],
+                "mounts": [
+                    {
+                        "name" : storage_mount_name,
+                        "mountPath": self.keyring_mount_path,
+                    }
+                ]
+            })
 
-        storage_mount_name = "keyringencfile-storage"
-        mounts = f"""
-- name: {storage_mount_name}
-  mountPath: {self.keyring_mount_path}
+    def get_add_to_sts_cb(self) -> Optional['AddToStsHandler']:
+        return self.sts_modifier.get_add_to_sts_cb()
 
-"""
-
-        patch = f"""
-spec:
-  initContainers:
-  - name: initmysql
-    volumeMounts:
-{utils.indent(mounts, 6)}
-  containers:
-  - name: mysql
-    volumeMounts:
-{utils.indent(mounts, 6)}
-"""
-        utils.merge_patch_object(statefulset["spec"]["template"], yaml.safe_load(patch))
-
-        statefulset["spec"]["template"]["spec"]["volumes"].append({"name" : storage_mount_name, **self.storage})
-
+    def get_remove_from_sts_cb(self) -> Optional[RemoveFromStsHandler]:
+        return self.sts_modifier.get_remove_from_sts_cb()
 
     def add_to_global_manifest(self, manifest: dict) -> None:
         component_name = "file://component_keyring_encrypted_file"
@@ -742,7 +968,7 @@ spec:
 
     @property
     def component_manifest_name(self) -> str:
-        return "component_keyring_encrypted_file.cnf"
+        return f"component_keyring_{self.name}.cnf"
 
 
 class KeyringOciSpec(KeyringSpecBase):
@@ -759,11 +985,21 @@ class KeyringOciSpec(KeyringSpecBase):
     endpointVaults: Optional[str] = None
     endpointSecrets: Optional[str] = None
 
-    def __init__(self, namespace: str, global_manifest_name: str, component_config_configmap_name: str, keyring_mount_path: str):
+    def __init__(self, namespace: str, global_manifest_name: str, component_config_configmap_name: str, keyring_mount_path: str, cluster_name: str):
         self.namespace = namespace
         self.global_manifest_name = global_manifest_name
         self.component_config_configmap_name = component_config_configmap_name
         self.keyring_mount_path = keyring_mount_path
+        self.cluster_name = cluster_name
+        self.sts_modifier = StsModifier("KeyringOciSpec")
+
+    @property
+    def name(self) -> str:
+        return "oci"
+
+    @property
+    def is_component(self) -> bool:
+        return True
 
     def parse(self, spec: dict, prefix: str) -> None:
         self.user = dget_str(spec, "user", prefix)
@@ -781,64 +1017,82 @@ class KeyringOciSpec(KeyringSpecBase):
             self.endpointVaults = dget_str(endpoints, "vaults", prefix)
             self.endpointSecrets = dget_str(endpoints, "secrets", prefix)
 
-    @property
-    def component_manifest_name(self) -> str:
-        return "component_keyring_oci.cnf"
+        self.post_parse()
 
-    def add_to_sts_spec(self, statefulset: dict):
-        cm_mount_name = "keyringfile-conf"
-        patch = f"""
-spec:
-  initContainers:
-  - name: initmysql
-    volumeMounts:
-    - name: ocikey
-      mountPath: /.oci
-    - name: {cm_mount_name}
-      mountPath: "/usr/lib64/mysql/plugin/{self.component_manifest_name}"
-      subPath: "{self.component_manifest_name}"     #should be the same as the volume.items.path
-  containers:
-  - name: mysql
-    volumeMounts:
-    - name: ocikey
-      mountPath: /.oci
-    - name: {cm_mount_name}
-      mountPath: "/usr/lib64/mysql/plugin/{self.component_manifest_name}"
-      subPath: "{self.component_manifest_name}"     #should be the same as the volume.items.path
-  volumes:
-  - name: ocikey
-    secret:
-      secretName: {self.keySecret}
-  - name: {cm_mount_name}
-    configMap:
-      name: {self.component_config_configmap_name}
-      items:
-      - key: "{self.component_manifest_name}"
-        path: "{self.component_manifest_name}"
-"""
-        utils.merge_patch_object(statefulset["spec"]["template"], yaml.safe_load(patch))
+    def post_parse(self) -> None:
+        self.sts_modifier.add_volume({
+            "name": "ocikey",
+            "secret": {
+                "secretName" : self.keySecret,
+            }
+        })
+
+        cm_mount_name = "keyringoci-conf"
+        self.sts_modifier.add_volume({
+            "name": cm_mount_name,
+            "configMap": {
+                "name" : self.component_config_configmap_name,
+                "items": [
+                    {
+                        "key" : self.component_manifest_name,
+                        "path": self.component_manifest_name
+                    }
+                ]
+            }
+        })
+
+        self.sts_modifier.add_volume_mount({
+            "initContainers": ["initmysql"],
+            "containers": ["mysql"],
+            "mounts": [
+                {
+                    "name" : "ocikey",
+                    "mountPath": "/.oci"
+                },
+                {
+                    "name" : cm_mount_name,
+                    "mountPath": f"/usr/lib64/mysql/plugin/{self.component_manifest_name}",
+                    "subPath": self.component_manifest_name     #should be the same as the volume.configMap.items.path
+                }
+            ]
+        })
+
+#        self.sts_modifier.add_volume_mount({
+#            "initContainers": ["initmysql"],
+#            "containers": ["mysql"],
+#            "mounts": [
+#            ]
+#        })
 
         if self.caCertificate:
-            patch = f"""
-spec:
-  initContainers:
-  - name: initmysql
-    volumeMounts:
-    - name: oci-keyring-ca
-      mountPath: /etc/mysql-keyring-ca
-  containers:
-  - name: mysql
-    volumeMounts:
-    - name: oci-keyring-ca
-      mountPath: /etc/mysql-keyring-ca
-  volumes:
-  - name: oci-keyring-ca
-    secret:
-      secretName: {self.caCertificate}
-"""
-            utils.merge_patch_object(statefulset["spec"]["template"], yaml.safe_load(patch))
+            self.sts_modifier.add_volume({
+                "name": "oci-keyring-ca",
+                "secret": {
+                    "secretName" : self.caCertificate,
+                }
+            })
+            self.sts_modifier.add_volume_mount({
+                "initContainers": ["initmysql"],
+                "containers": ["mysql"],
+                "mounts": [
+                    {
+                        "name" : "oci-keyring-ca",
+                        "mountPath": "/etc/mysql-keyring-ca",
+                    }
+                ]
+            })
 
-    def add_to_global_manifest(self, manifest: dict) -> dict:
+    @property
+    def component_manifest_name(self) -> str:
+        return f"component_keyring_{self.name}.cnf"
+
+    def get_add_to_sts_cb(self) -> Optional[AddToStsHandler]:
+        return self.sts_modifier.get_add_to_sts_cb()
+
+    def get_remove_from_sts_cb(self) -> Optional[RemoveFromStsHandler]:
+        return self.sts_modifier.get_remove_from_sts_cb()
+
+    def add_to_global_manifest(self, manifest: dict) -> None:
         component_name = "file://component_keyring_oci"
         if not manifest.get("components"):
             manifest["components"] = f"{component_name}"
@@ -865,79 +1119,25 @@ spec:
                data[self.component_manifest_name]["keyring_oci_ca_certificate"] = "/etc/mysql-keyring-ca/certificate"
 
     # TODO [compat8.3.0] remove this when compatibility pre 8.3.0 isn't needed anymore
-    def upgrade_to_component(self, sts: api_client.V1StatefulSet, spec, logger: Logger) -> Optional[tuple[dict, dict]]:
-        cm_mount_name = "keyringfile-conf"
-        if any(v.name == cm_mount_name for v in sts.spec.template.spec.volumes):
-            # we already mount config map for component - nothign to do
-            return
+    def upgrade_to_component(self, cluster: 'InnoDBCluster', sts: api_client.V1StatefulSet, patcher: 'InnoDBClusterObjectModifier', logger: Logger) -> Optional[tuple[dict, dict]]:
+        logger.info("Upgrading keyring OCI from plugin to component")
+        # numbering could be different because of other subsystems
+        if not (initconf:= cluster.get_initconf(cluster.parsed_spec)):
+            raise kopf.TemporaryError("Can't find initconf while trying to upgrade keyring OCI to component")
 
-        patch = f"""
-spec:
-  initContainers:
-  - name: initmysql
-    volumeMounts:
-    - name: ocikey
-      mountPath: /.oci
-    - name: globalcomponentconf
-      mountPath: /usr/sbin/{self.global_manifest_name}
-      subPath: {self.global_manifest_name}                #should be the same as the volume.items.path
-    - name: {cm_mount_name}
-      mountPath: "/usr/lib64/mysql/plugin/{self.component_manifest_name}"
-      subPath: "{self.component_manifest_name}"     #should be the same as the volume.items.path
-  containers:
-  - name: mysql
-    volumeMounts:
-    - name: ocikey
-      mountPath: /.oci
-    - name: globalcomponentconf
-      mountPath: /usr/sbin/{self.global_manifest_name}
-      subPath: {self.global_manifest_name}                #should be the same as the volume.items.path
-    - name: {cm_mount_name}
-      mountPath: "/usr/lib64/mysql/plugin/{self.component_manifest_name}"
-      subPath: "{self.component_manifest_name}"     #should be the same as the volume.items.path
-  volumes:
-  - name: ocikey
-    secret:
-      secretName: {self.keySecret}
-  - name: globalcomponentconf
-    configMap:
-      name: {self.component_config_configmap_name}
-      items:
-      - key: {self.global_manifest_name}
-        path: {self.global_manifest_name}
-  - name: {cm_mount_name}
-    configMap:
-      name: {self.component_config_configmap_name}
-      items:
-      - key: "{self.component_manifest_name}"
-        path: "{self.component_manifest_name}"
-"""
-        sts_patch = yaml.safe_load(patch)
+        for key in initconf.data:
+            if 'keyring-oci' in key:
+                logger.info("Found keyring OCI initconf configuration. Will remove it from initconf!")
+                initconf_patch = [{"op": "remove", "path": f"/data/{key}"}]
+                def on_apie_404_handler(exc: ApiException, logger: Logger):
+                    if exc.status == 404:
+                        logger.warning("Object not found! Exception: {exc}")
+                        return
+                    raise exc
 
-        if self.caCertificate:
-            patch = f"""
-spec:
-  initContainers:
-  - name: initmysql
-    volumeMounts:
-    - name: oci-keyring-ca
-      mountPath: /etc/mysql-keyring-ca
-  containers:
-  - name: mysql
-    volumeMounts:
-    - name: oci-keyring-ca
-      mountPath: /etc/mysql-keyring-ca
-  volumes:
-  - name: oci-keyring-ca
-    secret:
-      secretName: {self.caCertificate}
-"""
-
-        utils.merge_patch_object(sts_patch, yaml.safe_load(patch))
-
-        cm = spec.keyring.get_component_config_configmap_manifest()
-
-        return (cm, sts_patch)
+                patcher.patch_configmap(self.namespace, f"{self.cluster_name}-initconf", initconf_patch, on_apie_404_handler)
+                return
+        logger.info("No keyring OCI initconf configuration found. No need to update initconf!")
 
 
 # TODO: merge this with KeyringSpecBase
@@ -950,16 +1150,19 @@ class KeyringSpec:
         self.namespace = namespace
         self.cluster_name = cluster_name
 
+        self.sts_modifier = StsModifier("KeyringOciSpec")
+
     def parse(self, spec: dict, prefix: str) -> None:
-        krFile = dget_dict(spec, "file", "spec.keyring", {})
-        krEncryptedFile = dget_dict(spec, "encryptedFile", "spec.keyring", {})
-        krOci = dget_dict(spec, "oci", "spec.keyring", {})
-        if len([x for x in [krFile, krEncryptedFile, krOci] if x]) > 1:
-            raise ApiSpecError(
-                "Only one of file, encryptedFile or oci may be specified in spec.keyring")
-        if not krFile and not krEncryptedFile and not krOci:
-            raise ApiSpecError(
-                "One of file, encryptedFile or oci must be specified in spec.keyring")
+        krFile = dget_dict(spec, "file", prefix, {})
+        krEncryptedFile = dget_dict(spec, "encryptedFile", prefix, {})
+        krOci = dget_dict(spec, "oci", prefix, {})
+
+        specified_krings = [x for x in [krFile, krEncryptedFile, krOci] if x]
+
+        if len(specified_krings) > 1:
+            raise ApiSpecError("Only one of file, encryptedFile or oci may be specified in spec.keyring")
+        elif len(specified_krings) == 0:
+            raise ApiSpecError("One of file, encryptedFile or oci must be specified in spec.keyring")
 
         if krFile:
             self.keyring = KeyringFileSpec(self.namespace, self.global_manifest_name, self.component_config_configmap_name, self.keyring_mount_path)
@@ -968,10 +1171,46 @@ class KeyringSpec:
             self.keyring = KeyringEncryptedFileSpec(self.namespace, self.global_manifest_name, self.component_config_configmap_name, self.keyring_mount_path)
             self.keyring.parse(krEncryptedFile, "spec.keyring.encryptedFile")
         elif krOci:
-            self.keyring = KeyringOciSpec(self.namespace, self.global_manifest_name, self.component_config_configmap_name, self.keyring_mount_path)
+            self.keyring = KeyringOciSpec(self.namespace, self.global_manifest_name, self.component_config_configmap_name, self.keyring_mount_path, self.cluster_name)
             self.keyring.parse(krOci, "spec.keyring.oci")
+            print("Keying OCI parsed")
         else:
             self.keyring = KeyringNoneSpec()
+
+        self.post_parse()
+
+    def post_parse(self) -> None:
+        if isinstance(self.keyring, KeyringNoneSpec) or not self.keyring.is_component:
+            # this is slight misuse of a NullObject type ...
+            return
+        self.sts_modifier.add_volume({
+            "name": "globalcomponentconf",
+            "configMap": {
+                "name" : self.component_config_configmap_name,
+                "items": [
+                    {
+                        "key" : self.global_manifest_name,
+                        "path": self.global_manifest_name
+                    }
+                ]
+            }
+        })
+
+        self.sts_modifier.add_volume_mount({
+            "initContainers": ["initmysql"],
+            "containers": ["mysql"],
+            "mounts": [
+                {
+                    "name" : "globalcomponentconf",
+                    "mountPath": f"/usr/sbin/{self.global_manifest_name}",
+                    "subPath": self.global_manifest_name     #should be the same as the volume.configMap.items.path
+                }
+            ]
+        })
+
+    @property
+    def name(self) -> str:
+        return self.keyring.name
 
     @property
     def component_config_configmap_name(self) -> str:
@@ -981,91 +1220,118 @@ class KeyringSpec:
     def component_config_secret_name(self) -> str:
         return f"{self.cluster_name}-componentconf"
 
-    def get_component_config_configmap_manifest(self) -> dict:
-        data = {
-            self.global_manifest_name : {}
-        }
+    def _get_keyring_cb_if_exists(self, cb_name) -> Optional[Callable]:
+        if hasattr(self.keyring, cb_name) and callable(cb := getattr(self.keyring, cb_name)):
+            return cb()
 
-        self.keyring.add_to_global_manifest(data[self.global_manifest_name])
-        self.keyring.add_component_manifest(data, KeyringConfigStorage.CONFIGMAP)
+        return None
 
-        cm =  {
-            'apiVersion' : "v1",
-            'kind': 'ConfigMap',
-            'metadata': {
-                'name': self.component_config_configmap_name
-            },
-            'data' : { k: utils.dict_to_json_string(data[k]) for k in data }
-        }
-        return cm
+    def get_add_to_initconf_cb(self) -> Optional[Callable[[Dict, str, Logger], None]]:
+        return self._get_keyring_cb_if_exists("get_add_to_initconf_cb")
 
+    def get_add_to_sts_cb(self) -> Optional[AddToStsHandler]:
+        def cb(sts: Union[dict,api_client.V1StatefulSet], patcher: 'InnoDBClusterObjectModifier', logger: Logger) -> None:
+            self.sts_modifier.get_add_to_sts_cb()(sts, patcher, logger)
+
+            cb = self._get_keyring_cb_if_exists("get_add_to_sts_cb")
+            if cb:
+                cb(sts, patcher, logger)
+
+        return cb
+
+    def get_remove_from_sts_cb(self) -> Optional[RemoveFromStsHandler]:
+        def cb(sts: Union[dict,api_client.V1StatefulSet], patcher: 'InnoDBClusterObjectModifier', logger: Logger) -> None:
+            self.sts_modifier.get_remove_from_sts_cb()(sts, patcher, logger)
+
+            cb = self._get_keyring_cb_if_exists("get_remove_from_sts_cb")
+            if cb:
+                cb(sts, patcher, logger)
+
+        return cb
+
+    def get_configmaps_cb(self) -> Optional['GetConfigMapHandler']:
+        def cb(prefix: str, logger: Logger) -> Optional[List[Tuple[str, Optional[Dict]]]]:
+            configmaps = []
+            if self.keyring.is_component:
+                data = {
+                    self.global_manifest_name : {}
+                }
+
+                self.keyring.add_to_global_manifest(data[self.global_manifest_name])
+                self.keyring.add_component_manifest(data, KeyringConfigStorage.CONFIGMAP)
+
+                configmaps.append(
+                    (
+                        self.component_config_configmap_name,
+                        {
+                            'apiVersion' : "v1",
+                            'kind': 'ConfigMap',
+                            'metadata': {
+                                'name': self.component_config_configmap_name,
+                            },
+                            'data' : { k: utils.dict_to_json_string(data[k]) for k in data }
+                        }
+                    )
+                )
+
+            cb = self._get_keyring_cb_if_exists("get_configmaps_cb")
+            if cb and (more_configmaps := cb(prefix, logger)):
+                configmaps += more_configmaps
+
+            return configmaps
+
+        return cb
+
+    def get_secrets_cb(self) -> Optional['GetConfigMapHandler']:
+        def cb(prefix: str, logger: Logger) -> Optional[List[Tuple[str, Optional[Dict]]]]:
+            secrets = []
+
+            if self.keyring.is_component:
+                data = {}
+                self.keyring.add_component_manifest(data, KeyringConfigStorage.SECRET)
+
+                if len(data) != 0:
+                    secrets.append(
+                        (
+                            self.component_config_configmap_name,
+                            {
+                                'apiVersion' : "v1",
+                                'kind': 'Secret',
+                                'metadata': {
+                                    'name': self.component_config_secret_name
+                                },
+                                'data' : { k: utils.b64encode(utils.dict_to_json_string(data[k])) for k in data }
+                            }
+                        )
+                    )
+
+            cb = self._get_keyring_cb_if_exists("get_secrets_cb")
+            if cb and (more_secrets := cb(prefix, logger)):
+                secrets += more_secrets
+
+            return secrets
+
+        return cb
+
+    def get_component_config_configmap_manifest(self) -> Optional[dict]:
+        return #job will be done by get_configmaps_cb
 
     def get_component_config_secret_manifest(self) -> Optional[Dict]:
-        data = {
-        }
-
-        self.keyring.add_component_manifest(data, KeyringConfigStorage.SECRET)
-
-        if len(data) == 0:
-            return None
-
-        cm =  {
-            'apiVersion' : "v1",
-            'kind': 'Secret',
-            'metadata': {
-                'name': self.component_config_secret_name
-            },
-            'data' : { k: utils.b64encode(utils.dict_to_json_string(data[k])) for k in data }
-        }
-        return cm
-
-
-    def add_to_sts_spec_component_global_manifest(self, statefulset: dict):
-        if isinstance(self.keyring, KeyringNoneSpec):
-            # this is slight misuse of a NullObject type ...
-            return
-
-        mounts = f"""
-- name: globalcomponentconf
-  mountPath: /usr/sbin/{self.global_manifest_name}
-  subPath: {self.global_manifest_name}                #should be the same as the volume.items.path
-"""
-
-        volumes = f"""
-- name: globalcomponentconf
-  configMap:
-    name: {self.component_config_configmap_name}
-    items:
-    - key: {self.global_manifest_name}
-      path: {self.global_manifest_name}
-"""
-
-        patch = f"""
-spec:
-  initContainers:
-  - name: initmysql
-    volumeMounts:
-{utils.indent(mounts, 6)}
-  containers:
-  - name: mysql
-    volumeMounts:
-{utils.indent(mounts, 6)}
-  volumes:
-{utils.indent(volumes, 4)}
-"""
-        utils.merge_patch_object(statefulset["spec"]["template"], yaml.safe_load(patch))
-
+        return #job will be done by get_secrets_cb
 
     def add_to_sts_spec(self, statefulset: dict):
-        self.add_to_sts_spec_component_global_manifest(statefulset)
-
-        self.keyring.add_to_sts_spec(statefulset)
+        # TODO: This is now for OCI only, as it is more complicated
+        if self.keyring:
+            if hasattr(self.keyring, "add_to_sts_spec") and callable(getattr(self.keyring, "add_to_sts_spec")):
+                self.keyring.add_to_sts_spec(statefulset)
 
     # TODO [compat8.3.0] remove this when compatibility pre 8.3.0 isn't needed anymore
-    def upgrade_to_component(self, sts: api_client.V1StatefulSet, spec, logger: Logger) -> Optional[tuple[dict, dict]]:
+    def upgrade_to_component(self, cluster: 'InnoDBCluster', sts: api_client.V1StatefulSet, patcher: 'InnoDBClusterObjectModifier', logger: Logger) -> Optional[tuple[dict, dict]]:
         # only exists for OCI keyring
         if self.keyring:
-            return self.keyring.upgrade_to_component(sts, spec, logger)
+            if hasattr(self.keyring, "upgrade_to_component") and callable(getattr(self.keyring, "upgrade_to_component")):
+                return self.keyring.upgrade_to_component(cluster, sts, patcher, logger)
+
 
 class RouterSpec:
     # number of Router instances (optional)
@@ -1177,6 +1443,7 @@ class InnoDBClusterSpecProperties(Enum):
     BACKUP_SCHEDULES = "backupSchedules"
     METRICS = "metrics"
     INITDB = "initDB"
+    KEYRING = "keyring"
 
 
 class AbstractServerSetSpec(abc.ABC):
@@ -1259,6 +1526,7 @@ class AbstractServerSetSpec(abc.ABC):
         self.remove_from_sts_cbs: dict[str, List[RemoveFromStsHandler]] = {}
         self.add_to_sts_cbs: dict[str, List[AddToStsHandler]] = {}
         self.get_configmaps_cbs: dict[str, List[GetConfigMapHandler]] = {}
+        self.get_secrets_cbs: dict[str, List[GetSecretsHandler]] = {}
         self.get_add_to_svc_cbs: dict[str, List[AddToSvcHandler]] = {}
         self.get_svc_monitor_cbs: dict[str, List[GetSvcMonitorHandler]] = {}
 
@@ -1320,8 +1588,22 @@ class AbstractServerSetSpec(abc.ABC):
             self.datadirVolumeClaimTemplate = dget_dict(spec_specific, "datadirVolumeClaimTemplate", where_specific)
 
         self.keyring = KeyringSpec(self.namespace, self.name)
-        if "keyring" in spec_root:
-            self.keyring.parse(dget_dict(spec_root, "keyring", "spec"), "spec.keyring")
+        if (section:= InnoDBClusterSpecProperties.KEYRING.value) in spec_root:
+            self.keyring.parse(dget_dict(spec_root, section, "spec"), f"spec.{section}")
+            if cb := self.keyring.get_configmaps_cb():
+                self.get_configmaps_cbs[InnoDBClusterSpecProperties.KEYRING.value] = [cb]
+
+            if cb := self.keyring.get_secrets_cb():
+                self.get_secrets_cbs[InnoDBClusterSpecProperties.KEYRING.value] = [cb]
+
+            if cb := self.keyring.get_add_to_initconf_cb():
+                self.add_to_initconf_cbs[InnoDBClusterSpecProperties.KEYRING.value] = [cb]
+
+            if cb := self.keyring.get_remove_from_sts_cb():
+                self.remove_from_sts_cbs[InnoDBClusterSpecProperties.KEYRING.value] = [cb]
+
+            if cb := self.keyring.get_add_to_sts_cb():
+                self.add_to_sts_cbs[InnoDBClusterSpecProperties.KEYRING.value] = [cb]
 
         if "mycnf" in spec_root:
             self.mycnf = dget_str(spec_root, "mycnf", "spec")
@@ -1332,6 +1614,9 @@ class AbstractServerSetSpec(abc.ABC):
 
         if cb := self.metrics.get_configmaps_cb():
             self.get_configmaps_cbs[InnoDBClusterSpecProperties.METRICS.value] = [cb]
+
+        if cb := self.metrics.get_secrets_cb():
+            self.get_secrets_cbs[InnoDBClusterSpecProperties.METRICS.value] = [cb]
 
         if cb := self.metrics.get_add_to_sts_cb():
             self.add_to_sts_cbs[InnoDBClusterSpecProperties.METRICS.value] = [cb]
@@ -1348,6 +1633,9 @@ class AbstractServerSetSpec(abc.ABC):
 
             if cb := self.logs.get_configmaps_cb():
                 self.get_configmaps_cbs[InnoDBClusterSpecProperties.LOGS.value] = [cb]
+
+            if cb := self.logs.get_secrets_cb():
+                self.get_secrets_cbs[InnoDBClusterSpecProperties.LOGS.value] = [cb]
 
             if cb := self.logs.get_add_to_initconf_cb():
                 self.add_to_initconf_cbs[InnoDBClusterSpecProperties.LOGS.value] = [cb]
@@ -2348,6 +2636,7 @@ class InnoDBCluster(K8sInterfaceObject):
             logger.info(f"\tMetrics monitor:\t{self.parsed_spec.metrics.monitor}")
             if self.parsed_spec.metrics.enable:
                 logger.info(f"\tMetrics image:\t{self.parsed_spec.metrics.image}")
+        logger.info(f"\tKeyring: \t\t{self.parsed_spec.keyring.name}")
         logger.info(f"\tBackup profiles:\t{len(self.parsed_spec.backupProfiles)}")
         logger.info(f"\tBackup schedules:\t{len(self.parsed_spec.backupSchedules)}")
         self.log_tls_info(logger)
@@ -2470,6 +2759,10 @@ class MySQLPod(K8sInterfaceObject):
         return self.pod.metadata.labels["mysql.oracle.com/cluster"]
 
     @property
+    def containers(self) -> list[str]:
+        return [container.name for container in self.spec.containers]
+
+    @property
     def instance_type(self) -> str:
         if "mysql.oracle.com/instance-type" in self.pod.metadata.labels:
             return self.pod.metadata.labels["mysql.oracle.com/instance-type"]
@@ -2578,6 +2871,27 @@ class MySQLPod(K8sInterfaceObject):
             for cs in self.status.container_statuses:
                 if cs.name == container_name:
                     return cs.restart_count
+        return None
+
+    def check_container_status_any_reason(self, container_names: Optional[list[str]], reasons: list[str]) -> Optional[bool]:
+        if self.status.phase in ["Running", "Pending"] and self.status.container_statuses:
+            c_names = container_names if (container_names is not None and len(container_names)) else self.containers
+            #container_status: Optional[api_client.V1ContainerStatus] = None
+            for container_status in self.status.container_statuses:
+                cstatus = cast(api_client.V1ContainerStatus, container_status)
+                if (cstatus.name in c_names and cstatus.state and cstatus.state.waiting):
+                    if cstatus.state.waiting.reason in reasons:
+                        return True
+            return False
+        return None
+
+    def get_container_status_reason(self, container_name: str) -> typing.Optional[Union[str, bool]]:
+        if self.status.phase in ["Running", "Pending"] and self.status.container_statuses:
+            for container_status in self.status.container_statuses:
+                cstatus = cast(api_client.V1ContainerStatus, container_status)
+                if (cstatus.name == container_name and cstatus.state and cstatus.state.waiting):
+                    return cstatus.state.waiting.reason
+            return False
         return None
 
     def get_member_readiness_gate(self, gate: str) -> typing.Optional[bool]:

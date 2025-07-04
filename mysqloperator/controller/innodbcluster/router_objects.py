@@ -481,8 +481,13 @@ def update_router_account(cluster: InnoDBCluster, on_nonupdated: Optional[Callab
 
       updated = False
 
+      error_reasons = ["ImagePullBackOff", "ErrImagePull", "CreateContainerConfigError", "CreateContainerError", "ContainerCannotRun", "CrashLoopBackOff", "InvalidImageName"]
       for pod in cluster.get_pods():
           if pod.deleting:
+              logger.info(f"Pod {pod.name} is being deleted")
+              continue
+          if pod.check_container_status_any_reason(container_names=["mysql"], reasons=error_reasons):
+              logger.info(f"MySQL Container in error state {pod.get_container_status_reason('mysql')}. Won't be able to connect to {pod.endpoint}")
               continue
           try:
               with shellutils.DbaWrap(shellutils.connect_dba(pod.endpoint_co, logger, max_tries=3)) as dba:

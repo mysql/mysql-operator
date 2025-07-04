@@ -446,7 +446,7 @@ class ClusterController:
         # TODO Rejoin OFFLINE members
 
     def destroy_cluster(self, last_pod, logger: Logger) -> None:
-        logger.info(f"Stopping GR for last cluster member {last_pod.name}")
+        logger.info(f"destroy_cluster: Stopping GR for last cluster member {last_pod.name}")
 
         try:
             with shellutils.connect_to_pod(last_pod, logger, timeout=5) as session:
@@ -460,7 +460,7 @@ class ClusterController:
             last_pod.remove_member_finalizer()
             return
 
-        logger.info("Stop GR OK")
+        logger.info("destroy_cluster: Stop GR OK")
 
         last_pod.remove_member_finalizer()
 
@@ -850,24 +850,39 @@ class ClusterController:
     def on_pod_deleted(self, pod: MySQLPod, pod_body: Body, logger: Logger) -> None:
         diag = self.probe_status(logger)
 
-        print(f"on_pod_deleted: pod={pod.name}  primary={diag.primary}  cluster_state={diag.status} cluster.deleting={self.cluster.deleting}")
+        logger.info(f"on_pod_deleted: pod={pod.name} pod.phase={pod.phase} cluster.instances={self.cluster.parsed_spec.instances} online={diag.online_members}  primary={diag.primary}  cluster_state={diag.status} cluster.deleting={self.cluster.deleting}")
 
         if self.cluster.deleting:
+            logger.info(f"on_pod_deleted: The cluster is being deleted")
             # cluster is being deleted, if this is pod-0 shut it down
             if pod.index == 0:
                 self.destroy_cluster(pod, logger)
+                logger.info("on_pod_deleted: Removing member finalizer")
                 pod.remove_member_finalizer(pod_body)
                 return
 
         if pod.deleting and diag.status in (diagnose.ClusterDiagStatus.ONLINE, diagnose.ClusterDiagStatus.ONLINE_PARTIAL, diagnose.ClusterDiagStatus.ONLINE_UNCERTAIN, diagnose.ClusterDiagStatus.FINALIZING):
-            print(f"REMOVING INSTANCE {pod.name}")
+            logger.info(f"REMOVING INSTANCE {pod.name}")
             shellutils.RetryLoop(logger).call(
                 self.remove_instance, pod, pod_body, logger)
+        elif self.cluster.parsed_spec.instances == 1 and len(diag.online_members) == 0 and pod.phase == "Failed":
+            logger.info("One node cluster and the instance is offline. We won't attempt a repair but let k8s to recreate the pod")
+            # we can't do when the only pod is offline
+            # if we try to repair nothing will happen and then throw a TemporaryError then the Kopf Finalizer
+            # will stay attached to the pod and the pod will hang indefinitely in Terminating (Failed) state
+            # This can happen when an upgrade from 8.0 to 9.5 happens which won't work as DataDict upgrades
+            # are only possible between two LTS versions , thus upgrade has to happen first to 8.4.x and then to 9.5
+            # So, if by mistake an upgrade was made to 9.5 then it will be reverted to 8.0 or 8.4. In the latter case
+            # then upgrade to 9.5 will be possible. We have to let the failed pod to be killed by k8s and recreated
+            # with the new version
+            # This is a very special case. In case of 2 or more node clusters this won't happen as only one pod will
+            # be upgraded and will be stuck due to incompatible upgrade. The cluster will still exist and will be
+            # ONLINE_PARTIAL and there won't be endless loop by the KopfMemberFinalizer and the TemporaryError.
         else:
-            print("ATTEMPTING CLUSTER REPAIR")
+            logger.info("ATTEMPTING CLUSTER REPAIR")
             self.repair_cluster(pod, diag, logger)
             # Retry from scratch in another iteration
-            print("RETRYING ON POD DELETE")
+            logger.info("RETRYING ON POD DELETE")
             raise kopf.TemporaryError(f"Cluster repair from state {diag.status} attempted", delay=3)
 
         # TODO maybe not needed? need to make sure that shrinking cluster will be reported as ONLINE
@@ -916,8 +931,11 @@ class ClusterController:
             raise kopf.PermanentError(version_error)
 
     def on_router_upgrade(self, logger: Logger) -> None:
+        logger.info("on_router_upgrade")
         def on_nonupdated() -> None:
+            logger.error(f"Cluster {self.cluster.namespace}/{self.cluster.name} unreachable")
             raise kopf.TemporaryError(f"Cluster {self.cluster.namespace}/{self.cluster.name} unreachable", delay=5)
+        logger.info("Updating router account")
         router_objects.update_router_account(self.cluster, on_nonupdated, logger)
 
     def on_change_metrics_user(self, logger: Logger) -> None:

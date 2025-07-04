@@ -18,6 +18,8 @@ from . import router_objects
 import base64
 import os
 from ..backup import backup_objects
+import kubernetes
+import json
 
 # TODO replace app field with component (mysqld,router) and tier (mysql)
 
@@ -881,10 +883,24 @@ roleRef:
     return rolebinding
 
 
+def prepare_additional_secrets(spec: AbstractServerSetSpec, logger: Logger) -> List[Dict]:
+    secrets = []
+    prefix = ''
+    for subsystem in spec.get_secrets_cbs:
+        print(f"\tChecking {subsystem}...")
+        for cb in spec.get_secrets_cbs[subsystem]:
+            if cms := cb(prefix, logger):
+              for (cm_name, cm) in cms:
+                  if cm:
+                      secrets.append(cm)
+    return secrets
+
+
 def prepare_additional_configmaps(spec: AbstractServerSetSpec, logger: Logger) -> List[Dict]:
     configmaps = []
     prefix = ''
     for subsystem in spec.get_configmaps_cbs:
+        print(f"\tChecking {subsystem}...")
         for cb in spec.get_configmaps_cbs[subsystem]:
             if cms := cb(prefix, logger):
               for (cm_name, cm) in cms:
@@ -905,21 +921,18 @@ def prepare_additional_configmaps(spec: AbstractServerSetSpec, logger: Logger) -
     return configmaps
 
 
-def prepare_component_config_configmaps(spec: AbstractServerSetSpec, logger: Logger) -> List[Dict]:
-    configmaps = [
-        spec.keyring.get_component_config_configmap_manifest()
-    ]
-
-    return configmaps
+#def prepare_component_config_configmaps(spec: AbstractServerSetSpec, logger: Logger) -> List[Dict]:
+#    manifest = spec.keyring.get_component_config_configmap_manifest()
+#    return [manifest] if manifest else []
 
 
-def prepare_component_config_secrets(spec: AbstractServerSetSpec, logger: Logger) -> List[Dict]:
-    secrets = []
-    cm = spec.keyring.get_component_config_secret_manifest()
-    if cm:
-        secrets.append(cm)
-
-    return secrets
+#def prepare_component_config_secrets(spec: AbstractServerSetSpec, logger: Logger) -> List[Dict]:
+#    secrets = []
+#    cm = spec.keyring.get_component_config_secret_manifest()
+#    if cm:
+#        secrets.append(cm)
+#
+#    return secrets
 
 def prepare_initconf(cluster: InnoDBCluster, spec: AbstractServerSetSpec, logger: Logger) -> dict:
 
@@ -1174,6 +1187,11 @@ def update_service(svc: api_client.V1Deployment, spec: InnoDBClusterSpec, logger
     print(body)
     api_core.patch_namespaced_service(svc.metadata.name, svc.metadata.namespace, body=body)
 
+def on_upgrade(cluster: InnoDBCluster, old, new, sts: api_client.V1StatefulSet, patcher: 'InnoDBClusterObjectModifier', logger: Logger):
+    logger.info("cluster_objects::on_upgrade")
+    update_objects_for_keyring(cluster, patcher, logger)
+    if old < "8.3.0":
+        cluster.parsed_spec.keyring.upgrade_to_component(cluster, sts, patcher, logger)
 
 def update_mysql_image(sts: api_client.V1StatefulSet, cluster: InnoDBCluster,
                        spec: AbstractServerSetSpec,
@@ -1220,32 +1238,34 @@ def update_mysql_image(sts: api_client.V1StatefulSet, cluster: InnoDBCluster,
                           ]}
                        }}}
 
+    # keyring changes could happen if there is a change from a plugin to a component for the same functionality
     # TODO [compat8.3.0] remove this when compatibility pre 8.3.0 isn't needed anymore
-    keyring_update = spec.keyring.upgrade_to_component(sts, spec, logger)
-
-    if keyring_update:
-        logger.info("Need to upgrade keyring from plugin to component")
-        (cm, key_sts_patch) = keyring_update
-        utils.merge_patch_object(patch["spec"]["template"], key_sts_patch)
-
-        kopf.adopt(cm)
-        patcher.create_configmap(spec.namespace, cm["metadata"]["name"], cm, on_apiexception_generic_handler)
-        #api_core.create_namespaced_config_map(spec.namespace, cm)
-
-        initconf_patch = [{"op": "remove", "path": "/data/03-keyring-oci.cnf"}]
-        #try:
-        #    api_core.patch_namespaced_config_map(f"{spec.cluster_name}-initconf",
-        #                                            spec.namespace, initconf_patch)
-        #except ApiException as exc:
-        #    # This might happen during a retry or some other case where it was
-        #    # removed already
-        #    logger.info(f"Failed to remove keyring config from initconf, ignoring: {exc}")
-        patcher.patch_configmap(spec.namespace, f"{spec.cluster_name}-initconf", initconf_patch, on_apiexception_404_handler)
+#
+#    keyring_update = spec.keyring.upgrade_to_component(sts, patcher, logger)
+#
+#    if keyring_update:
+#        logger.info("Need to upgrade keyring from plugin to component")
+#        (cm, key_sts_patch) = keyring_update
+#        utils.merge_patch_object(patch["spec"]["template"], key_sts_patch)
+#
+#        kopf.adopt(cm)
+#        patcher.create_configmap(spec.namespace, cm["metadata"]["name"], cm, on_apiexception_generic_handler)
+#        #api_core.create_namespaced_config_map(spec.namespace, cm)
+#
+#        initconf_patch = [{"op": "remove", "path": "/data/03-keyring-oci.cnf"}]
+#        #try:
+#        #    api_core.patch_namespaced_config_map(f"{spec.cluster_name}-initconf",
+#        #                                            spec.namespace, initconf_patch)
+#        #except ApiException as exc:
+#        #    # This might happen during a retry or some other case where it was
+#        #    # removed already
+#        #    logger.info(f"Failed to remove keyring config from initconf, ignoring: {exc}")
+#        patcher.patch_configmap(spec.namespace, f"{spec.cluster_name}-initconf", initconf_patch, on_apiexception_404_handler)
 
     cm = prepare_initconf(cluster, spec, logger)
     patcher.patch_configmap(spec.namespace, cm['metadata']['name'], cm, on_apiexception_generic_handler)
     #api_core.patch_namespaced_config_map(
-    #    cm['metadata']['name'], sts.metadata.namespace, body=cm)
+    #    cm['metadata']['name'], sts.metadata.namespace, body=cm)$
 
     patcher.patch_sts(patch)
 #    update_stateful_set_spec(sts, patch)
@@ -1363,11 +1383,43 @@ def update_objects_for_subsystem(subsystem: InnoDBClusterSpecProperties,
                         current_cm.data = new_cm["data"]
                         #patcher.replace_configmap(cluster.namespace, cm_name, current_cm, on_apiexception_404_handler)
                         api_core.replace_namespaced_config_map(cm_name, cluster.namespace, body=current_cm)
-                else:
+                elif new_cm:
                     print(f"\t\t\tNo such cm exists. Creating {cluster.namespace}/{new_cm}")
                     kopf.adopt(new_cm)
                     #patcher.create_configmap(cluster.namespace, new_cm['metadata']['name'], new_cm, on_apiexception_generic_handler)
-                    api_core.create_namespaced_config_map(cluster.namespace, new_cm)
+                    api_core.create_namespaced_config_map(cluster.namespace, body=new_cm)
+
+    if subsystem in spec.get_secrets_cbs:
+        print(f"\t\tWalking over get_secrets_cbs len={len(spec.get_secrets_cbs[subsystem])}")
+        #TODO: This won't delete old CMs but only replace old ones, if are still in use, with new content
+        #      or create new ones. The solution is to use tuple returning like get_svc_monitor_cbs, where
+        #      the cm name will be returned as first tuple element and second will be just None. This will
+        #      signal that this CM should be removed, as not in use anymore.
+        for get_secret_cb in spec.get_secrets_cbs[subsystem]:
+            prefix = ''
+            new_secrets = get_secret_cb(prefix, logger)
+            if not new_secrets:
+                continue
+            for (secret_name, new_secret) in new_secrets:
+                current_secret = cluster.get_secret(secret_name)
+                if current_secret:
+                    if not new_secret:
+                        print(f"\t\t\tDeleting CM {cluster.namespace}/{secret_name}")
+                        #patcher.delete_secret(cluster.namespace, secret_name, on_apiexception_404_handler)
+                        cluster.delete_configmap(secret_name)
+                        continue
+
+                    data_differs = current_secret.data != new_secret["data"]
+                    if data_differs:
+                        print(f"\t\t\tReplacing CM {cluster.namespace}/{secret_name}")
+                        current_secret.data = new_secret["data"]
+                        #patcher.replace_configmap(cluster.namespace, cm_name, current_cm, on_apiexception_404_handler)
+                        api_core.replace_namespaced_secret(secret_name, cluster.namespace, body=current_secret)
+                else:
+                    print(f"\t\t\tNo such cm exists. Creating {cluster.namespace}/{new_secret['metadata']['name']}")
+                    kopf.adopt(new_secret)
+                    #patcher.create_configmap(cluster.namespace, new_secret['metadata']['name'], new_secret, on_apiexception_generic_handler)
+                    api_core.create_namespaced_config_map(cluster.namespace, new_secret)
 
     if subsystem in spec.add_to_sts_cbs:
         print(f"\t\tCurrent container count: {len(sts.spec.template.spec.containers)}")
@@ -1379,12 +1431,12 @@ def update_objects_for_subsystem(subsystem: InnoDBClusterSpecProperties,
             print("\t\t\tPatching STS")
             add_to_sts_cb(sts, patcher, logger)
         if changed:
-            new_container_names = [c["name"] for c in patcher.get_sts_path('/spec/template/spec/containers') if c["name"] not in ["mysql", "sidecar"]]
-            print(f"\t\t\tNew containers: {new_container_names}")
-            new_volumes_names = [c["name"] for c in patcher.get_sts_path('/spec/template/spec/volumes')]
-            print(f"\t\t\tNew volumes: {new_volumes_names}")
-            new_volume_mounts = [(c["name"], c["volumeMounts"]) for c in patcher.get_sts_path('/spec/template/spec/containers') if c["name"] not in ["mysql", "sidecar"]]
-            print(f"\t\t\tNew volume mounts: {new_volume_mounts}")
+            #new_container_names = [c["name"] for c in patcher.get_sts_path('/spec/template/spec/containers') if c["name"] not in ["mysql", "sidecar"]]
+            #print(f"\t\t\tNew containers: {new_container_names}")
+            #new_volumes_names = [c["name"] for c in patcher.get_sts_path('/spec/template/spec/volumes')]
+            #print(f"\t\t\tNew volumes: {new_volumes_names}")
+            #new_volume_mounts = [(c["name"], c["volumeMounts"]) for c in patcher.get_sts_path('/spec/template/spec/containers')] # if c["name"] not in ["mysql", "sidecar"]]
+            #print(f"\t\t\tNew volume mounts: {new_volume_mounts}")
 
             # There might be configmap changes, which when mounted will change the server, so we rollover
             # For fine grained approache the get_configmap should return whether there are such changes that require
@@ -1444,6 +1496,10 @@ def update_objects_for_metrics(cluster: InnoDBCluster, patcher: 'InnoDBClusterOb
     subsystem = InnoDBClusterSpecProperties.METRICS.value
     update_objects_for_subsystem(subsystem, cluster, patcher, logger)
 
+def update_objects_for_keyring(cluster: InnoDBCluster, patcher: 'InnoDBClusterObjectModifier', logger: Logger) -> None:
+    subsystem = InnoDBClusterSpecProperties.KEYRING.value
+    update_objects_for_subsystem(subsystem, cluster, patcher, logger)
+
 
 def remove_read_replica(cluster: InnoDBCluster, rr: ReadReplicaSpec):
     name = rr['name']
@@ -1480,6 +1536,10 @@ def on_last_cluster_pod_removed(cluster: InnoDBCluster, logger: Logger) -> None:
 from enum import Enum
 from typing import Callable, cast
 from .. import kubeutils
+import kubernetes.client.api.core_v1_api as core_v1_api
+import inspect
+
+
 
 class PatchTarget(Enum):
     STS = "STS"
@@ -1493,6 +1553,11 @@ class ApiCommandType(Enum):
     DELETE_CM = "DELETE_CM"
     REPLACE_CM = "REPLACE_CM"
     PATCH_CM = "PATCH_CM"
+
+class PatchType(Enum):
+    MERGE_PATCH = "application/merge-patch+json"
+    JSON_PATCH = "application/json-patch+json"
+    STRATEGIC_MERGE = "application/strategic-merge-patch+json"
 
 OnApiExceptionHandler = Callable[[ApiException, Logger], None]
 
@@ -1512,29 +1577,37 @@ class ApiCommand:
                  namespace: str,
                  name: str,
                  body: Optional[dict] = None,
-                 on_api_exception: Optional[OnApiExceptionHandler] = None):
+                 on_api_exception: Optional[OnApiExceptionHandler] = None,
+                 patch_type: Optional[PatchType] = None):
         self.type = type
         self.namespace = namespace
         self.name = name
         self.body = body
         self.on_api_exception = on_api_exception
+        self.patch_type = patch_type
 
     def run(self, logger: Logger) -> Optional[api_client.V1Status]:
         try:
             if self.type == ApiCommandType.CREATE_CM:
+                logger.info(f"Creating CM {self.namespace}/{self.name}")
                 status = cast(api_client.V1Status,
                               api_core.create_namespaced_config_map(self.namespace, self.body))
             elif self.type == ApiCommandType.DELETE_CM:
+                logger.info(f"Deleting CM {self.namespace}/{self.name}")
                 delete_body = api_client.V1DeleteOptions(grace_period_seconds=0)
                 status = cast(api_client.V1Status,
                               api_core.delete_namespaced_config_map(self.name, self.namespace, body=delete_body))
                 return status
             elif self.type == ApiCommandType.REPLACE_CM:
+                logger.info(f"Replacing CM {self.namespace}/{self.name}")
                 status = cast(api_client.V1Status,
                               api_core.replace_namespaced_config_map(self.name, self.namespace, body=self.body))
             elif self.type == ApiCommandType.PATCH_CM:
+                logger.info(f"Patching CM {self.namespace}/{self.name}")
                 status = cast(api_client.V1Status,
                               api_core.patch_namespaced_config_map(self.name, self.namespace, self.body))
+            else:
+                logger.error(f"Unknown API command {self.type.value}")
         except kubeutils.ApiException as exc:
             if self.on_api_exception is not None:
                 self.on_api_exception(exc, logger)
@@ -1619,14 +1692,21 @@ class InnoDBClusterObjectModifier:
         base = self.sts.spec
         # first is leading backslash, then is 'spec', so we skip
         path_elements = path.split("/")[2:]
+        #self.logger.info(f"{path_elements=} {base=}")
         if len(path) > 1:
             for path_element in path_elements[0:-1]:
-                #self.logger.info(f"{path_element} in base = {path_element in base}\n")
-                assert path_element in base
-                base = base[path_element]
+                #self.logger.info(f"{path_element} in base = {path_element in base}")
+                if not path_element.isnumeric():
+                    assert path_element in base
+                    base = base[path_element]
+                else:
+                    assert int(path_element) >= 0 and len(base) > int(path_element)
+                    base = base[int(path_element)]
             if patch is not None:
-                base[path_elements[-1]] = patch
+                base[int(path_elements[-1]) if path_elements[-1].isnumeric() else path_elements[-1]] = patch
                 self.logger.info(f"get_sts_path: after patching self.sts.spec={self.sts.spec}")
+        if isinstance(base, list):
+            return base[int(path_elements[-1])]
         return base[path_elements[-1]]
 
     def get_sts_path(self, path: str):
@@ -1681,17 +1761,29 @@ class InnoDBClusterObjectModifier:
         self.logger.info(f"patch={patch}")
         utils.merge_patch_object(self.router_deploy_patch, patch, none_deletes=True)
 
-    def create_configmap(self, namespace: str, name: str, body: dict, on_api_exception: Optional[OnApiExceptionHandler]) -> None:
+    def create_configmap(self, namespace: str, name: str, body: dict, on_api_exception: Optional[OnApiExceptionHandler] = None) -> None:
         self.commands.append(ApiCommand(ApiCommandType.CREATE_CM, namespace, name, body, on_api_exception))
 
-    def delete_configmap(self, namespace: str, name: str, on_api_exception: Optional[OnApiExceptionHandler]) -> None:
+    def delete_configmap(self, namespace: str, name: str, on_api_exception: Optional[OnApiExceptionHandler] = None) -> None:
         self.commands.append(ApiCommand(ApiCommandType.DELETE_CM, namespace, name, None, on_api_exception))
 
-    def replace_configmap(self, namespace: str, name: str, body: dict, on_api_exception: Optional[OnApiExceptionHandler]) -> None:
+    def replace_configmap(self, namespace: str, name: str, body: dict, on_api_exception: Optional[OnApiExceptionHandler] = None) -> None:
         self.commands.append(ApiCommand(ApiCommandType.REPLACE_CM, namespace, name, body, on_api_exception))
 
-    def patch_configmap(self, namespace: str, name: str, patch: dict, on_api_exception: Optional[OnApiExceptionHandler]) -> None:
-        self.commands.append(ApiCommand(ApiCommandType.PATCH_CM, namespace, name, patch, on_api_exception))
+    def patch_configmap(self, namespace: str, name: str, patch: dict, on_api_exception: Optional[OnApiExceptionHandler] = None, patch_type: PatchType = PatchType.MERGE_PATCH) -> None:
+        self.commands.append(ApiCommand(ApiCommandType.PATCH_CM, namespace, name, patch, on_api_exception, patch_type))
+
+    @property
+    def merge_patch(self) -> PatchType:
+        return PatchType.MERGE_PATCH
+
+    @property
+    def json_patch(self) -> PatchType:
+        return PatchType.JSON_PATCH
+
+    @property
+    def strategic_merge_patch(self) -> PatchType:
+        return PatchType.STRATEGIC_MERGE
 
     def submit_patches(self) -> None:
         self.logger.info(f"InnoDBClusterObjectModifier::submit_patches sts_changed={self.sts_changed} sts_spec_changed={self.sts_spec_changed} len(router_deploy_patch)={len(self.router_deploy_patch)} len(commands)={len(self.commands)}")

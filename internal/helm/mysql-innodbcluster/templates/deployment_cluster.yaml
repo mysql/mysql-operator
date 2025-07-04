@@ -239,6 +239,17 @@ spec:
       {{- end }}
     {{- end }}
   {{- end }}
+  {{- if (((.Values).keyring).example) }}
+    {{- if $keyringAlreadySpecified }}
+      {{- $err := printf "Keyring '%s' already specified" $keyringAlreadySpecified }}
+      {{- fail $err }}
+    {{- end }}
+    {{- $keyringAlreadySpecified = "example" }}
+    {{- with .Values.keyring.example }}
+    example:
+      fileName: {{ required "keyring.example.fileName is required" .fileName | quote }}
+    {{- end }}
+  {{- end }}
 {{- end }}
   # InitDB
 {{- if (.Values).initDB }}

@@ -649,9 +649,8 @@ def bootstrap(pod: MySQLPod, datadir: str, logger: Logger) -> int:
     return 1
 
 def ensure_correct_tls_sysvars(pod: MySQLPod, session: 'ClassicSession', enabled: bool, caller: str, logger: Logger) -> None:
-    has_crl = os.path.exists("/etc/mysql-ssl/ca/crl.pem")
 
-    logger.info(f"Ensuring custom TLS certificates are {'enabled' if enabled else 'disabled'} {'(with crl)' if has_crl else ''} caller={caller}")
+    logger.info(f"Ensuring custom TLS certificates are {'enabled' if enabled else 'disabled'} caller={caller}")
 
     def ensure_sysvar(var, value):
         logger.info(f"\tChecking if {var} is [{value}]")
@@ -667,14 +666,25 @@ def ensure_correct_tls_sysvars(pod: MySQLPod, session: 'ClassicSession', enabled
 
     # first ensure configured paths are correct
     if enabled:
-        ensure_sysvar("ssl_ca", "/etc/mysql-ssl/ca/ca.pem")
+        has_crl = os.path.exists("/etc/mysql-ssl/ca/crl.pem")
+        has_ca_pem = os.path.exists("/etc/mysql-ssl/ca/ca.pem")
+        has_ca_crt = os.path.exists("/etc/mysql-ssl/ca/ca.crt")
+        if has_ca_pem:
+            ssl_ca = "/etc/mysql-ssl/ca/ca.pem"
+        elif has_ca_crt:
+            ssl_ca = "/etc/mysql-ssl/ca/ca.crt"
+        else:
+            ssl_ca = "/etc/mysql-ssl/ca/ca_not_mounted"
+        logger.info(f"{has_crl=} {has_ca_pem=} {has_ca_crt=} {ssl_ca=}")
+
+        ensure_sysvar("ssl_ca", ssl_ca)
         ensure_sysvar("ssl_crl", "/etc/mysql-ssl/ca/crl.pem" if has_crl else "")
         ensure_sysvar("ssl_cert", "/etc/mysql-ssl/key/tls.crt")
         ensure_sysvar("ssl_key", "/etc/mysql-ssl/key/tls.key")
         if pod.instance_type == "group-member":
             ensure_sysvar("group_replication_recovery_ssl_verify_server_cert", "ON")
             ensure_sysvar("group_replication_ssl_mode", "VERIFY_IDENTITY")
-            ensure_sysvar("group_replication_recovery_ssl_ca", "/etc/mysql-ssl/ca/ca.pem")
+            ensure_sysvar("group_replication_recovery_ssl_ca", ssl_ca)
             ensure_sysvar("group_replication_recovery_ssl_cert", "/etc/mysql-ssl/key/tls.crt")
             ensure_sysvar("group_replication_recovery_ssl_key", "/etc/mysql-ssl/key/tls.key")
     else:
@@ -691,7 +701,6 @@ def ensure_correct_tls_sysvars(pod: MySQLPod, session: 'ClassicSession', enabled
 
 
 def reconfigure_tls(pod: MySQLPod, enabled: bool, caller: str, logger: Logger) -> None:
-
     session = connect("localroot", "", logger, timeout=None)
 
     ensure_correct_tls_sysvars(pod, session, enabled, caller, logger)
@@ -734,15 +743,23 @@ def on_ca_secret_create_or_change(value: dict, useSelfSigned: bool, router_deplo
 
     logger.info("on_ca_secret_create_or_change")
 
-    ca_pem = utils.b64decode(value['data']['ca.pem']) if 'ca.pem' in value['data'] else None
+    if 'ca.pem' in value['data']:
+        ca_pem = utils.b64decode(value['data']['ca.pem'])
+        ca_file = "ca.pem"
+    elif 'ca.crt' in value['data']:
+        ca_pem = utils.b64decode(value['data']['ca.crt'])
+        ca_file = "ca.crt"
+    else:
+        raise kopf.PermanentError("Neither ca.pem nor ca.crt exist in the CA secret")
+
     crl_pem = utils.b64decode(value['data']['crl.pem']) if 'crl.pem' in value['data'] else None
-    secrets = {'ca.pem': ca_pem, 'crl.pem': crl_pem}
+    secrets = {ca_file: ca_pem, 'crl.pem': crl_pem}
 
     max_time = 7 * 60
     delay = 5
     for _ in range(max_time//delay):
         if check_secret_mounted(secrets,
-                                ["/etc/mysql-ssl/ca/ca.pem",
+                                [f"/etc/mysql-ssl/ca/{ca_file}",
                                  "/etc/mysql-ssl/ca/crl.pem"],
                                 logger):
             logger.info(f"TLS CA file change detected, reloading TLS configurations")
@@ -948,6 +965,8 @@ def main(argv):
     if r < 0:
         logger.info(f"Bootstrap error {r}")
         return abs(r)
+
+    logger.info(f"Bootstrapped {r=}")
 
     cluster = pod.get_cluster()
     cluster.log_tls_info(logger)

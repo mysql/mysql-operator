@@ -1250,6 +1250,48 @@ def update_mysql_image(sts: api_client.V1StatefulSet, cluster: InnoDBCluster,
     patcher.patch_sts(patch)
 #    update_stateful_set_spec(sts, patch)
 
+    # We need to update the STS of old (pre-9.3) installations that got a new sidecar (9.3.0+), that uses
+    # the new mount paths for the TLS files.
+    # We keep the old ssldata volume and it's mounts to /etc/mysql-ssl/(ca.crt|tls.key|tls.crt)
+    # In case for some reason the sidecar is downgraded to pre-9.3.0 then the old volumes should exist
+    # to keep TLS working and the operator working. In case TLS gets broken no TCP connections can be made
+    # to the MySQL servers and for the Operator the cluster is "dead" (in UNKNOWN state).
+    # New mounts are in /etc/mysql-ssl/ca/ca.crt and /etc/mysql-ssl/key/(tls.key|tls.crt)
+    # Even if the new mounts exist there is no problem. The patch is thus idempotent.
+    #
+    # If in the future we add volumes and mounts, this patch needs to be extended
+    if extra_volumes := yaml.safe_load(cluster.parsed_spec.get_extra_volumes(cluster.get_ca_and_tls())):
+        upgrade_volumes_patch = {
+            "spec": {
+                "template": {
+                    "spec": {
+                        "volumes": [
+                            *extra_volumes
+                        ],
+                        "containers": [
+                            {
+                                "name": "mysql",
+                                "volumeMounts": [
+                                    *yaml.safe_load(cluster.parsed_spec.extra_volume_mounts),
+                                ]
+                            },
+                            {
+                                "name": "sidecar",
+                                "volumeMounts": [
+                                    *yaml.safe_load(cluster.parsed_spec.extra_sidecar_volume_mounts),
+                                ]
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+
+        logger.info("Patching STS Volumes and mounts for upgrade")
+        patcher.patch_sts(upgrade_volumes_patch)
+    else:
+        logger.info("No STS volumes to patch")
+
 
 def update_operator_image(sts: api_client.V1StatefulSet, spec: InnoDBClusterSpec) -> None:
     patch = {"spec": {"template":

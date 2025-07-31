@@ -284,8 +284,8 @@ spec:
 
         self.wait_pod("mycluster-0", "Running")
 
+        self.wait_ic("mycluster", "ONLINE", self.instances)
         self.wait_routers("mycluster-router-*", 1)
-        self.wait_ic("mycluster", "ONLINE")
 
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
@@ -336,7 +336,7 @@ spec:
         waiter()
         for instance in reversed(range(0, self.instances)):
             self.wait_pod(f"mycluster-{instance}", "Running")
-        self.wait_ic("mycluster", "ONLINE")
+        self.wait_ic("mycluster", "ONLINE", self.instances)
         print("[04_disable_slow_log] Cluster ONLINE after %.2f seconds " % (time() - start_time))
 
     def _06_check_slow_log_doesnt_exist(self):
@@ -379,7 +379,7 @@ spec:
         waiter()
         for instance in reversed(range(0, self.instances)):
             self.wait_pod(f"mycluster-{instance}", "Running")
-        self.wait_ic("mycluster", "ONLINE")
+        self.wait_ic("mycluster", "ONLINE", self.instances)
         print("[08_reenable_slow_log] Cluster ONLINE after %.2f seconds " % (time() - start_time))
 
     def _10_check_slow_log_exists(self):
@@ -437,7 +437,7 @@ spec:
         waiter()
         for instance in reversed(range(0, self.instances)):
             self.wait_pod(f"mycluster-{instance}", "Running")
-        self.wait_ic("mycluster", "ONLINE")
+        self.wait_ic("mycluster", "ONLINE", self.instances)
         print("[12_enable_general_log] Cluster ONLINE after %.2f seconds " % (time() - start_time))
 
     def _14_check_general_exists(self):
@@ -662,8 +662,8 @@ spec:
         for instance in range(0, self.instances):
             self.wait_pod(f"mycluster-{instance}", "Running")
 
+        self.wait_ic("mycluster", "ONLINE", self.instances)
         self.wait_routers("mycluster-router-*", 1)
-        self.wait_ic("mycluster", "ONLINE")
 
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
@@ -848,8 +848,8 @@ spec:
         for instance in range(0, self.instances):
             self.wait_pod(f"mycluster-{instance}", "Running")
 
+        self.wait_ic("mycluster", "ONLINE", self.instances)
         self.wait_routers("mycluster-router-*", 1)
-        self.wait_ic("mycluster", "ONLINE")
 
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
@@ -888,7 +888,7 @@ spec:
         waiter()
         for instance in reversed(range(0, self.instances)):
             self.wait_pod(f"mycluster-{instance}", "Running")
-        self.wait_ic("mycluster", "ONLINE")
+        self.wait_ic("mycluster", "ONLINE", self.instances)
         print("[04_disable_general_log] Cluster ONLINE after %.2f seconds " % (time() - start_time))
 
     def _06_delete_general_log_after_restart(self):
@@ -943,7 +943,7 @@ spec:
         waiter()
         for instance in reversed(range(0, self.instances)):
             self.wait_pod(f"mycluster-{instance}", "Running")
-        self.wait_ic("mycluster", "ONLINE")
+        self.wait_ic("mycluster", "ONLINE", self.instances)
         print("[08_restart_sts] Cluster ONLINE after %2.f seconds " % (time() - start_time))
 
     def _10_check_general_log_doesnt_exist(self):
@@ -980,7 +980,7 @@ spec:
         waiter()
         for instance in reversed(range(0, self.instances)):
             self.wait_pod(f"mycluster-{instance}", "Running")
-        self.wait_ic("mycluster", "ONLINE")
+        self.wait_ic("mycluster", "ONLINE", self.instances)
         print("[12_reenable_general_log] Cluster ONLINE after %.2f seconds " % (time() - start_time))
 
     def _14_recheck_general_log(self):
@@ -1154,8 +1154,8 @@ spec:
         for instance in range(0, self.instances):
             self.wait_pod(f"mycluster-{instance}", "Running")
 
+        self.wait_ic("mycluster", "ONLINE", self.instances)
         self.wait_routers("mycluster-router-*", 1)
-        self.wait_ic("mycluster", "ONLINE")
 
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
@@ -1398,8 +1398,8 @@ spec:
         for instance in range(0, self.instances):
             self.wait_pod(f"mycluster-{instance}", "Running")
 
+        self.wait_ic("mycluster", "ONLINE", self.instances)
         self.wait_routers("mycluster-router-*", 1)
-        self.wait_ic("mycluster", "ONLINE")
 
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
@@ -1688,8 +1688,8 @@ spec:
         for instance in range(0, self.instances):
             self.wait_pod(f"mycluster-{instance}", "Running")
 
+        self.wait_ic("mycluster", "ONLINE", self.instances)
         self.wait_routers("mycluster-router-*", 1)
-        self.wait_ic("mycluster", "ONLINE")
 
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
@@ -1820,7 +1820,7 @@ spec:
         waiter()
         for instance in reversed(range(0, self.instances)):
             self.wait_pod(f"mycluster-{instance}", "Running")
-        self.wait_ic("mycluster", "ONLINE")
+        self.wait_ic("mycluster", "ONLINE", self.instances)
         print("[06_disable_general_log] Cluster ONLINE after %.2f seconds " % (time() - start_time))
 
     def _99_destroy(self):

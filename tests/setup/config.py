@@ -79,6 +79,9 @@ class Config:
     azure_config_file_is_tmp = False
     azure_container_name = defaults.AZURE_CONTAINER_NAME
 
+    # upgrade
+    operator_upgrade_run_all_tests = defaults.OPERATOR_UPGRADE_RUN_ALL_TESTS
+
     # vault
     vault_cfg_path = defaults.OCI_VAULT_CONFIG_PATH
 

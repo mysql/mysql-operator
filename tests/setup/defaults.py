@@ -122,6 +122,8 @@ FLUENTD_IMAGE_NAME= os.getenv(
 METRICS_IMAGE_NAME = os.getenv(
     "OPERATOR_TEST_METRICS_IMAGE_NAME", default="prom/mysqld-exporter:v0.14.0")
 
+OPERATOR_UPGRADE_RUN_ALL_TESTS = os.getenv(
+    "OPERATOR_UPGRADE_RUN_ALL_TESTS", default=False)
 
 # k8s
 K8S_CLUSTER_NAME = os.getenv(

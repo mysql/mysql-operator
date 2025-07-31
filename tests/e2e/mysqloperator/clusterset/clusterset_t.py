@@ -173,7 +173,7 @@ spec:
 
         if self.router_instances:
             self.wait_routers(f"{cluster_name}-router-*", self.router_instances, timeout=self.instances*120)
-        self.wait_ic(cluster_name, "ONLINE")
+        self.wait_ic(cluster_name, "ONLINE", self.instances)
 
         self.assertGotClusterEvent(
             cluster_name, after=apply_time, type="Normal",

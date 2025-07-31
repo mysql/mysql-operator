@@ -2598,7 +2598,6 @@ class MySQLPod(K8sInterfaceObject):
                 "lastProbeTime": '%s' % now,
                 "lastTransitionTime": '%s' % now if changed else None
             }]}}
-        #print(f"Updating readiness gate {gate} with patch {patch}")
         self.pod = cast(api_client.V1Pod, api_core.patch_namespaced_pod_status(
             self.name, self.namespace, body=patch))
 

@@ -344,7 +344,7 @@ def ls_pv(ns):
 def ls_sa(ns):
     return __ls(ns, "sa")
 
-def ls_secret(ns, pattern):
+def ls_secret(ns, pattern=".*"):
     secrets = __ls(ns, "secret")
     r = re.compile(pattern)
     return [secret for secret in secrets if r.match(secret["NAME"])]
@@ -1175,7 +1175,7 @@ spec:
     apply(ns, yaml)
 
 
-def create_secrets(ns, name, data):
+def create_secrets(ns, name, data, type = ""):
     nl = "\n"
     indent = "\n  "
     yaml = f"""
@@ -1183,6 +1183,8 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: {name}
+  namespace: {ns}
+{f"type: {type}" if type else ""}
 data:
   {indent.join(data.strip().split(nl))}
 """

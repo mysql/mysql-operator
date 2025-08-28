@@ -220,6 +220,10 @@ if __name__ == '__main__':
             g_ts_cfg.azure_config_file = arg.partition("=")[-1]
         elif arg.startswith("--azure-container="):
             g_ts_cfg.azure_container_name = arg.partition("=")[-1]
+        elif arg.startswith("--kmip-okvclient-ora-path="):
+            g_ts_cfg.kmip_okvclient_ora_path = arg.partition("=")[-1]
+        elif arg.startswith("--kmip-tls-path="):
+            g_ts_cfg.kmip_tls_path = arg.partition("=")[-1]
         elif arg.startswith("--vault-cfg="):
             g_ts_cfg.vault_cfg_path=arg.partition("=")[-1]
         elif arg.startswith("--custom-secret="):

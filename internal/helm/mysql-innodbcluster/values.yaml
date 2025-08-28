@@ -135,6 +135,11 @@ baseServerId: 1000
 
 
 #keyring:
+#  kmip:
+#    configuration: kmip-config
+#    cacheKeys: true
+#    server: "a.b.c.d:5696"
+#    standbyServer: ["e.f.g.h:5696", "x.y.z.t:5696"]
 #  file:
 #    fileName:
 #    readOnly:

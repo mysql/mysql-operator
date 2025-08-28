@@ -162,9 +162,27 @@ spec:
   {{- end }}
 {{- end }}
   # Keyring
-{{- if (or (((.Values).keyring).file) (((.Values).keyring).encryptedFile) (((.Values).keyring).oci) ) }}
+{{- if (or (((.Values).keyring).kmip) (((.Values).keyring).file) (((.Values).keyring).encryptedFile) (((.Values).keyring).oci) ) }}
   keyring:
 {{- $keyringAlreadySpecified := "" }}
+  {{- if (((.Values).keyring).kmip) }}
+    {{- if $keyringAlreadySpecified }}
+      {{- $err := printf "Keyring '%s' already specified" $keyringAlreadySpecified }}
+      {{- fail $err }}
+    {{- end }}
+    {{- $keyringAlreadySpecified = "kmip" }}
+    {{- with .Values.keyring.kmip }}
+    kmip:
+      configuration: {{ required "keyring.kmip.configuration is required" .configuration | quote }}
+      {{- if hasKey . "cacheKeys" }}
+      cacheKeys: {{ .cacheKeys }}
+      {{- end }}
+      server: {{ required "keyring.kmip.server is required" .server | quote }}
+      {{- if hasKey . "standbyServer" }}
+      standbyServer: {{ toYaml .standbyServer | nindent 8 }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
   {{- if (((.Values).keyring).file) }}
     {{- if $keyringAlreadySpecified }}
       {{- $err := printf "Keyring '%s' already specified" $keyringAlreadySpecified }}
@@ -237,17 +255,6 @@ spec:
         secrets: {{ ((.endpoints).secrets) | quote}}
         {{- end }}
       {{- end }}
-    {{- end }}
-  {{- end }}
-  {{- if (((.Values).keyring).example) }}
-    {{- if $keyringAlreadySpecified }}
-      {{- $err := printf "Keyring '%s' already specified" $keyringAlreadySpecified }}
-      {{- fail $err }}
-    {{- end }}
-    {{- $keyringAlreadySpecified = "example" }}
-    {{- with .Values.keyring.example }}
-    example:
-      fileName: {{ required "keyring.example.fileName is required" .fileName | quote }}
     {{- end }}
   {{- end }}
 {{- end }}

@@ -120,6 +120,13 @@ AZURE_CONFIG_FILE = os.getenv(
 AZURE_CONTAINER_NAME = os.getenv(
     "OPERATOR_TEST_AZURE_CONTAINER_NAME", default=None)
 
+# KMIP
+KMIP_OKVCLIENT_ORA_PATH = os.getenv(
+    "OPERATOR_TEST_KMIP_OKVCLIENT_ORA_PATH", default=None)
+KMIP_TLS_PATH = os.getenv(
+    "OPERATOR_TEST_KMIP_TLS_PATH", default=None)
+
+
 FLUENTD_IMAGE_NAME= os.getenv(
     "OPERATOR_TEST_FLUENTD_IMAGE_NAME", default="fluent/fluentd-kubernetes-daemonset:v1.16-debian-s3-amd64-1")
 

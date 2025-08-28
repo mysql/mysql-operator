@@ -103,6 +103,29 @@ spec:
                   type: object
                   description: "Keyring specification"
                   properties:
+                    kmip:
+                      type: object
+                      description: "Keyring 'KMIP' specification"
+                      required: ["configuration", "server"]
+                      properties:
+                        configuration:
+                          type: string
+                          default: ""
+                          description: "Name of a secret that contains TLS certificates"
+                        cacheKeys:
+                          type: boolean
+                          default: true
+                          description: "Whether the keys are cached by the MySQL Server in RAM in plaintext. If set to false the keys are decrypted on every access"
+                        server:
+                          type: string
+                          default: ""
+                          description: "Primary OKV Server host with port number in the format <host>:<port>"
+                        standbyServer:
+                          type: array
+                          default: []
+                          description: "A list of standby servers in the format <host>:<port>"
+                          items:
+                            type: string
                     file:
                       type: object
                       description: "Keyring 'File' specification"

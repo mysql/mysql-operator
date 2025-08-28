@@ -1233,6 +1233,12 @@ def create_secret_from_files(ns, name, data):
 
     kubectl("create", "secret", options)
 
+def create_secret_from_paths(ns, name, paths):
+    options = [ "generic", name, "-n", ns]
+    for path in paths:
+        options.append(f"--from-file={path}")
+
+    kubectl("create", "secret", options)
 
 def create_ssl_ca_secret(ns, name, path, crlpath=None):
     data = [("ca.pem", path)]

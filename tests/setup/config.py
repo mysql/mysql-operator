@@ -82,6 +82,10 @@ class Config:
     azure_config_file_is_tmp = False
     azure_container_name = defaults.AZURE_CONTAINER_NAME
 
+    # KMIP Component
+    kmip_okvclient_ora_path = defaults.KMIP_OKVCLIENT_ORA_PATH
+    kmip_tls_path = defaults.KMIP_TLS_PATH
+
     # upgrade
     operator_upgrade_run_all_tests = defaults.OPERATOR_UPGRADE_RUN_ALL_TESTS
 

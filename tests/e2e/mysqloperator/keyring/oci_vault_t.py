@@ -1,4 +1,4 @@
-# Copyright (c) 2022, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2022, 2025, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -13,13 +13,15 @@ from e2e.mysqloperator.keyring.keyring_base import KeyRingBase
 
 from ..operator.operator_upgrade_t import change_operator_version
 
-def read_vault_cfg(vault_cfg_path: str) -> dict:
+def read_ini_cfg(vault_cfg_path: str, profile_name) -> dict:
     vault_cfg = configparser.ConfigParser()
     vault_cfg.read(vault_cfg_path)
-    profile_name = "OCI"
     if not profile_name in vault_cfg:
         raise Exception(f"{profile_name} profile not found in {vault_cfg_path}")
     return vault_cfg[profile_name]
+
+def read_vault_cfg(vault_cfg_path: str, profile_name = "OCI") -> dict:
+    return read_ini_cfg(vault_cfg_path, profile_name)
 
 def check_oci_variables(testobj: KeyRingBase):
     for podname in ("mycluster-0", "mycluster-1", "mycluster-2"):

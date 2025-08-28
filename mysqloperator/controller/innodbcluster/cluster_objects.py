@@ -921,19 +921,6 @@ def prepare_additional_configmaps(spec: AbstractServerSetSpec, logger: Logger) -
     return configmaps
 
 
-#def prepare_component_config_configmaps(spec: AbstractServerSetSpec, logger: Logger) -> List[Dict]:
-#    manifest = spec.keyring.get_component_config_configmap_manifest()
-#    return [manifest] if manifest else []
-
-
-#def prepare_component_config_secrets(spec: AbstractServerSetSpec, logger: Logger) -> List[Dict]:
-#    secrets = []
-#    cm = spec.keyring.get_component_config_secret_manifest()
-#    if cm:
-#        secrets.append(cm)
-#
-#    return secrets
-
 def prepare_initconf(cluster: InnoDBCluster, spec: AbstractServerSetSpec, logger: Logger) -> dict:
 
     with open(os.path.dirname(os.path.abspath(__file__))+'/router-entrypoint-run.sh.tpl', 'r') as entryfile:
@@ -1431,19 +1418,11 @@ def update_objects_for_subsystem(subsystem: InnoDBClusterSpecProperties,
             print("\t\t\tPatching STS")
             add_to_sts_cb(sts, patcher, logger)
         if changed:
-            #new_container_names = [c["name"] for c in patcher.get_sts_path('/spec/template/spec/containers') if c["name"] not in ["mysql", "sidecar"]]
-            #print(f"\t\t\tNew containers: {new_container_names}")
-            #new_volumes_names = [c["name"] for c in patcher.get_sts_path('/spec/template/spec/volumes')]
-            #print(f"\t\t\tNew volumes: {new_volumes_names}")
-            #new_volume_mounts = [(c["name"], c["volumeMounts"]) for c in patcher.get_sts_path('/spec/template/spec/containers')] # if c["name"] not in ["mysql", "sidecar"]]
-            #print(f"\t\t\tNew volume mounts: {new_volume_mounts}")
-
             # There might be configmap changes, which when mounted will change the server, so we rollover
             # For fine grained approache the get_configmap should return whether there are such changes that require
             # a restart. With a restart, for example, the Cluster1LFSGeneralLogEnableDisableEnable test will hang
             restart_patch = {"spec":{"template":{"metadata":{"annotations":{"kubectl.kubernetes.io/restartedAt":utils.isotime()}}}}}
             patcher.patch_sts(restart_patch)
-            #patcher.submit_patches(restart_sts=True)
 
         print(f"\t\t\tSTS {'patched' if changed else 'unchanged. No rollover upgrade!'}")
 

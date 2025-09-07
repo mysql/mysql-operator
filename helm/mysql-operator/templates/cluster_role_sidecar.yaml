@@ -38,6 +38,12 @@ rules:
   - apiGroups: ["mysql.oracle.com"]
     resources: ["mysqlbackups/status"]
     verbs: ["get", "patch", "update", "watch"]
+  - apiGroups: [""]
+    resources: [namespaces]
+    verbs: [list, watch]
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: [list, watch]
 ---
 # Role for the switchover CronJob
 apiVersion: rbac.authorization.k8s.io/v1

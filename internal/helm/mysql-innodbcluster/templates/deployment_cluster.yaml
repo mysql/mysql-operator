@@ -216,6 +216,47 @@ spec:
     {{- end }}
   {{- end }}
 
+  {{- if (((.Values).keyring).hashicorp) }}
+    {{- if $keyringAlreadySpecified }}
+      {{- $err := printf "Keyring '%s' already specified" $keyringAlreadySpecified }}
+      {{- fail $err }}
+    {{- end }}
+    {{- $keyringAlreadySpecified = "hashicorp" }}
+    {{- with .Values.keyring.hashicorp }}
+    hashicorp:
+      serverUrl: {{ required "keyring.hashicorp.serverUrl is required" .serverUrl | quote }}
+      storePath: {{ required "keyring.hashicorp.storePath is required" .storePath | quote }}
+      {{- if hasKey . "caching" }}
+      caching: {{ .caching }}
+      {{- end }}
+      {{- if hasKey . "caCertificates" }}
+      caCertificates: {{ .caCertificates }}
+      {{- end }}
+      auth:
+        {{- if .auth.approle}}
+          {{- if $hashicorpAuthAlreadySpecified }}
+            {{- $err := printf "Authentication mechanism '%s' already specified" $hashicorpAuthAlreadySpecified }}
+            {{- fail $err }}
+          {{- end }}
+          {{- $hashicorpAuthAlreadySpecified = "approle" }}
+          approle:
+            authSecret: {{ .auth.approle.authSecret }}
+            {{- if .auth.approle.authenticationPath }}
+            authenticationPath: {{ .auth.approle.authenticationPath }}
+            {{- end }}
+        {{- end}}
+
+        {{- if .auth.token}}
+          {{- if $hashicorpAuthAlreadySpecified }}
+            {{- $err := printf "Authentication mechanism '%s' already specified" $hashicorpAuthAlreadySpecified }}
+            {{- fail $err }}
+          {{- end }}
+          {{- $hashicorpAuthAlreadySpecified = "token" }}
+          token:
+            tokenSecret: {{ .auth.token.tokenSecret }}
+        {{- end}}
+  {{- end }}
+
   {{- if (((.Values).keyring).oci) }}
     {{- if $keyringAlreadySpecified }}
       {{- $err := printf "Keyring '%s' already specified" $keyringAlreadySpecified }}

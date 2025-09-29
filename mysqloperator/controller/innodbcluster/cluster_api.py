@@ -1108,6 +1108,159 @@ class KeyringEncryptedFileSpec(KeyringSpecBase):
         return KeyringConfigStorage.SECRET
 
 
+class KeyringHashicorpVaultSpec(KeyringSpecBase):
+    authMode: Optional[str] = None
+    authPath: Optional[str] = None
+    authSecret: Optional[str] = None
+    caCertificate: Optional[str] = None
+    caching: Optional[bool] = None
+    serverUrl: Optional[str] = None
+    storePath: Optional[str] = None
+    tokenSecret: Optional[str] = None
+
+    def __init__(self, namespace: str, global_manifest_name: str, component_config_configmap_name: str, keyring_mount_path: str, cluster_name: str):
+        self.namespace = namespace
+        self.global_manifest_name = global_manifest_name
+        self.component_config_configmap_name = component_config_configmap_name
+        self.keyring_mount_path = keyring_mount_path
+        self.cluster_name = cluster_name
+        self.sts_modifier = StsModifier("KeyringHashicorpVaultSpec")
+
+    @property
+    def name(self) -> str:
+        return "hashicorp"
+
+    @property
+    def is_component(self) -> bool:
+        return True
+
+    def parse(self, spec: dict, prefix: str) -> None:
+        self.authMode = dget_str(spec, "authMode", prefix, default_value="approle")
+        self.caCertificate = dget_str(spec, "caCertificate", prefix, default_value="")
+        self.caching = dget_bool(spec, "caching", prefix, default_value=False)
+        self.serverUrl = dget_str(spec, "serverUrl", prefix)
+        self.storePath = dget_str(spec, "storePath", prefix)
+
+        auth = dget_dict(spec, "auth", prefix)
+        if "approle" in auth and "token" not in auth:
+            self.authMode = "approle"
+            approle = dget_dict(auth, "approl", prefix+".auth")
+            self.authPath = dget_str(approle, "authPath", prefix+".auth.approle", default_value="/v1/auth/approle/login")
+            self.authSecret = dget_str(approle, "authSecret", prefix+".auth.approle")
+        elif "token" in auth and not "approle" in auth:
+            self.authMode = "token"
+            token = dget_dict(auth, "token", prefix+".auth")
+            self.tokenSecret = dget_str(token, "tokenSecret", prefix+".auth.token")
+        else:
+            raise kopf.TemporaryError(f"Either 'approle' or 'token' must be set in {path}.auth")
+
+    def post_parse(self) -> None:
+        cm_mount_name = "keyringhashicorp-conf"
+        self.sts_modifier.add_volume({
+            "name": cm_mount_name,
+            "configMap": {
+                "name" : self.component_config_configmap_name,
+                "items": [
+                    {
+                        "key" : self.component_manifest_name,
+                        "path": self.component_manifest_name
+                    }
+                ]
+            }
+        })
+        self.sts_modifier.add_volume_mount({
+            "initContainers": ["initmysql"],
+            "containers": ["mysql"],
+            "mounts": [
+                {
+                    "name" : cm_mount_name,
+                    "mountPath": f"/usr/lib64/mysql/plugin/{self.component_manifest_name}",
+                    "subPath": self.component_manifest_name     #should be the same as the volume.configMap.items.path
+                }
+            ]
+        })
+
+        if self.tokenSecret:
+            self.sts_modifier.add_volume({
+                "name": "keyring-hashicorp-token",
+                "secret": {
+                    "secretName" : self.tokenSecret
+                }
+            })
+            self.sts_modifier.add_volume_mount({
+                "initContainers": ["initmysql"],
+                "containers": ["mysql"],
+                "mounts": [
+                    {
+                        "name" : "keyring-hashicorp-token",
+                        "mountPath": "/etc/mysql-keyring-token",
+                    }
+                ]
+            })
+
+
+        if self.caCertificate:
+            self.sts_modifier.add_volume({
+                "name": "keyring-hashicorp-ca",
+                "configMap": {
+                    "name" : self.caCertificate,
+                }
+            })
+            self.sts_modifier.add_volume_mount({
+                "initContainers": ["initmysql"],
+                "containers": ["mysql"],
+                "mounts": [
+                    {
+                        "name" : "keyring-hashicorp-ca",
+                        "mountPath": "/etc/mysql-keyring-ca",
+                    }
+                ]
+            })
+
+    @property
+    def component_manifest_name(self) -> str:
+        return f"component_keyring_{self.name}.cnf"
+
+    def get_add_to_sts_cb(self) -> Optional[AddToStsHandler]:
+        return self.sts_modifier.get_add_to_sts_cb()
+
+    def get_remove_from_sts_cb(self) -> Optional[RemoveFromStsHandler]:
+        return self.sts_modifier.get_remove_from_sts_cb()
+
+    def add_component_manifest(self, data: dict, storage_type: KeyringConfigStorage) -> None:
+        if (self.authMode == "approle" and storage_type == KeyringConfigStorage.SECRET) or \
+                (self.authMode == "token" and storage_type == KeyringConfigStorage.CONFIGMAP):
+            data[self.component_manifest_name] = {
+                "auth_mode": self.authMode,
+                "caching": "ON" if self.caching else "OFF",
+                "server_url": self.serverUrl,
+                "store_path": self.storePath
+            }
+
+            if self.authMode == "approle":
+                opts = data[self.component_manifest_name]
+                try:
+                    secret = cast(api_client.V1Secret,
+                                  api_core.read_namespaced_secret(self.authSecret, self.namespace))
+                except ApiException as exc:
+                    raise kopf.TemporaryError(f"Failed loading authentication secret {self.authSecret}: {exc}")
+
+                opts["auth_path"] = self.authPath
+
+                for ele in ("role_id", "secret_id"):
+                    if "role_id.txt" not in secret.data:
+                        raise kopf.TemporaryError(f"HashiCorp Vault Authentication Secret {self.namespace}/{self.authSecret} got no element '{ele}.txt'")
+
+                    opts[ele] = secret.data[ele+".txt"]
+            elif self.authMode == "token":
+                data[self.component_manifest_name]["token_path"] = "/etc/mysql-keyring-token/token.txt"
+            else:
+                # This shouldn't happen and be caught during parse and the if above should prevent reaching here
+                raise kopf.TemporaryError("authMode must be either 'approle' or 'token' in authMode")
+
+            if self.caCertificate:
+               data[self.component_manifest_name]["ca_path"] = "/etc/mysql-keyring-ca/ca.pem"
+
 class KeyringOciSpec(KeyringSpecBase):
     user: Optional[str] = None
     keySecret: Optional[str] = None
@@ -1279,15 +1432,16 @@ class KeyringSpec:
     def parse(self, spec: dict, prefix: str) -> None:
         krFile = dget_dict(spec, "file", prefix, {})
         krEncryptedFile = dget_dict(spec, "encryptedFile", prefix, {})
+        krHashicorp = dget_dict(spec, "hashicorp", prefix, {})
         krOci = dget_dict(spec, "oci", prefix, {})
         krKmip = dget_dict(spec, "kmip", prefix, {})
 
-        specified_krings = [x for x in [krFile, krEncryptedFile, krOci, krKmip] if x]
+        specified_krings = [x for x in [krFile, krEncryptedFile, krHashicorp, krOci, krKmip] if x]
 
         if len(specified_krings) > 1:
-            raise ApiSpecError("Only one of file, encryptedFile, oci or kmip may be specified in spec.keyring")
+            raise ApiSpecError("Only one of file, encryptedFile, hashicorp, oci or kmip may be specified in spec.keyring")
         elif len(specified_krings) == 0:
-            raise ApiSpecError("One of file, encryptedFile, oci or kmip must be specified in spec.keyring")
+            raise ApiSpecError("One of file, encryptedFile, hashicorp, oci or kmip must be specified in spec.keyring")
 
         if krFile:
             self.keyring = KeyringFileSpec(self.namespace, self.global_manifest_name, self.component_config_configmap_name, self.keyring_mount_path)
@@ -1295,6 +1449,9 @@ class KeyringSpec:
         elif krEncryptedFile:
             self.keyring = KeyringEncryptedFileSpec(self.namespace, self.global_manifest_name, self.component_config_configmap_name, self.keyring_mount_path)
             self.keyring.parse(krEncryptedFile, "spec.keyring.encryptedFile")
+        elif krHashicorp:
+            self.keyring = KeyringHashicorpVaultSpec(self.namespace, self.global_manifest_name, self.component_config_secret_name, self.keyring_mount_path, self.cluster_name )
+            self.keyring.parse(krHashicorp, "spec.keyring.hashicorp")
         elif krOci:
             self.keyring = KeyringOciSpec(self.namespace, self.global_manifest_name, self.component_config_configmap_name, self.keyring_mount_path, self.cluster_name)
             self.keyring.parse(krOci, "spec.keyring.oci")

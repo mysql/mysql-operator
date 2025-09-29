@@ -149,6 +149,17 @@ baseServerId: 1000
 #    readOnly:
 #    storage:
 #    password:
+#  hashicorp:
+#    caCertificates: "configmap-name"
+#    caching: false
+#    serverUrl: "https://...."
+#    storePath: "/v1/kv/..."
+#    auth:
+#      approle: # either approle ...
+#        authSecret: "secret-name"
+#        authenticationPath: "/v1/auth/approle/login"
+#     token: # ... or token
+#       tokenSecret: "secret-name"
 #  oci:
 #    user: "ocid1.user.oc1..."
 #    keySecret: "oci-credentials"

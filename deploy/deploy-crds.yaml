@@ -163,6 +163,51 @@ spec:
                           type: object
                           description : "Specification of the volume to be mounted where the keyring file resides"
                           x-kubernetes-preserve-unknown-fields: true
+                    hashicorp:
+                      type: object
+                      description: "Keyring 'HashiCorp Vault' specification"
+                      required: ['serverUrl', 'auth', 'storePath' ]
+                      properties:
+                        caCertificate:
+                          type: string
+                          description: "Name of a ConfigMap with a ca.pem field with CA certificate bundle file with the CA of the HashiCorp Vault"
+                        caching:
+                          type: boolean
+                          default: false
+                          description: "Whether to enable in-memory key cache"
+                        serverUrl:
+                          type: string
+                          description: "URL of HashiCorp Vault server"
+                        storePath:
+                          type: string
+                          description: "Path within HashiCorp Vault server which is writeable"
+                        auth:
+                          type: object
+                          oneOf:
+                          - required: ['approle']
+                          - required: ['token']
+                          description: "Authentication settings, either 'approle' or 'token' must be set"
+                          properties:
+                            approle:
+                              type: object
+                              description: 'AppRole authentication with role and secret'
+                              required: ['authSecret']
+                              properties:
+                                authenticationPath:
+                                  type: string
+                                  description: "Authentication path where AppRole authentication is enabled within the HashiCorp Vault server"
+                                  default: "/v1/auth/approle/login"
+                                authSecret:
+                                  type: string
+                                  description: "Name of a Secret in this namespace, with fields 'role_id.txt' and 'secret_id.txt' containing credentials"
+                            token:
+                              type: object
+                              description: 'Token authentication'
+                              required: ['tokenSecret']
+                              properties:
+                                tokenSecret:
+                                  type: string
+                                  description: "Name of a Secret in this namespace, with a filed 'token.txt' containing authentication token"
                     oci:
                       type: object
                       description: "Keyring 'OCI' specification"

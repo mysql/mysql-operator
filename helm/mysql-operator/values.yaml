@@ -30,6 +30,13 @@ replicas: 1
 #nodeSelector:
 #  failure-domain.beta.kubernetes.io/zone: US-ASHBURN-AD-1
 
+# An example of using tolerations for scheduling the operator pods :
+# tolerations:
+#   - key: "dedicated"
+#     operator: "Equal"
+#     value: "system"
+#     effect: "NoSchedule"
+
 # If you would like to debug the Helm output with `helm template`, you need
 # to turn disableLookups on as during `helm template` Helm won't contact the kube API
 # and all lookups will thus fail

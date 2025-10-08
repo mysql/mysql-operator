@@ -23,8 +23,8 @@ def read_ini_cfg(vault_cfg_path: str, profile_name) -> dict:
 def read_vault_cfg(vault_cfg_path: str, profile_name = "OCI") -> dict:
     return read_ini_cfg(vault_cfg_path, profile_name)
 
-def check_oci_variables(testobj: KeyRingBase):
-    for podname in ("mycluster-0", "mycluster-1", "mycluster-2"):
+def check_oci_variables(testobj: KeyRingBase, pods_to_check):
+    for podname in pods_to_check:
         with testobj.subTest(podname=podname):
             vault_cfg = testobj.__class__.vault_cfg
             with mutil.MySQLPodSession(testobj.ns, podname, testobj.user, testobj.password) as s:
@@ -96,7 +96,7 @@ class KeyRingWithOciVault(KeyRingBase):
         self.check_variables()
 
         print("Checking OCI variables")
-        check_oci_variables(self)
+        check_oci_variables(self, self.pods_to_check)
 
     def test_9_destroy(self):
         self.destroy_cluster()
@@ -141,12 +141,12 @@ class KeyRingWithOciVaultConvertPluginToComponent(KeyRingBase):
 
         print("Checking operator version")
         change_operator_version(store_operator_log=lambda: self.take_log_operator_snapshot())
-        initial_initconf = kutil.get_cm(self.ns, "mycluster-initconf")
+        initial_initconf = kutil.get_cm(self.ns, f"{self.cluster_name}-initconf")
         if "03-keyring-oci.cnf" in initial_initconf["data"]:
             print(initial_initconf["data"]["03-keyring-oci.cnf"])
         for upgrade_version in [ g_ts_cfg.current_lts_version, g_ts_cfg.version_tag ]:
-            print(f"Upgrading cluster to {upgrade_version} servers")
-            kutil.patch_ic(self.ns, "mycluster", {"spec": {
+            print(f"Upgrading cluster {self.cluster_name} to {upgrade_version} servers")
+            kutil.patch_ic(self.ns, self.cluster_name, {"spec": {
                 "version": upgrade_version
             }}, type="merge")
 
@@ -155,16 +155,13 @@ class KeyRingWithOciVaultConvertPluginToComponent(KeyRingBase):
                 # self.logger.debug(json.loads(po["metadata"].get("annotations", {}).get("mysql.oracle.com/membership-info", "{}")))
                 return json.loads(po["metadata"].get("annotations", {}).get("mysql.oracle.com/membership-info", "{}")).get("version", "")
 
-            self.wait(check_done, args=("mycluster-2", ),
-                    check=lambda s: s.startswith(upgrade_version), timeout=150, delay=10)
-            self.wait(check_done, args=("mycluster-1", ),
-                    check=lambda s: s.startswith(upgrade_version), timeout=150, delay=10)
-            self.wait(check_done, args=("mycluster-0", ),
-                    check=lambda s: s.startswith(upgrade_version), timeout=150, delay=10)
+            for instance in reversed(range(0, self.cluster_size)):
+                self.wait(check_done, args=(f"{self.cluster_name}-{instance}", ),
+                        check=lambda s: s.startswith(upgrade_version), timeout=150, delay=10)
 
             print("Checking OCI variables")
-            check_oci_variables(self)
-            upgraded_initconf = kutil.get_cm(self.ns, "mycluster-initconf")
+            check_oci_variables(self, self.pods_to_check)
+            upgraded_initconf = kutil.get_cm(self.ns, f"{self.cluster_name}-initconf")
             if "03-keyring-oci.cnf" in upgraded_initconf["data"]:
                 print(upgraded_initconf["data"]["03-keyring-oci.cnf"])
 

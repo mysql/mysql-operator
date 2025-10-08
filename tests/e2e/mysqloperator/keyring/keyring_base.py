@@ -24,30 +24,38 @@ class KeyRingBase(tutil.OperatorTest):
 
     @classmethod
     def setUpClass(cls):
+        cls.random_suffix = auxutil.random_string(10)
+
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
 
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-1")
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-2")
+        for instance in range(0, cls.cluster_size):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
+
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, "mycluster-2")
-        g_full_log.stop_watch(cls.ns, "mycluster-1")
-        g_full_log.stop_watch(cls.ns, "mycluster-0")
+        for instance in reversed(range(0, cls.cluster_size)):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
+    @property
+    def cluster_secret_name(self) -> str:
+        return f"{self.ns}-mypwds-{self.random_suffix}"
+
+    @property
+    def cluster_name(self) -> str:
+        return f"mycluster-{self.random_suffix}"
+
     def generate_keyring_name(self):
-        random_suffix = auxutil.random_string(8)
-        keyring_name = f"{g_ts_cfg.k8s_context}_keyring_{random_suffix}"
+        keyring_name = f"{g_ts_cfg.k8s_context}_keyring_{self.random_suffix}"
         self.logger.debug(f"keyring name: {keyring_name}")
         return keyring_name
 
     def verify_table_encrypted(self, session, schema_name, table_name, encryption_expected):
         schema_table_name = f"{schema_name}/{table_name}"
-        query = f"SELECT name, encryption FROM information_Schema.innodb_tablespaces where name = '{schema_table_name}'"
+        query = f"SELECT name, encryption FROM INFORMATION_SCHEMA.innodb_tablespaces where name = '{schema_table_name}'"
         table_info = session.query_sql(query).fetch_one()
         self.assertEqual(table_info[0], schema_table_name)
         is_table_encrypted = table_info[1] == 'Y'
@@ -72,7 +80,7 @@ class KeyRingBase(tutil.OperatorTest):
         yaml = f"""apiVersion: v1
 kind: Secret
 metadata:
-  name: mypwds
+  name: {self.cluster_secret_name}
 stringData:
   rootUser: {self.user}
   rootHost: localhost
@@ -81,9 +89,9 @@ stringData:
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  secretName: mypwds
+  secretName: {self.cluster_secret_name}
   instances: {self.cluster_size}
   router:
     instances: {self.routers_count}
@@ -92,15 +100,18 @@ spec:
 {keyring_spec}
 """
         kutil.apply(self.ns, yaml)
-        for i in range(0, self.cluster_size):
-          self.wait_pod(f"mycluster-{i}", "Running")
 
-        self.wait_ic("mycluster", "ONLINE", num_online=self.cluster_size)
+        self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        self.wait_routers("mycluster-router-*", self.routers_count)
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
+
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         if not no_check:
-            check_all(self, self.ns, "mycluster",
+            check_all(self, self.ns, self.cluster_name,
                 instances=self.cluster_size, routers=self.routers_count, primary=0)
 
     def create_volume(self, volume_name):
@@ -161,37 +172,42 @@ data:
         self.__class__.keyring_name = self.generate_keyring_name()
         keyring_name = self.__class__.keyring_name
 
-        print(f"Storing '{self.secret_string}' with AES cipher into the keyring store on mycluster-0")
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", self.user, self.password) as s:
+        print(f"Storing '{self.secret_string}' with AES cipher into the keyring store on {self.cluster_name}-0")
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", self.user, self.password) as s:
             self.assertTupleEqual(
                 s.query_sql(f"SELECT keyring_key_store('{keyring_name}', 'AES', '{self.secret_string}')").fetch_one(),
                 (1,))
 
-        pods_to_check = ['mycluster-0']
+        pods_to_check = [f'{self.cluster_name}-0']
         if check_all_pods:
-            pods_to_check += ['mycluster-1', 'mycluster-2']
+            pods_to_check = self.pods_to_check
             # On keyring_file/keyring_encrypted_file the values are cached, by
             # restarting we can read them from other nodes
-            print("Shutting down mycluster-1 and waiting to reach Terminating")
-            with mutil.MySQLPodSession(self.ns, "mycluster-1", self.user, self.password) as s:
+            print(f"Shutting down {self.cluster_name}-1 and waiting to reach Terminating")
+            with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-1", self.user, self.password) as s:
                 s.exec_sql("SHUTDOWN")
-                kutil.wait_pod(self.ns, "mycluster-1", "Terminating")
+                kutil.wait_pod(self.ns, f"{self.cluster_name}-1", "Terminating")
 
-            print("Shutting down mycluster-2 and waiting to reach Terminating")
-            with mutil.MySQLPodSession(self.ns, "mycluster-2", self.user, self.password) as s:
+            print(f"Shutting down {self.cluster_name}-2 and waiting to reach Terminating")
+            with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-2", self.user, self.password) as s:
                 s.exec_sql("SHUTDOWN")
-                kutil.wait_pod(self.ns, "mycluster-2", "Terminating")
+                kutil.wait_pod(self.ns, f"{self.cluster_name}-2", "Terminating")
 
-            print("Checking that mycluster-1 is back ready")
-            kutil.wait_pod(self.ns, "mycluster-1", checkready=True)
-            print("Checking that mycluster-2 is back ready")
-            kutil.wait_pod(self.ns, "mycluster-2", checkready=True)
+            print(f"Checking that {self.cluster_name}-1 is back ready")
+            kutil.wait_pod(self.ns, f"{self.cluster_name}-1", checkready=True)
+            print(f"Checking that {self.cluster_name}-2 is back ready")
+            kutil.wait_pod(self.ns, f"{self.cluster_name}-2", checkready=True)
 
         print(f"Reading a key from {keyring_name} on pods {pods_to_check}")
         self.read_key(keyring_name, pods_to_check)
 
-    def read_key(self, keyring_name,
-                 pods_to_check=("mycluster-0", "mycluster-1", "mycluster-2")):
+    @property
+    def pods_to_check(self):
+        return tuple([f"{self.cluster_name}-{instance}" for instance in range(0, self.cluster_size)])
+
+    def read_key(self, keyring_name, pods_to_check=None):
+        if pods_to_check is None:
+            pods_to_check = self.pods_to_check
         for pod_name in pods_to_check:
             with self.subTest(pod_name=pod_name):
                 print(f"Checking key fetch on {pod_name}")
@@ -201,14 +217,14 @@ data:
                         (self.secret_string, ))
 
     def check_variables(self):
-        for podname in ("mycluster-0", "mycluster-1", "mycluster-2"):
+        for podname in (f"{self.cluster_name}-0", f"{self.cluster_name}-1", f"{self.cluster_name}-2"):
             with self.subTest(podname=podname):
                 print(f"Checking keyring_operations variable on {podname}")
                 with mutil.MySQLPodSession(self.ns, podname, self.user, self.password) as s:
                     self.check_variable(s, 'keyring_operations', 'ON')
 
     def encrypt_tables(self):
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", self.user, self.password) as s:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", self.user, self.password) as s:
             schema_name = 'keyring_test_schema'
             s.exec_sql(f"CREATE SCHEMA {schema_name}")
             s.exec_sql(f"USE {schema_name}")
@@ -228,10 +244,11 @@ data:
             s.exec_sql(f"DROP SCHEMA {schema_name}")
 
     def destroy_cluster(self):
-        kutil.delete_ic(self.ns, "mycluster")
+        kutil.delete_ic(self.ns, self.cluster_name)
 
-        self.wait_pods_gone("mycluster-*")
-        self.wait_routers_gone("mycluster-router-*")
-        self.wait_ic_gone("mycluster")
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
 
-        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
+        kutil.delete_pvc(self.ns, None)

@@ -162,7 +162,7 @@ spec:
   {{- end }}
 {{- end }}
   # Keyring
-{{- if (or (((.Values).keyring).kmip) (((.Values).keyring).file) (((.Values).keyring).encryptedFile) (((.Values).keyring).oci) ) }}
+{{- if (or (((.Values).keyring).kmip) (((.Values).keyring).file) (((.Values).keyring).encryptedFile) (((.Values).keyring).oci) (((.Values).keyring).hashicorp) ) }}
   keyring:
 {{- $keyringAlreadySpecified := "" }}
   {{- if (((.Values).keyring).kmip) }}
@@ -233,6 +233,7 @@ spec:
       caCertificates: {{ .caCertificates }}
       {{- end }}
       auth:
+        {{- $hashicorpAuthAlreadySpecified := "" }}
         {{- if .auth.approle}}
           {{- if $hashicorpAuthAlreadySpecified }}
             {{- $err := printf "Authentication mechanism '%s' already specified" $hashicorpAuthAlreadySpecified }}
@@ -255,6 +256,7 @@ spec:
           token:
             tokenSecret: {{ .auth.token.tokenSecret }}
         {{- end}}
+    {{- end }}
   {{- end }}
 
   {{- if (((.Values).keyring).oci) }}

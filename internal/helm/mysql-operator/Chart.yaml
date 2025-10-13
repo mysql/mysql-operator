@@ -1,7 +1,7 @@
 apiVersion: v2
-appVersion: "9.5.0-2.2.6"
+appVersion: "9.6.0-2.2.7"
 name: mysql-operator
 description: MySQL Operator Helm Enterprise Chart for deploying MySQL InnoDB Cluster in Kubernetes
 type: application
-version: "2.2.6"
+version: "2.2.7"
 icon: https://www.mysql.com/common/logos/logo-mysql-170x115.png

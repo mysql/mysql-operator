@@ -1,7 +1,7 @@
 apiVersion: v2
-appVersion: "8.0.44"
+appVersion: "8.0.45"
 name: mysql-innodbcluster
 description: MySQL InnoDB Cluster Helm Chart for deploying MySQL InnoDB Cluster in Kubernetes
 type: application
-version: "2.0.20"
+version: "2.0.21"
 icon: https://www.mysql.com/common/logos/logo-mysql-170x115.png

@@ -19,7 +19,7 @@ else:
 
 
 # Constants
-OPERATOR_VERSION = "2.0.19"
+OPERATOR_VERSION = "2.0.20"
 OPERATOR_EDITION = Edition.community
 OPERATOR_EDITION_NAME_TO_ENUM = { edition.value : edition.name for edition in Edition }
 

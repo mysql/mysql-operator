@@ -1261,6 +1261,17 @@ class KeyringHashicorpVaultSpec(KeyringSpecBase):
             if self.caCertificate:
                data[self.component_manifest_name]["ca_path"] = "/etc/mysql-keyring-ca/ca.pem"
 
+    @property
+    def component_manifest_storage_type(self) -> KeyringConfigStorage:
+        if self.authMode == "approle":
+            return KeyringConfigStorage.SECRET
+        elif self.authMode == "token":
+            return KeyringConfigStorage.CONFIGMAP
+        else:
+            # should never happen, should be caught before while parsing
+            raise kopf.TemporaryError("Invalid auth mode")
+
+
 class KeyringOciSpec(KeyringSpecBase):
     user: Optional[str] = None
     keySecret: Optional[str] = None

@@ -17,35 +17,40 @@ class ClusterResources(tutil.OperatorTest):
     cluster resource allocation/affinity/taint/podSpec
     """
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    _cluster_size = 1
+    _routers_count = 1
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
 
-        g_full_log.watch_mysql_pod(cls.ns, "myrouterspec-0")
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, "myrouterspec-0")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
     def test_1_router_spec_affinity(self):
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
         yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: myrouterspec
+  name: {self.cluster_name}
 spec:
-  instances: 1
-  secretName: mypwds
+  instances: {self.cluster_size}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
   router:
-    instances: 1
+    instances: {self.routers_count}
     version: "{g_ts_cfg.version_tag}"
     podSpec:
       affinity:
@@ -62,17 +67,21 @@ spec:
         kutil.apply(self.ns, yaml)
 
         # ensure router pods don't get created until the cluster is ONLINE
-        check_routing.check_pods(self, self.ns, "myrouterspec", 0)
+        check_routing.check_pods(self, self.ns, self.cluster_name, 0)
 
-        self.wait_pod("myrouterspec-0", "Running")
+        self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        self.wait_ic("myrouterspec", "ONLINE", 1)
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        self.wait_routers("myrouterspec-router-*", 1)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
-        check_all(self, self.ns, "myrouterspec", instances=1, routers=1)
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
 
-        p = kutil.ls_po(self.ns, pattern="myrouterspec-router-.*")[0]
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count)
+
+        p = kutil.ls_po(self.ns, pattern=f"{self.cluster_name}-router-.*")[0]
         routerPod = kutil.get_po(self.ns, p["NAME"])
 
         podAntiAffinity = routerPod["spec"]["affinity"]["podAntiAffinity"]
@@ -84,9 +93,10 @@ spec:
 
 
     def test_9_destroy(self):
-        kutil.delete_ic(self.ns, "myrouterspec", 180)
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_pvc(self.ns, None)
 
-        self.wait_pod_gone("myrouterspec-0")
-        self.wait_ic_gone("myrouterspec")
-
-        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_secret(self.ns, self.cluster_secret_name)

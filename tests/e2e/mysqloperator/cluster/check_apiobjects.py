@@ -97,8 +97,7 @@ def check_cluster_spec_compliant(test, icobj):
         test.assertFalse(rs, msg=meta["name"]+"-router exists but isn't expected")
 
     # check actual pod count
-    test.assertEqual(icobj["status"]["cluster"]
-                     ["onlineInstances"], spec["instances"])
+    test.assertEqual(icobj["status"]["cluster"]["onlineInstances"], spec["instances"])
 
     pods = kutil.ls_po(meta["namespace"])
     router_infix = "-router-"
@@ -128,7 +127,8 @@ def check_pod_spec_compliant(test, icobj, pod):
     # hardcoded/expected values
     spec = pod["spec"]
 
-    test.assertEqual(spec["terminationGracePeriodSeconds"], g_ts_cfg.get_expected_termination_grace_period())
+    if g_ts_cfg.check_termination_grace_period:
+        test.assertEqual(spec["terminationGracePeriodSeconds"], g_ts_cfg.get_expected_termination_grace_period())
     test.assertEqual(spec["restartPolicy"], "Always")
     test.assertEqual(spec["subdomain"], icobj["metadata"]["name"]+"-instances")
 
@@ -291,5 +291,5 @@ def check_cluster_spec(test, icobj, instances, routers):
         test.assertEqual(icobj["spec"]["instances"], instances)
 
     if routers is not None:
-        test.assertEqual(icobj["spec"].get(
-            "router", {}).get("instances", 0), routers)
+        router_instances = icobj["spec"].get("router", {}).get("instances", 0)
+        test.assertEqual(router_instances, routers)

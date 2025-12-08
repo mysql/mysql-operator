@@ -25,18 +25,23 @@ class ClusterSpecAdmissionChecks(tutil.OperatorTest):
     """
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
 
+    _cluster_size = 1
+    _routers_count = 0
+
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
 
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-1")
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, "mycluster-1")
-        g_full_log.stop_watch(cls.ns, "mycluster-0")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
@@ -58,15 +63,16 @@ class ClusterSpecAdmissionChecks(tutil.OperatorTest):
         Checks:
         - Invalid field in spec
         """
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  secretName: mypwds
-  bogus: 1234
+  secretName: {self.cluster_secret_name}
+  instances: {self.cluster_size}
   tlsUseSelfSigned: true
+  bogus: 1234
 """
         self.assertApplyFails(
             yaml, r'ValidationError\(InnoDBCluster.spec\): unknown field "bogus" in com.oracle.mysql.v2.InnoDBCluster.spec' if kutil.server_version() < '1.25' else
@@ -77,18 +83,23 @@ spec:
         Checks:
         - cluster name can't be longer than allowed in innodb cluster (40 chars)
         """
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: veryveryveryveryveryveryveryverylongnamex
 spec:
-  secretName: mypwds
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
 """
+        if kutil.server_version() < '1.24':
+            too_long_message =  r'metadata.name in body should be at most 40 chars long'
+        elif kutil.server_version() < '1.31':
+            too_long_message = 'The InnoDBCluster "veryveryveryveryveryveryveryverylongnamex" is invalid: metadata.name: Too long: may not be longer than 40'
+        else:
+            too_long_message = 'The InnoDBCluster "veryveryveryveryveryveryveryverylongnamex" is invalid: metadata.name: Too long: may not be more than 40 bytes'
         self.assertApplyFails(
-            yaml, r'metadata.name in body should be at most 40 chars long' if kutil.server_version() < '1.24' else
-                 'The InnoDBCluster "veryveryveryveryveryveryveryverylongnamex" is invalid: metadata.name: Too long: may not be longer than 40')
+            yaml, too_long_message)
 
     def test_1_no_name(self):
         """
@@ -96,11 +107,11 @@ spec:
         - metadata.name is mandatory
         (blocked even before the schema validation)
         """
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 spec:
-  secretName: mypwds
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
 """
         self.assertApplyFails(yaml, r'resource name may not be empty')
@@ -110,28 +121,28 @@ spec:
         Checks:
         - spec.secretName is mandatory
         """
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 """
         self.assertApplyFails(
             yaml, r'ValidationError\(InnoDBCluster\): missing required field "spec" in com.oracle.mysql.v2.InnoDBCluster' if kutil.server_version() < '1.25' else
-                  r'The InnoDBCluster "mycluster" is invalid: spec: Required value')
+                  rf'The InnoDBCluster "{self.cluster_name}" is invalid: spec: Required value')
 
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: 1
   tlsUseSelfSigned: true
+  instances: 1
 """
         self.assertApplyFails(
             yaml, r'error validating data: ValidationError\(InnoDBCluster.spec\): missing required field "secretName"' if kutil.server_version() < '1.25' else
-                  r'The InnoDBCluster "mycluster" is invalid: spec.secretName: Required value')
+                  rf'The InnoDBCluster "{self.cluster_name}" is invalid: spec.secretName: Required value')
 
     def test_1_instances(self):
         """
@@ -139,53 +150,53 @@ spec:
         - Invalid values for spec.instances (too small, too big, not number)
         """
         # This will fail on 1.18 and 1.19 (and previous due to https://github.com/kubernetes/kubernetes/issues/90128)
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  secretName: mypwds
-  instances: 0
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
+  instances: 0
 """
         self.assertApplyFails(
             yaml, 'spec.instances: Invalid value: 0: spec.instances in body should be greater than or equal to 1')
 
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  secretName: mypwds
-  instances: 14
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
+  instances: 14
 """
         self.assertApplyFails(
             yaml, 'spec.instances: Invalid value: 14: spec.instances in body should be less than or equal to 9')
 
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  secretName: mypwds
-  instances: "bla"
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
+  instances: "bla"
 """
         self.assertApplyFails(
             yaml, r'ValidationError\(InnoDBCluster.spec.instances\): invalid type for com.oracle.mysql.v2.InnoDBCluster.spec.instances: got "string", expected "integer"' if kutil.server_version() < '1.25' else
-                  r'The InnoDBCluster "mycluster" is invalid: spec.instances: Invalid value: "string": spec.instances in body must be of type integer: "string"')
+                  rf'The InnoDBCluster "{self.cluster_name}" is invalid: spec.instances: Invalid value: "string": spec.instances in body must be of type integer: "string"')
 
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  secretName: mypwds
+  secretName: {self.cluster_secret_name}
   mycnf: 42
   tlsUseSelfSigned: true
 """
@@ -208,26 +219,29 @@ class ClusterSpecRuntimeChecksCreation(tutil.OperatorTest):
     - deleting cluster with error should be possible
     """
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    _cluster_size = 5
+    _routers_count = 0
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
 
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-1")
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, "mycluster-1")
-        g_full_log.stop_watch(cls.ns, "mycluster-0")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
     def test_0_prepare(self):
         # this also checks that the root user can be completely customized
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="admin", root_host="%", root_pass="secret")
+        kutil.create_user_secrets(self.ns, "mypwds", root_user="admin", root_host="%", root_pass="secret")
 
     def test_1_bad_secret_delete(self):
         """
@@ -235,35 +249,46 @@ class ClusterSpecRuntimeChecksCreation(tutil.OperatorTest):
         - secret that doesn't exist
         - cluster can be deleted after the failure
         """
-        yaml = """
+        for cluster_size in (1, 2, 3, 5):
+            self.cluster_size = cluster_size
+            for routers_count in (0, 1, 2, 5):
+                self.routers_count = routers_count
+                yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: 1
+  instances: {self.cluster_size}
+  router:
+    instances: {self.routers_count}
   secretName: badsecret
   tlsUseSelfSigned: true
   podSpec:
-    terminationGracePeriodSeconds: 10
+    terminationGracePeriodSeconds: 5
 """
-        start_time = isotime()
+                start_time = isotime()
 
-        kutil.apply(self.ns, yaml)
+                kutil.apply(self.ns, yaml)
 
-        self.wait_pod("mycluster-0", "Pending")
+                self.wait_ic(self.cluster_name, "PENDING")
 
-        self.wait_got_pod_event(
-            "mycluster-0", after=start_time, type="Warning",
-            reason="FailedMount",
-            msg='MountVolume.SetUp failed for volume "rootcreds" : secret "badsecret" not found')
+                for instance in range(0, self.cluster_size):
+                    self.wait_pod(f"{self.cluster_name}-{instance}", ["Pending"])
 
-        kutil.delete_ic(self.ns, "mycluster")
+                for instance in range(0, self.cluster_size):
+                  self.wait_got_pod_event(
+                      f"{self.cluster_name}-{instance}", after=start_time, type="Warning",
+                      reason="FailedMount",
+                      msg='MountVolume.SetUp failed for volume "rootcreds" : secret "badsecret" not found')
 
-        self.wait_pod_gone("mycluster-0")
-        self.wait_routers_gone("mycluster-router-*")
-        self.wait_ic_gone("mycluster")
-        kutil.delete_pvc(self.ns, None)
+                kutil.delete_ic(self.ns, self.cluster_name)
+
+                self.wait_pods_gone(f"{self.cluster_name}-\d")
+                self.wait_routers_gone(f"{self.cluster_name}-router-*")
+                self.wait_ic_gone(self.cluster_name)
+                kutil.delete_secret(self.ns, self.cluster_secret_name)
+                kutil.delete_pvc(self.ns, None)
 
     def test_1_bad_secret_recover(self):
         pass
@@ -275,22 +300,24 @@ spec:
         """
 
         # create cluster with mostly default configs, but a specific server version
-        yaml = """
+        self.cluster_size = 1
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="admin", root_host="%", root_pass="secret")
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: 1
-  secretName: mypwds
+  instances: {self.cluster_size}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
-  version: "5.7.30"
   podSpec:
-    terminationGracePeriodSeconds: 10
+    terminationGracePeriodSeconds: 5
+  version: "5.7.30"
 """
         kutil.apply(self.ns, yaml)
 
-        self.wait(kutil.get_ic_ev, (self.ns, "mycluster"),
+        self.wait(kutil.get_ic_ev, (self.ns, self.cluster_name),
                   lambda evs: len(evs) > 0)
 
         # version is invalid/not supported, runtime check should prevent the
@@ -301,14 +328,15 @@ spec:
         # there should be an event for the cluster resource indicating the
         # problem
         self.assertGotClusterEvent(
-            "mycluster", type="Error", reason="InvalidArgument", msg="version 5.7.30 must be between .*")
+            self.cluster_name, type="Error", reason="InvalidArgument", msg="version 5.7.30 must be between .*")
 
         # deleting the ic should work despite the error
-        kutil.delete_ic(self.ns, "mycluster")
+        kutil.delete_ic(self.ns, self.cluster_name)
 
-        self.wait_pod_gone("mycluster-0")
-        self.wait_routers_gone("mycluster-router-*")
-        self.wait_ic_gone("mycluster")
+        self.wait_pods_gone(f"{self.cluster_name}-\d")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
         kutil.delete_pvc(self.ns, None)
 
     def test_1_unsupported_version_recover(self):
@@ -318,41 +346,44 @@ spec:
         """
 
         # create cluster with mostly default configs, but a specific server version
-        yaml = """
+        self.cluster_size = 1
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="admin", root_host="%", root_pass="secret")
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: 1
-  secretName: mypwds
+  instances: {self.cluster_size}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
   version: "5.7.30"
   podSpec:
-    terminationGracePeriodSeconds: 10
+    terminationGracePeriodSeconds: 5
 """
         kutil.apply(self.ns, yaml)
 
         # the ic object will error out before sts is created
-        self.wait(kutil.get_ic_ev, (self.ns, "mycluster"),
+        self.wait(kutil.get_ic_ev, (self.ns, self.cluster_name),
                   lambda evs: len(evs) > 0)
 
         # fixing the version should let the cluster resume creation
-        kutil.patch_ic(self.ns, "mycluster", {"spec": {
+        kutil.patch_ic(self.ns, self.cluster_name, {"spec": {
             "version": g_ts_cfg.version_tag
         }}, type="merge")
 
         # check cluster ok now
-        self.wait_pod("mycluster-0", "Running")
-
-        self.wait_ic("mycluster", "ONLINE")
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
+        self.wait_ic(self.cluster_name, "ONLINE")
 
         # cleanup
-        kutil.delete_ic(self.ns, "mycluster")
+        kutil.delete_ic(self.ns, self.cluster_name)
 
-        self.wait_pod_gone("mycluster-0")
-        self.wait_routers_gone("mycluster-router-*")
-        self.wait_ic_gone("mycluster")
+        self.wait_pods_gone(f"{self.cluster_name}-\d")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
         kutil.delete_pvc(self.ns, None)
 
     def test_2_bad_pod_delete(self):
@@ -362,37 +393,52 @@ spec:
         # create cluster with mostly default configs, but a specific option
         # that will be accepted by the runtime checks but will fail at pod
         # creation
-        yaml = """
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="admin", root_host="%", root_pass="secret")
+
+        for cluster_size in (1, 2, 3, 5):
+            self.cluster_size = cluster_size
+            for routers_count in (0, 1, 2, 5):
+                self.routers_count = routers_count
+                with self.subTest(cluster_size=self.cluster_size, routers_count=self.routers_count):
+                    kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="admin", root_host="%", root_pass="secret")
+                    yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: 1
+  instances: {self.cluster_size}
   router:
-    instances: 0
-  secretName: mypwds
+    instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
+  podSpec:
+    terminationGracePeriodSeconds: 5
   imageRepository: invalid
 """
-        kutil.apply(self.ns, yaml)
+                    kutil.apply(self.ns, yaml)
 
-        self.wait_ic("mycluster", "PENDING")
-        self.wait_pod("mycluster-0", ["Pending"])
+                    self.wait_ic(self.cluster_name, "PENDING")
+                    for instance in range(0, self.cluster_size):
+                        self.wait_pod(f"{self.cluster_name}-{instance}", "Pending")
 
-        self.assertEqual(len(kutil.ls_po(self.ns)), 1)
-        self.assertEqual(len(kutil.ls_sts(self.ns)), 1)
+                    self.assertEqual(len(kutil.ls_po(self.ns)), cluster_size) # routers are not up until the cluster is ONLINE
+                    print(kutil.ls_sts(self.ns))
+                    self.assertEqual(len(kutil.ls_sts(self.ns)), 1)
 
-        def pod_error():
-            clusterStatus = kutil.ls_pod(self.ns, "mycluster-0")[0]["STATUS"]
-            return clusterStatus in ("Init:ErrImageNeverPull", "Init:ErrImagePull", "Init:ImagePullBackOff")
+                    def pod_error(idx):
+                        pod = kutil.ls_pod(self.ns, f"{self.cluster_name}-{idx}")
+                        pod_status = pod[0]["STATUS"]
+                        return pod_status in ("Init:ErrImageNeverPull", "Init:ErrImagePull", "Init:ImagePullBackOff")
 
-        self.wait(pod_error)
+                    for instance in range(0, cluster_size):
+                        self.wait(pod_error, args=(instance,), delay=10)
 
-        kutil.delete_ic(self.ns, "mycluster")
-        self.wait_pod_gone("mycluster-0")
-        self.wait_ic_gone("mycluster")
-        kutil.delete_pvc(self.ns, None)
+                    kutil.delete_ic(self.ns, self.cluster_name)
+                    self.wait_pods_gone(f"{self.cluster_name}-\d")
+                    self.wait_ic_gone(self.cluster_name)
+                    kutil.delete_secret(self.ns, self.cluster_secret_name)
+                    kutil.delete_pvc(self.ns, None)
 
     def test_2_bad_pod_creation(self):
         """
@@ -403,47 +449,63 @@ spec:
         # create cluster with mostly default configs, but a specific option
         # that will be accepted by the runtime checks but will fail at pod
         # creation
-        yaml = """
+        self.assertEqual(len(kutil.ls_po(self.ns)), 0)
+        self.assertEqual(len(kutil.ls_sts(self.ns)), 0)
+        self.assertEqual(len(kutil.ls_ic(self.ns)), 0)
+
+
+        for cluster_size in (1, 2, 3, 5):
+            self.cluster_size = cluster_size
+            for routers_count in (0, 1, 2, 5):
+                self.routers_count = routers_count
+                with self.subTest(cluster_size=self.cluster_size, routers_count=self.routers_count):
+                    kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="admin", root_host="%", root_pass="secret")
+                    yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: 1
+  instances: {self.cluster_size}
   router:
-    instances: 0
-  secretName: mypwds
+    instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
+  podSpec:
+    terminationGracePeriodSeconds: 5
   imageRepository: invalid
 """
-        kutil.apply(self.ns, yaml)
+                    kutil.apply(self.ns, yaml)
 
-        self.wait_ic("mycluster", "PENDING")
-        self.wait_pod("mycluster-0", ["Pending"])
+                    self.wait_ic(self.cluster_name, "PENDING")
+                    for instance in range(0, self.cluster_size):
+                        self.wait_pod(f"{self.cluster_name}-{instance}", ["Pending"])
 
-        self.assertEqual(len(kutil.ls_po(self.ns)), 1)
-        self.assertEqual(len(kutil.ls_sts(self.ns)), 1)
+                    self.assertEqual(len(kutil.ls_po(self.ns)), cluster_size) # routers are not up until the cluster is ONLINE
+                    self.assertEqual(len(kutil.ls_sts(self.ns)), 1)
 
-        def pod_error():
-            clusterStatus = kutil.ls_pod(self.ns, "mycluster-0")[0]["STATUS"]
-            return clusterStatus in ("Init:ErrImageNeverPull", "Init:ErrImagePull", "Init:ImagePullBackOff")
+                    def pod_error(idx):
+                        pod = kutil.ls_pod(self.ns, f"{self.cluster_name}-{idx}")
+                        pod_status = pod[0]["STATUS"]
+                        return pod_status in ("Init:ErrImageNeverPull", "Init:ErrImagePull", "Init:ImagePullBackOff")
 
-        self.wait(pod_error)
+                    for instance in range(0, self.cluster_size):
+                        self.wait(pod_error, args=(instance,), delay=10)
 
-        # the only way out when ic fails during creation is deleting and retrying
-        kutil.delete_ic(self.ns, "mycluster")
+                    # the only way out when ic fails during creation is deleting and retrying
+                    kutil.delete_ic(self.ns, self.cluster_name)
 
-        self.wait_pod_gone("mycluster-0")
-        self.wait_ic_gone("mycluster")
-        kutil.delete_pvc(self.ns, None)
+                    self.wait_pods_gone(f"{self.cluster_name}-\d")
+                    self.wait_ic_gone(self.cluster_name)
+                    kutil.delete_secret(self.ns, self.cluster_secret_name)
+                    kutil.delete_pvc(self.ns, None)
 
     def test_9_destroy(self):
-        kutil.delete_ic(self.ns, "mycluster")
-
-        self.wait_pod_gone("mycluster-0")
-        self.wait_ic_gone("mycluster")
-
-        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-\d")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
+        kutil.delete_pvc(self.ns, None)
 
 
 class ClusterSpecRuntimeChecksModification(tutil.OperatorTest):
@@ -452,88 +514,93 @@ class ClusterSpecRuntimeChecksModification(tutil.OperatorTest):
     exist and have invalid spec changes made.
     """
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    _cluster_size = 3
+    _routers_count = 0
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
 
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-1")
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-2")
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, "mycluster-2")
-        g_full_log.stop_watch(cls.ns, "mycluster-1")
-        g_full_log.stop_watch(cls.ns, "mycluster-0")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
     def test_0_prepare(self):
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
         # create cluster with mostly default configs
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: 3
-  secretName: mypwds
+  instances: {self.cluster_size}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
+  podSpec:
+    terminationGracePeriodSeconds: 5
 """
 
         kutil.apply(self.ns, yaml)
 
-        self.wait_pod("mycluster-2", "Running")
-        self.wait_ic("mycluster", "ONLINE", 3)
+        self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
+
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
+
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
+
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
 
     def test_1_bad_upgrade(self):
         """
         Change spec with invalid version, it should be ignored but notified in events.
         """
-        ic_ev_num = len(kutil.get_ic_ev(self.ns, "mycluster"))
-
-        kutil.patch_ic(self.ns, "mycluster", {"spec": {
-            "version": "100.8.8"
+        prev_ic_evs = kutil.get_ic_ev(self.ns, self.cluster_name)
+        ic_ev_num = len(prev_ic_evs)
+        invalid_upgrade_version = "100.8.8"
+        kutil.patch_ic(self.ns, self.cluster_name, {"spec": {
+            "version": invalid_upgrade_version
         }}, type="merge")
 
         # ensure cluster is still healthy
-        self.wait_pod("mycluster-0", "Running")
-        self.wait_pod("mycluster-1", "Running")
-        self.wait_pod("mycluster-2", "Running")
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        self.wait_ic("mycluster", "ONLINE", 3)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
-        # ensure new events arrived
-        self.wait(kutil.get_ic_ev, (self.ns, "mycluster"),
+        self.wait(kutil.get_ic_ev, (self.ns, self.cluster_name),
                   lambda evs: len(evs) > ic_ev_num)
 
         # there should be events for the cluster resource indicating the update problem
         self.assertGotClusterEvent(
-            "mycluster", type="Normal", reason="Logging", msg=rf"Propagating spec.version=100.8.8 for {self.ns}/mycluster \(was None\)")
+            self.cluster_name, type="Normal", reason="SpecChanged", msg=r"Field spec.version modified")
         self.assertGotClusterEvent(
-            "mycluster", type="Error", reason="Logging", msg="Handler '.*?' failed permanently: version 100.8.8 must be between .*")
+            self.cluster_name, type="Normal", reason="SpecChanged", msg=r"CR changed")
         self.assertGotClusterEvent(
-            "mycluster", type="Normal", reason="Logging", msg="Updating is processed: 0 succeeded; 1 failed.")
-
-        # version is invalid/not supported, runtime check should prevent the
-        # sts from being created
-        self.assertTrue(kutil.ls_po(self.ns))
-        self.assertTrue(kutil.ls_sts(self.ns))
+            self.cluster_name, type="Normal", reason="VersionChangeAttempt", msg=rf"Attempting version change from \d+\.\d+\.\d+ to {invalid_upgrade_version}")
+        self.assertGotClusterEvent(
+            self.cluster_name, type="Warning", reason="SpecChanged", msg=rf"Permanent error: version {invalid_upgrade_version} must be between .*")
 
     def test_9_destroy(self):
-        kutil.delete_ic(self.ns, "mycluster", 180)
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_pvc(self.ns, None)
 
-        self.wait_pod_gone("mycluster-2")
-        self.wait_pod_gone("mycluster-1")
-        self.wait_pod_gone("mycluster-0")
-        self.wait_ic_gone("mycluster")
-
-        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
 # test only 1 or 2 bad syntax spec values and do the rest as unit-tests

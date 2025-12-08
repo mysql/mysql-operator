@@ -87,79 +87,80 @@ def check_all(test, ns, name, instances, routers=None, primary=None, count_sessi
 
 class ClusterSetBase(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
-    primary_cluster_name = "mycluster-1"
-    replica_1_cluster_name = "mycluster-20"
-    replica_2_cluster_name = "mycluster-21"
+
     root_user = "root"
     root_host = "%"
     root_pass = "sakila"
-    secret_name = "mypwds"
-    instances = 1
-    router_instances = 1
+    _cluster_size = 1
+    _routers_count = 1
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
 
-        for instance in range(0, cls.instances):
+        cls.primary_cluster_name = f"{cls.cluster_name}-1"
+        cls.replica_1_cluster_name = f"{cls.cluster_name}-20"
+        cls.replica_2_cluster_name = f"{cls.cluster_name}-21"
+
+        for instance in range(0, cls.get_ts_var("cluster_size")):
             g_full_log.watch_mysql_pod(cls.ns, f"{cls.primary_cluster_name}-{instance}")
-        for instance in range(0, cls.instances):
+        for instance in range(0, cls.get_ts_var("cluster_size")):
             g_full_log.watch_mysql_pod(cls.ns, f"{cls.replica_1_cluster_name}-{instance}")
-        for instance in range(0, cls.instances):
+        for instance in range(0, cls.get_ts_var("cluster_size")):
             g_full_log.watch_mysql_pod(cls.ns, f"{cls.replica_2_cluster_name}-{instance}")
 
 
     @classmethod
     def tearDownClass(cls):
-        for instance in reversed(range(0, cls.instances)):
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
             g_full_log.stop_watch(cls.ns, f"{cls.replica_2_cluster_name}-{instance}")
-        for instance in reversed(range(0, cls.instances)):
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
             g_full_log.stop_watch(cls.ns, f"{cls.replica_1_cluster_name}-{instance}")
-        for instance in reversed(range(0, cls.instances)):
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
             g_full_log.stop_watch(cls.ns, f"{cls.primary_cluster_name}-{instance}")
 
         super().tearDownClass()
 
-    @classmethod
-    def cluster_definition_primary(cls, cluster_name) -> str:
+    def cluster_definition_primary(self, cluster_name: str, cluster_size: int, routers_count: int) -> str:
         return f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: {cluster_name}
 spec:
-  instances: {cls.instances}
+  instances: {cluster_size}
   router:
-    instances: {cls.router_instances}
-  secretName: mypwds
+    instances: {routers_count}
+  secretName: {self.cluster_secret_name}
   edition: enterprise
   tlsUseSelfSigned: true
   baseServerId: 1000
 """
 
-    @classmethod
-    def cluster_definition_replica(cls, cluster_name, baseServerId, primary_name, primary_ns) -> str:
+    #@classmethod
+    def cluster_definition_replica(self, cluster_name: str, cluster_size: int, routers_count: int, base_server_id, primary_name, primary_ns) -> str:
         return f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: {cluster_name}
 spec:
-  instances: {cls.instances}
+  instances: {cluster_size}
   router:
-    instances: {cls.router_instances}
-  secretName: {cls.secret_name}
+    instances: {routers_count}
+  secretName: {self.cluster_secret_name}
   edition: enterprise
   tlsUseSelfSigned: true
-  baseServerId: {baseServerId}
+  baseServerId: {base_server_id}
   initDB:
     clusterSet:
       targetUrl: {primary_name}-0.{primary_name}-instances.{primary_ns}.svc.cluster.local
       secretKeyRef:
-        name: {cls.secret_name}
+        name: {self.cluster_secret_name}
 """
-
 
     def _create_cluster(self, cluster_name, cluster_manifest):
 
@@ -168,12 +169,12 @@ spec:
 
         self.wait_ic(cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        for instance in range(0, self.instances):
+        for instance in range(0, self.cluster_size):
             self.wait_pod(f"{cluster_name}-{instance}", "Running")
 
-        if self.router_instances:
-            self.wait_routers(f"{cluster_name}-router-*", self.router_instances, timeout=self.instances*120)
-        self.wait_ic(cluster_name, "ONLINE", self.instances)
+        if self.routers_count:
+            self.wait_routers(f"{cluster_name}-router-*", num_online=self.routers_count, timeout=self.cluster_size*120)
+        self.wait_ic(cluster_name, "ONLINE", num_online=self.cluster_size)
 
         self.assertGotClusterEvent(
             cluster_name, after=apply_time, type="Normal",
@@ -181,17 +182,17 @@ spec:
             msg="Dependency resources created, switching status to PENDING")
         self.assertGotClusterEvent(
             cluster_name, after=apply_time, type="Normal",
-            reason=r"StatusChange", msg=r"Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
+            reason=r"StatusChange", msg=r"Cluster status changed to ONLINE. \d member\(s\) ONLINE")
 
 
     def _00_create(self):
-        kutil.create_user_secrets(self.ns, self.secret_name, root_user=self.root_user, root_host=self.root_host, root_pass=self.root_pass)
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user=self.root_user, root_host=self.root_host, root_pass=self.root_pass)
 
-        self._create_cluster(self.primary_cluster_name, self.cluster_definition_primary(self.primary_cluster_name))
+        self._create_cluster(self.primary_cluster_name, self.cluster_definition_primary(self.primary_cluster_name, self.cluster_size, self.routers_count))
 
-        self._create_cluster(self.replica_1_cluster_name, self.cluster_definition_replica(self.replica_1_cluster_name, 2000, self.primary_cluster_name, self.ns))
+        self._create_cluster(self.replica_1_cluster_name, self.cluster_definition_replica(self.replica_1_cluster_name, self.cluster_size, self.routers_count, 2000, self.primary_cluster_name, self.ns))
 
-        self._create_cluster(self.replica_2_cluster_name, self.cluster_definition_replica(self.replica_2_cluster_name, 2100, self.primary_cluster_name, self.ns))
+        self._create_cluster(self.replica_2_cluster_name, self.cluster_definition_replica(self.replica_2_cluster_name, self.cluster_size, self.routers_count, 2100, self.primary_cluster_name, self.ns))
 
 
     def _02_test_inserts(self):
@@ -203,7 +204,7 @@ spec:
               primary_data = s1.query_sql('SELECT @@report_host, a, b FROM clusterset.t1').fetch_one()
               s1.query_sql('COMMIT')
 
-          sleep(5)
+          sleep(10)
 
           pod_name = f"{self.replica_1_cluster_name}-0"
           with mutil.MySQLPodSession(self.ns, pod_name, self.root_user, self.root_pass) as s2_1:
@@ -263,23 +264,23 @@ spec:
     def _99_destroy(self):
         kutil.delete_ic(self.ns, self.replica_1_cluster_name)
         self.wait_pods_gone(f"{self.replica_1_cluster_name}-*")
-        if self.router_instances:
+        if self.routers_count:
             self.wait_routers_gone(f"{self.replica_1_cluster_name}-router-*")
         self.wait_ic_gone(self.replica_1_cluster_name)
 
         kutil.delete_ic(self.ns, self.replica_2_cluster_name)
         self.wait_pods_gone(f"{self.replica_2_cluster_name}-*")
-        if self.router_instances:
+        if self.routers_count:
             self.wait_routers_gone(f"{self.replica_2_cluster_name}-router-*")
         self.wait_ic_gone(self.replica_2_cluster_name)
 
         kutil.delete_ic(self.ns, self.primary_cluster_name)
         self.wait_pods_gone(f"{self.primary_cluster_name}-*")
-        if self.router_instances:
+        if self.routers_count:
             self.wait_routers_gone(f"{self.primary_cluster_name}-router-*")
         self.wait_ic_gone(self.primary_cluster_name)
 
-        kutil.delete_secret(self.ns, self.secret_name)
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
         kutil.delete_pvc(self.ns, None)
 
@@ -292,13 +293,15 @@ spec:
 
 @unittest.skipIf(g_ts_cfg.enterprise_skip, "Enterprise test cases are skipped")
 class ClusterSetWithOneInstance(ClusterSetBase):
-    instances = 1
+    _cluster_size = 1
+    _routers_count = 1
     def testit(self):
         self.runit()
 
 
 @unittest.skipIf(g_ts_cfg.enterprise_skip, "Enterprise test cases are skipped")
 class ClusterSetWithThreeInstances(ClusterSetBase):
-    instances = 3
+    _cluster_size = 3
+    _routers_count = 1
     def testit(self):
         self.runit()

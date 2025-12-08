@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -22,34 +22,40 @@ from utils.optesting import DEFAULT_MYSQL_ACCOUNTS, COMMON_OPERATOR_ERRORS
 
 class ClusterFromClone(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
-    instances = 3
-    cluster_name = "mycluster"
-    copycluster_name = "copycluster"
-    copycluster_ns = "clone"
+    copycluster_startinstances = 1
     copycluster_wantedinstances = 2
-    cloned_cluster_ns = "clone"
+
+    _cluster_size = 1
+    _routers_count = 0
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
+        cls.copycluster_name = f"copy-{cls.cluster_name}"
+        cls.cloned_cluster_ns = f"clone-{cls.random_suffix}"
 
-        g_full_log.watch_mysql_pod(cls.copycluster_ns, f"{cls.copycluster_name}-0")
-        for instance in range(0, cls.instances):
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
+
+        for instance in range(0, cls.copycluster_wantedinstances):
+            g_full_log.watch_mysql_pod(cls.cloned_cluster_ns, f"{cls.copycluster_name}-{instance}")
+
+        for instance in range(0, cls.get_ts_var("cluster_size")):
             g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
-
 
     @classmethod
     def tearDownClass(cls):
-        for instance in reversed(range(0, cls.instances)):
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
             g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
-        g_full_log.stop_watch(cls.copycluster_ns, f"{cls.copycluster_name}-0")
+
+        for instance in reversed(range(0, cls.copycluster_wantedinstances)):
+            g_full_log.stop_watch(cls.cloned_cluster_ns, f"{cls.copycluster_name}-{instance}")
 
         super().tearDownClass()
 
     def test_0_create(self):
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
         # create cluster with mostly default configs
         yaml = f"""
@@ -58,19 +64,24 @@ class ClusterFromClone(tutil.OperatorTest):
  metadata:
    name: {self.cluster_name}
  spec:
-   instances: {self.instances}
-   secretName: mypwds
+   instances: {self.cluster_size}
+   secretName: {self.cluster_secret_name}
    tlsUseSelfSigned: true
+   router:
+     instances: {self.routers_count}
  """
 
         kutil.apply(self.ns, yaml)
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        for instance in range(0, self.instances):
+        for instance in range(0, self.cluster_size):
             self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        self.wait_ic(self.cluster_name, "ONLINE", self.instances)
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
+
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         script = open(tutil.g_test_data_dir+"/sql/sakila-schema.sql").read()
         script += open(tutil.g_test_data_dir+"/sql/sakila-data.sql").read()
@@ -84,7 +95,7 @@ class ClusterFromClone(tutil.OperatorTest):
     def test_1_create_clone(self):
         # TODO add support for using different root password between clusters
         kutil.create_ns(self.cloned_cluster_ns, g_ts_cfg.get_custom_test_ns_labels())
-        kutil.create_user_secrets(self.cloned_cluster_ns, "pwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.cloned_cluster_ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
         kutil.create_user_secrets(self.cloned_cluster_ns, "donorpwds", root_user="root", root_host="%", root_pass="sakila")
 
         # create cluster with mostly default configs
@@ -92,12 +103,12 @@ class ClusterFromClone(tutil.OperatorTest):
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: copycluster
+  name: {self.copycluster_name}
 spec:
-  instances: 1
+  instances: {self.copycluster_startinstances}
   router:
-    instances: 1
-  secretName: pwds
+    instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
   baseServerId: 2000
   initDB:
@@ -109,9 +120,12 @@ spec:
 
         kutil.apply(self.cloned_cluster_ns, yaml)
 
-        self.wait_pod(f"{self.copycluster_name}-0", "Running", ns=self.cloned_cluster_ns)
+        for instance in range(0, self.copycluster_startinstances):
+            self.wait_pod(f"{self.copycluster_name}-{instance}", "Running", ns=self.cloned_cluster_ns)
 
-        self.wait_ic(self.copycluster_name, "ONLINE", 1, ns=self.cloned_cluster_ns, timeout=300)
+        if self.routers_count:
+            self.wait_routers(f"{self.copycluster_name}-router-*", self.routers_count, ns=self.cloned_cluster_ns, timeout=self.cluster_size*120)
+        self.wait_ic(self.copycluster_name, "ONLINE", num_online=self.copycluster_startinstances, ns=self.cloned_cluster_ns, timeout=300)
 
         with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s:
             orig_tables = [r[0] for r in s.query_sql(
@@ -136,7 +150,7 @@ spec:
         #     with mutil.MySQLPodSession("clone", "copycluster-0", "root", "sakila") as s:
         #         pass
 
-        check_routing.check_pods(self, self.cloned_cluster_ns, self.copycluster_name, 1)
+        check_routing.check_pods(self, self.cloned_cluster_ns, self.copycluster_name, num_pods=self.routers_count)
 
         # TODO also make sure the source field in the ic says clone and not blank
 
@@ -159,14 +173,20 @@ spec:
 
     def test_9_destroy(self):
         kutil.delete_ic(self.cloned_cluster_ns, self.copycluster_name)
+
         self.wait_pods_gone(f"{self.copycluster_name}-*", ns=self.cloned_cluster_ns)
+        self.wait_routers_gone(f"{self.copycluster_name}-router-*", ns=self.cloned_cluster_ns)
         self.wait_ic_gone(self.copycluster_name, ns=self.cloned_cluster_ns)
         kutil.delete_ns(self.cloned_cluster_ns)
+        kutil.delete_secret(self.cloned_cluster_ns, self.cluster_secret_name)
+        kutil.delete_secret(self.cloned_cluster_ns, "donorpwds")
 
         kutil.delete_ic(self.ns, self.cluster_name)
 
         self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
         self.wait_ic_gone(self.cluster_name)
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
 # class ClusterFromCloneErrors(tutil.OperatorTest):
@@ -188,29 +208,31 @@ class ClusterFromDumpOCI(tutil.OperatorTest):
     oci_storage_prefix = f"/e2etest/{g_ts_cfg.get_worker_label()}"
     oci_storage_output = None
 
-    instances = 1
-    cluster_name = "mycluster"
-    newcluster_name = "newmycluster"
+    _cluster_size = 1
+    _routers_count = 0
     newcluster_wantedinstances = 2
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
+        cls.newcluster_name = f"new{cls.cluster_name}"
 
-        for instance in range(0, cls.instances):
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
+
+        for instance in range(0, cls.get_ts_var("cluster_size")):
             g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        for instance in reversed(range(0, cls.instances)):
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
             g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
     def test_0_prepare(self):
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
         bucket = g_ts_cfg.oci_bucket_name
         config_path = g_ts_cfg.oci_config_path
@@ -229,9 +251,11 @@ kind: InnoDBCluster
 metadata:
   name: {self.cluster_name}
 spec:
-  instances: {self.instances}
-  secretName: mypwds
+  instances: {self.cluster_size}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
+  router:
+    instances: {self.routers_count}
   backupProfiles:
   - name: fulldump-oci
     dumpInstance:
@@ -243,10 +267,15 @@ spec:
 """
 
         kutil.apply(self.ns, yaml)
+        self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        for instance in range(0, self.instances):
+        for instance in range(0, self.cluster_size):
             self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
-        self.wait_ic(self.cluster_name, "ONLINE", self.instances)
+
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
+
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         script = open(tutil.g_test_data_dir+"/sql/sakila-schema.sql").read()
         script += open(tutil.g_test_data_dir+"/sql/sakila-data.sql").read()
@@ -287,23 +316,17 @@ spec:
         # destroy the test cluster
         kutil.delete_ic(self.ns, self.cluster_name)
         self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
         self.wait_ic_gone(self.cluster_name)
-
-        # delete the pv and pvc for mycluster-0
-        kutil.delete_pvc(self.ns, None)
-        # TODO ensure the pv was deleted
-
-        kutil.delete_secret(self.ns, "mypwds")
 
     def test_1_0_create_from_dump(self):
         """
         Create cluster using a shell dump stored in an OCI bucket.
         """
-        kutil.create_user_secrets(
-            self.ns, "newpwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, f"{self.newcluster_name}-newpwds", root_user="root", root_host="%", root_pass="sakila")
 
         bucket = g_ts_cfg.oci_bucket_name
-
+        newcluster_start_instances = 1
         # create cluster with mostly default configs
         yaml = f"""
 apiVersion: mysql.oracle.com/v2
@@ -311,10 +334,10 @@ kind: InnoDBCluster
 metadata:
   name: {self.newcluster_name}
 spec:
-  instances: 1
+  instances: {newcluster_start_instances}
   router:
-    instances: 1
-  secretName: newpwds
+    instances: {self.routers_count}
+  secretName: {self.newcluster_name}-newpwds
   tlsUseSelfSigned: true
   baseServerId: 2000
   initDB:
@@ -329,12 +352,19 @@ spec:
 
         kutil.apply(self.ns, yaml)
 
-        self.wait_pod(f"{self.newcluster_name}-0", "Running")
+        self.wait_ic(self.newcluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        self.wait_ic(self.newcluster_name, "ONLINE", 1, timeout=600)
+        for instance in range(0, newcluster_start_instances):
+            self.wait_pod(f"{self.newcluster_name}-{instance}", "Running")
+
+        if self.routers_count:
+            self.wait_routers(f"{self.newcluster_name}-router-*", self.routers_count, timeout=self.routers_count*120)
+
+        self.wait_ic(self.newcluster_name, "ONLINE", num_online=newcluster_start_instances, timeout=newcluster_start_instances*200)
+
         pods = kutil.ls_po(self.ns, pattern=(self.newcluster_name + "-.*"))
         print(pods)
-        self.wait_routers(f"{self.newcluster_name}-router-*", 1)
+        self.wait_routers(f"{self.newcluster_name}-router-*", self.routers_count)
 
         with mutil.MySQLPodSession(self.ns, f"{self.newcluster_name}-0", "root", "sakila") as s:
             tables = [r[0]
@@ -354,7 +384,7 @@ spec:
 
         pods = kutil.ls_po(self.ns, pattern=(self.newcluster_name + ".*"))
         print(pods)
-        check_routing.check_pods(self, self.ns, self.newcluster_name, 1)
+        check_routing.check_pods(self, self.ns, self.newcluster_name, self.routers_count)
 
         # TODO also make sure the source field in the ic says clone and not blank
 
@@ -371,7 +401,7 @@ spec:
             print(f"Waiting for pod {self.newcluster_name}-{instance}")
             self.wait_pod(f"{self.newcluster_name}-{instance}", "Running")
 
-        self.wait_ic(self.newcluster_name, "ONLINE", self.newcluster_wantedinstances)
+        self.wait_ic(self.newcluster_name, "ONLINE", num_online=self.newcluster_wantedinstances)
 
         # TODO: see comment at line 334 where unlogged_db should be created
         # check that the new instance was provisioned through clone and not incremental
@@ -383,18 +413,21 @@ spec:
         kutil.delete_ic(self.ns, self.newcluster_name)
 
         self.wait_pods_gone(f"{self.newcluster_name}-*")
+        self.wait_routers_gone(f"{self.newcluster_name}-router-*")
         self.wait_ic_gone(self.newcluster_name)
 
         kutil.delete_pvc(self.ns, None)
+        kutil.delete_secret(self.ns, f"{self.newcluster_name}-newpwds")
 
     def test_2_create_from_dump_options(self):
         """
         Create cluster using a shell dump with additional options passed to the
         load command.
         """
+        kutil.create_user_secrets(self.ns, f"{self.newcluster_name}-newpwds", root_user="root", root_host="%", root_pass="sakila")
 
         bucket = g_ts_cfg.oci_bucket_name
-
+        newcluster_start_instances = 1
         # create cluster with mostly default configs
         yaml = f"""
 apiVersion: mysql.oracle.com/v2
@@ -402,10 +435,10 @@ kind: InnoDBCluster
 metadata:
   name: {self.newcluster_name}
 spec:
-  instances: 1
+  instances: {newcluster_start_instances}
   router:
-    instances: 1
-  secretName: newpwds
+    instances: {self.routers_count}
+  secretName: {self.newcluster_name}-newpwds
   baseServerId: 3000
   tlsUseSelfSigned: true
   initDB:
@@ -423,8 +456,15 @@ spec:
 
         kutil.apply(self.ns, yaml)
 
-        self.wait_pod(f"{self.newcluster_name}-0", "Running")
-        self.wait_ic(self.newcluster_name, "ONLINE", 1, timeout=600)
+        self.wait_ic(self.newcluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
+
+        for instance in range(0, newcluster_start_instances):
+            self.wait_pod(f"{self.newcluster_name}-{instance}", "Running")
+
+        if self.routers_count:
+            self.wait_routers(f"{self.newcluster_name}-router-*", self.routers_count, timeout=self.routers_count*120)
+
+        self.wait_ic(self.newcluster_name, "ONLINE", num_online=newcluster_start_instances, timeout=newcluster_start_instances*200)
 
         with mutil.MySQLPodSession(self.ns, f"{self.newcluster_name}-0", "root", "sakila") as s:
             tables = [r[0]
@@ -432,18 +472,15 @@ spec:
 
             self.assertEqual(set(self.__class__.orig_tables), set(tables))
 
-        check_routing.check_pods(self, self.ns, self.newcluster_name, 1)
+        check_routing.check_pods(self, self.ns, self.newcluster_name, self.routers_count)
 
     def test_9_destroy(self):
-        kutil.delete_ic(self.ns, self.cluster_name)
-
-        self.wait_pods_gone(f"{self.cluster_name}-*")
-        self.wait_ic_gone(self.cluster_name)
-
         kutil.delete_ic(self.ns, self.newcluster_name)
 
         self.wait_pods_gone(f"{self.newcluster_name}-*")
+        self.wait_routers_gone(f"{self.newcluster_name}-router-*")
         self.wait_ic_gone(self.newcluster_name)
+        kutil.delete_secret(self.ns, f"{self.newcluster_name}-newpwds")
 
         kutil.delete_secret(self.ns, "restore-apikey")
         kutil.delete_secret(self.ns, "backup-apikey")
@@ -465,26 +502,29 @@ class ClusterFromDumpAzure(tutil.OperatorTest):
     azure_storage_prefix = f"/e2etest/{g_ts_cfg.get_worker_label()}"
     azure_storage_output = None
 
+    _cluster_size = 1
+    _routers_count = 1
+
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
+        cls.newcluster_name = f"{cls.cluster_name}-newcluster"
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
 
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-1")
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-2")
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, "mycluster-2")
-        g_full_log.stop_watch(cls.ns, "mycluster-1")
-        g_full_log.stop_watch(cls.ns, "mycluster-0")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
     def test_0_prepare(self):
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
         container = g_ts_cfg.azure_container_name
         config_file = g_ts_cfg.azure_config_file
@@ -497,10 +537,10 @@ class ClusterFromDumpAzure(tutil.OperatorTest):
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: 1
-  secretName: mypwds
+  instances: {self.cluster_size}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
   backupProfiles:
   - name: fulldump-azure
@@ -514,16 +554,23 @@ spec:
 
         kutil.apply(self.ns, yaml)
 
-        self.wait_pod("mycluster-0", "Running")
-        self.wait_ic("mycluster", "ONLINE", 1)
+        self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
+
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
+
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
+
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         script = open(tutil.g_test_data_dir+"/sql/sakila-schema.sql").read()
         script += open(tutil.g_test_data_dir+"/sql/sakila-data.sql").read()
 
-        mutil.load_script(self.ns, "mycluster-0", script)
+        mutil.load_script(self.ns, f"{self.cluster_name}-0", script)
 
         self.__class__.orig_tables = []
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s:
             self.__class__.orig_tables = [r[0]
                                 for r in s.query_sql("show tables in sakila").fetch_all()]
 
@@ -534,7 +581,7 @@ kind: MySQLBackup
 metadata:
   name: {self.dump_name}
 spec:
-  clusterName: mycluster
+  clusterName: {self.cluster_name}
   backupProfileName: fulldump-azure
 """
         kutil.apply(self.ns, yaml)
@@ -553,37 +600,32 @@ spec:
         r = self.wait(kutil.ls_mbk, args=(self.ns,),
                       check=check_mbk, timeout=300)
 
-        # destroy the test cluster
-        kutil.delete_ic(self.ns, "mycluster")
-        self.wait_pod_gone("mycluster-0")
-        self.wait_ic_gone("mycluster")
-
-        # delete the pv and pvc for mycluster-0
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
         kutil.delete_pvc(self.ns, None)
-        # TODO ensure the pv was deleted
 
-        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
     def test_1_0_create_from_dump(self):
         """
         Create cluster using a shell dump stored in an Azure BLOB container.
         """
-        kutil.create_user_secrets(
-            self.ns, "newpwds", root_user="root", root_host="%", root_pass="sakila")
-
+        kutil.create_user_secrets(self.ns, f"{self.newcluster_name}-newpwds", root_user="root", root_host="%", root_pass="sakila")
+        new_cluster_size = 1
         container = g_ts_cfg.azure_container_name
-
         # create cluster with mostly default configs
         yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: newcluster
+  name: {self.new_cluster_name}
 spec:
-  instances: 1
+  instances: {new_cluster_size}
   router:
-    instances: 1
-  secretName: newpwds
+    instances: {self.routers_count}
+  secretName: {self.newcluster_name}-newpwds
   tlsUseSelfSigned: true
   baseServerId: 2000
   initDB:
@@ -598,11 +640,16 @@ spec:
 
         kutil.apply(self.ns, yaml)
 
-        self.wait_pod("newcluster-0", "Running")
+        self.wait_ic(self.newcluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
+        for instance in range(0, new_cluster_size):
+            self.wait_pod(f"{self.newcluster_name}-{instance}", "Running")
 
-        self.wait_ic("newcluster", "ONLINE", 1, timeout=600)
+        if self.routers_count:
+            self.wait_routers(f"{self.newcluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
 
-        with mutil.MySQLPodSession(self.ns, "newcluster-0", "root", "sakila") as s:
+        self.wait_ic(self.newcluster_name, "ONLINE", num_online=new_cluster_size)
+
+        with mutil.MySQLPodSession(self.ns, f"{self.newcluster_name}-0", "root", "sakila") as s:
             tables = [r[0]
                       for r in s.query_sql("show tables in sakila").fetch_all()]
 
@@ -618,7 +665,7 @@ spec:
             # s.exec_sql("insert into unlogged_db.tbl values (42)")
             # s.exec_sql("set session sql_log_bin=1")
 
-        check_routing.check_pods(self, self.ns, "newcluster", 1)
+        check_routing.check_pods(self, self.ns, self.newcluster_name, self.routers_count)
 
         # TODO also make sure the source field in the ic says clone and not blank
 
@@ -626,12 +673,12 @@ spec:
         """
         Ensures that a cluster created from a dump can be scaled up properly
         """
-        kutil.patch_ic(self.ns, "newcluster", {
+        kutil.patch_ic(self.ns, self.newcluster_name, {
                        "spec": {"instances": 2}}, type="merge")
 
-        self.wait_pod("newcluster-1", "Running")
+        self.wait_pod(f"{self.newcluster_name}-1", "Running")
 
-        self.wait_ic("newcluster", "ONLINE", 2)
+        self.wait_ic(self.newcluster_name, "ONLINE", num_online=2)
 
         # TODO: see comment at line 334 where unlogged_db should be created
         # check that the new instance was provisioned through clone and not incremental
@@ -640,32 +687,32 @@ spec:
         #         str(s.query_sql("select * from unlogged_db.tbl").fetch_all()), str([[42]]))
 
     def test_1_2_destroy(self):
-        kutil.delete_ic(self.ns, "newcluster")
+        kutil.delete_ic(self.ns, self.new_cluster_name)
 
-        self.wait_pod_gone("newcluster-0")
-        self.wait_ic_gone("newcluster")
-
-        kutil.delete_pvc(self.ns, None)
+        self.wait_pods_gone(f"{self.new_cluster_name}-*")
+        self.wait_ic_gone(self.new_cluster_name)
+        kutil.delete_secret(self.ns, f"{self.newcluster_name}-newpwds")
 
     def test_2_create_from_dump_options(self):
         """
         Create cluster using a shell dump with additional options passed to the
         load command.
         """
+        kutil.create_user_secrets(self.ns, f"{self.newcluster_name}-newpwds", root_user="root", root_host="%", root_pass="sakila")
 
         container = g_ts_cfg.azure_container_name
-
+        new_cluster_size = 1
         # create cluster with mostly default configs
         yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: newcluster
+  name: {self.new_cluster_name}
 spec:
-  instances: 1
+  instances: {new_cluster_size}
   router:
-    instances: 1
-  secretName: newpwds
+    instances: {self.routers_count}
+  secretName: {self.newcluster_name}-newpwds
   baseServerId: 3000
   tlsUseSelfSigned: true
   initDB:
@@ -683,30 +730,36 @@ spec:
 
         kutil.apply(self.ns, yaml)
 
-        self.wait_pod("newcluster-0", "Running")
+        self.wait_ic(self.newcluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
+        for instance in range(0, new_cluster_size):
+            self.wait_pod(f"{self.newcluster_name}-{instance}", "Running")
 
-        self.wait_ic("newcluster", "ONLINE", 1, timeout=600)
+        if self.routers_count:
+            self.wait_routers(f"{self.newcluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
 
-        with mutil.MySQLPodSession(self.ns, "newcluster-0", "root", "sakila") as s:
+        self.wait_ic(self.newcluster_name, "ONLINE", num_online=new_cluster_size)
+
+        with mutil.MySQLPodSession(self.ns, f"{self.newcluster_name}-0", "root", "sakila") as s:
             tables = [r[0]
                       for r in s.query_sql("show tables in sakila").fetch_all()]
 
             self.assertEqual(set(self.__class__.orig_tables), set(tables))
 
-        check_routing.check_pods(self, self.ns, "newcluster", 1)
+        check_routing.check_pods(self, self.ns, self.newcluster_name, self.routers_count)
 
     def test_9_destroy(self):
-        kutil.delete_ic(self.ns, "mycluster")
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
 
-        self.wait_pod_gone("mycluster-2")
-        self.wait_pod_gone("mycluster-1")
-        self.wait_pod_gone("mycluster-0")
-        self.wait_ic_gone("mycluster")
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
-        kutil.delete_ic(self.ns, "newcluster")
+        kutil.delete_ic(self.ns, self.newcluster_name)
 
-        self.wait_pod_gone("newcluster-0")
-        self.wait_ic_gone("newcluster")
+        self.wait_pods_gone(f"{self.newcluster_name}-*")
+        self.wait_ic_gone(self.newcluster_name)
+        kutil.delete_secret(self.ns, f"{self.newcluster_name}-newpwds")
 
         kutil.delete_secret(self.ns, "azure-backup")
 

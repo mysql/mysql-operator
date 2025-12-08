@@ -7,6 +7,7 @@ import logging
 import json
 import time
 import unittest
+import re
 from datetime import datetime, timezone
 
 from utils import tutil
@@ -81,6 +82,8 @@ def change_operator_version(version=None, store_operator_log=None, new_on_same_v
 # This needs to stay, as it does a basic upgrade which also includes backup schedule while other tests don't
 class OperatorUpgradeTest(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    cluster_size = 1
+    routers_count = 0
 
     @classmethod
     def setUpClass(cls):
@@ -119,7 +122,7 @@ class OperatorUpgradeTest(tutil.OperatorTest):
                 compare_image_info(used, expected)
 
         def assert_sidecar_image(expected_image):
-            spec = kutil.get_po(self.ns, "mycluster-0")["spec"]
+            spec = kutil.get_po(self.ns, f"{self.cluster_name}-0")["spec"]
             images_used = list(
                 map(lambda c: [c["name"], c["image"]],
                     filter(lambda c: c["name"] in ["initconf", "fixdatadir", "sidecar"],
@@ -135,10 +138,9 @@ class OperatorUpgradeTest(tutil.OperatorTest):
             cj_image = cj["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"][0]["image"]
             compare_image(cj_image, expected_image)
 
-        change_operator_version(g_ts_cfg.operator_old_version_tag, store_operator_log=lambda: self.take_log_operator_snapshot())
+        change_operator_version(g_ts_cfg.operator_current_lts_version_tag, store_operator_log=lambda: self.take_log_operator_snapshot())
 
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
         # create cluster with mostly default configs
         #
@@ -149,14 +151,14 @@ class OperatorUpgradeTest(tutil.OperatorTest):
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: 1
+  instances: {self.cluster_size}
   router:
-      instances: 0
-  secretName: mypwds
+      instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
-  version: "{g_ts_cfg.get_old_version_tag()}"
+  version: "{g_ts_cfg.get_current_lts_version()}"
 
   backupProfiles:
     - name: testprofile
@@ -183,26 +185,33 @@ spec:
         # 1 - Cluster is being deployed with current operator
         kutil.apply(self.ns, yaml)
 
-        self.wait_pod("mycluster-0", "Running")
-        self.wait_ic("mycluster", "ONLINE", 1)
+        self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        old_operator_image = g_ts_cfg.get_operator_image(g_ts_cfg.operator_old_version_tag)
-        assert_sidecar_image(old_operator_image)
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
+
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
+
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
+
+        prev_operator_image = g_ts_cfg.get_operator_image(g_ts_cfg.operator_current_lts_version_tag)
+        assert_sidecar_image(prev_operator_image)
         time.sleep(10)
-        assert_cj_image("mycluster-testschedule-cb", old_operator_image)
-        assert_cj_image("mycluster-testscheduleinactive-cb", old_operator_image)
+        assert_cj_image(f"{self.cluster_name}-testschedule-cb", prev_operator_image)
+        assert_cj_image(f"{self.cluster_name}-testscheduleinactive-cb", prev_operator_image)
 
         # 2 - Upgrading Operator doesn't change sidecar
         change_operator_version(store_operator_log=lambda: self.take_log_operator_snapshot())
 
-        assert_sidecar_image(old_operator_image)
+        assert_sidecar_image(prev_operator_image)
         time.sleep(10)
         operator_image = g_ts_cfg.get_operator_image()
-        assert_cj_image("mycluster-testschedule-cb", operator_image)
-        assert_cj_image("mycluster-testscheduleinactive-cb", operator_image)
+        assert_cj_image(f"{self.cluster_name}-testschedule-cb", operator_image)
+        assert_cj_image(f"{self.cluster_name}-testscheduleinactive-cb", operator_image)
 
         # 3 - Upgrading the InnoDB Cluster updates sidecar
-        kutil.patch_ic(self.ns, "mycluster", {"spec": {
+        kutil.patch_ic(self.ns, self.cluster_name, {"spec": {
             "version": g_ts_cfg.version_tag
         }}, type="merge")
 
@@ -211,25 +220,24 @@ spec:
             # self.logger.debug(json.loads(po["metadata"].get("annotations", {}).get("mysql.oracle.com/membership-info", "{}")))
             return json.loads(po["metadata"].get("annotations", {}).get("mysql.oracle.com/membership-info", "{}")).get("version", "")
 
-        self.wait(check_done, args=("mycluster-0", ),
+        self.wait(check_done, args=(f"{self.cluster_name}-0", ),
                   check=lambda s: s.startswith(g_ts_cfg.version_tag), timeout=150, delay=10)
 
         assert_sidecar_image(g_ts_cfg.get_operator_image())
 
 
     def test_9_destroy(self):
-        kutil.delete_ic(self.ns, "mycluster")
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_pvc(self.ns, None)
 
-        self.wait_pod_gone("mycluster-0")
-        self.wait_ic_gone("mycluster")
-
-        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
 class OperatorAndClusterMultiUpgradeBase(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
-    cluster_name = "mycluster"
-    credentials_secret_name = "mypwds"
 
     @classmethod
     def setUpClass(cls, ns = None) -> None:
@@ -245,10 +253,10 @@ class OperatorAndClusterMultiUpgradeBase(tutil.OperatorTest):
         super().tearDownClass()
 
     def create_cluster_secret(self) -> None:
-        kutil.create_user_secrets(self.ns, self.credentials_secret_name, root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
     def delete_cluster_secret(self) -> None:
-        kutil.delete_secret(self.ns, self.credentials_secret_name)
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
     def create_tls_secrets(self) -> None:
         pass
@@ -321,20 +329,23 @@ spec:
   router:
     instances: {scenario["router_instances"]}
 {self.router_tls_defition()}
-  secretName: {self.credentials_secret_name}
+  secretName: {self.cluster_secret_name}
   {self.server_tls_defition()}
   version: {scenario["initial_old_server_version"]}
   podSpec:
-    terminationGracePeriodSeconds: 8
+    terminationGracePeriodSeconds: 15
+#  mycnf: |
+#    [mysqld]
+#    innodb_lock_wait_timeout=50
 """
                 print(f"Applying {yaml}")
                 kutil.apply(self.ns, yaml)
-                self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
+                self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"], timeout=60)
 
                 for instance in range(0, scenario["server_instances"]):
                     self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-                self.wait_ic(self.cluster_name, "ONLINE", scenario["server_instances"])
+                self.wait_ic(self.cluster_name, "ONLINE", scenario["server_instances"], timeout=150)
                 self.wait_routers(f"{self.cluster_name}-router-*", scenario["router_instances"])
 
                 old_operator_image = g_ts_cfg.get_operator_image(scenario["initial_old_operator_version"])
@@ -365,17 +376,55 @@ spec:
                                 kutil.patch_ic(self.ns, self.cluster_name, {"spec":{"version":upgrade_version}}, type="merge")
 
                                 def check_done(pod):
-                                    po = kutil.get_po(self.ns, pod)
-                                    self.logger.info(f"{pod=}")
+                                    empty_value = ""
+                                    attempt = 20
+                                    po = None
+                                    print(pod)
+                                    while attempt > 0 and po is None:
+                                        print(kutil.ls_pod(self.ns, f"{self.cluster_name}-\d"))
+                                        try:
+                                            po = kutil.get_po(self.ns, pod)
+                                        except Exception as exc:
+                                            is_not_found = bool(re.search(r'Error from server \(NotFound\): pods ".+" not found', str(exc)))
+                                            if not is_not_found:
+                                                raise
+                                            attempt = attempt - 1
+                                            self.logger.info(f"Pod {self.ns}/{pod} not found! Will retry! {attempt} attempts left")
+                                            time.sleep(2)
+
+                                    if po is None:
+                                        self.logger.info("Pod {self.ns}/{pod} not found! Giving up!")
+                                        return empty_value
+
+                                    try:
+                                        print(kutil.logs(self.ns, [pod, "initconf"]))
+                                        print(kutil.logs(self.ns, [pod, "initmysql"]))
+                                        print(kutil.logs(self.ns, [pod, "mysql"]))
+                                        print(kutil.logs(self.ns, [pod, "sidecar"]))
+                                    except Exception as exc:
+                                        print(exc)
+                                    self.logger.info(f"po_status={po['status']}")
                                     self.logger.info(json.loads(po["metadata"].get("annotations", {}).get("mysql.oracle.com/membership-info", "{}")))
-                                    return json.loads(po["metadata"].get("annotations", {}).get("mysql.oracle.com/membership-info", "{}")).get("version", "")
+                                    return json.loads(po["metadata"].get("annotations", {}).get("mysql.oracle.com/membership-info", "{}")).get("version", empty_value)
+
 
                                 for instance in reversed(range(0, scenario["server_instances"])):
-                                    self.wait(check_done,
-                                            args=(f"{self.cluster_name}-{instance}", ),
-                                            check=lambda s: s.startswith(upgrade_version),
-                                            timeout=600,
-                                            delay=20)
+                                    try:
+                                        pod_name = f"{self.cluster_name}-{instance}"
+                                        self.logger.info("============================================================")
+                                        self.logger.info(f"CHECKING POD {pod_name} UPGRADING TO {upgrade_version}")
+                                        self.logger.info("============================================================")
+                                        self.wait(check_done,
+                                                args=(pod_name, ),
+                                                check=lambda s: s.startswith(upgrade_version),
+                                                timeout=600,
+                                                delay=1)
+                                    except Exception as e:
+                                        po = kutil.get_po(self.ns, f"{self.cluster_name}-{instance}")
+                                        print(po)
+                                        if str(e) == "Timeout waiting for condition":
+                                            raise AssertionError(f"Timeout while waiting for upgrade on {self.cluster_name}-{instance}") from e
+                                        raise
 
                                 assert_sidecar_image(scenario["server_instances"], operator_image)
                                 old_cluster_version = upgrade_version
@@ -400,11 +449,16 @@ spec:
                 self.logger.info("Will either continue with next scenario or if no more we are finished")
 
         print("Finished with all scenarios")
-        self.delete_tls_secrets()
-        self.delete_cluster_secret()
 
     def _test_99_destroy(self) -> None:
-        pass
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_pvc(self.ns, None)
+
+        self.delete_tls_secrets()
+        self.delete_cluster_secret()
 
     def runit(self) -> None:
         self._test_00_sidecar_update()
@@ -428,7 +482,7 @@ class OperatorAndClusterMultiUpgradeTestSelfSignedScenario0(OperatorAndClusterMu
             "initial_old_operator_version": g_ts_cfg.operator_old_version_tag,
             "operator_and_server_versions": [
                 ("8.4.5-2.1.7",  ["8.4.5"]),
-                (g_ts_cfg.operator_version_tag, ["9.0.0", "9.4.0", g_ts_cfg.version_tag])
+                (g_ts_cfg.operator_version_tag, ["9.0.0", "9.4.0", "9.5.0", g_ts_cfg.version_tag])
             ]
         }
     ]
@@ -445,7 +499,7 @@ class OperatorAndClusterMultiUpgradeTestSelfSignedScenario1(OperatorAndClusterMu
             "initial_old_operator_version": g_ts_cfg.operator_old_version_tag,
             "operator_and_server_versions": [
                 ("8.4.5-2.1.7",  ["8.4.5"]),
-                (g_ts_cfg.operator_version_tag, ["9.0.0", "9.4.0", g_ts_cfg.version_tag])
+                (g_ts_cfg.operator_version_tag, ["9.0.0", "9.4.0", "9.5.0", g_ts_cfg.version_tag])
             ]
         }
     ]
@@ -466,6 +520,7 @@ class OperatorAndClusterMultiUpgradeTestSelfSignedScenario2(OperatorAndClusterMu
                 ("8.0.38-2.0.15", ["8.0.38"]),
                 ("8.4.3-2.1.5",  ["8.4.3"]),
                 ("9.4.0-2.2.5",  ["9.0.0", "9.0.1", "9.1.0", "9.2.0", "9.3.0", "9.4.0"]),
+                ("9.5.0-2.2.6",  ["9.5.0"]),
                 (g_ts_cfg.operator_version_tag, [g_ts_cfg.version_tag])
             ]
         }
@@ -484,8 +539,9 @@ class OperatorAndClusterMultiUpgradeTestSelfSignedScenario3(OperatorAndClusterMu
             "initial_old_server_version": "8.0.40",
             "initial_old_operator_version": "8.0.40-2.0.16",
             "operator_and_server_versions": [
-                ("8.4.4-2.1.6",  ["8.4.5"]),
+                ("8.4.4-2.1.6",  ["8.4.4"]),
                 ("9.4.0-2.2.5",  ["9.0.0", "9.2.0", "9.3.0", "9.4.0"]),
+                ("9.5.0-2.2.6",  ["9.5.0"]),
                 (g_ts_cfg.operator_version_tag, [g_ts_cfg.version_tag])
             ]
         }
@@ -511,6 +567,7 @@ class OperatorAndClusterMultiUpgradeTestSelfSignedScenario4(OperatorAndClusterMu
                 ("9.2.0-2.2.3",["9.2.0"]),
                 ("9.3.0-2.2.4",["9.3.0"]),
                 ("9.4.0-2.2.5",["9.4.0"]),
+                ("9.5.0-2.2.6",["9.5.0"]),
                 (g_ts_cfg.operator_version_tag, [g_ts_cfg.version_tag])
             ]
         }
@@ -538,6 +595,7 @@ class OperatorAndClusterMultiUpgradeTestSelfSignedScenario5(OperatorAndClusterMu
                 ("8.4.4-2.1.6",["8.4.4"]),
                 ("8.4.5-2.1.7",["8.4.5"]),
                 ("9.4.0-2.2.5",["9.4.0"]),
+                ("9.5.0-2.2.6",["9.5.0"]),
                 (g_ts_cfg.operator_version_tag, [g_ts_cfg.version_tag])
             ]
         }
@@ -565,6 +623,7 @@ class OperatorAndClusterMultiUpgradeTestSelfSignedScenario6(OperatorAndClusterMu
                 ("8.4.4-2.1.6",["8.4.4"]),
                 ("8.4.5-2.1.7",["8.4.5"]),
                 ("9.4.0-2.2.5",["9.4.0"]),
+                ("9.5.0-2.2.6",["9.5.0"]),
                 (g_ts_cfg.operator_version_tag, [g_ts_cfg.version_tag])
             ]
         }
@@ -575,12 +634,11 @@ class OperatorAndClusterMultiUpgradeTestSelfSignedScenario6(OperatorAndClusterMu
 
 
 class OperatorAndClusterMultiUpgradeTestTLSBase(OperatorAndClusterMultiUpgradeBase):
-    cluster_name = "mycluster-tls" # this can't be changed, as the certs are generated for this name!
-
     @classmethod
     def setUpClass(cls) -> None:
-        super().setUpClass("operator-upgrade-tls")
-
+        super().setUpClass("operator-upgrade-tls") # the TLS certs are generated for this namespace
+        cls.cluster_name = "mycluster-tls"  # this can't be changed, as the certs are generated for this name!
+        cls.cluster_secret_name = f"{cls.cluster_name}-mypwds-{cls.random_suffix}"
 
     def server_tls_defition(self):
         return f"""
@@ -809,8 +867,8 @@ class OperatorAndClusterMultiUpgradeTestTLSSeparateSecretsScenario2(OperatorAndC
                 ("9.0.0-2.2.0",["9.0.0"]),
                 ("9.1.0-2.2.2",["9.1.0"]),
                 ("9.2.0-2.2.3",["9.2.0"]),
-                ("9.5.0-2.2.6",  ["9.3.0", "9.4.0", "9.5.0"])
-#                ,(g_ts_cfg.operator_version_tag, [g_ts_cfg.version_tag])
+                ("9.5.0-2.2.6",["9.3.0", "9.4.0", "9.5.0"]),
+                (g_ts_cfg.operator_version_tag, [g_ts_cfg.version_tag])
             ]
         }
     ]

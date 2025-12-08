@@ -28,25 +28,28 @@ class DumpInstance(tutil.OperatorTest):
     s3_config_secret = "s3-config"
     azure_dump_name = "dump-test-azure"
     azure_storage_prefix = f"/e2etest/{g_ts_cfg.get_worker_label()}"
+    _cluster_size = 2
+    _routers_count = 0
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
 
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-1")
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, "mycluster-1")
-        g_full_log.stop_watch(cls.ns, "mycluster-0")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
     def test_0_create(self):
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
         backupdir = "/tmp/backups"
 
@@ -66,10 +69,12 @@ class DumpInstance(tutil.OperatorTest):
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: 2
-  secretName: mypwds
+  instances: {self.cluster_size}
+  secretName: {self.cluster_secret_name}
+  router:
+    instances: {self.routers_count}
   tlsUseSelfSigned: true
   backupProfiles:
   - name: dump
@@ -128,17 +133,22 @@ spec:
 
         kutil.apply(self.ns, yaml)
 
-        self.wait_pod("mycluster-0", "Running")
-        self.wait_pod("mycluster-1", "Running")
+        self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        self.wait_ic("mycluster", "ONLINE", 2)
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
+
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
+
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         script = open(tutil.g_test_data_dir+"/sql/sakila-schema.sql").read()
         script += open(tutil.g_test_data_dir+"/sql/sakila-data.sql").read()
 
-        mutil.load_script(self.ns, ("mycluster-0", "mysql"), script)
+        mutil.load_script(self.ns, (f"{self.cluster_name}-0", "mysql"), script)
 
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s:
             s.exec_sql("create schema excludeme")
             s.exec_sql("create table excludeme.country like sakila.country")
             s.exec_sql(
@@ -166,7 +176,7 @@ kind: MySQLBackup
 metadata:
   name: {self.dump_name}
 spec:
-  clusterName: mycluster
+  clusterName: {self.cluster_name}
   backupProfileName: dump
 """
         kutil.apply(self.ns, yaml)
@@ -181,7 +191,7 @@ spec:
         r = self.wait(kutil.ls_mbk, args=(self.ns,),
                       check=check_mbk, timeout=300)
         if r["NAME"] == self.dump_name:
-            self.assertEqual(r["CLUSTER"], "mycluster")
+            self.assertEqual(r["CLUSTER"], self.cluster_name)
             self.assertEqual(r["STATUS"], "Completed")
             self.assertTrue(r["OUTPUT"].startswith(f"{self.dump_name}-"))
 
@@ -248,7 +258,7 @@ kind: MySQLBackup
 metadata:
   name: {dump_name}
 spec:
-  clusterName: mycluster
+  clusterName: {self.cluster_name}
   backupProfileName: fulldump-oci
 """
         kutil.apply(self.ns, yaml)
@@ -263,7 +273,7 @@ spec:
         r = self.wait(kutil.ls_mbk, args=(self.ns,),
                       check=check_mbk, timeout=300)
         output = r["OUTPUT"]
-        self.assertEqual(r["CLUSTER"], "mycluster")
+        self.assertEqual(r["CLUSTER"], self.cluster_name)
         self.assertEqual(r["STATUS"], "Completed")
         self.assertTrue(output.startswith(f"{dump_name}-"))
 
@@ -307,7 +317,7 @@ kind: MySQLBackup
 metadata:
   name: {dump_name}
 spec:
-  clusterName: mycluster
+  clusterName: {self.cluster_name}
   backupProfileName: fulldump-oci-s3
 """
         kutil.apply(self.ns, yaml)
@@ -322,7 +332,7 @@ spec:
         r = self.wait(kutil.ls_mbk, args=(self.ns,),
                       check=check_mbk, timeout=300)
         output = r["OUTPUT"]
-        self.assertEqual(r["CLUSTER"], "mycluster")
+        self.assertEqual(r["CLUSTER"], self.cluster_name)
         self.assertEqual(r["STATUS"], "Completed")
         self.assertTrue(output.startswith(f"{dump_name}-"))
         print(output)
@@ -364,7 +374,7 @@ kind: MySQLBackup
 metadata:
   name: {dump_name}
 spec:
-  clusterName: mycluster
+  clusterName: {self.cluster_name}
   backupProfileName: fulldump-s3
 """
         kutil.apply(self.ns, yaml)
@@ -379,7 +389,7 @@ spec:
         r = self.wait(kutil.ls_mbk, args=(self.ns,),
                       check=check_mbk, timeout=300)
         output = r["OUTPUT"]
-        self.assertEqual(r["CLUSTER"], "mycluster")
+        self.assertEqual(r["CLUSTER"], self.cluster_name)
         self.assertEqual(r["STATUS"], "Completed")
         self.assertTrue(output.startswith(f"{dump_name}-"))
 
@@ -412,7 +422,7 @@ kind: MySQLBackup
 metadata:
   name: {self.azure_dump_name}
 spec:
-  clusterName: mycluster
+  clusterName: {self.cluster_name}
   backupProfileName: test-azure
 """
         kutil.apply(self.ns, yaml)
@@ -427,7 +437,7 @@ spec:
         r = self.wait(kutil.ls_mbk, args=(self.ns,),
                       check=check_mbk, timeout=300)
         output = r["OUTPUT"]
-        self.assertEqual(r["CLUSTER"], "mycluster")
+        self.assertEqual(r["CLUSTER"], self.cluster_name)
         self.assertEqual(r["STATUS"], "Completed")
         self.assertTrue(output.startswith(f"{self.azure_dump_name}-"))
 
@@ -465,17 +475,10 @@ spec:
         pass
 
     def test_9_destroy(self):
-        kutil.delete_ic("clone", "copycluster")
-        self.wait_pod_gone("copycluster-0", ns="clone")
-        self.wait_ic_gone("copycluster", ns="clone")
-        kutil.delete_ns("clone")
-
-        kutil.delete_ic(self.ns, "mycluster")
-
-        self.wait_pod_gone("mycluster-2")
-        self.wait_pod_gone("mycluster-1")
-        self.wait_pod_gone("mycluster-0")
-        self.wait_ic_gone("mycluster")
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
 
         kutil.delete_mbk(self.ns, self.s3_dump_name)
         kutil.delete_mbk(self.ns, self.oci_s3_dump_name)
@@ -488,7 +491,9 @@ spec:
         kutil.delete_secret(self.ns, self.oci_s3_config_secret)
         kutil.delete_secret(self.ns, "backup-apikey")
         kutil.delete_secret(self.ns, "azure-backup")
-        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
+
+        kutil.delete_pvc(self.ns, None)
 
         if self.__class__.oci_storage_output:
             ociutil.bulk_delete("DELETE", g_ts_cfg.oci_bucket_name, self.__class__.oci_storage_output)

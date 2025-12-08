@@ -253,6 +253,8 @@ if __name__ == '__main__':
                 pass
         elif arg.startswith("--sts-expected-termination-grace-period"):
             g_ts_cfg.expected_termination_grace_period = int(arg.partition("=")[-1])
+        elif arg.startswith("--check-terminated-grace-period"):
+            g_ts_cfg.check_termination_grace_period = True if arg.partition("=")[-1] else False
         elif arg.startswith("--ic-server-version"):
             g_ts_cfg.custom_ic_server_version = arg.partition("=")[-1]
         elif arg.startswith("--ic-server-version-override"):

@@ -41,6 +41,7 @@ class Config:
     operator_image_name = defaults.OPERATOR_IMAGE_NAME
     operator_ee_image_name = defaults.OPERATOR_EE_IMAGE_NAME
     operator_version_tag = defaults.OPERATOR_VERSION_TAG
+    operator_current_lts_version_tag = defaults.OPERATOR_CURRENT_LTS_VERSION_TAG
     operator_old_version_tag = defaults.OPERATOR_OLD_VERSION_TAG
     operator_pull_policy = defaults.OPERATOR_PULL_POLICY
 
@@ -123,6 +124,7 @@ class Config:
     local_path_provisioner_manifest_url = "https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.24/deploy/local-path-storage.yaml"
     local_path_provisioner_shared_path = "/tmp/local-path-shared"
 
+    check_termination_grace_period = True
     expected_termination_grace_period = 120
 
     def __del__(self):
@@ -204,14 +206,23 @@ class Config:
     def get_operator_image(self, version=None):
         return f"{self.get_image_registry_repository()}/{self.operator_image_name}:{version if version else self.operator_version_tag}"
 
+    def get_current_lts_version_operator_image(self):
+        return self.get_operator_image(self.get_current_lts_version())
+
     def get_server_image(self, version=None):
         return f"{self.get_image_registry_repository()}/{self.server_image_name}:{version if version else self.version_tag}"
+
+    def get_current_lts_version_server_image(self):
+        return self.get_server_image(self.get_current_lts_version())
 
     def get_old_server_image(self):
         return self.get_server_image(self.get_old_version_tag())
 
     def get_router_image(self, version=None):
         return f"{self.get_image_registry_repository()}/{self.router_image_name}:{version if version else self.version_tag}"
+
+    def get_current_lts_version_router_image(self):
+        return f"{self.get_image_registry_repository()}/{self.router_image_name}:{self.get_current_lts_version()}"
 
     def get_old_router_image(self):
         return f"{self.get_image_registry_repository()}/{self.router_image_name}:{self.get_old_version_tag()}"

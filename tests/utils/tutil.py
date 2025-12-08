@@ -13,12 +13,12 @@ import subprocess
 import logging
 import os
 from setup.config import g_ts_cfg
-from utils import auxutil, ociutil
 
 from utils.auxutil import isotime
 from . import fmt
 from . import kutil
 from . import mutil
+from . import auxutil, ociutil
 import datetime
 import time
 import sys
@@ -106,7 +106,7 @@ def delete_ic(ns, name):
     logger.info(f"Delete ic {ns}/{name}")
 
     strip_finalizers(ns, "ic", name)
-    kutil.delete_ic(ns, name, timeout=90)
+    kutil.delete_ic(ns, name, timeout=300)
     logger.info(f"ic {ns}/{name} deleted")
 
 
@@ -118,7 +118,7 @@ def wipe_ns(ns, extra_rsrc=[]):
     logger.info(f"Deleting remaining pods from {ns}")
     for pod in kutil.ls_po(ns):
         strip_finalizers(ns, "po", pod["NAME"])
-    kutil.delete_po(ns, None, timeout=90)
+    kutil.delete_po(ns, None, timeout=300)
 
     for rsrc in kutil.ALL_RSRC_TYPES + extra_rsrc:
         if rsrc != "po" and rsrc != "ic":
@@ -394,6 +394,7 @@ class OperatorTest(unittest.TestCase):
     ns = None
     op_stdout = []
     op_check_stdout = None
+    shared_state = {}
     default_allowed_op_errors: List[str]
 
     @classmethod
@@ -406,6 +407,10 @@ class OperatorTest(unittest.TestCase):
         mutil.logger.addHandler(cls.stream_handler)
         ociutil.logger.addHandler(cls.stream_handler)
         g_ts_cfg.current_test_name = mangle_name(cls.__name__)
+
+        cls.random_suffix = auxutil.random_string(4)
+        cls.cluster_name = f"cluster-{cls.random_suffix}"
+        cls.cluster_secret_name = f"cluster-{cls.random_suffix}-mypwds"
 
         cls.logger.info(f"Starting {cls.__name__}")
         if ns:
@@ -479,6 +484,43 @@ class OperatorTest(unittest.TestCase):
     def take_log_operator_snapshot(cls):
         if g_store_log_operator:
             g_store_log_operator.take_snapshot(mangle_name(cls.__name__))
+
+    @classmethod
+    def set_ts_var(cls, key: str, value, context_hash: str = None):
+        """
+        Stores a value in shared state under the given context hash and key.
+        """
+        if context_hash is None:
+            context_hash = cls.random_suffix
+        if context_hash not in cls.shared_state:
+            cls.shared_state[context_hash] = {}
+        cls.shared_state[context_hash][key] = value
+
+    @classmethod
+    def get_ts_var(cls, key: str, context_hash: str = None):
+        """
+        Retrieves a value from shared state using the given context hash and key.
+        Returns None if the key does not exist.
+        """
+        if context_hash is None:
+            context_hash = cls.random_suffix
+        return cls.shared_state.get(context_hash, {}).get(key, None)
+
+    @property
+    def cluster_size(self):
+        return self.get_ts_var("cluster_size")
+
+    @cluster_size.setter
+    def cluster_size(self, value):
+        self.set_ts_var("cluster_size", value)
+
+    @property
+    def routers_count(self):
+        return self.get_ts_var("routers_count")
+
+    @routers_count.setter
+    def routers_count(self, value):
+        self.set_ts_var("routers_count", value)
 
     def setUp(self):
         self.allowed_op_logged_errors = self.default_allowed_op_errors[:]
@@ -640,18 +682,19 @@ class OperatorTest(unittest.TestCase):
                 return s in states
             self.wait(check, timeout=timeout)
 
-    def wait_pod(self, name, status_list, ns=None, ready=False):
+    def wait_pod(self, name, status_list, ns=None, ready=False, timeout=600):
         """
         Wait for given pod object to reach one of the states in the list.
         Aborts on timeout or when an unexpected error is detected in the operator.
         """
         self.assertNotEqual(kutil.wait_pod(ns or self.ns, name, status_list,
                                            checkabort=self.check_operator_exceptions,
-                                           checkready=ready),
+                                           checkready=ready,
+                                           timeout=timeout),
                             None, "timeout waiting for pod")
 
     def wait_routers(self, name_pattern, num_online, awaited_status=["Running"], awaited_ready = None,
-                    total_router_pod_containers_getter = g_ts_cfg.get_router_total_containers_per_pod, ns=None, timeout=60):
+                    total_router_pod_containers_getter = g_ts_cfg.get_router_total_containers_per_pod, ns=None, timeout=600):
         """
         Wait for routers matching the name-pattern to reach one of the states in the awaited status list.
         Aborts on timeout or when an unexpected error is detected in the operator.
@@ -695,7 +738,7 @@ class OperatorTest(unittest.TestCase):
         kutil.wait_pod_gone(ns or self.ns, name,
                             checkabort=self.check_operator_exceptions)
 
-    def wait_pods_gone(self, name_pattern, timeout=180, ns=None):
+    def wait_pods_gone(self, name_pattern, timeout=300, ns=None):
         pods = kutil.ls_pod(ns or self.ns, name_pattern)
         for pod in pods:
             kutil.wait_pod_gone(ns or self.ns, pod["NAME"], timeout=timeout,

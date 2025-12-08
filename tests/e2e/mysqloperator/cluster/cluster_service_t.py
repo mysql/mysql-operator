@@ -1,4 +1,4 @@
-# Copyright (c) 2023, 2024 Oracle and/or its affiliates.
+# Copyright (c) 2023, 2025 Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -19,11 +19,10 @@ SQL_MY_ROLE = """
 
 class ClusterService(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
-    instances = 2
-    cluster_name = "mycluster"
-    service_name = "mycluster" # should be as cluster_name
-    secret_name = "mypwds"
-    ann_name = "mycluster.example.com/ann"
+    _cluster_size = 2
+    _routers_count = 1
+
+    ann_name = "myc.example.com/ann"
     ann_value = "ann-value"
     label_name = "x-mylabel"
     label_value = "l-value"
@@ -33,12 +32,17 @@ class ClusterService(tutil.OperatorTest):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
 
-        for instance in range(0, cls.instances):
+        cls.service_name = cls.cluster_name # should be as cluster_name
+
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
+
+        for instance in range(0, cls.get_ts_var("cluster_size")):
             g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        for instance in reversed(range(0, cls.instances)):
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
             g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
@@ -47,8 +51,7 @@ class ClusterService(tutil.OperatorTest):
         """
         Create cluster, check posted events.
         """
-        kutil.create_user_secrets(
-            self.ns, self.secret_name, root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
         # create cluster with mostly default configs
         yaml = f"""
@@ -57,10 +60,10 @@ kind: InnoDBCluster
 metadata:
   name: {self.cluster_name}
 spec:
-  instances: {self.instances}
+  instances: {self.cluster_size}
   router:
-    instances: 1
-  secretName: {self.secret_name}
+    instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
   service:
     defaultPort: mysql-rw-split
@@ -74,10 +77,13 @@ spec:
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        for instance in range(0, self.instances):
+        for instance in range(0, self.cluster_size):
             self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        self.wait_ic(self.cluster_name, "ONLINE", self.instances)
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
+
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
     def test_01_check_rw_split(self):
         with mutil.MySQLPodSession(self.ns, self.service_name, "root", "sakila",
@@ -106,7 +112,7 @@ spec:
             }
         }
         kutil.patch_ic(self.ns, self.cluster_name, patch, type="merge")
-        sleep(1)
+        sleep(10)
         with mutil.MySQLPodSession(self.ns, self.service_name, "root", "sakila",
                                    3306, "service") as s:
             res = s.query_sql(SQL_MY_ROLE)
@@ -122,7 +128,7 @@ spec:
             }
         }
         kutil.patch_ic(self.ns, self.cluster_name, patch, type="merge")
-        sleep(1)
+        sleep(10)
         with mutil.MySQLPodSession(self.ns, self.service_name, "root", "sakila",
                                    3306, "service") as s:
             res = s.query_sql(SQL_MY_ROLE)
@@ -140,7 +146,7 @@ spec:
             }
         }
         kutil.patch_ic(self.ns, self.cluster_name, patch, type="merge")
-        sleep(1)
+        sleep(10)
         service = kutil.get_svc(self.ns, self.service_name)
 
         self.assertEqual(service['metadata']['annotations'][self.ann_name], new_ann_value)
@@ -158,7 +164,7 @@ spec:
             }
         }
         kutil.patch_ic(self.ns, self.cluster_name, patch, type="merge")
-        sleep(1)
+        sleep(10)
         service = kutil.get_svc(self.ns, self.service_name)
 
         self.assertEqual(service['metadata']['labels'][new_label_name], new_label_value)
@@ -175,7 +181,7 @@ spec:
             }
         }
         kutil.patch_ic(self.ns, self.cluster_name, patch, type="merge")
-        sleep(1)
+        sleep(10)
         service = kutil.get_svc(self.ns, self.service_name)
 
         # we don't have any guarantee that we got an external IP and that we
@@ -187,32 +193,37 @@ spec:
         kutil.delete_ic(self.ns, self.cluster_name)
 
         self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
         self.wait_ic_gone(self.cluster_name)
-        kutil.delete_secret(self.ns, self.secret_name)
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
 class InstanceService(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
-    instances = 2
-    cluster_name = "mycluster"
-    service_name = "mycluster-instances"
-    secret_name = "mypwds"
-    ann_name = "mycluster.example.com/ann"
+    ann_name = "myc.example.com/ann"
     ann_value = "ann-value"
     label_name = "x-mylabel"
     label_value = "l-value"
+
+    _cluster_size = 2
+    _routers_count = 1
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
 
-        for instance in range(0, cls.instances):
+        cls.service_name = f"{cls.cluster_name}-instances"
+
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
+
+        for instance in range(0, cls.get_ts_var("cluster_size")):
             g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        for instance in reversed(range(0, cls.instances)):
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
             g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
@@ -221,8 +232,7 @@ class InstanceService(tutil.OperatorTest):
         """
         Create cluster.
         """
-        kutil.create_user_secrets(
-            self.ns, self.secret_name, root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
         # create cluster with mostly default configs
         yaml = f"""
@@ -231,10 +241,10 @@ kind: InnoDBCluster
 metadata:
   name: {self.cluster_name}
 spec:
-  instances: {self.instances}
+  instances: {self.cluster_size}
   router:
-    instances: 1
-  secretName: {self.secret_name}
+    instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
   instanceService:
     labels:
@@ -247,10 +257,13 @@ spec:
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        for instance in range(0, self.instances):
+        for instance in range(0, self.cluster_size):
             self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        self.wait_ic(self.cluster_name, "ONLINE", self.instances)
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
+
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
     def test_02_check_annotation_and_label(self):
         service = kutil.get_svc(self.ns, self.service_name)
@@ -271,7 +284,7 @@ spec:
             }
         }
         kutil.patch_ic(self.ns, self.cluster_name, patch, type="merge")
-        sleep(1)
+        sleep(10)
         service = kutil.get_svc(self.ns, self.service_name)
 
         self.assertEqual(service['metadata']['annotations'][self.ann_name], new_ann_value)
@@ -289,7 +302,7 @@ spec:
             }
         }
         kutil.patch_ic(self.ns, self.cluster_name, patch, type="merge")
-        sleep(1)
+        sleep(10)
         service = kutil.get_svc(self.ns, self.service_name)
 
         self.assertEqual(service['metadata']['labels'][new_label_name], new_label_value)
@@ -298,5 +311,6 @@ spec:
         kutil.delete_ic(self.ns, self.cluster_name)
 
         self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
         self.wait_ic_gone(self.cluster_name)
-        kutil.delete_secret(self.ns, self.secret_name)
+        kutil.delete_secret(self.ns, self.cluster_secret_name)

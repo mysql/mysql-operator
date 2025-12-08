@@ -14,7 +14,7 @@ MAX_SUPPORTED_VERSION = "9.6.0"
 # Some tests won't work if jumping from MIN_SUPPORTED_VERSION to MAX_SUPPORTED_VERSION
 # The result will be
 # [ERROR] [MY-014060] [Server] Invalid MySQL server upgrade: Cannot upgrade from 80028 to 90500. Upgrade to next major version is only allowed from the last LTS release, which version 80028 is not.
-CURRENT_LTS_VERSION="8.4.5"
+CURRENT_LTS_VERSION="8.4.7"
 
 # image
 IMAGE_REGISTRY = os.getenv(
@@ -33,6 +33,9 @@ OPERATOR_EE_IMAGE_NAME = os.getenv(
 
 OPERATOR_VERSION_TAG = os.getenv(
     "OPERATOR_TEST_VERSION_TAG", default="9.6.0-2.2.7")
+
+OPERATOR_CURRENT_LTS_VERSION_TAG = os.getenv(
+    "OPERATOR_CURRENT_LTS_VERSION_TAG", default="8.4.7-2.1.9")
 
 OPERATOR_OLD_VERSION_TAG = os.getenv(
     "OPERATOR_TEST_OLD_VERSION_TAG", default="8.0.31-2.0.7")

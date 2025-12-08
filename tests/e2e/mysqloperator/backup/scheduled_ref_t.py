@@ -1,4 +1,4 @@
-# Copyright (c) 2022, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2022, 2025, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -21,25 +21,29 @@ from utils.optesting import DEFAULT_MYSQL_ACCOUNTS, COMMON_OPERATOR_ERRORS
 
 class ScheduledBackupRef(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
-    cluster_name = "mycluster"
     volume_name = "ote-scheduled-ref-backup-vol"
     profile_name = "scheduled-ref-test-backup"
     schedule_name = "schedule-ref"
-    dump_name_prefix = f"{cluster_name}-{schedule_name}"
     exclude_schema = "countries"
+    _cluster_size = 2
+    _routers_count = 0
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
+        cls.dump_name_prefix = f"{cls.cluster_name}-{cls.schedule_name}"
 
-        g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-0")
-        g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-1")
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
+
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-1")
-        g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-0")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
@@ -80,7 +84,7 @@ spec:
 
 
     def test_0_create(self):
-        kutil.create_default_user_secrets(self.ns)
+        kutil.create_default_user_secrets(self.ns, name=self.cluster_secret_name)
 
         self.create_volume()
 
@@ -90,9 +94,11 @@ kind: InnoDBCluster
 metadata:
   name: {self.cluster_name}
 spec:
-  instances: 2
-  secretName: mypwds
+  instances: {self.cluster_size}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
+  router:
+    instances: {self.routers_count}
   backupProfiles:
   - name: {self.profile_name}
     dumpInstance:
@@ -117,10 +123,12 @@ spec:
 
         kutil.apply(self.ns, yaml)
 
-        self.wait_pod(f"{self.cluster_name}-0", "Running")
-        self.wait_pod(f"{self.cluster_name}-1", "Running")
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        self.wait_ic(self.cluster_name, "ONLINE", 2)
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         script = open(tutil.g_test_data_dir+"/sql/sakila-schema.sql").read()
         script += open(tutil.g_test_data_dir+"/sql/sakila-data.sql").read()
@@ -228,14 +236,15 @@ spec:
         self.check_backup_pods()
 
     def test_9_destroy(self):
+        kutil.delete_mbks(self.ns, self.dump_name_prefix)
+
         kutil.delete_ic(self.ns, self.cluster_name)
 
-        self.wait_pod_gone(f"{self.cluster_name}-1")
-        self.wait_pod_gone(f"{self.cluster_name}-0")
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
         self.wait_ic_gone(self.cluster_name)
 
-        kutil.delete_mbks(self.ns, self.dump_name_prefix)
         kutil.delete_pvc(self.ns, self.volume_name)
         kutil.delete_pv(self.volume_name)
 
-        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_secret(self.ns, self.cluster_secret_name)

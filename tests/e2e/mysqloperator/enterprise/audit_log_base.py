@@ -53,7 +53,7 @@ class AuditLogBase(tutil.OperatorTest):
 
 
     def create_cluster(self, audit_log_strategy = 'SYNCHRONOUS'):
-        kutil.create_default_user_secrets(self.ns)
+        kutil.create_default_user_secrets(self.ns, name=self.cluster_secret_name)
 
         # create cluster with mostly default configs
         yaml = f"""
@@ -65,7 +65,7 @@ spec:
     instances: {self.cluster_size}
     router:
         instances: {self.routers_count}
-    secretName: mypwds
+    secretName: {self.cluster_secret_name}
     edition: enterprise
     tlsUseSelfSigned: true
     datadirVolumeClaimTemplate:
@@ -271,4 +271,4 @@ spec:
         self.wait_routers_gone("mycluster-router-*")
         self.wait_ic_gone("mycluster")
 
-        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_secret(self.ns, self.cluster_secret_name)

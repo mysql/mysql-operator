@@ -548,26 +548,26 @@ def delete_mbks(ns, prefix, timeout=240):
             delete_mbk(ns, mbk["NAME"], timeout)
 
 
-def delete_po(ns, name, timeout=240, force=False):
+def delete_po(ns, name, timeout=300, force=False):
     additional_args = []
     if force:
         additional_args += ["--force", "--grace-period", "0"]
     delete(ns, "po", name, timeout=timeout, additional_args=additional_args)
 
 
-def delete_sts(ns, name, timeout=5):
+def delete_sts(ns, name, timeout=60):
     delete(ns, "sts", name, timeout=timeout)
 
 
-def delete_rs(ns, name, timeout=5):
+def delete_rs(ns, name, timeout=60):
     delete(ns, "rs", name, timeout=timeout)
 
 
-def delete_deploy(ns, name, timeout=5):
+def delete_deploy(ns, name, timeout=60):
     delete(ns, "deploy", name, timeout=timeout)
 
 
-def delete_svc(ns, name, timeout=5):
+def delete_svc(ns, name, timeout=60):
     delete(ns, "svc", name, timeout=timeout)
 
 
@@ -587,10 +587,10 @@ def delete_cm(ns, name, timeout=5):
     delete(ns, "cm", name, timeout=timeout)
 
 
-def delete_secret(ns, name, timeout=5):
+def delete_secret(ns, name, timeout=60):
     delete(ns, "secret", name, timeout=timeout)
 
-def delete_default_secret(ns, name="mypwds", timeout=5):
+def delete_default_secret(ns, name="mypwds", timeout=60):
     delete_secret(ns, name, timeout=timeout)
 
 #
@@ -970,7 +970,7 @@ def store_ns_diagnostics(ns):
 
 #
 
-def wait_pod_exists(ns, name, timeout=150, checkabort=lambda: None):
+def wait_pod_exists(ns, name, timeout=300, checkabort=lambda: None):
     logger.info(f"Waiting for pod {ns}/{name} to come up")
     for i in range(timeout):
         pods = ls_po(ns)
@@ -987,7 +987,7 @@ def wait_pod_exists(ns, name, timeout=150, checkabort=lambda: None):
     raise Exception(f"Timeout waiting for pod {ns}/{name}")
 
 
-def wait_pod_gone(ns, name, timeout=120, checkabort=lambda: None):
+def wait_pod_gone(ns, name, timeout=300, checkabort=lambda: None):
     logger.info(f"Waiting for pod {ns}/{name} to disappear")
     i = 0
     last_state = None
@@ -1014,7 +1014,7 @@ def wait_pod_gone(ns, name, timeout=120, checkabort=lambda: None):
     raise Exception(f"Timeout waiting for pod {ns}/{name}")
 
 
-def wait_pod(ns, name, status="Running", timeout=150, checkabort=lambda: None, checkready:bool=False):
+def wait_pod(ns, name, status="Running", timeout=600, checkabort=lambda: None, checkready:bool=False):
     if type(status) not in (tuple, list):
         status = [status]
 
@@ -1086,7 +1086,7 @@ def wait_ic_gone(ns, name, timeout=150, checkabort=lambda: None):
     raise Exception(f"Timeout waiting for ic {ns}/{name}")
 
 
-def wait_ic(ns, name, status=["ONLINE"], num_online=None, timeout=200, probe_time=None,
+def wait_ic(ns, name, status=["ONLINE"], num_online=None, timeout=300, probe_time=None,
             checkabort=lambda: None):
     if type(status) not in (tuple, list):
         status = [status]
@@ -1111,19 +1111,70 @@ def wait_ic(ns, name, status=["ONLINE"], num_online=None, timeout=200, probe_tim
 
     return r
 
-#
+def portfw(ns, name, in_port, target_type="pod", local_address="127.0.0.1", attempts=5, read_timeout=10):
+    """
+    Start a kubectl port-forward and return (process, local_port).
+    - Robustly waits for the 'Forwarding from ...:PORT ->' line
+    - Cleans up the kubectl process if the attempt doesn't succeed
+    - Retries a few times to handle transient conditions
+    """
+    port_line_re = re.compile(r"Forwarding from .*:(\d+)\s+->")
 
-def portfw(ns, name, in_port, target_type="pod"):
-    for _ in range(5):
-        p = kubectl_popen("port-forward", [f"{target_type}/{name}", ":%s" %
-                                        in_port, "--address", "127.0.0.1", "-n", ns])
-        line = p.stdout.readline().decode("utf8")
-        logger.info(f"portfw: {line}")
-        port = line.split("->")[0].split(":")[-1].strip()
-        if port.isnumeric():
-            return p, int(port)
+    for attempt in range(attempts):
+        p = kubectl_popen(
+            "port-forward",
+            [f"{target_type}/{name}", f":{in_port}", "--address", local_address, "-n", ns],
+        )
+
+        port = None
+        start = time.time()
+        try:
+            while True:
+                # If stdout is not ready or process ended, handle accordingly
+                if p.stdout is None:
+                    break
+
+                line = p.stdout.readline().decode("utf8")
+                if not line:
+                    # No line yet; check for timeout or process exit
+                    if p.poll() is not None:
+                        # Process exited; no point in waiting further
+                        break
+                    if time.time() - start > read_timeout:
+                        logger.debug(f"portfw: timeout waiting for port on attempt {attempt+1}")
+                        break
+                    time.sleep(0.1)
+                    continue
+
+                logger.info(f"portfw: {line.rstrip()}")
+
+                m = port_line_re.search(line)
+                if m:
+                    port = int(m.group(1))
+                    return p, port
+        finally:
+            # If we didn't get a port, ensure the process is cleaned up before retry
+            if port is None:
+                try:
+                    p.terminate()
+                except Exception:
+                    pass
+                try:
+                    p.wait(timeout=2)
+                except Exception:
+                    try:
+                        p.kill()
+                    except Exception:
+                        pass
+                try:
+                    if p.stdout:
+                        p.stdout.close()
+                except Exception:
+                    pass
+
+        # Wait a moment before retrying
         time.sleep(1)
-        logger.debug(f"portfw incorrect port: {port}, retrying...")
+
     raise Exception("portfw failed")
 
 #

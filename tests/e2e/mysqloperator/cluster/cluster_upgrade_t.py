@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -26,82 +26,84 @@ class UpgradeToLatest(tutil.OperatorTest):
 class UpgradeToNext(tutil.OperatorTest):
     # Upgrade by 1 version
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    _cluster_size = 3
+    _routers_count = 2
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
 
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-1")
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-2")
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, "mycluster-2")
-        g_full_log.stop_watch(cls.ns, "mycluster-1")
-        g_full_log.stop_watch(cls.ns, "mycluster-0")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
     def test_0_create(self):
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
         # create cluster with mostly default configs
         yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: 3
+  instances: {self.cluster_size}
   router:
-    instances: 2
-  secretName: mypwds
+    instances: {self.routers_count}
+    version: "{g_ts_cfg.version_tag}"
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
-  version: "{g_ts_cfg.get_old_version_tag()}"
+  version: "{g_ts_cfg.get_current_lts_version()}"
 """
-
+        print(yaml)
         kutil.apply(self.ns, yaml)
 
-        self.wait_pod("mycluster-0", "Running")
-        self.wait_pod("mycluster-1", "Running")
-        self.wait_pod("mycluster-2", "Running")
+        self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        self.wait_ic("mycluster", "ONLINE", 3)
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        self.wait_routers("mycluster-router-*", 2)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
+        print(kutil.ls_sts(self.ns))
 
-        _, router_pods = check_all(self, self.ns, "mycluster", version=g_ts_cfg.get_old_version_tag(),
-                                   instances=3, routers=2, primary=0)
+        if self.routers_count:
+            print(kutil.ls_deploy(self.ns))
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
 
-        for pod_name in ["mycluster-0", "mycluster-1", "mycluster-2"]:
+        _, router_pods = check_all(self, self.ns, self.cluster_name, version=g_ts_cfg.get_current_lts_version(),
+                                   instances=self.cluster_size, routers=self.routers_count, primary=0)
+
+        for instance in range(0, self.cluster_size):
+            pod_name = f"{self.cluster_name}-{instance}"
             pod = kutil.get_po(self.ns, pod_name)
-            cont = check_apiobjects.check_pod_container(
-                self, pod, "mysql", None, True)
-            self.assertEqual(
-                cont["image"], g_ts_cfg.get_old_server_image())
-            cont = check_apiobjects.check_pod_container(
-                self, pod, "sidecar", None, True)
-            self.assertEqual(
-                cont["image"], g_ts_cfg.get_operator_image())
+
+            cont = check_apiobjects.check_pod_container(self, pod, "mysql", None, True)
+            self.assertEqual(cont["image"], g_ts_cfg.get_current_lts_version_server_image())
+
+            cont = check_apiobjects.check_pod_container(self, pod, "sidecar", None, True)
+            self.assertEqual(cont["image"], g_ts_cfg.get_operator_image())
 
         for pod_name in map(lambda pod: pod["NAME"], router_pods):
             pod = kutil.get_po(self.ns, pod_name)
-            cont = check_apiobjects.check_pod_container(
-                self, pod, "router", None, True)
-            self.assertEqual(
-                cont["image"], g_ts_cfg.get_old_router_image())
+            cont = check_apiobjects.check_pod_container(self, pod, "router", None, True)
+            self.assertEqual(cont["image"], g_ts_cfg.get_router_image())
 
 
-    def test_1_upgrade(self):
+    def test_1_upgrade_to_latest(self):
         """
-        version is now 8.0.{VERSION}, but we upgrade it to 8.0.{VERSION+1}
-        This will upgrade MySQL only, not the Router since it's already latest.
+        version is now LTS, but we upgrade it to 9.{VERSION}.0
         """
 
-        kutil.patch_ic(self.ns, "mycluster", {"spec": {
+        kutil.patch_ic(self.ns, self.cluster_name, {"spec": {
             "version": g_ts_cfg.version_tag
         }}, type="merge")
 
@@ -110,58 +112,42 @@ spec:
             # self.logger.debug(json.loads(po["metadata"].get("annotations", {}).get("mysql.oracle.com/membership-info", "{}")))
             return json.loads(po["metadata"].get("annotations", {}).get("mysql.oracle.com/membership-info", "{}")).get("version", "")
 
-        self.wait(check_done, args=("mycluster-2", ),
-                  check=lambda s: s.startswith(g_ts_cfg.version_tag), timeout=300, delay=10)
-        self.wait(check_done, args=("mycluster-1", ),
-                  check=lambda s: s.startswith(g_ts_cfg.version_tag), timeout=300, delay=10)
-        self.wait(check_done, args=("mycluster-0", ),
-                  check=lambda s: s.startswith(g_ts_cfg.version_tag), timeout=300, delay=10)
+        for instance in reversed(range(0, self.cluster_size)):
+            self.wait(check_done, args=(f"{self.cluster_name}-{instance}", ),
+                      check=lambda s: s.startswith(g_ts_cfg.version_tag), timeout=300, delay=10)
 
-        self.wait_ic("mycluster", "ONLINE", 3)
+        self.wait_ic(self.cluster_name, "ONLINE", self.cluster_size)
 
-        self.wait_routers("mycluster-router-*", 2)
+        print(kutil.ls_sts(self.ns))
+        print(kutil.ls_deploy(self.ns))
+        self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count)
 
         # TODO check that mysql is upgraded ok
-        _, router_pods = check_all(self, self.ns, "mycluster", version=g_ts_cfg.version_tag,
-                                   instances=3, routers=2, primary=None)
+        _, router_pods = check_all(self, self.ns, self.cluster_name, version=g_ts_cfg.version_tag,
+                                   instances=self.cluster_size, routers=self.routers_count, primary=None)
 
-        for pod_name in ["mycluster-0", "mycluster-1", "mycluster-2"]:
+        for instance in range(0, self.cluster_size):
+            pod_name = f"{self.cluster_name}-{instance}"
             pod = kutil.get_po(self.ns, pod_name)
-            cont = check_apiobjects.check_pod_container(
-                self, pod, "mysql", None, True)
-            self.assertEqual(
-                cont["image"], g_ts_cfg.get_server_image())
-            cont = check_apiobjects.check_pod_container(
-                self, pod, "sidecar", None, True)
-            self.assertEqual(
-                cont["image"], g_ts_cfg.get_operator_image())
+            cont = check_apiobjects.check_pod_container(self, pod, "mysql", None, True)
+            self.assertEqual(cont["image"], g_ts_cfg.get_server_image())
+
+            cont = check_apiobjects.check_pod_container(self, pod, "sidecar", None, True)
+            self.assertEqual(cont["image"], g_ts_cfg.get_operator_image())
 
         for pod_name in map(lambda pod: pod["NAME"], router_pods):
             pod = kutil.get_po(self.ns, pod_name)
-            cont = check_apiobjects.check_pod_container(
-                self, pod, "router", None, True)
-            self.assertEqual(
-                cont["image"], g_ts_cfg.get_router_image())
-
-
-    def test_1_upgrade_router(self):
-        pass
-
-        # TODO check that routers were upgraded ok
-
-        # TODO check that everything is working ok
-
-        # TODO check no client downtime
+            cont = check_apiobjects.check_pod_container(self, pod, "router", None, True)
+            self.assertEqual(cont["image"], g_ts_cfg.get_router_image())
 
     def test_9_destroy(self):
-        kutil.delete_ic(self.ns, "mycluster")
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_pvc(self.ns, None)
 
-        self.wait_pod_gone("mycluster-2")
-        self.wait_pod_gone("mycluster-1")
-        self.wait_pod_gone("mycluster-0")
-        self.wait_ic_gone("mycluster")
-
-        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
 # TODO bind router to an old version, then let it get upgraded automatically

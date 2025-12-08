@@ -1,4 +1,4 @@
-# Copyright (c) 2021, 2024 Oracle and/or its affiliates.
+# Copyright (c) 2021, 2025 Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -33,26 +33,26 @@ def check_verify_ca(self, ns, pod, port, ca, expected_host):
         self.assertFalse(e, f"connect VERIFY_CA {pod}:{port}")
 
 
-def check_connect_via_operator_pod(self, address, ca, ssl_mode):
+def check_connect_via_operator_pod(self, address, ca, ssl_mode, cluster_name):
     # get name of the operator pod
     operator_pod = kutil.ls_po("mysql-operator")[0]["NAME"]
 
     # create a tmpfile with the CA in the operator pod
     if ca:
-        kutil.cat_in("mysql-operator", [operator_pod, "mysql-operator"], "/tmp/testca.pem", open(ca).read())
+        kutil.cat_in("mysql-operator", [operator_pod, "mysql-operator"], f"/tmp/testca-{cluster_name}.pem", open(ca).read())
 
     cmd = ['env', 'MYSQLSH_PROMPT_THEME=', 'mysqlsh', '--sql', '--tabbed',
             f'root:sakila@{address}', '--mysql',
             f'--ssl-mode={ssl_mode}']
     if ca:
-        cmd += ['--ssl-ca=/tmp/testca.pem']
+        cmd += [f'--ssl-ca=/tmp/testca-{cluster_name}.pem']
     cmd += ["-e select 'CONNECT_OK'"]
 
     r = kutil.exec("mysql-operator", operator_pod, cmd)
     self.assertIn("CONNECT_OK", r.stdout.decode("utf-8"), address)
 
 
-def check_ssl(self, ns, pod, ca=None, crl=None, ssl_cert_days=None, check_gr_accounts: bool = True):
+def check_ssl(self: tutil.OperatorTest, ns, pod, ca=None, crl=None, ssl_cert_days=None, check_gr_accounts: bool = True):
     self_signed = not ca or "/" not in ca
 
     with mutil.MySQLPodSession(ns, pod, "root", "sakila") as s:
@@ -107,11 +107,11 @@ def check_ssl(self, ns, pod, ca=None, crl=None, ssl_cert_days=None, check_gr_acc
         check_verify_ca(self, ns, pod, 3306, capath, expected_host=pod)
 
         # check connecting to server with VERIFY_IDENTITY and CA directly from operator pod
-        check_connect_via_operator_pod(self, f"{pod}.mycluster-instances.{ns}.svc.cluster.local:3306", capath, ssl_mode="VERIFY_CA")
-        check_connect_via_operator_pod(self, f"{pod}.mycluster-instances.{ns}.svc.cluster.local:3306", capath, ssl_mode="VERIFY_IDENTITY")
+        check_connect_via_operator_pod(self, f"{pod}.{self.cluster_name}-instances.{ns}.svc.cluster.local:3306", capath, ssl_mode="VERIFY_CA", cluster_name=self.cluster_name)
+        check_connect_via_operator_pod(self, f"{pod}.{self.cluster_name}-instances.{ns}.svc.cluster.local:3306", capath, ssl_mode="VERIFY_IDENTITY", cluster_name=self.cluster_name)
 
         if check_gr_accounts:
-            cluster_info = kutil.get_ic(self.ns, "mycluster")["metadata"]["annotations"]["mysql.oracle.com/cluster-info"]
+            cluster_info = kutil.get_ic(self.ns, self.cluster_name)["metadata"]["annotations"]["mysql.oracle.com/cluster-info"]
             print(cluster_info)
             with mutil.MySQLPodSession(ns, pod, "root", "sakila") as s:
                 print(s.query_sql("""SELECT User, ssl_type, x509_issuer, x509_subject FROM mysql.user
@@ -121,15 +121,15 @@ def check_ssl(self, ns, pod, ca=None, crl=None, ssl_cert_days=None, check_gr_acc
                                     AND x509_issuer != "0x"
                                     AND x509_subject != "0x"
                                     AND User like "mysql_innodb_cluster_%" """).fetch_one()
-                self.assertEqual(self.instances, row[0])
+                self.assertEqual(self.cluster_size, row[0])
     else:
-        check_connect_via_operator_pod(self, f"{pod}.mycluster-instances.{ns}.svc.cluster.local:3306", None, ssl_mode="REQUIRED")
+        check_connect_via_operator_pod(self, f"{pod}.{self.cluster_name}-instances.{ns}.svc.cluster.local:3306", None, ssl_mode="REQUIRED", cluster_name=self.cluster_name)
 
 
-def check_router_ssl(self, ns, pod, ca=None, has_cert=False, crl=None):
+def check_router_ssl(self: tutil.OperatorTest, ns, pod, ca=None, has_cert=False, crl=None):
     # a temporary patch due to timing issues in router - it may report status 'Running' before
     # some stuff checked in this routine is ready to verify
-    sleep(3)
+    sleep(10)
 
     # check router config file
     router_conf = kutil.cat(ns, pod, "/tmp/mysqlrouter/mysqlrouter.conf")
@@ -148,49 +148,54 @@ def check_router_ssl(self, ns, pod, ca=None, has_cert=False, crl=None):
 
     # This won't be set with router 8.0.29, it knows about CA anyways
     # re-evaluate when router fixed bug #33996132
-    #self.assertEqual("/router-ssl/ca.pem", conf["metadata_cache:mycluster"]["ssl_ca"])
+    #self.assertEqual("/router-ssl/ca.pem", conf[f"metadata_cache:{self.cluster_name}"]["ssl_ca"])
 
     if ca:
         capath = os.path.join(tutil.g_test_data_dir, ca)
 
         # check connecting to router with VERIFY_CA (via proxy/portfw)
         # VERIFY_IDENTITY won't work in this case, since the proxy acts as a mitm
-        check_verify_ca(self, ns, pod, 6446, capath, expected_host="mycluster-0")
+        check_verify_ca(self, ns, pod, 6446, capath, expected_host=f"{self.cluster_name}-0")
 
         # check connecting to router with VERIFY_CA directly from operator pod to the service
-        check_connect_via_operator_pod(self, f"mycluster.{ns}.svc.cluster.local:6446", capath, ssl_mode="VERIFY_CA")
+        check_connect_via_operator_pod(self, f"{self.cluster_name}.{ns}.svc.cluster.local:6446", capath, ssl_mode="VERIFY_CA", cluster_name=self.cluster_name)
         # VERIFY_IDENTITY doesn't work because we're connecting to the service
-        #check_connect_via_operator_pod(self, f"mycluster.{ns}.svc.cluster.local:6446", capath, ssl_mode="VERIFY_IDENTITY")
+        #check_connect_via_operator_pod(self, f"{self.cluster_name}.{ns}.svc.cluster.local:6446", capath, ssl_mode="VERIFY_IDENTITY")
+
 
 class ClusterSSL(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
-    instances = 2 # adapt test_2_modify_ssl_certs() and test_3_modify_ssl_certs_and_ca() when instances is different than 2
-    routers = 1
+#    instances = 2 # adapt test_2_modify_ssl_certs() and test_3_modify_ssl_certs_and_ca() when instances is different than 2
+#    routers = 1
+    _cluster_size = 2
+    _routers_count = 1
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass(CLUSTER_SSL_NAMESPACE)
+        cls.cluster_name = "mycluster" # due to precreated TLS certs
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
 
-        for instance in range(0, cls.instances):
-            g_full_log.watch_mysql_pod(cls.ns, f"mycluster-{instance}")
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        for instance in reversed(range(0, cls.instances)):
-            g_full_log.watch_mysql_pod(cls.ns, f"mycluster-{instance}")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
     def test_0_create_secrets(self):
-        kutil.create_ssl_ca_secret(self.ns, "mycluster-ca",
+        kutil.create_ssl_ca_secret(self.ns, f"{self.cluster_name}-ca",
             os.path.join(tutil.g_test_data_dir, "ssl/out/ca.pem"))
-        kutil.create_ssl_cert_secret(self.ns, "mycluster-tls",
+        kutil.create_ssl_cert_secret(self.ns, f"{self.cluster_name}-tls",
             os.path.join(tutil.g_test_data_dir, "ssl/out/server-cert.pem"),
             os.path.join(tutil.g_test_data_dir, "ssl/out/server-key.pem"))
 
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
     def test_1_create_cluster_with_ssl(self):
         """
@@ -203,54 +208,54 @@ class ClusterSSL(tutil.OperatorTest):
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: {self.instances}
+  instances: {self.cluster_size}
   router:
-    instances: {self.routers}
-  secretName: mypwds
+    instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
 """
 
         kutil.apply(self.ns, yaml)
 
-        self.wait_pod("mycluster-0", "Pending")
+        self.wait_pod(f"{self.cluster_name}-0", "Pending")
 
         # The deployment starts with one RS and zero routers, which are updated once the IC is up and running
-        router_rs_pre = kutil.ls_rs(self.ns, pattern="mycluster-router-.*")
-        self.assertEqual(len(router_rs_pre), self.routers)
+        router_rs_pre = kutil.ls_rs(self.ns, pattern=f"{self.cluster_name}-router-.*")
+        self.assertEqual(len(router_rs_pre), self.routers_count)
         self.assertEqual(router_rs_pre[0]['DESIRED'], '0')
         self.assertEqual(router_rs_pre[0]['CURRENT'], '0')
         self.assertEqual(router_rs_pre[0]['READY'], '0')
 
-        for instance in range(0, self.instances):
-            self.wait_pod(f"mycluster-{instance}", "Running")
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        self.wait_ic("mycluster", "ONLINE", self.instances)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
-        self.wait_routers("mycluster-router-.*", self.routers)
+        self.wait_routers(f"{self.cluster_name}-router-.*", num_online=self.routers_count)
 
-        router_rs_post = kutil.ls_rs(self.ns, pattern="mycluster-router-.*")
-        self.assertEqual(len(router_rs_post), self.routers)
+        router_rs_post = kutil.ls_rs(self.ns, pattern=f"{self.cluster_name}-router-.*")
+        self.assertEqual(len(router_rs_post), self.routers_count)
         self.assertEqual(router_rs_post[0]['NAME'], router_rs_pre[0]['NAME'])
-        self.assertEqual(router_rs_post[0]['DESIRED'], str(self.routers))
-        self.assertEqual(router_rs_post[0]['CURRENT'], str(self.routers))
-        self.assertEqual(router_rs_post[0]['READY'], str(self.routers))
+        self.assertEqual(router_rs_post[0]['DESIRED'], str(self.routers_count))
+        self.assertEqual(router_rs_post[0]['CURRENT'], str(self.routers_count))
+        self.assertEqual(router_rs_post[0]['READY'], str(self.routers_count))
 
-        for instance in range(0, self.instances):
-            with mutil.MySQLPodSession(self.ns, f"mycluster-{instance}", "root", "sakila") as s:
+        for instance in range(0, self.cluster_size):
+            with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-{instance}", "root", "sakila") as s:
                 s.exec_sql("set global max_connect_errors=10000")
 
-        check_all(self, self.ns, "mycluster", instances=self.instances, routers=self.routers, primary=0)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
-        for instance in range(0, self.instances):
-            check_ssl(self, self.ns, f"mycluster-{instance}", ca="ssl/out/ca.pem", ssl_cert_days=3650)
+        for instance in range(0, self.cluster_size):
+            check_ssl(self, self.ns, f"{self.cluster_name}-{instance}", ca="ssl/out/ca.pem", ssl_cert_days=3650)
 
     def wait_tls_changed(self, s, before):
         for _ in range(120):
             after = s.query_sql("show status like 'Ssl_server_not_after'").fetch_one()[1]
             if after != before:
                 break
-            sleep(5)
+            sleep(10)
         else:
             self.assertFalse(1, "timeout waiting for tls reload")
 
@@ -259,21 +264,21 @@ spec:
         Change server certificate pair
         CA is the same, so this is straightforward
         """
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0, mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s1:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s0, mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-1", "root", "sakila") as s1:
             before = s0.query_sql("show status like 'Ssl_server_not_after'").fetch_one()[1]
 
-            kutil.delete_secret(self.ns, "mycluster-tls")
-            kutil.create_ssl_cert_secret(self.ns, "mycluster-tls",
+            kutil.delete_secret(self.ns, f"{self.cluster_name}-tls")
+            kutil.create_ssl_cert_secret(self.ns, f"{self.cluster_name}-tls",
                 os.path.join(tutil.g_test_data_dir, "ssl/out/server2-cert.pem"),
                 os.path.join(tutil.g_test_data_dir, "ssl/out/server2-key.pem"))
 
             self.wait_tls_changed(s0, before)
             self.wait_tls_changed(s1, before)
 
-        check_all(self, self.ns, "mycluster", instances=self.instances, routers=self.routers, primary=0)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
-        for instance in range(0, self.instances):
-            check_ssl(self, self.ns, f"mycluster-{instance}", ca="ssl/out/ca.pem", ssl_cert_days=7300)
+        for instance in range(0, self.cluster_size):
+            check_ssl(self, self.ns, f"{self.cluster_name}-{instance}", ca="ssl/out/ca.pem", ssl_cert_days=7300)
 
     def test_3_modify_ssl_certs_and_ca(self):
         """
@@ -281,18 +286,18 @@ spec:
         CA changes, so if no downtime is wanted, both CAs need to be made
         available at the same time.
         """
-        old_routers = kutil.ls_pod(self.ns, "mycluster-router-.*")
-        self.assertEqual(len(old_routers), self.routers)
+        old_routers = kutil.ls_pod(self.ns, f"{self.cluster_name}-router-.*")
+        self.assertEqual(len(old_routers), self.routers_count)
 
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0, mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s1:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s0, mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-1", "root", "sakila") as s1:
             before = s0.query_sql("show status like 'Ssl_server_not_after'").fetch_one()[1]
 
-            kutil.delete_secret(self.ns, "mycluster-ca")
-            kutil.create_ssl_ca_secret(self.ns, "mycluster-ca",
+            kutil.delete_secret(self.ns, f"{self.cluster_name}-ca")
+            kutil.create_ssl_ca_secret(self.ns, f"{self.cluster_name}-ca",
                 os.path.join(tutil.g_test_data_dir, "ssl/out/cab.pem"))
 
-            kutil.delete_secret(self.ns, "mycluster-tls")
-            kutil.create_ssl_cert_secret(self.ns, "mycluster-tls",
+            kutil.delete_secret(self.ns, f"{self.cluster_name}-tls")
+            kutil.create_ssl_cert_secret(self.ns, f"{self.cluster_name}-tls",
                 os.path.join(tutil.g_test_data_dir, "ssl/out/serverb-cert.pem"),
                 os.path.join(tutil.g_test_data_dir, "ssl/out/serverb-key.pem"))
 
@@ -301,34 +306,34 @@ spec:
 
         # before verifying the new router, ensure the old one is gone
         self.wait_pod_gone(old_routers[0]["NAME"])
-        routers = self.wait_routers("mycluster-router-.*", self.routers)
+        routers = self.wait_routers(f"{self.cluster_name}-router-.*", self.routers_count)
 
-        check_all(self, self.ns, "mycluster", instances=self.instances, routers=self.routers, primary=0)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
-        for instance in range(0, self.instances):
-            check_ssl(self, self.ns, f"mycluster-{instance}", ca="ssl/out/cab.pem", ssl_cert_days=10920)
+        for instance in range(0, self.cluster_size):
+            check_ssl(self, self.ns, f"{self.cluster_name}-{instance}", ca="ssl/out/cab.pem", ssl_cert_days=10920)
 
         # routers are setup without certificates, so connect without VERIFY_
         for r in routers:
             check_router_ssl(self, self.ns, r)
 
-        # kutil.delete_ic(self.ns, "mycluster")
-        # self.wait_pod_gone("mycluster-1")
-        # self.wait_pod_gone("mycluster-0")
-        # self.wait_ic_gone("mycluster")
+        # kutil.delete_ic(self.ns, self.cluster_name)
+        # self.wait_pod_gone(f"{self.cluster_name}-1")
+        # self.wait_pod_gone(f"{self.cluster_name}-0")
+        # self.wait_ic_gone(self.cluster_name)
 
 
     def test_4_add_crl(self):
-        old_routers = kutil.ls_pod(self.ns, "mycluster-router-.*")
-        self.assertEqual(len(old_routers), self.routers)
+        old_routers = kutil.ls_pod(self.ns, f"{self.cluster_name}-router-.*")
+        self.assertEqual(len(old_routers), self.routers_count)
 
-        kutil.delete_secret(self.ns, "mycluster-ca")
-        kutil.create_ssl_ca_secret(self.ns, "mycluster-ca",
+        kutil.delete_secret(self.ns, f"{self.cluster_name}-ca")
+        kutil.create_ssl_ca_secret(self.ns, f"{self.cluster_name}-ca",
             os.path.join(tutil.g_test_data_dir, "ssl/out/cab.pem"),
             os.path.join(tutil.g_test_data_dir, "ssl/out/crl.pem"))
 
-        for instance in range(0, self.instances):
-            with mutil.MySQLPodSession(self.ns, f"mycluster-{instance}", "root", "sakila") as s:
+        for instance in range(0, self.cluster_size):
+            with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-{instance}", "root", "sakila") as s:
                 def check_tls_loaded():
                     return s.query_sql("select @@global.ssl_crl").fetch_one()[0]
 
@@ -336,59 +341,56 @@ spec:
 
         # before verifying the new router, ensure the old one is gone
         self.wait_pod_gone(old_routers[0]["NAME"])
-        routers = self.wait_routers("mycluster-router-.*", self.routers)
+        routers = self.wait_routers(f"{self.cluster_name}-router-.*", self.routers_count)
 
-        check_all(self, self.ns, "mycluster", instances=self.instances, routers=self.routers, primary=0)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
-        for instance in range(0, self.instances):
-            check_ssl(self, self.ns, f"mycluster-{instance}", ca="ssl/out/cab.pem", crl="ssl/out/crl.pem", ssl_cert_days=10920)
+        for instance in range(0, self.cluster_size):
+            check_ssl(self, self.ns, f"{self.cluster_name}-{instance}", ca="ssl/out/cab.pem", crl="ssl/out/crl.pem", ssl_cert_days=10920)
 
         # routers are setup without certificates, so connect without VERIFY_
         for r in routers:
             check_router_ssl(self, self.ns, r)
 
-        kutil.delete_ic(self.ns, "mycluster")
-
-        for instance in reversed(range(0, self.instances)):
-            self.wait_pod_gone(f"mycluster-{instance}")
-        self.wait_ic_gone("mycluster")
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
 
 
     def test_9_destroy(self):
-        kutil.delete_ic(self.ns, "mycluster")
-
-        for instance in reversed(range(0, self.instances)):
-            self.wait_pod_gone(f"mycluster-{instance}")
-        self.wait_ic_gone("mycluster")
-
-        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_pvc(self.ns, None)
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
 class ClusterNoSSL(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
-    instances = 1
-    routers = 1
+    _cluster_size = 1
+    _routers_count = 1
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass(CLUSTER_SSL_NAMESPACE)
+        cls.cluster_name = "mycluster" # due to precreated TLS certs
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
 
-        for instance in range(0, cls.instances):
-            g_full_log.watch_mysql_pod(cls.ns, f"mycluster-{instance}")
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        for instance in reversed(range(0, cls.instances)):
-            g_full_log.stop_watch(cls.ns, f"mycluster-{instance}")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
-
     def test_0_create_secrets(self):
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
-
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
     def test_1_create_cluster_missing_ssl(self):
         """
@@ -400,96 +402,98 @@ class ClusterNoSSL(tutil.OperatorTest):
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: {self.instances}
+  instances: {self.cluster_size}
   router:
-    instances: {self.routers}
-  secretName: mypwds
+    instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
 """
         start_time = isotime()
         kutil.apply(self.ns, yaml)
 
-        self.wait_ic("mycluster", "INVALID", 0)
+        self.wait_ic(self.cluster_name, "INVALID", 0)
 
-        SECRET_TLS_NOT_FOUND='Secret "mycluster-tls" NOT found'
-        SECRET_CA_NOT_FOUND='Secret "mycluster-ca" NOT found'
+        SECRET_TLS_NOT_FOUND=f'Secret "{self.cluster_name}-tls" NOT found'
+        SECRET_CA_NOT_FOUND=f'Secret "{self.cluster_name}-ca" NOT found'
 
-        self.wait_got_cluster_event("mycluster", after=start_time, timeout=120, delay=15,
+        self.wait_got_cluster_event(self.cluster_name, after=start_time, timeout=120, delay=15,
                                     type="Error", reason="InvalidArgument", msg=SECRET_CA_NOT_FOUND)
 
-        kutil.create_ssl_ca_secret(self.ns, "mycluster-ca",
+        kutil.create_ssl_ca_secret(self.ns, f"{self.cluster_name}-ca",
             os.path.join(tutil.g_test_data_dir, "ssl/out/ca.pem"))
 
         update_time = isotime()
 
-        self.wait_got_cluster_event("mycluster", after=update_time, timeout=120, delay=15,
+        self.wait_got_cluster_event(self.cluster_name, after=update_time, timeout=120, delay=15,
                                     type="Error", reason="InvalidArgument", msg=SECRET_TLS_NOT_FOUND)
 
-        kutil.create_ssl_cert_secret(self.ns, "mycluster-tls",
+        kutil.create_ssl_cert_secret(self.ns, f"{self.cluster_name}-tls",
             os.path.join(tutil.g_test_data_dir, "ssl/out/server-cert.pem"),
             os.path.join(tutil.g_test_data_dir, "ssl/out/server-key.pem"))
 
-        self.wait_ic("mycluster", "ONLINE", 0)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=0)
 
-        for instance in range(0, self.instances):
-            self.wait_pod(f"mycluster-{instance}", "Running")
-        self.wait_ic("mycluster", "ONLINE", self.instances)
-        self.wait_routers("mycluster-router-.*", self.routers)
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
+        self.wait_routers(f"{self.cluster_name}-router-.*", num_online=self.routers_count)
 
-        check_all(self, self.ns, "mycluster", instances=self.instances, routers=self.routers, primary=0)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
-        for instance in range(0, self.instances):
-            check_ssl(self, self.ns, f"mycluster-{instance}", ca="ssl/out/ca.pem", ssl_cert_days=3650)
+        for instance in range(0, self.cluster_size):
+            check_ssl(self, self.ns, f"{self.cluster_name}-{instance}", ca="ssl/out/ca.pem", ssl_cert_days=3650)
 
-        kutil.delete_ic(self.ns, "mycluster")
-        for instance in reversed(range(0, self.instances)):
-            self.wait_pod_gone(f"mycluster-{instance}")
-        self.wait_ic_gone("mycluster")
-
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
 
     def test_9_destroy(self):
-        kutil.delete_ic(self.ns, "mycluster")
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_pvc(self.ns, None)
 
-        for instance in reversed(range(0, self.instances)):
-            self.wait_pod_gone(f"mycluster-{instance}")
-        self.wait_ic_gone("mycluster")
-
-        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
 class ClusterAddSSL(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
-    instances = 1 # adapt test_2_add_tls() ()
-    routers = 1
 
     def wait_tls_changed(self, s, before):
         for _ in range(60):
             after = s.query_sql("show status like 'Ssl_server_not_after'").fetch_one()[1]
             if after != before:
                 break
-            sleep(3)
+            sleep(10)
         else:
             self.assertFalse(1, "timeout waiting for tls reload")
+
+    _cluster_size = 1 # adapt test_2_add_tls() ()
+    _routers_count = 1
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass(CLUSTER_SSL_NAMESPACE)
+        cls.cluster_name = "mycluster" # due to precreated TLS certs
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
 
-        for instance in range(0, cls.instances):
-            g_full_log.watch_mysql_pod(cls.ns, f"mycluster-{instance}")
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        for instance in reversed(range(0, cls.instances)):
-            g_full_log.watch_mysql_pod(cls.ns, f"mycluster-{instance}")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
     def test_0_create_secrets(self):
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
     def test_1_create_cluster_without_ssl(self):
         """
@@ -501,93 +505,97 @@ class ClusterAddSSL(tutil.OperatorTest):
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: {self.instances}
+  instances: {self.cluster_size}
   router:
-    instances: {self.routers}
-  secretName: mypwds
+    instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
 """
 
         kutil.apply(self.ns, yaml)
 
-        for instance in range(0, self.instances):
-            self.wait_pod(f"mycluster-{instance}", "Running")
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        self.wait_ic("mycluster", "ONLINE", self.instances)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
-        self.wait_routers("mycluster-router-.*", self.routers)
+        self.wait_routers(f"{self.cluster_name}-router-.*", num_online=self.routers_count)
 
         # check for defaults
-        for instance in range(0, self.instances):
-            check_ssl(self, self.ns, f"mycluster-{instance}", ca="ca.pem", crl="", ssl_cert_days=3650)
+        for instance in range(0, self.cluster_size):
+            check_ssl(self, self.ns, f"{self.cluster_name}-{instance}", ca="ca.pem", crl="", ssl_cert_days=3650)
 
 
     def test_2_add_tls(self):
-        for instance in range(0, self.instances):
-            with mutil.MySQLPodSession(self.ns, f"mycluster-{instance}", "root", "sakila") as s:
+        for instance in range(0, self.cluster_size):
+            with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-{instance}", "root", "sakila") as s:
                 before = s.query_sql("show status like 'Ssl_server_not_after'").fetch_one()[1]
 
-        kutil.create_ssl_ca_secret(self.ns, "mycluster-ca",
+        kutil.create_ssl_ca_secret(self.ns, f"{self.cluster_name}-ca",
             os.path.join(tutil.g_test_data_dir, "ssl/out/ca.pem"))
-        kutil.create_ssl_cert_secret(self.ns, "mycluster-tls",
+        kutil.create_ssl_cert_secret(self.ns, f"{self.cluster_name}-tls",
             os.path.join(tutil.g_test_data_dir, "ssl/out/server-cert.pem"),
             os.path.join(tutil.g_test_data_dir, "ssl/out/server-key.pem"))
 
-        kutil.patch_ic(self.ns, "mycluster", {
+        kutil.patch_ic(self.ns, self.cluster_name, {
             "spec": {
                 "tlsUseSelfSigned": False
             }
         }, type="merge")
 
         # we need to manually restart the cluster for changes of this kind to get applied
-        kutil.restart_sts(self.ns, "mycluster")
+        kutil.restart_sts(self.ns, self.cluster_name)
 
-        self.wait_pod("mycluster-0", "Pending")
-        self.wait_ic("mycluster", "OFFLINE", 0)
+        self.wait_pod(f"{self.cluster_name}-0", "Pending")
+        self.wait_ic(self.cluster_name, "OFFLINE", 0)
 
-        self.wait_pod("mycluster-0", "Running")
-        self.wait_ic("mycluster", "ONLINE", 1)
+        self.wait_pod(f"{self.cluster_name}-0", "Running")
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=1)
 
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s:
             self.wait_tls_changed(s, before)
 
-        check_all(self, self.ns, "mycluster", instances=1, routers=1, primary=0)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
-        for instance in range(0, self.instances):
+        for instance in range(0, self.cluster_size):
             # Because the cluster was created with self signed then no x509 was used
             # for the GR accounts. After moving to non-self signed the cluster option
             # cannot be changed, Shell doesn't provide means for that, so the accounts
             # will stay PASSWORD authenticated for the time being of the cluster.
-            check_ssl(self, self.ns, f"mycluster-{instance}", ca="ssl/out/ca.pem", crl=None, ssl_cert_days=3650, check_gr_accounts=False)
+            check_ssl(self, self.ns, f"{self.cluster_name}-{instance}", ca="ssl/out/ca.pem", crl=None, ssl_cert_days=3650, check_gr_accounts=False)
 
     def test_9_destroy(self):
-        kutil.delete_ic(self.ns, "mycluster")
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
 
-        self.wait_pod_gone("mycluster-0")
-        self.wait_ic_gone("mycluster")
-
-        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_pvc(self.ns, None)
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
 class ClusterRouterSSL(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
-    instances = 1
-    routers = 1
+    _cluster_size = 1 # adapt test_2_add_tls() ()
+    _routers_count = 1
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass(CLUSTER_SSL_NAMESPACE)
+        cls.cluster_name = "mycluster" # due to precreated TLS certs
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
 
-        for instance in range(0, cls.instances):
-            g_full_log.watch_mysql_pod(cls.ns, f"mycluster-{instance}")
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        for instance in reversed(range(0, cls.instances)):
-            g_full_log.watch_mysql_pod(cls.ns, f"mycluster-{instance}")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
@@ -601,8 +609,7 @@ class ClusterRouterSSL(tutil.OperatorTest):
             os.path.join(tutil.g_test_data_dir, "ssl/out/router-cert.pem"),
             os.path.join(tutil.g_test_data_dir, "ssl/out/router-key.pem"))
 
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
     def test_1_create_cluster_with_router_ssl(self):
         """
@@ -614,39 +621,38 @@ class ClusterRouterSSL(tutil.OperatorTest):
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: {self.instances}
+  instances: {self.cluster_size}
   router:
-    instances: {self.routers}
+    instances: {self.routers_count}
     tlsSecretName: router-ssl
-  secretName: mypwds
+  secretName: {self.cluster_secret_name}
   tlsCASecretName: ca
   tlsSecretName: server-ssl
 """
 
         kutil.apply(self.ns, yaml)
 
-        self.wait_pod("mycluster-0", "Running")
-        self.wait_ic("mycluster", "ONLINE", self.instances)
+        self.wait_pod(f"{self.cluster_name}-0", "Running")
+        self.wait_ic(f"{self.cluster_name}", "ONLINE", num_online=self.cluster_size)
 
-        routers = self.wait_routers("mycluster-router-.*", self.routers)
+        routers = self.wait_routers(f"{self.cluster_name}-router-.*", self.routers_count)
 
-        check_all(self, self.ns, "mycluster", instances=self.instances, routers=self.routers, primary=0)
+        check_all(self, self.ns, f"{self.cluster_name}", instances=self.cluster_size, routers=self.routers_count, primary=0)
 
-        for instance in range(0, self.instances):
-            check_ssl(self, self.ns, f"mycluster-{instance}", ca="ssl/out/ca.pem")
+        for instance in range(0, self.cluster_size):
+            check_ssl(self, self.ns, f"{self.cluster_name}-{instance}", ca="ssl/out/ca.pem")
 
-        self.assertEqual(self.routers, len(routers))
+        self.assertEqual(self.routers_count, len(routers))
 
         for rname in routers:
             check_router_ssl(self, self.ns, rname, ca="ssl/out/ca.pem", has_cert=True)
 
-        kutil.delete_ic(self.ns, "mycluster")
-        for instance in reversed(range(0, self.instances)):
-            self.wait_pod_gone(f"mycluster-{instance}")
-        self.wait_ic_gone("mycluster")
-
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
 
 
     def test_2_modify_ssl_certs(self):
@@ -661,11 +667,11 @@ spec:
 
 
     def test_9_destroy(self):
-        kutil.delete_ic(self.ns, "mycluster")
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
 
-        for instance in reversed(range(0, self.instances)):
-            self.wait_pod_gone(f"mycluster-{instance}")
-        self.wait_ic_gone("mycluster")
-
-        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_pvc(self.ns, None)
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 

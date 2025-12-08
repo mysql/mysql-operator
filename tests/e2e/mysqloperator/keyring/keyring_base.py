@@ -24,8 +24,6 @@ class KeyRingBase(tutil.OperatorTest):
 
     @classmethod
     def setUpClass(cls):
-        cls.random_suffix = auxutil.random_string(10)
-
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
 
@@ -39,14 +37,6 @@ class KeyRingBase(tutil.OperatorTest):
             g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
-
-    @property
-    def cluster_secret_name(self) -> str:
-        return f"{self.ns}-mypwds-{self.random_suffix}"
-
-    @property
-    def cluster_name(self) -> str:
-        return f"mycluster-{self.random_suffix}"
 
     def generate_keyring_name(self):
         keyring_name = f"{g_ts_cfg.k8s_context}_keyring_{self.random_suffix}"

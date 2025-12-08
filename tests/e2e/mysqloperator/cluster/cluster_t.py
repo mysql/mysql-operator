@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -67,7 +67,6 @@ def check_all(test, ns, name, instances, routers=None, primary=None, count_sessi
                     test.assertTrue(pod_status["image"].endswith(version),
                                     pod["metadata"]["name"]+"="+pod_status["image"])
 
-
         check_group.check_instance(test, icobj, all_pods, pod, i == primary,
                                    num_sessions=num_sessions, user=user, password=password)
 
@@ -110,17 +109,23 @@ def cross_sync_gtids(ns, pods, user, password):
 
 class Cluster1FinalizerRemoval(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    _cluster_size = 1
+    _routers_count = 0
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
 
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, "mycluster-0")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
@@ -128,20 +133,19 @@ class Cluster1FinalizerRemoval(tutil.OperatorTest):
         """
         Create cluster, check posted events.
         """
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
         # create cluster with mostly default configs
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: 1
+  instances: {self.cluster_size}
   router:
-    instances: 0
-  secretName: mypwds
+    instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
   imagePullPolicy: Always
 """
@@ -149,23 +153,27 @@ spec:
         apply_time = isotime()
         kutil.apply(self.ns, yaml)
 
-        self.wait_ic("mycluster", ["PENDING", "INITIALIZING", "ONLINE"])
+        self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        self.wait_pod("mycluster-0", "Running")
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        self.wait_ic("mycluster", "ONLINE")
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
+
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         self.assertGotClusterEvent(
-            "mycluster", after=apply_time, type="Normal",
+            self.cluster_name, after=apply_time, type="Normal",
             reason="ResourcesCreated",
             msg="Dependency resources created, switching status to PENDING")
         # TODO - this event not getting posted, check if normal
         #self.assertGotClusterEvent(
-        #    "mycluster", after=apply_time, type="Normal",
+        #    self.cluster_name, after=apply_time, type="Normal",
         #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
         self.assertGotClusterEvent(
-            "mycluster", after=apply_time, type="Normal",
-            reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
+            self.cluster_name, after=apply_time, type="Normal",
+            reason=r"StatusChange", msg=f"Cluster status changed to ONLINE. {self.cluster_size} member\(s\) ONLINE")
 
     def test_01_check_labels_and_annotations(self):
         # We need to restart the pod so we can after that delete the IC and check for a race
@@ -175,29 +183,31 @@ spec:
                         "imagePullPolicy": "IfNotPresent"
                     }
                 }
-        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
-        kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
+        waiter = tutil.get_sts_rollover_update_waiter(self, self.cluster_name, timeout=self.cluster_size*300, delay=50)
+        kutil.patch_ic(self.ns, self.cluster_name, patch, type="merge")
         waiter()
 
-        kutil.delete_ic(self.ns, "mycluster")
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_pvc(self.ns, None)
 
-        self.wait_pod_gone("mycluster-0")
-        self.wait_ic_gone("mycluster")
-        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
 class Cluster1FixDatadir(tutil.OperatorTest):
-    cluster_name = "mycluster"
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
-    instances = 1
+    _cluster_size = 1
+    _routers_count = 0
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
 
-        for instance in range(0, cls.instances):
-            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
 
         cls.manifest_template = f"""
 apiVersion: mysql.oracle.com/v2
@@ -205,18 +215,20 @@ kind: InnoDBCluster
 metadata:
   name: {cls.cluster_name}
 spec:
-  instances: {cls.instances}
+  instances: {cls.get_ts_var("cluster_size")}
   router:
-    instances: 0
-  secretName: mypwds
+    instances: {cls.get_ts_var("routers_count")}
+  secretName: {cls.cluster_secret_name}
   tlsUseSelfSigned: true
   podSpec:
     terminationGracePeriodSeconds: 1
 """
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        for instance in reversed(range(0, cls.instances)):
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
             g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
@@ -225,18 +237,20 @@ spec:
         """
         Create cluster, check posted events.
         """
-        print(yaml)
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
         apply_time = isotime()
         kutil.apply(self.ns, yaml)
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        self.wait_pod(f"{self.cluster_name}-0", "Running")
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        self.wait_ic(self.cluster_name, "ONLINE")
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
+
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         self.assertGotClusterEvent(
             self.cluster_name, after=apply_time, type="Normal",
@@ -244,11 +258,11 @@ spec:
             msg="Dependency resources created, switching status to PENDING")
         # TODO - this event not getting posted, check if normal
         #self.assertGotClusterEvent(
-        #    "mycluster", after=apply_time, type="Normal",
+        #    self.cluster_name, after=apply_time, type="Normal",
         #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
         self.assertGotClusterEvent(
             self.cluster_name, after=apply_time, type="Normal",
-            reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
+            reason=r"StatusChange", msg=f"Cluster status changed to ONLINE. {self.cluster_size} member\(s\) ONLINE")
 
     def do_checks(self, container_expected: bool, fsgroup_change_policy_extected: str):
         print(f"Checking for {container_expected=} and {fsgroup_change_policy_extected=}")
@@ -287,9 +301,10 @@ spec:
 
         kutil.delete_ic(self.ns, self.cluster_name)
         self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
         self.wait_ic_gone(self.cluster_name)
         kutil.delete_pvc(self.ns, None)
-
+        # don't delete self.cluster_secret_name
 
     def test_02(self):
         manifest = f"""{self.manifest_template}
@@ -303,9 +318,10 @@ spec:
 
         kutil.delete_ic(self.ns, self.cluster_name)
         self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
         self.wait_ic_gone(self.cluster_name)
         kutil.delete_pvc(self.ns, None)
-
+        # don't delete self.cluster_secret_name
 
     def test_04(self):
         manifest = f"""{self.manifest_template}
@@ -318,8 +334,10 @@ spec:
 
         kutil.delete_ic(self.ns, self.cluster_name)
         self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
         self.wait_ic_gone(self.cluster_name)
         kutil.delete_pvc(self.ns, None)
+        # don't delete self.cluster_secret_name
 
     def test_06(self):
         """
@@ -333,25 +351,37 @@ spec:
 
         kutil.delete_ic(self.ns, self.cluster_name)
         self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
         self.wait_ic_gone(self.cluster_name)
         kutil.delete_pvc(self.ns, None)
+        # don't delete self.cluster_secret_name
+
+    def test_99(self):
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
 class Cluster1ServiceAccountDefault(tutil.OperatorTest):
-    cluster_name = "mycluster"
-    sa_name = "mycluster-sidecar-sa"
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    _cluster_size = 1
+    _routers_count = 0
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
 
-        g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-0")
+        cls.sa_name = f"{cls.cluster_name}-sidecar-sa"
+
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
+
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-0")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
@@ -359,8 +389,7 @@ class Cluster1ServiceAccountDefault(tutil.OperatorTest):
         """
         Create cluster, check posted events.
         """
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
         # create cluster with mostly default configs
         yaml = f"""
@@ -369,10 +398,10 @@ kind: InnoDBCluster
 metadata:
   name: {self.cluster_name}
 spec:
-  instances: 1
+  instances: {self.cluster_size}
   router:
-    instances: 0
-  secretName: mypwds
+    instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
   # don't specify serviceAccountName and see if the default one will be created
   podSpec:
@@ -384,9 +413,13 @@ spec:
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        self.wait_pod(f"{self.cluster_name}-0", "Running")
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        self.wait_ic(self.cluster_name, "ONLINE")
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
+
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         self.assertGotClusterEvent(
             self.cluster_name, after=apply_time, type="Normal",
@@ -394,12 +427,11 @@ spec:
             msg="Dependency resources created, switching status to PENDING")
         # TODO - this event not getting posted, check if normal
         #self.assertGotClusterEvent(
-        #    "mycluster", after=apply_time, type="Normal",
+        #    self.cluster_name, after=apply_time, type="Normal",
         #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
         self.assertGotClusterEvent(
             self.cluster_name, after=apply_time, type="Normal",
-            reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
-
+            reason=r"StatusChange", msg=f"Cluster status changed to ONLINE. {self.cluster_size} member\(s\) ONLINE")
 
     def test_01_check_labels_and_annotations(self):
         sas = [sa["NAME"] for sa in kutil.ls_sa(self.ns)]
@@ -411,27 +443,36 @@ spec:
     def test_99_destroy(self):
         kutil.delete_ic(self.ns, self.cluster_name)
 
-        self.wait_pod_gone(f"{self.cluster_name}-0")
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
         self.wait_ic_gone(self.cluster_name)
-        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_pvc(self.ns, None)
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
 class Cluster1ServiceAccountDefaultWithPullSecret(tutil.OperatorTest):
-    cluster_name = "mycluster"
-    sa_name = "mycluster-sidecar-sa"
-    priv_registry_secret_name = "priv-reg-secret"
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    priv_registry_secret_name = "priv-reg-secret"
+    _cluster_size = 1
+    _routers_count = 0
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
 
-        g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-0")
+        cls.sa_name = f"{cls.cluster_name}-sidecar-sa"
+
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
+
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-0")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
@@ -439,8 +480,7 @@ class Cluster1ServiceAccountDefaultWithPullSecret(tutil.OperatorTest):
         """
         Create cluster, check posted events.
         """
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
         # {"auths":{"https://192.168.20.198:5000/v2/":{"username":"user","password":"pass","email":"user@example.com","auth":"dXNlcjpwYXNz"}}}  # user:pass
         yaml = f"""
@@ -461,10 +501,10 @@ kind: InnoDBCluster
 metadata:
   name: {self.cluster_name}
 spec:
-  instances: 1
+  instances: {self.cluster_size}
   router:
-    instances: 0
-  secretName: mypwds
+    instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
   imagePullSecrets:
   - name : {self.priv_registry_secret_name}
@@ -476,9 +516,13 @@ spec:
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        self.wait_pod(f"{self.cluster_name}-0", "Running")
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        self.wait_ic(self.cluster_name, "ONLINE")
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
+
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         self.assertGotClusterEvent(
             self.cluster_name, after=apply_time, type="Normal",
@@ -486,7 +530,7 @@ spec:
             msg="Dependency resources created, switching status to PENDING")
         # TODO - this event not getting posted, check if normal
         #self.assertGotClusterEvent(
-        #    "mycluster", after=apply_time, type="Normal",
+        #    self.cluster_name, after=apply_time, type="Normal",
         #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
         self.assertGotClusterEvent(
             self.cluster_name, after=apply_time, type="Normal",
@@ -511,27 +555,36 @@ spec:
     def test_99_destroy(self):
         kutil.delete_ic(self.ns, self.cluster_name)
 
-        self.wait_pod_gone(f"{self.cluster_name}-0")
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
         self.wait_ic_gone(self.cluster_name)
-        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_pvc(self.ns, None)
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
         kutil.delete_secret(self.ns, self.priv_registry_secret_name)
 
 
 class Cluster1ServiceAccountNamed(tutil.OperatorTest):
-    cluster_name = "mycluster"
-    sa_name = "mycluster-named-sa"
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    _cluster_size = 1
+    _routers_count = 0
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
 
-        g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-0")
+        cls.sa_name = f"{cls.cluster_name}-named-sa"
+
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
+
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-0")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
@@ -539,8 +592,7 @@ class Cluster1ServiceAccountNamed(tutil.OperatorTest):
         """
         Create cluster, check posted events.
         """
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
         # create cluster with mostly default configs
         yaml = f"""
@@ -549,10 +601,10 @@ kind: InnoDBCluster
 metadata:
   name: {self.cluster_name}
 spec:
-  instances: 1
+  instances: {self.cluster_size}
   router:
-    instances: 0
-  secretName: mypwds
+    instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
   serviceAccountName: {self.sa_name}
   podSpec:
@@ -564,9 +616,13 @@ spec:
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        self.wait_pod(f"{self.cluster_name}-0", "Running")
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        self.wait_ic(self.cluster_name, "ONLINE")
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
+
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         self.assertGotClusterEvent(
             self.cluster_name, after=apply_time, type="Normal",
@@ -574,7 +630,7 @@ spec:
             msg="Dependency resources created, switching status to PENDING")
         # TODO - this event not getting posted, check if normal
         #self.assertGotClusterEvent(
-        #    "mycluster", after=apply_time, type="Normal",
+        #    self.cluster_name, after=apply_time, type="Normal",
         #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
         self.assertGotClusterEvent(
             self.cluster_name, after=apply_time, type="Normal",
@@ -590,27 +646,36 @@ spec:
     def test_99_destroy(self):
         kutil.delete_ic(self.ns, self.cluster_name)
 
-        self.wait_pod_gone(f"{self.cluster_name}-0")
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
         self.wait_ic_gone(self.cluster_name)
-        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_pvc(self.ns, None)
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
 class Cluster1ServiceAccountNamedWithPullSecret(tutil.OperatorTest):
-    cluster_name = "mycluster"
-    sa_name = "mycluster-named-sa"
     priv_registry_secret_name = "priv-reg-secret"
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    _cluster_size = 1
+    _routers_count = 1
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
 
-        g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-0")
+        cls.sa_name = f"{cls.cluster_name}-named-sa"
+
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
+
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-0")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
@@ -618,8 +683,7 @@ class Cluster1ServiceAccountNamedWithPullSecret(tutil.OperatorTest):
         """
         Create cluster, check posted events.
         """
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
         # {"auths":{"https://192.168.20.198:5000/v2/":{"username":"user","password":"pass","email":"user@example.com","auth":"dXNlcjpwYXNz"}}}  # user:pass
         yaml = f"""
@@ -640,10 +704,10 @@ kind: InnoDBCluster
 metadata:
   name: {self.cluster_name}
 spec:
-  instances: 1
+  instances: {self.cluster_size}
   router:
-    instances: 1
-  secretName: mypwds
+    instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
   serviceAccountName: {self.sa_name}
   imagePullSecrets:
@@ -656,9 +720,13 @@ spec:
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        self.wait_pod(f"{self.cluster_name}-0", "Running")
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        self.wait_ic(self.cluster_name, "ONLINE")
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
+
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         self.assertGotClusterEvent(
             self.cluster_name, after=apply_time, type="Normal",
@@ -666,7 +734,7 @@ spec:
             msg="Dependency resources created, switching status to PENDING")
         # TODO - this event not getting posted, check if normal
         #self.assertGotClusterEvent(
-        #    "mycluster", after=apply_time, type="Normal",
+        #    self.cluster_name, after=apply_time, type="Normal",
         #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
         self.assertGotClusterEvent(
             self.cluster_name, after=apply_time, type="Normal",
@@ -686,30 +754,37 @@ spec:
             print(cluster_sa)
 
         self.assertTrue(found)
-        print(cluster_sa)
 
     def test_99_destroy(self):
         kutil.delete_ic(self.ns, self.cluster_name)
 
-        self.wait_pod_gone(f"{self.cluster_name}-0")
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
         self.wait_ic_gone(self.cluster_name)
-        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_pvc(self.ns, None)
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
         kutil.delete_secret(self.ns, self.priv_registry_secret_name)
 
 
 class Cluster1AnnotationsAndLabelsUpdate(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    _cluster_size = 1
+    _routers_count = 1
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
 
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, "mycluster-0")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
@@ -717,28 +792,27 @@ class Cluster1AnnotationsAndLabelsUpdate(tutil.OperatorTest):
         """
         Create cluster, check posted events.
         """
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
         # create cluster with mostly default configs
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: 1
+  instances: {self.cluster_size}
   router:
-    instances: 1
-  secretName: mypwds
+    instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
   podLabels:
-    server-label1: "mycluster-server-label1-value"
-    server-label2: "mycluster-server-label2-value"
+    server-label1: "myc-server-label1-value"
+    server-label2: "myc-server-label2-value"
   podAnnotations:
-    server.mycluster.example.com/ann1: "server-ann1-value"
-    server.mycluster.example.com/ann2: "server-ann2-value"
-    server.mycluster.example.com/ann3: "server-ann3-value"
+    server.myc.example.com/ann1: "server-ann1-value"
+    server.myc.example.com/ann2: "server-ann2-value"
+    server.myc.example.com/ann3: "server-ann3-value"
   podSpec:
     terminationGracePeriodSeconds: 1
 """
@@ -746,37 +820,39 @@ spec:
         apply_time = isotime()
         kutil.apply(self.ns, yaml)
 
-        self.wait_ic("mycluster", ["PENDING", "INITIALIZING", "ONLINE"])
+        self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        self.wait_pod("mycluster-0", "Running")
-        # to be sure that the cluster is up and running
-        self.wait_routers("mycluster-router-*", 1)
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        self.wait_ic("mycluster", "ONLINE")
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
+
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         self.assertGotClusterEvent(
-            "mycluster", after=apply_time, type="Normal",
+            self.cluster_name, after=apply_time, type="Normal",
             reason="ResourcesCreated",
             msg="Dependency resources created, switching status to PENDING")
         # TODO - this event not getting posted, check if normal
         #self.assertGotClusterEvent(
-        #    "mycluster", after=apply_time, type="Normal",
+        #    self.cluster_name, after=apply_time, type="Normal",
         #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
         self.assertGotClusterEvent(
-            "mycluster", after=apply_time, type="Normal",
+            self.cluster_name, after=apply_time, type="Normal",
             reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
 
 
     def test_01_check_labels_and_annotations(self):
-        server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
+        server_pods = kutil.ls_po(self.ns, pattern=f"{self.cluster_name}-\d")
         pod_names = [server["NAME"] for server in server_pods]
         for pod_name in pod_names:
             pod = kutil.get_po(self.ns, pod_name)
-            self.assertEqual(pod['metadata']['labels']['server-label1'], 'mycluster-server-label1-value')
-            self.assertEqual(pod['metadata']['labels']['server-label2'], 'mycluster-server-label2-value')
-            self.assertEqual(pod['metadata']['annotations']['server.mycluster.example.com/ann1'], 'server-ann1-value')
-            self.assertEqual(pod['metadata']['annotations']['server.mycluster.example.com/ann2'], 'server-ann2-value')
-            self.assertEqual(pod['metadata']['annotations']['server.mycluster.example.com/ann3'], 'server-ann3-value')
+            self.assertEqual(pod['metadata']['labels']['server-label1'], 'myc-server-label1-value')
+            self.assertEqual(pod['metadata']['labels']['server-label2'], 'myc-server-label2-value')
+            self.assertEqual(pod['metadata']['annotations']['server.myc.example.com/ann1'], 'server-ann1-value')
+            self.assertEqual(pod['metadata']['annotations']['server.myc.example.com/ann2'], 'server-ann2-value')
+            self.assertEqual(pod['metadata']['annotations']['server.myc.example.com/ann3'], 'server-ann3-value')
 
     def test_03_patch_labels_and_annotations(self):
         patch = [
@@ -784,66 +860,66 @@ spec:
                 "op":"replace",
                 "path":"/spec/podLabels",
                 "value": {
-                    "server-label1" : "mycluster-server-label11-value",
-                    "server-label222": "mycluster-router-label222-value",
+                    "server-label1" : "myc-server-label11-value",
+                    "server-label222": "myc-router-label222-value",
                 }
             },
             {
                 "op":"replace",
                 "path":"/spec/podAnnotations",
                 "value": {
-                    "server.mycluster.example.com/ann1": "server-ann111-value",
-                    "server.mycluster.example.com/ann2": "server-ann222-value",
-                    "server.mycluster.example.com/ann333": "server-ann333-value",
+                    "server.myc.example.com/ann1": "server-ann111-value",
+                    "server.myc.example.com/ann2": "server-ann222-value",
+                    "server.myc.example.com/ann333": "server-ann333-value",
                 }
             },
         ]
-        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
-        kutil.patch_ic(self.ns, "mycluster", patch, type="json", data_as_type='json')
+        waiter = tutil.get_sts_rollover_update_waiter(self, self.cluster_name, timeout=900, delay=50)
+        kutil.patch_ic(self.ns, self.cluster_name, patch, type="json", data_as_type='json')
         waiter()
-        server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
+        server_pods = kutil.ls_po(self.ns, pattern=f"{self.cluster_name}-\d")
         pod_names = [server["NAME"] for server in server_pods]
         for pod_name in pod_names:
             self.wait_pod(pod_name, "Running")
 
     def test_05_check_ic(self):
-        labels = kutil.get_ic(self.ns, "mycluster")["spec"]["podLabels"]
+        labels = kutil.get_ic(self.ns, self.cluster_name)["spec"]["podLabels"]
 
         self.assertTrue('server-label1' in labels)
         self.assertTrue('server-label222' in labels)
         self.assertFalse('server-label2' in labels)
-        self.assertEqual(labels['server-label1'], 'mycluster-server-label11-value')
-        self.assertEqual(labels['server-label222'], 'mycluster-router-label222-value')
+        self.assertEqual(labels['server-label1'], 'myc-server-label11-value')
+        self.assertEqual(labels['server-label222'], 'myc-router-label222-value')
 
-        annotations = kutil.get_ic(self.ns, "mycluster")["spec"]["podAnnotations"]
-        self.assertTrue('server.mycluster.example.com/ann1' in annotations)
-        self.assertTrue('server.mycluster.example.com/ann2' in annotations)
-        self.assertTrue('server.mycluster.example.com/ann333' in annotations)
-        self.assertFalse('server.mycluster.example.com/ann3' in annotations)
-        self.assertEqual(annotations['server.mycluster.example.com/ann1'], 'server-ann111-value')
-        self.assertEqual(annotations['server.mycluster.example.com/ann2'], 'server-ann222-value')
-        self.assertEqual(annotations['server.mycluster.example.com/ann333'], 'server-ann333-value')
+        annotations = kutil.get_ic(self.ns, self.cluster_name)["spec"]["podAnnotations"]
+        self.assertTrue('server.myc.example.com/ann1' in annotations)
+        self.assertTrue('server.myc.example.com/ann2' in annotations)
+        self.assertTrue('server.myc.example.com/ann333' in annotations)
+        self.assertFalse('server.myc.example.com/ann3' in annotations)
+        self.assertEqual(annotations['server.myc.example.com/ann1'], 'server-ann111-value')
+        self.assertEqual(annotations['server.myc.example.com/ann2'], 'server-ann222-value')
+        self.assertEqual(annotations['server.myc.example.com/ann333'], 'server-ann333-value')
 
     def test_07_check_sts(self):
-        labels = kutil.get_sts(self.ns, "mycluster")["spec"]["template"]["metadata"]["labels"]
+        labels = kutil.get_sts(self.ns, self.cluster_name)["spec"]["template"]["metadata"]["labels"]
 
         self.assertTrue('server-label1' in labels)
         self.assertTrue('server-label222' in labels)
         self.assertFalse('server-label2' in labels)
-        self.assertEqual(labels['server-label1'], 'mycluster-server-label11-value')
-        self.assertEqual(labels['server-label222'], 'mycluster-router-label222-value')
+        self.assertEqual(labels['server-label1'], 'myc-server-label11-value')
+        self.assertEqual(labels['server-label222'], 'myc-router-label222-value')
 
-        annotations = kutil.get_sts(self.ns, "mycluster")["spec"]["template"]["metadata"]["annotations"]
-        self.assertTrue('server.mycluster.example.com/ann1' in annotations)
-        self.assertTrue('server.mycluster.example.com/ann2' in annotations)
-        self.assertTrue('server.mycluster.example.com/ann333' in annotations)
-        self.assertFalse('server.mycluster.example.com/ann3' in annotations)
-        self.assertEqual(annotations['server.mycluster.example.com/ann1'], 'server-ann111-value')
-        self.assertEqual(annotations['server.mycluster.example.com/ann2'], 'server-ann222-value')
-        self.assertEqual(annotations['server.mycluster.example.com/ann333'], 'server-ann333-value')
+        annotations = kutil.get_sts(self.ns, self.cluster_name)["spec"]["template"]["metadata"]["annotations"]
+        self.assertTrue('server.myc.example.com/ann1' in annotations)
+        self.assertTrue('server.myc.example.com/ann2' in annotations)
+        self.assertTrue('server.myc.example.com/ann333' in annotations)
+        self.assertFalse('server.myc.example.com/ann3' in annotations)
+        self.assertEqual(annotations['server.myc.example.com/ann1'], 'server-ann111-value')
+        self.assertEqual(annotations['server.myc.example.com/ann2'], 'server-ann222-value')
+        self.assertEqual(annotations['server.myc.example.com/ann333'], 'server-ann333-value')
 
     def test_09_check_pod(self):
-        server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
+        server_pods = kutil.ls_po(self.ns, pattern=f"{self.cluster_name}-\d")
         pod_names = [server["NAME"] for server in server_pods]
         for pod_name in pod_names:
             pod = kutil.get_po(self.ns, pod_name)
@@ -851,42 +927,49 @@ spec:
             self.assertTrue('server-label1' in labels)
             self.assertTrue('server-label222' in labels)
             self.assertFalse('server-label2' in labels)
-            self.assertEqual(labels['server-label1'], 'mycluster-server-label11-value')
-            self.assertEqual(labels['server-label222'], 'mycluster-router-label222-value')
+            self.assertEqual(labels['server-label1'], 'myc-server-label11-value')
+            self.assertEqual(labels['server-label222'], 'myc-router-label222-value')
 
             annotations = pod['metadata']['annotations']
-            self.assertTrue('server.mycluster.example.com/ann1' in annotations)
-            self.assertTrue('server.mycluster.example.com/ann2' in annotations)
-            self.assertTrue('server.mycluster.example.com/ann333' in annotations)
-            self.assertFalse('server.mycluster.example.com/ann3' in annotations)
-            self.assertEqual(annotations['server.mycluster.example.com/ann1'], 'server-ann111-value')
-            self.assertEqual(annotations['server.mycluster.example.com/ann2'], 'server-ann222-value')
-            self.assertEqual(annotations['server.mycluster.example.com/ann333'], 'server-ann333-value')
+            self.assertTrue('server.myc.example.com/ann1' in annotations)
+            self.assertTrue('server.myc.example.com/ann2' in annotations)
+            self.assertTrue('server.myc.example.com/ann333' in annotations)
+            self.assertFalse('server.myc.example.com/ann3' in annotations)
+            self.assertEqual(annotations['server.myc.example.com/ann1'], 'server-ann111-value')
+            self.assertEqual(annotations['server.myc.example.com/ann2'], 'server-ann222-value')
+            self.assertEqual(annotations['server.myc.example.com/ann333'], 'server-ann333-value')
 
     def test_99_destroy(self):
-        kutil.delete_ic(self.ns, "mycluster")
+        kutil.delete_ic(self.ns, self.cluster_name)
 
-        self.wait_pod_gone("mycluster-0")
-        self.wait_ic_gone("mycluster")
-        self.wait_routers_gone("mycluster-router-*")
-        kutil.delete_secret(self.ns, "mypwds")
-
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_pvc(self.ns, None)
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
 # Test 1 member cluster with all default configs
 class Cluster1Defaults(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    _cluster_size = 1
+    _routers_count = 1
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
 
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, "mycluster-0")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
@@ -894,80 +977,84 @@ class Cluster1Defaults(tutil.OperatorTest):
         """
         Create cluster, check posted events.
         """
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
+
+        self.set_ts_var("cluster_size", self.cluster_size)
 
         # create cluster with mostly default configs
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: 1
+  instances: {self.cluster_size}
   router:
-    instances: 0
+    instances: {self.routers_count}
     podLabels:
       router-label13: "router-label13-val"
       router-label42: "router-label42-val"
     podAnnotations:
-      router.mycluster.example.com/ann13: "ann13-value"
-      router.mycluster.example.com/ann42: "ann42-value"
-  secretName: mypwds
+      router.myc.example.com/ann13: "ann13-value"
+      router.myc.example.com/ann42: "ann42-value"
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
   podLabels:
-    mycluster-label1: "mycluster-label1-value"
-    mycluster-label2: "mycluster-label2-value"
+    myc-label1: "myc-label1-value"
+    myc-label2: "myc-label2-value"
   podAnnotations:
-    mycluster.example.com/ann1: "ann1-value"
-    mycluster.example.com/ann2: "ann2-value"
+    myc.example.com/ann1: "ann1-value"
+    myc.example.com/ann2: "ann2-value"
 """
 
         apply_time = isotime()
         kutil.apply(self.ns, yaml)
 
-        self.wait_ic("mycluster", ["PENDING", "INITIALIZING", "ONLINE"])
+        self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        self.wait_pod("mycluster-0", "Running")
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        self.wait_ic("mycluster", "ONLINE")
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
 
-        check_all(self, self.ns, "mycluster",
-                  instances=1, routers=0, primary=0)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
+
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
         self.assertGotClusterEvent(
-            "mycluster", after=apply_time, type="Normal",
+            self.cluster_name, after=apply_time, type="Normal",
             reason="ResourcesCreated",
             msg="Dependency resources created, switching status to PENDING")
         # TODO - this event not getting posted, check if normal
         #self.assertGotClusterEvent(
-        #    "mycluster", after=apply_time, type="Normal",
+        #    self.cluster_name, after=apply_time, type="Normal",
         #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
         self.assertGotClusterEvent(
-            "mycluster", after=apply_time, type="Normal",
-            reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
+            self.cluster_name, after=apply_time, type="Normal",
+            reason=r"StatusChange", msg=f"Cluster status changed to ONLINE. {self.cluster_size} member\(s\) ONLINE")
 
     def test_01_check_labels_and_annotations(self):
-        server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
+        server_pods = kutil.ls_po(self.ns, pattern=f"{self.cluster_name}-\d")
         pod_names = [server["NAME"] for server in server_pods]
         for pod_name in pod_names:
             pod = kutil.get_po(self.ns, pod_name)
-            self.assertEqual(pod['metadata']['labels']['mycluster-label1'], 'mycluster-label1-value')
-            self.assertEqual(pod['metadata']['labels']['mycluster-label2'], 'mycluster-label2-value')
-            self.assertEqual(pod['metadata']['annotations']['mycluster.example.com/ann1'], 'ann1-value')
-            self.assertEqual(pod['metadata']['annotations']['mycluster.example.com/ann2'], 'ann2-value')
+            self.assertEqual(pod['metadata']['labels']['myc-label1'], 'myc-label1-value')
+            self.assertEqual(pod['metadata']['labels']['myc-label2'], 'myc-label2-value')
+            self.assertEqual(pod['metadata']['annotations']['myc.example.com/ann1'], 'ann1-value')
+            self.assertEqual(pod['metadata']['annotations']['myc.example.com/ann2'], 'ann2-value')
 
-        router_pods = kutil.ls_po(self.ns, pattern=f"mycluster-router-.*")
+        router_pods = kutil.ls_po(self.ns, pattern=f"{self.cluster_name}-router-.*")
         pod_names = [router["NAME"] for router in router_pods]
         for pod_name in pod_names:
             pod = kutil.get_po(self.ns, pod_name)
             self.assertEqual(pod['metadata']['labels']['router-label13'], 'router-label13-val')
             self.assertEqual(pod['metadata']['labels']['router-label42'], 'router-label42-val')
-            self.assertEqual(pod['metadata']['annotations']['router.mycluster.example.com/ann13'], 'ann13-value')
-            self.assertEqual(pod['metadata']['annotations']['router.mycluster.example.com/ann42'], 'ann42-value')
+            self.assertEqual(pod['metadata']['annotations']['router.myc.example.com/ann13'], 'ann13-value')
+            self.assertEqual(pod['metadata']['annotations']['router.myc.example.com/ann42'], 'ann42-value')
 
     def test_03_check_accounts(self):
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s:
             accts = set([row[0] for row in s.query_sql(
                 "SELECT concat(user,'@',host) FROM mysql.user").fetch_all()])
 
@@ -979,44 +1066,52 @@ spec:
                                      "mysql_innodb_cs_[\w\d]+@%", # comes from mysqlsh
                                      "mysqlhealthchecker@localhost",
                                      "mysql_innodb_cluster_1000@%"] + DEFAULT_MYSQL_ACCOUNTS)
-            self.assertSetEqualRegex(expected_accounts, accts, "expected accounts", "existing accounts")
+            self.assertSetEqualRegex(expected_accounts, accts, "expected accounts", "existing accounts")\
 
+    @unittest.skip("TODO: This test needs to be fixed")
     def test_05_bad_changes(self):
-        return  # TODO
         # this should trigger an error and no changes
         # changes after this should continue working normally
-        kutil.patch_ic(self.ns, "mycluster", {
+        kutil.patch_ic(self.ns, self.cluster_name, {
                        "spec": {"instances": 22}}, type="merge")
 
         # check that the error appears in describe ic output
 
         # check that nothing changed
-        check_all(self, self.ns, "mycluster",
-                  instances=1, routers=1, primary=0)
+        check_all(self, self.ns, self.cluster_name,
+                  instances=self.cluster_size, routers=self.routers_count, primary=0)
 
     def test_07_grow_2(self):
-        kutil.patch_ic(self.ns, "mycluster", {
-                       "spec": {"instances": 2}}, type="merge")
+        self.cluster_size = 2
+        kutil.patch_ic(self.ns, self.cluster_name, {
+                       "spec": {"instances": self.cluster_size}}, type="merge")
 
-        self.wait_pod("mycluster-1", "Running")
+        self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        self.wait_ic("mycluster", "ONLINE", 2)
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
+
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
+
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         self.logger.info(kutil.ls_ic(self.ns))
 
-        check_all(self, self.ns, "mycluster", instances=2, routers=0, primary=0)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
     def test_08_check_labels_and_annotations(self):
         self.test_01_check_labels_and_annotations()
 
     def test_09_addrouters(self):
-        kutil.patch_ic(self.ns, "mycluster", {
-                       "spec": {"router": {"instances": 3}}}, type="merge")
+        self.routers_count = 3
+        kutil.patch_ic(self.ns, self.cluster_name, {
+                       "spec": {"router": {"instances": self.routers_count}}}, type="merge")
 
-        self.wait_routers("mycluster-router-*", 3)
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=120)
 
-        check_all(self, self.ns, "mycluster",
-                  instances=2, routers=3, primary=0)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
         # TODO add traffic, check routing
 
@@ -1049,40 +1144,44 @@ spec:
             line = out.strip().decode("utf-8")
             self.assertEqual(f"/var/lib/mysql {user} 700", line)
 
+        check_mysql_pod([f"{self.cluster_name}-0", "mysql"], 27, "mysql", "mysqld")
 
-        check_mysql_pod(["mycluster-0", "mysql"], 27, "mysql", "mysqld")
-
-        p = kutil.ls_po(self.ns, pattern="mycluster-router-.*")[0]["NAME"]
-        check_pod(p, 999, "mysqlrouter", "mysqlrouter")
-
+        for router_instance in range(0, self.routers_count):
+            with self.subTest(router_instance):
+                p = kutil.ls_po(self.ns, pattern=f"{self.cluster_name}-router-.*")[router_instance]["NAME"]
+                check_pod(p, 999, "mysqlrouter", "mysqlrouter")
 
     def test_13_grow_3(self):
-        kutil.patch_ic(self.ns, "mycluster", {
-                       "spec": {"instances": 3}}, type="merge")
+        self.cluster_size = 3
+        kutil.patch_ic(self.ns, self.cluster_name, {
+                       "spec": {"instances": self.cluster_size}}, type="merge")
 
-        self.wait_pod("mycluster-2", "Running")
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        self.wait_ic("mycluster", "ONLINE", 3)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         self.logger.info(kutil.ls_ic(self.ns))
 
-        check_all(self, self.ns, "mycluster", instances=3, primary=0)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
     def test_14_check_labels_and_annotations(self):
         self.test_01_check_labels_and_annotations()
 
     def test_15_shrink1(self):
-        kutil.patch_ic(self.ns, "mycluster", {
-                       "spec": {"instances": 1}}, type="merge")
+        old_cluster_size = self.cluster_size
+        self.cluster_size = 1
+        kutil.patch_ic(self.ns, self.cluster_name, {
+                       "spec": {"instances": self.cluster_size}}, type="merge")
 
-        self.wait_pod_gone("mycluster-2")
-        self.wait_pod_gone("mycluster-1")
+        for instance in reversed(range(self.cluster_size, old_cluster_size)):
+            self.wait_pod_gone(f"{self.cluster_name}-{instance}")
 
-        self.wait_ic("mycluster", "ONLINE_PARTIAL", 1)
+        self.wait_ic(self.cluster_name, "ONLINE_PARTIAL", num_online=self.cluster_size)
 
         self.logger.info(kutil.ls_ic(self.ns))
 
-        check_all(self, self.ns, "mycluster", instances=1, primary=0)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
     def test_17_recover_crash_1(self):
         """
@@ -1091,27 +1190,27 @@ spec:
         cluster is resumed.
         """
 
-        pod = kutil.get_po(self.ns, "mycluster-0")
+        pod = kutil.get_po(self.ns, f"{self.cluster_name}-0")
         mysql_cont = check_apiobjects.get_pod_container(pod, "mysql")
         sidecar_cont = check_apiobjects.get_pod_container(pod, "sidecar")
 
         apply_time = isotime()
 
         # kill mysqld (pid 1)
-        kutil.kill(self.ns, ("mycluster-0", "mysql"), 11, 1)
+        kutil.kill(self.ns, (f"{self.cluster_name}-0", "mysql"), 11, 1)
 
         # wait for operator to notice it gone
-        self.wait_ic("mycluster", ["OFFLINE", "OFFLINE_UNCERTAIN"])
+        self.wait_ic(self.cluster_name, ["OFFLINE", "OFFLINE_UNCERTAIN"])
 
         # wait for operator to restore it
-        self.wait_ic("mycluster", "ONLINE", 1)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         self.assertGotClusterEvent(
-            "mycluster", after=apply_time, type="Normal",
+            self.cluster_name, after=apply_time, type="Normal",
             reason="Rebooting", msg="Restoring OFFLINE cluster through pod 0")
 
         # ensure persisted config didn't change after recovery
-        config = json.loads(kutil.cat(self.ns, ("mycluster-0", "mysql"),
+        config = json.loads(kutil.cat(self.ns, (f"{self.cluster_name}-0", "mysql"),
                                       "/var/lib/mysql/mysqld-auto.cnf"))
         # mysqlsh < 8.0.27 was not handling start_on_boot correctly
         if g_ts_cfg.operator_shell_version_num >= 80027:
@@ -1122,14 +1221,15 @@ spec:
                 self.assertEqual("OFF", config["mysql_server"]["mysql_server_static_options"]
                         ["group_replication_start_on_boot"]["Value"])
 
-        pod = kutil.get_po(self.ns, "mycluster-0")
+        pod = kutil.get_po(self.ns, f"{self.cluster_name}-0")
         check_apiobjects.check_pod_container(
             self, pod, "mysql", mysql_cont["restartCount"]+1, True)
         check_apiobjects.check_pod_container(
             self, pod, "sidecar", sidecar_cont["restartCount"], True)
 
-        check_all(self, self.ns, "mycluster", instances=1, primary=0)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
+    @unittest.skip("TODO: This test needs to be fixed")
     def test_19_recover_sidecar_crash_1(self):
         """
         Force a sidecar process crash.
@@ -1140,61 +1240,60 @@ spec:
         """
 
         # killing the sidecar isn't working somehow
-        return
 
-        pod = kutil.get_po(self.ns, "mycluster-0")
+        pod = kutil.get_po(self.ns, f"{self.cluster_name}-0")
         mysql_cont = check_apiobjects.get_pod_container(pod, "mysql")
         sidecar_cont = check_apiobjects.get_pod_container(pod, "sidecar")
 
-        config = json.loads(kutil.cat(self.ns, ("mycluster-0", "mysql"),
+        config = json.loads(kutil.cat(self.ns, (f"{self.cluster_name}-0", "mysql"),
                                       "/var/lib/mysql/mysqld-auto.cnf"))
         self.assertEqual("OFF", config["mysql_server"]["mysql_server_static_options"]
                          ["group_replication_start_on_boot"]["Value"])
 
         # kill sidecar (pid 1)
-        kutil.kill(self.ns, ["mycluster-0", "sidecar"], 11, 1)
+        kutil.kill(self.ns, [f"{self.cluster_name}-0", "sidecar"], 11, 1)
 
         def ready():
-            pod = kutil.get_po(self.ns, "mycluster-0")
+            pod = kutil.get_po(self.ns, f"{self.cluster_name}-0")
             self.logger.debug(check_apiobjects.get_pod_container(
                 pod, "sidecar")["restartCount"])
             return check_apiobjects.get_pod_container(pod, "sidecar")["restartCount"] == sidecar_cont["restartCount"]+1
 
         self.wait(ready)
 
-        pod = kutil.get_po(self.ns, "mycluster-0")
+        pod = kutil.get_po(self.ns, f"{self.cluster_name}-0")
         check_apiobjects.check_pod_container(
             self, pod, "mysql", mysql_cont["restartCount"], True)
         check_apiobjects.check_pod_container(
             self, pod, "sidecar", sidecar_cont["restartCount"]+1, True)
 
         # ensure persisted config didn't change after recovery (regression test)
-        config = json.loads(kutil.cat(self.ns, ("mycluster-0", "mysql"),
+        config = json.loads(kutil.cat(self.ns, (f"{self.cluster_name}-0", "mysql"),
                                       "/var/lib/mysql/mysqld-auto.cnf"))
         self.assertEqual("OFF", config["mysql_server"]["mysql_server_static_options"]
                          ["group_replication_start_on_boot"]["Value"])
 
         # check that all containers are OK
-        check_all(self, self.ns, "mycluster", instances=1, primary=0)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
     def test_21_recover_restart_1(self):
-        pod = kutil.get_po(self.ns, "mycluster-0")
+        pod = kutil.get_po(self.ns, f"{self.cluster_name}-0")
         mysql_cont = check_apiobjects.get_pod_container(pod, "mysql")
         sidecar_cont = check_apiobjects.get_pod_container(pod, "sidecar")
 
         apply_time = isotime()
 
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
-            s.exec_sql("restart")
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s:
+            s.exec_sql("RESTART")
 
         # wait for operator to notice it gone
-        self.wait_ic("mycluster", ["OFFLINE", "OFFLINE_UNCERTAIN"])
+        self.wait_ic(self.cluster_name, ["OFFLINE", "OFFLINE_UNCERTAIN"])
 
         # wait for operator to restore it
-        self.wait_ic("mycluster", "ONLINE", 1)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         # wait/ensure pod restarted
-        pod = kutil.get_po(self.ns, "mycluster-0")
+        pod = kutil.get_po(self.ns, f"{self.cluster_name}-0")
         self.assertEqual(check_apiobjects.get_pod_container(pod, "mysql")[
                          "restartCount"], mysql_cont["restartCount"]+1)
 
@@ -1203,29 +1302,29 @@ spec:
                          "restartCount"], sidecar_cont["restartCount"])
 
         self.assertGotClusterEvent(
-            "mycluster", after=apply_time, type="Normal",
+            self.cluster_name, after=apply_time, type="Normal",
             reason="Rebooting", msg="Restoring OFFLINE cluster through pod 0")
 
-        check_all(self, self.ns, "mycluster", instances=1, primary=0)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
     def test_23_recover_shutdown_1(self):
-        pod = kutil.get_po(self.ns, "mycluster-0")
+        pod = kutil.get_po(self.ns, f"{self.cluster_name}-0")
         mysql_cont = check_apiobjects.get_pod_container(pod, "mysql")
         sidecar_cont = check_apiobjects.get_pod_container(pod, "sidecar")
 
         apply_time = isotime()
 
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
-            s.exec_sql("shutdown")
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s:
+            s.exec_sql("SHUTDOWN")
 
         # wait for operator to notice it gone
-        self.wait_ic("mycluster", ["OFFLINE", "OFFLINE_UNCERTAIN"])
+        self.wait_ic(self.cluster_name, ["OFFLINE", "OFFLINE_UNCERTAIN"])
 
         # wait for operator to restore it
-        self.wait_ic("mycluster", "ONLINE", 1)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=1)
 
         # wait/ensure pod restarted
-        pod = kutil.get_po(self.ns, "mycluster-0")
+        pod = kutil.get_po(self.ns, f"{self.cluster_name}-0")
         self.assertEqual(check_apiobjects.get_pod_container(pod, "mysql")[
                          "restartCount"], mysql_cont["restartCount"]+1)
 
@@ -1234,10 +1333,10 @@ spec:
                          "restartCount"], sidecar_cont["restartCount"])
 
         self.assertGotClusterEvent(
-            "mycluster", after=apply_time, type="Normal",
+            self.cluster_name, after=apply_time, type="Normal",
             reason="Rebooting", msg="Restoring OFFLINE cluster through pod 0")
 
-        check_all(self, self.ns, "mycluster", instances=1, primary=0)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
     # TODO also test deleting the only pod + pvc - check that it detects
     # the instance changed through the server_uuid change
@@ -1245,109 +1344,114 @@ spec:
     # complete data wipe/replacement
 
     def test_25_recover_delete_1(self):
-        kutil.delete_po(self.ns, "mycluster-0", timeout=200)
+        kutil.delete_po(self.ns, f"{self.cluster_name}-0", timeout=200)
 
         apply_time = isotime()
 
-        self.wait_ic("mycluster", "OFFLINE", 0)
+        self.wait_ic(self.cluster_name, "OFFLINE", num_online=0)
 
         # wait for operator to restore everything
-        self.wait_ic("mycluster", "ONLINE", 1)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
-        pod1 = kutil.get_po(self.ns, "mycluster-0")
+        pod1 = kutil.get_po(self.ns, f"{self.cluster_name}-0")
 
         # the pod was deleted, so restarts resets to 0
         check_apiobjects.check_pod_container(self, pod1, "mysql", 0, True)
         check_apiobjects.check_pod_container(self, pod1, "sidecar", 0, True)
 
         self.assertGotClusterEvent(
-            "mycluster", after=apply_time, type="Normal",
+            self.cluster_name, after=apply_time, type="Normal",
             reason="Rebooting", msg="Restoring OFFLINE cluster through pod 0")
 
-        check_all(self, self.ns, "mycluster", instances=1, primary=0)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
+    @unittest.skip("TODO: This test needs to be fixed")
     def test_27_recover_stop_1(self):
-        return
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s0:
             s0.exec_sql("stop group_replication")
 
         # wait for operator to notice it OFFLINE
-        self.wait_ic("mycluster", "OFFLINE")
+        self.wait_ic(self.cluster_name, "OFFLINE", num_online=0)
 
         # check status of the downed pod
         # TODO
 
         # wait for operator to restore everything
-        self.wait_ic("mycluster", "ONLINE")
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
-        check_all(self, self.ns, "mycluster", instances=1, primary=0)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
     def test_99_destroy(self):
-        kutil.delete_ic(self.ns, "mycluster")
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_pvc(self.ns, None)
 
-        self.wait_pod_gone("mycluster-0")
-        self.wait_ic_gone("mycluster")
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
 # Test 3 member cluster with default configs
 class Cluster3Defaults(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    _cluster_size = 3
+    _routers_count = 2
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-1")
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-2")
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
+
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, "mycluster-0")
-        g_full_log.stop_watch(cls.ns, "mycluster-1")
-        g_full_log.stop_watch(cls.ns, "mycluster-2")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
         super().tearDownClass()
 
     def test_0_create(self):
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_pass="sakila", root_host="%")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_pass="sakila", root_host="%")
 
         # create cluster with mostly default configs
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: 3
+  instances: {self.cluster_size}
   router:
-    instances: 2
-  secretName: mypwds
+    instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
 """
 
         kutil.apply(self.ns, yaml)
 
         # ensure router pods don't get created until the cluster is ONLINE
-        check_routing.check_pods(self, self.ns, "mycluster", 0)
+        check_routing.check_pods(self, self.ns, self.cluster_name, 0)
 
-        self.wait_pod("mycluster-0", "Running")
+        self.wait_pod(f"{self.cluster_name}-0", "Running")
 
-        self.wait_ic("mycluster", "ONLINE", 1)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=1)
         # no router pods expected yet
-        check_routing.check_pods(self, self.ns, "mycluster", 0)
+        check_routing.check_pods(self, self.ns, self.cluster_name, 0)
 
-        self.wait_pod("mycluster-1", "Running")
-        self.wait_pod("mycluster-2", "Running")
+        for instance in range(1, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        self.wait_ic("mycluster", "ONLINE", 3)
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
 
-        check_routing.check_pods(self, self.ns, "mycluster", 2)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
-        self.wait_routers("mycluster-router-*", 2)
+        check_routing.check_pods(self, self.ns, self.cluster_name, self.routers_count)
 
-        check_all(self, self.ns, "mycluster",
-                  instances=3, routers=2, primary=0)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
     def test_1_check_version(self):
         def container_spec(l, name):
@@ -1357,37 +1461,40 @@ spec:
             return None
 
         # ensure containers have the right version and edition
-        pod = kutil.get_po(self.ns, "mycluster-0")
-        image = container_spec(pod["spec"]["initContainers"], "initmysql")["image"]
+        for instance in range(1, self.cluster_size):
+            with self.subTest(f"{self.cluster_name}-{instance}"):
+                pod = kutil.get_po(self.ns, f"{self.cluster_name}-{instance}")
+                image = container_spec(pod["spec"]["initContainers"], "initmysql")["image"]
 
-        init_containers_image_hashes = {c_status["name"]:c_status["imageID"].split("@")[1].split(':')[1] for c_status in pod["status"]["initContainerStatuses"] }
-        print(init_containers_image_hashes)
+                init_containers_image_hashes = {c_status["name"]:c_status["imageID"].split("@")[1].split(':')[1] for c_status in pod["status"]["initContainerStatuses"] }
+                print(init_containers_image_hashes)
 
-        containers_image_hashes = {c_status["name"]:c_status["imageID"].split("@")[1].split(':')[1] for c_status in pod["status"]["containerStatuses"] }
-        print(containers_image_hashes)
+                containers_image_hashes = {c_status["name"]:c_status["imageID"].split("@")[1].split(':')[1] for c_status in pod["status"]["containerStatuses"] }
+                print(containers_image_hashes)
 
-        self.assertIn(":"+g_ts_cfg.version_tag, image, "initmysql")
-        self.assertIn(g_ts_cfg.server_image_name+":", image, "initmysql")
+                self.assertIn(":"+g_ts_cfg.version_tag, image, "initmysql")
+                self.assertIn(g_ts_cfg.server_image_name+":", image, "initmysql")
 
-        image = container_spec(
-            pod["spec"]["initContainers"], "initconf")["image"]
-        self.assertIn(":"+g_ts_cfg.operator_version_tag, image, "initconf")
-        self.assertIn(g_ts_cfg.operator_image_name+":", image, "initconf")
+                image = container_spec(pod["spec"]["initContainers"], "initconf")["image"]
+                self.assertIn(":"+g_ts_cfg.operator_version_tag, image, "initconf")
+                self.assertIn(g_ts_cfg.operator_image_name+":", image, "initconf")
 
-        image = container_spec(pod["spec"]["containers"], "mysql")["image"]
-        self.assertIn(":"+g_ts_cfg.version_tag, image, "mysql")
-        self.assertIn(g_ts_cfg.server_image_name+":", image, "mysql")
+                image = container_spec(pod["spec"]["containers"], "mysql")["image"]
+                self.assertIn(":"+g_ts_cfg.version_tag, image, "mysql")
+                self.assertIn(g_ts_cfg.server_image_name+":", image, "mysql")
 
-        image = container_spec(pod["spec"]["containers"], "sidecar")["image"]
-        self.assertIn(":"+g_ts_cfg.operator_version_tag, image, "sidecar")
-        self.assertIn(g_ts_cfg.operator_image_name+":", image, "sidecar")
+                image = container_spec(pod["spec"]["containers"], "sidecar")["image"]
+                self.assertIn(":"+g_ts_cfg.operator_version_tag, image, "sidecar")
+                self.assertIn(g_ts_cfg.operator_image_name+":", image, "sidecar")
 
         # check router version and edition
-        p = kutil.ls_po(self.ns, pattern="mycluster-router-.*")[0]
-        pod = kutil.get_po(self.ns, p["NAME"])
-        image = container_spec(pod["spec"]["containers"], "router")["image"]
-        self.assertIn(":"+g_ts_cfg.version_tag, image, "router")
-        self.assertIn(g_ts_cfg.router_image_name + ":", image, "router")
+        for router_instance in range(1, self.routers_count):
+            p = kutil.ls_po(self.ns, pattern=f"{self.cluster_name}-router-.*")[router_instance]
+            with self.subTest(p["NAME"]):
+                pod = kutil.get_po(self.ns, p["NAME"])
+                image = container_spec(pod["spec"]["containers"], "router")["image"]
+                self.assertIn(":"+g_ts_cfg.version_tag, image, "router")
+                self.assertIn(g_ts_cfg.router_image_name + ":", image, "router")
 
 
     def test_1_check_accounts(self):
@@ -1402,36 +1509,21 @@ spec:
                                  "mysql_innodb_cluster_1001@%",
                                  "mysql_innodb_cluster_1002@%"] + DEFAULT_MYSQL_ACCOUNTS)
 
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
-            accts = set([row[0] for row in s.query_sql(
-                "SELECT concat(user,'@',host) FROM mysql.user").fetch_all()])
-            self.assertSetEqualRegex(expected_accounts, accts, "expected accounts", "existing accounts")
-
-        with mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s:
-            accts = set([row[0] for row in s.query_sql(
-                "SELECT concat(user,'@',host) FROM mysql.user").fetch_all()])
-            self.assertSetEqualRegex(expected_accounts, accts, "expected accounts", "existing accounts")
-
-        with mutil.MySQLPodSession(self.ns, "mycluster-2", "root", "sakila") as s:
-            accts = set([row[0] for row in s.query_sql(
-                "SELECT concat(user,'@',host) FROM mysql.user").fetch_all()])
-            self.assertSetEqualRegex(expected_accounts, accts, "expected accounts", "existing accounts")
-
+        for instance in range(1, self.cluster_size):
+            with self.subTest(f"{self.cluster_name}-{instance}"):
+                with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-{instance}", "root", "sakila") as s:
+                    accts = set([row[0] for row in s.query_sql(
+                        "SELECT concat(user,'@',host) FROM mysql.user").fetch_all()])
+                    self.assertSetEqualRegex(expected_accounts, accts, "expected accounts", "existing accounts")
 
     def test_1_check_binlog_name(self):
-        expected_name = "/var/lib/mysql/mycluster"
+        expected_name = f"/var/lib/mysql/{self.cluster_name}"
 
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
-            name = s.query_sql("SELECT @@log_bin_basename").fetch_all()[0][0]
-            self.assertEqual(name, expected_name)
-
-        with mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s:
-            name = s.query_sql("SELECT @@log_bin_basename").fetch_all()[0][0]
-            self.assertEqual(name, expected_name)
-
-        with mutil.MySQLPodSession(self.ns, "mycluster-2", "root", "sakila") as s:
-            name = s.query_sql("SELECT @@log_bin_basename").fetch_all()[0][0]
-            self.assertEqual(name, expected_name)
+        for instance in range(1, self.cluster_size):
+            with self.subTest(f"{self.cluster_name}-{instance}"):
+                with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-{instance}", "root", "sakila") as s:
+                    name = s.query_sql("SELECT @@log_bin_basename").fetch_all()[0][0]
+                    self.assertEqual(name, expected_name)
 
     def run_verify_routing_session(self, address, expected_routing_settings):
         shell = mutil.MySQLInteractivePodSession(
@@ -1492,63 +1584,63 @@ spec:
 
         # check classic session to R/W port
         self.verify_routing(
-            f"mycluster.{self.ns}.svc.cluster.local:3306",
-            f"mycluster-0.mycluster-instances.{self.ns}.svc.cluster.local:3306")
+            f"{self.cluster_name}.{self.ns}.svc.cluster.local:3306",
+            f"{self.cluster_name}-0.{self.cluster_name}-instances.{self.ns}.svc.cluster.local:3306")
 
         # check classic session to alternate R/W port
         self.verify_routing(
-            f"mycluster.{self.ns}.svc.cluster.local:6446",
-            f"mycluster-0.mycluster-instances.{self.ns}.svc.cluster.local:3306")
+            f"{self.cluster_name}.{self.ns}.svc.cluster.local:6446",
+            f"{self.cluster_name}-0.{self.cluster_name}-instances.{self.ns}.svc.cluster.local:3306")
 
         # check classic session to R/O port
         self.verify_routing(
-            f"mycluster.{self.ns}.svc.cluster.local:6447",
-            [f"mycluster-1.mycluster-instances.{self.ns}.svc.cluster.local:3306",
-                f"mycluster-2.mycluster-instances.{self.ns}.svc.cluster.local:3306"])
+            f"{self.cluster_name}.{self.ns}.svc.cluster.local:6447",
+            [f"{self.cluster_name}-1.{self.cluster_name}-instances.{self.ns}.svc.cluster.local:3306",
+                f"{self.cluster_name}-2.{self.cluster_name}-instances.{self.ns}.svc.cluster.local:3306"])
 
         # check X session to R/W port
         self.verify_routing(
-            f"mycluster.{self.ns}.svc.cluster.local:33060",
-            f"mycluster-0.mycluster-instances.{self.ns}.svc.cluster.local:3306")
+            f"{self.cluster_name}.{self.ns}.svc.cluster.local:33060",
+            f"{self.cluster_name}-0.{self.cluster_name}-instances.{self.ns}.svc.cluster.local:3306")
 
         # check X session to alternate R/W port
         self.verify_routing(
-            f"mycluster.{self.ns}.svc.cluster.local:6448",
-            f"mycluster-0.mycluster-instances.{self.ns}.svc.cluster.local:3306")
+            f"{self.cluster_name}.{self.ns}.svc.cluster.local:6448",
+            f"{self.cluster_name}-0.{self.cluster_name}-instances.{self.ns}.svc.cluster.local:3306")
 
         # check X session to R/O port
         self.verify_routing(
-            f"mycluster.{self.ns}.svc.cluster.local:6449",
-            [f"mycluster-1.mycluster-instances.{self.ns}.svc.cluster.local:3306",
-                f"mycluster-2.mycluster-instances.{self.ns}.svc.cluster.local:3306"])
+            f"{self.cluster_name}.{self.ns}.svc.cluster.local:6449",
+            [f"{self.cluster_name}-1.{self.cluster_name}-instances.{self.ns}.svc.cluster.local:3306",
+                f"{self.cluster_name}-2.{self.cluster_name}-instances.{self.ns}.svc.cluster.local:3306"])
 
         kutil.delete_po("appns", "testpod")
         kutil.delete_ns("appns")
 
     def test_4_recover_crash_1_of_3(self):
         # kill mysqld (pid 1)
-        kutil.kill(self.ns, ("mycluster-0", "mysql"), 11, 1)
+        kutil.kill(self.ns, (f"{self.cluster_name}-0", "mysql"), 11, 1)
 
         apply_time = isotime()
 
         # wait for operator to notice it gone
-        self.wait_ic("mycluster", ["ONLINE_PARTIAL", "ONLINE_UNCERTAIN"], 2)
+        self.wait_ic(self.cluster_name, ["ONLINE_PARTIAL", "ONLINE_UNCERTAIN"], self.cluster_size - 1)
 
         # check status of crashed pod
         # TODO
 
         # wait for operator to restore it
-        self.wait_ic("mycluster", "ONLINE", 3)
-        self.wait_routers("mycluster-router-*", 2)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
+        self.wait_routers(f"{self.cluster_name}-router-*", num_online=self.routers_count)
 
         self.assertGotClusterEvent(
-            "mycluster", after=apply_time, type="Normal",
-            reason="StatusChange", msg=r"Cluster status changed to ONLINE_PARTIAL. 2 member\(s\) ONLINE")
+            self.cluster_name, after=apply_time, type="Normal",
+            reason="StatusChange", msg=rf"Cluster status changed to ONLINE_PARTIAL. {self.cluster_size - 1} member\(s\) ONLINE")
         self.assertGotClusterEvent(
-            "mycluster", after=apply_time, type="Normal",
-            reason="StatusChange", msg=r"Cluster status changed to ONLINE. 3 member\(s\) ONLINE")
+            self.cluster_name, after=apply_time, type="Normal",
+            reason="StatusChange", msg=rf"Cluster status changed to ONLINE. {self.cluster_size} member\(s\) ONLINE")
 
-        check_all(self, self.ns, "mycluster", instances=3, routers=2, primary=None)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=None)
 
     def test_4_recover_crash_2_of_3(self):
         # TODO add a loadchecker
@@ -1556,67 +1648,65 @@ spec:
         apply_time = isotime()
 
         # kill mysqld (pid 1)
-        kutil.kill(self.ns, ("mycluster-0", "mysql"), 11, 1)
-        kutil.kill(self.ns, ("mycluster-1", "mysql"), 11, 1)
+        for instance in range(0, self.cluster_size - 1):
+            kutil.kill(self.ns, (f"{self.cluster_name}-{instance}", "mysql"), 11, 1)
 
         # wait for operator to notice them gone
-        self.wait_ic("mycluster", "NO_QUORUM")
+        self.wait_ic(self.cluster_name, "NO_QUORUM")
 
         # check status of crashed pods
         # TODO
 
         # wait for operator to restore it
-        self.wait_ic("mycluster", "ONLINE", 3)
-        self.wait_routers("mycluster-router-*", 2)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
+        self.wait_routers(f"{self.cluster_name}-router-*", num_online=self.routers_count)
 
         self.assertGotClusterEvent(
-            "mycluster", after=apply_time, type="Normal",
+            self.cluster_name, after=apply_time, type="Normal",
             reason="StatusChange", msg=r"Cluster status changed to NO_QUORUM. 0 member\(s\) ONLINE")
 
         self.assertGotClusterEvent(
-            "mycluster", after=apply_time, type="Normal",
+            self.cluster_name, after=apply_time, type="Normal",
             reason="RestoreQuorum", msg="Restoring quorum of cluster")
 
         # sometimes gets skipped
         # self.assertGotClusterEvent(
-        #     "mycluster", after=apply_time, type="Normal",
-        #     reason="StatusChange", msg=r"Cluster status changed to ONLINE_PARTIAL. 2 member\(s\) ONLINE")
+        #     self.cluster_name, after=apply_time, type="Normal",
+        #     reason="StatusChange", msg=r"Cluster status changed to ONLINE_PARTIAL.  member\(s\) ONLINE")
 
         self.assertGotClusterEvent(
-            "mycluster", after=apply_time, type="Normal",
-            reason="Rejoin", msg=r"Rejoining mycluster-\d to cluster")
+            self.cluster_name, after=apply_time, type="Normal",
+            reason="Rejoin", msg=rf"Rejoining {self.cluster_name}-\d to cluster")
 
         self.assertGotClusterEvent(
-            "mycluster", after=apply_time, type="Normal",
-            reason="StatusChange", msg=r"Cluster status changed to ONLINE. 3 member\(s\) ONLINE")
+            self.cluster_name, after=apply_time, type="Normal",
+            reason="StatusChange", msg=rf"Cluster status changed to ONLINE. {self.cluster_size} member\(s\) ONLINE")
 
-        check_all(self, self.ns, "mycluster", instances=3, routers=2, primary=2)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=self.cluster_size-1)
 
     def test_4_recover_crash_3_of_3(self):
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s0:
             pod0_uuid = s0.query_sql("select @@server_uuid").fetch_one()[0]
 
         # kill mysqld (pid 1)
-        kutil.kill(self.ns, ("mycluster-0", "mysql"), 11, 1)
-        kutil.kill(self.ns, ("mycluster-1", "mysql"), 11, 1)
-        kutil.kill(self.ns, ("mycluster-2", "mysql"), 11, 1)
+        for instance in range(0, self.cluster_size):
+            kutil.kill(self.ns, (f"{self.cluster_name}-{instance}", "mysql"), 11, 1)
 
         # wait for operator to notice them gone
-        self.wait_ic("mycluster", "OFFLINE", 0)
+        self.wait_ic(self.cluster_name, "OFFLINE", 0)
 
         # wait for operator to restore it
-        self.wait_ic("mycluster", "ONLINE", num_online=3, timeout=300)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size, timeout=self.cluster_size*120)
 
-        self.wait_member_state("mycluster-0", ["ONLINE"])
-        self.wait_member_state("mycluster-1", ["ONLINE"])
-        self.wait_member_state("mycluster-2", ["ONLINE"])
+        for instance in range(0, self.cluster_size):
+            self.wait_member_state(f"{self.cluster_name}-{instance}", ["ONLINE"])
 
-        self.wait_routers("mycluster-router-*", 2)
+        self.wait_routers(f"{self.cluster_name}-router-*", num_online=self.routers_count)
 
-        check_all(self, self.ns, "mycluster", instances=3, routers=2)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count)
 
         # switch primary back to -0
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s0:
             s0.exec_sql(f"do group_replication_set_as_primary('{pod0_uuid}')")
 
     def test_4_recover_crash_3_of_3_changed_primary(self):
@@ -1626,10 +1716,10 @@ spec:
         member that was the PRIMARY.
         """
 
-        # generate transactions at mycluster-1 while the other members are stopped
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0,\
-            mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s1,\
-            mutil.MySQLPodSession(self.ns, "mycluster-2", "root", "sakila") as s2:
+        # generate transactions at {self.cluster_name}-1 while the other members are stopped
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s0,\
+            mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-1", "root", "sakila") as s1,\
+            mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-2", "root", "sakila") as s2:
             pod0_uuid = s0.query_sql("select @@server_uuid").fetch_one()[0]
 
             s0.exec_sql("stop group_replication")
@@ -1638,98 +1728,97 @@ spec:
 
         # kill mysqld (pid 1)
         # (vary the scenario a little killing -2 since GR is stopped anyway)
-        kutil.kill(self.ns, ("mycluster-0", "mysql"), 11, 1)
-        kutil.kill(self.ns, ("mycluster-1", "mysql"), 11, 1)
+        for instance in range(1, self.cluster_size - 1):
+            kutil.kill(self.ns, (f"{self.cluster_name}-{instance}", "mysql"), 11, 1)
 
         # wait for operator to notice them gone
-        self.wait_ic("mycluster", "OFFLINE", num_online=0)
+        self.wait_ic(self.cluster_name, "OFFLINE", num_online=0)
 
         # wait for operator to restore it
-        self.wait_ic("mycluster", "ONLINE", num_online=3, timeout=300)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size, timeout=self.cluster_size*120)
 
-        self.wait_member_state("mycluster-0", ["ONLINE"])
-        self.wait_member_state("mycluster-1", ["ONLINE"])
-        self.wait_member_state("mycluster-2", ["ONLINE"])
+        for instance in range(0, self.cluster_size):
+            self.wait_member_state(f"{self.cluster_name}-{instance}", ["ONLINE"])
 
-        self.wait_routers("mycluster-router-*", 2)
+        self.wait_routers(f"{self.cluster_name}-router-*", num_online=self.routers_count)
 
-        check_all(self, self.ns, "mycluster", instances=3, routers=2, primary=1)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=1)
 
         # switch primary back to -0
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s0:
             s0.exec_sql(f"do group_replication_set_as_primary('{pod0_uuid}')")
 
 
     def test_4_recover_delete_1_of_3(self):
         # delete the PRIMARY
-        kutil.delete_po(self.ns, "mycluster-0")
+        kutil.delete_po(self.ns, f"{self.cluster_name}-0")
 
-        self.wait_ic("mycluster", ["ONLINE_PARTIAL", "ONLINE_UNCERTAIN"], 2)
+        self.wait_ic(self.cluster_name, ["ONLINE_PARTIAL", "ONLINE_UNCERTAIN"], 2)
 
         # wait for operator to restore everything
-        self.wait_ic("mycluster", "ONLINE", 3)
-        self.wait_routers("mycluster-router-*", 2)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=3)
+        self.wait_routers(f"{self.cluster_name}-router-*", num_online=self.routers_count)
 
-        pod0 = kutil.get_po(self.ns, "mycluster-0")
+        pod0 = kutil.get_po(self.ns, f"{self.cluster_name}-0")
 
         # the pod was deleted, so restarts resets to 0
         self.assertEqual(pod0["status"]["containerStatuses"]
                          [0]["restartCount"], 0)
 
-        check_all(self, self.ns, "mycluster", instances=3, routers=2, primary=None)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=None)
 
-        kutil.exec(self.ns, ("mycluster-0", "sidecar"),
+        kutil.exec(self.ns, (f"{self.cluster_name}-0", "sidecar"),
                    ["mysqlsh", "root:sakila@localhost", "--",
                     "cluster", "set-primary-instance",
-                    f"mycluster-0.mycluster-instances.{self.ns}.svc.cluster.local:3306"])
+                    f"{self.cluster_name}-0.{self.cluster_name}-instances.{self.ns}.svc.cluster.local:3306"])
 
         cross_sync_gtids(
-            self.ns, ["mycluster-0", "mycluster-1", "mycluster-2"],
+            self.ns, [f"{self.cluster_name}-{instance}" for instance in range(0, self.cluster_size)],
             "root", "sakila")
 
-        all_pods, _ = check_all(self, self.ns, "mycluster",
-                                instances=3, routers=2, primary=0)
+        all_pods, _ = check_all(self, self.ns, self.cluster_name,
+                                instances=self.cluster_size, routers=self.routers_count, primary=0)
 
         check_group.check_data(self, all_pods, primary=0)
 
     def test_4_recover_delete_2_of_3(self):
         p0ts = kutil.get_po(
-            self.ns, "mycluster-0")["metadata"]["creationTimestamp"]
+            self.ns, f"{self.cluster_name}-0")["metadata"]["creationTimestamp"]
         p1ts = kutil.get_po(
-            self.ns, "mycluster-1")["metadata"]["creationTimestamp"]
+            self.ns, f"{self.cluster_name}-1")["metadata"]["creationTimestamp"]
 
         apply_time = isotime()
 
         # it may take longer than the default timeout (failures on jenkins)
-        kutil.delete_po(self.ns, "mycluster-0", timeout=200)
+        kutil.delete_po(self.ns, f"{self.cluster_name}-0", timeout=200)
 
         # extra timeout because the deletion of the 2nd pod will be blocked by
         # the busy handlers from the 1st deletion
-        kutil.delete_po(self.ns, "mycluster-1", timeout=200)
+        kutil.delete_po(self.ns, f"{self.cluster_name}-1", timeout=200)
 
         # wait for operator to restore everything
-        self.wait_ic("mycluster", "ONLINE", 3, timeout=300)
-        self.wait_routers("mycluster-router-*", 2)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size, timeout=300)
+        self.wait_routers(f"{self.cluster_name}-router-*", num_online=self.routers_count)
 
         # the pods were deleted, which means they would cleanly shutdown and
         # removed from the cluster
         self.assertGotClusterEvent(
-            "mycluster", after=apply_time, type="Normal",
-            reason="Join", msg="Joining mycluster-0 to cluster")
+            self.cluster_name, after=apply_time, type="Normal",
+            reason="Join", msg=f"Joining {self.cluster_name}-0 to cluster")
         self.assertGotClusterEvent(
-            "mycluster", after=apply_time, type="Normal",
+            self.cluster_name, after=apply_time, type="Normal",
             reason="StatusChange",
-            msg=r"Cluster status changed to ONLINE_PARTIAL. 2 member\(s\) ONLINE")
+            msg=rf"Cluster status changed to ONLINE_PARTIAL. {self.cluster_size - 1} member\(s\) ONLINE")
         self.assertGotClusterEvent(
-            "mycluster", after=apply_time, type="Normal",
-            reason="Join", msg="Joining mycluster-1 to cluster")
+            self.cluster_name, after=apply_time, type="Normal",
+            reason="Join", msg=f"Joining {self.cluster_name}-1 to cluster")
         self.assertGotClusterEvent(
-            "mycluster", after=apply_time, type="Normal",
+            self.cluster_name, after=apply_time, type="Normal",
             reason="StatusChange",
-            msg=r"Cluster status changed to ONLINE. 3 member\(s\) ONLINE")
+            msg=rf"Cluster status changed to ONLINE. {self.cluster_size} member\(s\) ONLINE")
 
-        pod0 = kutil.get_po(self.ns, "mycluster-0")
-        pod1 = kutil.get_po(self.ns, "mycluster-1")
+        pod0 = kutil.get_po(self.ns, f"{self.cluster_name}-0")
+        pod1 = kutil.get_po(self.ns, f"{self.cluster_name}-1")
 
         # make sure that the pods were actually deleted and recreated
         self.assertNotEqual(p0ts, pod0["metadata"]["creationTimestamp"])
@@ -1742,229 +1831,239 @@ spec:
                          [0]["restartCount"], 0)
 
         cross_sync_gtids(
-            self.ns, ["mycluster-2", "mycluster-0", "mycluster-1"],
+            self.ns, [f"{self.cluster_name}-2", f"{self.cluster_name}-0", f"{self.cluster_name}-1"],
             "root", "sakila")
         cross_sync_gtids(
-            self.ns, ["mycluster-1", "mycluster-2", "mycluster-0"],
+            self.ns, [f"{self.cluster_name}-1", f"{self.cluster_name}-2", f"{self.cluster_name}-0"],
             "root", "sakila")
         cross_sync_gtids(
-            self.ns, ["mycluster-0", "mycluster-2", "mycluster-1"],
+            self.ns, [f"{self.cluster_name}-0", f"{self.cluster_name}-2", f"{self.cluster_name}-1"],
             "root", "sakila")
 
-        all_pods, _ = check_all(self, self.ns, "mycluster",
-                                instances=3, routers=2, primary=2)
+        all_pods, _ = check_all(self, self.ns, self.cluster_name,
+                                instances=self.cluster_size, routers=self.routers_count, primary=2)
         check_group.check_data(self, all_pods)
 
-        kutil.exec(self.ns, ("mycluster-0", "sidecar"), ["mysqlsh", "root:sakila@localhost", "--", "cluster",
-                                                         "set-primary-instance", f"mycluster-0.mycluster-instances.{self.ns}.svc.cluster.local:3306"])
+        kutil.exec(self.ns, (f"{self.cluster_name}-0", "sidecar"), ["mysqlsh", "root:sakila@localhost", "--", "cluster",
+                                                         "set-primary-instance", f"{self.cluster_name}-0.{self.cluster_name}-instances.{self.ns}.svc.cluster.local:3306"])
 
     def test_4_recover_delete_and_wipe_1_of_3(self):
         # delete the pv and pvc first, which will block because until the pod
         # is deleted
 
         # delete a secondary
-        kutil.delete_po(self.ns, "mycluster-1")
+        kutil.delete_po(self.ns, f"{self.cluster_name}-1")
 
-        self.wait_ic("mycluster", ["ONLINE_PARTIAL", "ONLINE_UNCERTAIN"], 2)
+        self.wait_ic(self.cluster_name, ["ONLINE_PARTIAL", "ONLINE_UNCERTAIN"], num_online=self.cluster_size - 1)
 
         # wait for operator to restore everything
-        self.wait_ic("mycluster", "ONLINE", 3)
-        self.wait_routers("mycluster-router-*", 2)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
+        self.wait_routers(f"{self.cluster_name}-router-*", num_online=self.routers_count)
 
-        pod1 = kutil.get_po(self.ns, "mycluster-1")
+        pod1 = kutil.get_po(self.ns, f"{self.cluster_name}-1")
 
         # the pod was deleted, so restarts resets to 0
         self.assertEqual(pod1["status"]["containerStatuses"]
                          [0]["restartCount"], 0)
 
-        all_pods, _ = check_all(self, self.ns, "mycluster",
-                                instances=3, routers=2, primary=0)
+        all_pods, _ = check_all(self, self.ns, self.cluster_name,
+                                instances=self.cluster_size, routers=self.routers_count, primary=0)
 
         check_group.check_data(self, all_pods, primary=0)
 
-
+    @unittest.skip("TODO: This test needs to be fixed")
     def test_4_recover_stop_1_of_3(self):
         """
         Manually stop GR in 1 instance out of 3.
 
         TODO decide what to do, leave alone or restore?
         """
-        return
-        with mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s0:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-1", "root", "sakila") as s0:
             s0.exec_sql("stop group_replication")
 
         # TODO ensure router traffic is not ending up there
 
         # wait for operator to notice it OFFLINE
-        self.wait_ic("mycluster", "ONLINE_PARTIAL", 2)
+        self.wait_ic(self.cluster_name, "ONLINE_PARTIAL", self.cluster_size - 1)
 
         # restart GR and wait until everything is back to normal
-        with mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s0:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-1", "root", "sakila") as s0:
             s0.exec_sql("start group_replication")
 
         # wait for operator to restore everything
-        self.wait_ic("mycluster", "ONLINE", 3)
-        self.wait_routers("mycluster-router-*", 2)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
+        self.wait_routers(f"{self.cluster_name}-router-*", num_online=self.routers_count)
 
         # TODO ensure router traffic is resumed
 
-        check_all(self, self.ns, "mycluster", instances=3, routers=2, primary=0)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
+    @unittest.skip("TODO: This test needs to be fixed")
     def test_4_recover_stop_2_of_3(self):
-        return
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0,\
-                mutil.MySQLPodSession(self.ns, "mycluster-2", "root", "sakila") as s2:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s0,\
+                mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-2", "root", "sakila") as s2:
             s0.exec_sql("stop group_replication")
             s2.exec_sql("stop group_replication")
 
         # wait for operator to notice it ONLINE_PARTIAL
-        self.wait_ic("mycluster", "ONLINE_PARTIAL", 1)
+        self.wait_ic(self.cluster_name, "ONLINE_PARTIAL", num_online=self.cluster_size-2)
 
         # check status of each pod
 
         # wait for operator to restore everything
-        self.wait_ic("mycluster", "ONLINE")
-        self.wait_routers("mycluster-router-*", 2)
+        self.wait_ic(self.cluster_name, "ONLINE")
+        self.wait_routers(f"{self.cluster_name}-router-*", num_online=self.routers_count)
 
-        check_all(self, self.ns, "mycluster", instances=3, routers=2, primary=1)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=1)
 
+    @unittest.skip("TODO: This test needs to be fixed")
     def test_4_recover_stop_3_of_3(self):
-        return
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0,\
-                mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s1,\
-                mutil.MySQLPodSession(self.ns, "mycluster-2", "root", "sakila") as s2:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s0,\
+                mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-1", "root", "sakila") as s1,\
+                mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-2", "root", "sakila") as s2:
             s0.exec_sql("stop group_replication")
             s1.exec_sql("stop group_replication")
             s2.exec_sql("stop group_replication")
 
         # wait for operator to notice it OFFLINE
-        self.wait_ic("mycluster", "OFFLINE", 0)
+        self.wait_ic(self.cluster_name, "OFFLINE", num_online=self.cluster_size - 3)
 
         # check status of each pod
 
         # wait for operator to restore everything
-        self.wait_ic("mycluster", "ONLINE")
-        self.wait_routers("mycluster-router-*", 2)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
+        self.wait_routers(f"{self.cluster_name}-router-*", num_online=self.routers_count)
 
-        check_all(self, self.ns, "mycluster", instances=3, routers=2, primary=0)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
     def test_4_recover_restart_1_of_3(self):
-        initial_probe_time = kutil.get_ic(self.ns, "mycluster")["status"]["cluster"]["lastProbeTime"]
+        initial_probe_time = kutil.get_ic(self.ns, self.cluster_name)["status"]["cluster"]["lastProbeTime"]
 
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s0:
             s0.exec_sql("restart")
 
         # wait for operator to notice it OFFLINE
-        self.wait_ic("mycluster", ["ONLINE_PARTIAL", "ONLINE"], probe_time=initial_probe_time)
+        self.wait_ic(self.cluster_name, ["ONLINE_PARTIAL", "ONLINE"], probe_time=initial_probe_time)
 
         # check status of the restarted pod
         # TODO
 
         # wait for operator to restore everything
-        self.wait_ic("mycluster", "ONLINE", num_online=3, timeout=300)
-        self.wait_routers("mycluster-router-*", 2)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size, timeout=300)
+        self.wait_routers(f"{self.cluster_name}-router-*", num_online=self.routers_count)
 
-        check_all(self, self.ns, "mycluster", instances=3, routers=2, primary=None)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=None)
 
     def test_4_recover_restart_2_of_3(self):
-        initial_probe_time = kutil.get_ic(self.ns, "mycluster")["status"]["cluster"]["lastProbeTime"]
+        initial_probe_time = kutil.get_ic(self.ns, self.cluster_name)["status"]["cluster"]["lastProbeTime"]
 
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0,\
-                mutil.MySQLPodSession(self.ns, "mycluster-2", "root", "sakila") as s2:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s0,\
+                mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-2", "root", "sakila") as s2:
             s0.exec_sql("restart")
             s2.exec_sql("restart")
 
         # wait for operator to notice it ONLINE_PARTIAL
-        self.wait_ic("mycluster", ["ONLINE_PARTIAL", "ONLINE"], 1, probe_time=initial_probe_time)
+        self.wait_ic(self.cluster_name, ["ONLINE_PARTIAL", "ONLINE"], num_online=self.cluster_size - 2, probe_time=initial_probe_time)
 
         # check status of each pod
 
         # wait for operator to restore everything
-        self.wait_ic("mycluster", "ONLINE", num_online=3)
-        self.wait_routers("mycluster-router-*", 2)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
+        self.wait_routers(f"{self.cluster_name}-router-*", num_online=self.routers_count)
 
-        check_all(self, self.ns, "mycluster", instances=3, routers=2, primary=1)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=1)
 
     def test_4_recover_restart_3_of_3(self):
-        initial_probe_time = kutil.get_ic(self.ns, "mycluster")["status"]["cluster"]["lastProbeTime"]
+        initial_probe_time = kutil.get_ic(self.ns, self.cluster_name)["status"]["cluster"]["lastProbeTime"]
 
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s0,\
-                mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s1,\
-                mutil.MySQLPodSession(self.ns, "mycluster-2", "root", "sakila") as s2:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s0,\
+                mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-1", "root", "sakila") as s1,\
+                mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-2", "root", "sakila") as s2:
             s0.exec_sql("restart")
             s1.exec_sql("restart")
             s2.exec_sql("restart")
 
         # wait for operator to notice it OFFLINE
-        self.wait_ic("mycluster", "OFFLINE", 0)
+        self.wait_ic(self.cluster_name, "OFFLINE", num_online=self.cluster_size - 3)
 
         # check status of each pod
 
         # wait for operator to restore everything
-        self.wait_ic("mycluster", "ONLINE", num_online=3, probe_time=initial_probe_time)
-        self.wait_routers("mycluster-router-*", 2)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size, probe_time=initial_probe_time)
+        self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count)
 
-        all_pods, _ = check_all(self, self.ns, "mycluster",
-                                instances=3, routers=2)
+        all_pods, _ = check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count)
         check_group.check_data(self, all_pods)
 
     def test_9_destroy(self):
         # XXX deleting the sts shouldn't be necessary, but it's not happening when the ic is deleted
-        kutil.delete_sts(self.ns, "mycluster")
+        # REALLY??
+        kutil.delete_sts(self.ns, self.cluster_name)
 
-        kutil.delete_ic(self.ns, "mycluster", 600)
+        kutil.delete_ic(self.ns, self.cluster_name, timeout=self.cluster_size*150) #120 is the grace period
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_pvc(self.ns, None)
 
-        self.wait_pod_gone("mycluster-2")
-        self.wait_pod_gone("mycluster-1")
-        self.wait_pod_gone("mycluster-0")
-        self.wait_ic_gone("mycluster")
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
 class ClusterRaces(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    _cluster_size = 1
+    _routers_count = 0
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
+
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, "mycluster-0")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
+
         super().tearDownClass()
 
     def test_1_create_and_delete(self):
         """
         Create and delete a cluster immediately, before it becomes ONLINE.
         """
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
         # create cluster with mostly default configs
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: 1
-  secretName: mypwds
+  instances: {self.cluster_size}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
 """
 
         kutil.apply(self.ns, yaml)
 
-        self.wait_ic("mycluster", ["PENDING"])
+        self.wait_ic(self.cluster_name, ["PENDING"])
 
         # deleting a cluster right after it's created and before it's ONLINE
         # was causing kopf to enter a loop and not finish deleting before
         # kopf 0.28.2 (github/nolar/kopf issue #601)
-        kutil.delete_ic(self.ns, "mycluster")
+        kutil.delete_ic(self.ns, self.cluster_name)
 
-        self.wait_ic_gone("mycluster")
-        self.wait_pod_gone("mycluster-0")
+        self.wait_ic_gone(self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        kutil.delete_pvc(self.ns, None)
 
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 class Cluster3Defaults2Nodes(tutil.OperatorTest):
     pass
@@ -1972,117 +2071,139 @@ class Cluster3Defaults2Nodes(tutil.OperatorTest):
 
 class TwoClustersOneNamespace(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    _cluster_size = 1
+    _routers_count = 1
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
+
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, "mycluster-0")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
+
         super().tearDownClass()
 
     def test_0_create_1(self):
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_pass="sakila", root_host="%")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_pass="sakila", root_host="%")
 
         # create cluster with mostly default configs
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: 1
+  instances: {self.cluster_size}
   router:
-    instances: 1
-  secretName: mypwds
+    instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
 """
 
         kutil.apply(self.ns, yaml)
 
         # ensure router pods don't get created until the cluster is ONLINE
-        check_routing.check_pods(self, self.ns, "mycluster", 0)
+        check_routing.check_pods(self, self.ns, self.cluster_name, num_pods=0)
 
-        self.wait_pod("mycluster-0", "Running")
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        self.wait_ic("mycluster", "ONLINE", 1)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
-        self.wait_routers("mycluster-router-*", 1)
+        self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
 
-        check_all(self, self.ns, "mycluster",
-                  instances=1, routers=1, primary=0)
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
     def test_0_create_2(self):
-        kutil.create_user_secrets(
-            self.ns, "mypwds2", root_pass="sakilax", root_host="%")
+        kutil.create_user_secrets(self.ns, f"{self.cluster_secret_name}-2", root_pass="sakilax", root_host="%")
         # create cluster with mostly default configs
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster2
+  name: {self.cluster_name}-2
 spec:
-  instances: 1
+  instances: {self.cluster_size}
   router:
     instances: 2
-  secretName: mypwds2
+  secretName: {self.cluster_secret_name}-2
   tlsUseSelfSigned: true
 """
 
         kutil.apply(self.ns, yaml)
 
         # ensure router pods don't get created until the cluster is ONLINE
-        check_routing.check_pods(self, self.ns, "mycluster2", 0)
+        check_routing.check_pods(self, self.ns, f"{self.cluster_name}-2", 0)
 
-        self.wait_pod("mycluster2-0", "Running")
+        self.wait_pod(f"{self.cluster_name}-2-0", "Running")
 
-        self.wait_ic("mycluster2", "ONLINE", 1)
+        self.wait_ic(f"{self.cluster_name}-2", "ONLINE", num_online=self.cluster_size)
 
-        self.wait_routers("mycluster2-router-*", 2)
+        self.wait_routers(f"{self.cluster_name}-2-router-*", 2)
 
-        check_all(self, self.ns, "mycluster2", instances=1, routers=2,
+        check_all(self, self.ns, f"{self.cluster_name}-2", instances=self.cluster_size, routers=2,
                   primary=0, password="sakilax", shared_ns=True)
 
     def test_1_destroy_1(self):
-        kutil.delete_ic(self.ns, "mycluster")
+        kutil.delete_ic(self.ns, self.cluster_name)
 
-        self.wait_pod_gone("mycluster-0")
-        self.wait_ic_gone("mycluster")
+        # Don't use self.wait_pods_gone(f"{self.cluster_name}-*")
+        # as this will match also the pods of the second cluster which will stay alive
+        # because we haven't deleted the second IC
+        # or we need a pattern that maches exastly one symbol after the dash
+        for instance in range(0, self.cluster_size):
+            self.wait_pod_gone(f"{self.cluster_name}-{instance}")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
 
-        # mycluster2 should still be fine
-        check_all(self, self.ns, "mycluster2", instances=1,
-                  routers=2, password="sakilax", primary=0)
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
+
+        # {self.cluster_name}-2 should still be fine
+        check_all(self, self.ns, f"{self.cluster_name}-2", instances=self.cluster_size, routers=2, password="sakilax", primary=0)
 
     def test_1_destroy_2(self):
-        kutil.delete_ic(self.ns, "mycluster2")
+        kutil.delete_ic(self.ns, f"{self.cluster_name}-2")
+        self.wait_pods_gone(f"{self.cluster_name}-2-*")
+        self.wait_routers_gone(f"{self.cluster_name}-2-router-*")
+        self.wait_ic_gone(f"{self.cluster_name}-2")
+        kutil.delete_secret(self.ns, f"{self.cluster_secret_name}-2")
 
-        self.wait_pod_gone("mycluster2-0")
-        self.wait_ic_gone("mycluster2")
+    def test_99_destroy(self):
+        kutil.delete_pvc(self.ns, None)
+
 
 
 class ClusterCustomConf(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
-
-    cluster_name = "myvalid-cluster-name-28-char"
+    cluster_name_valid = "myvalid-cluster-name-28-char"
+    _cluster_size = 2
+    _routers_count = 1
 
     @classmethod
     def setUpClass(cls):
-        assert len(cls.cluster_name) == 28
+        assert len(cls.cluster_name_valid) == 28
 
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
 
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-1")
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
+
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, "mycluster-1")
-        g_full_log.stop_watch(cls.ns, "mycluster-0")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
@@ -2095,21 +2216,20 @@ class ClusterCustomConf(tutil.OperatorTest):
         - version can be customized
         - mycnf can be specified
         """
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="admin", root_host="%", root_pass="secret")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="admin", root_host="%", root_pass="secret")
 
         # create cluster with mostly default configs, but a specific server version
         yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: {self.cluster_name}
+  name: {self.cluster_name_valid}
 spec:
-  instances: 2
+  instances: {self.cluster_size}
   router:
-    instances: 1
-  secretName: mypwds
-  version: "{g_ts_cfg.get_old_version_tag()}"
+    instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
+  version: "{g_ts_cfg.get_current_lts_version()}"
   baseServerId: 3210
   tlsUseSelfSigned: true
   mycnf: |
@@ -2119,50 +2239,50 @@ spec:
 
         kutil.apply(self.ns, yaml)
 
-        self.wait_pod(self.cluster_name+"-0", "Running")
-        self.wait_pod(self.cluster_name+"-1", "Running")
+        self.wait_ic(self.cluster_name_valid, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        self.wait_ic(self.cluster_name, "ONLINE", 2)
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name_valid}-{instance}", "Running")
 
-        self.wait_routers(f"{self.cluster_name}-router-*", 1)
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name_valid}-router-*", self.routers_count, timeout=self.cluster_size*120)
 
-        check_all(self, self.ns, self.cluster_name, instances=2, routers=1,
+        self.wait_ic(self.cluster_name_valid, "ONLINE", num_online=self.cluster_size)
+
+        check_all(self, self.ns, self.cluster_name_valid, instances=self.cluster_size, routers=self.routers_count,
                   primary=0, user="admin", password="secret")
 
-        with mutil.MySQLPodSession(self.ns, self.cluster_name+"-0", user="admin", password="secret") as session:
+        with mutil.MySQLPodSession(self.ns, self.cluster_name_valid+"-0", user="admin", password="secret") as session:
             aport, sid, ver = session.query_sql(
                 "select @@admin_port, @@server_id, @@version").fetch_one()
             self.assertEqual(aport, 3333)
             self.assertEqual(sid, 3210)
-            self.assertEqual(ver, g_ts_cfg.get_old_version_tag())
+            self.assertEqual(ver.split('-')[0], g_ts_cfg.get_current_lts_version())
 
             users = list(session.query_sql(
                 "select user,host from mysql.user where user='root'").fetch_all())
             self.assertEqual(users, [])
 
-        with mutil.MySQLPodSession(self.ns, self.cluster_name+"-1", user="admin", password="secret") as session:
+        with mutil.MySQLPodSession(self.ns, self.cluster_name_valid+"-1", user="admin", password="secret") as session:
             aport, sid, ver = session.query_sql(
                 "select @@admin_port, @@server_id, @@version").fetch_one()
             self.assertEqual(aport, 3333)
             self.assertEqual(sid, 3211)
-            self.assertEqual(ver, g_ts_cfg.get_old_version_tag())
+            self.assertEqual(ver.split('-')[0], g_ts_cfg.get_current_lts_version())
 
             users = list(session.query_sql(
                 "select user,host from mysql.user where user='root'").fetch_all())
             self.assertEqual(users, [])
 
-        pod = kutil.get_po(self.ns, self.cluster_name+"-0")
-        cont = check_apiobjects.check_pod_container(
-            self, pod, "mysql", None, True)
-        self.assertEqual(
-            cont["image"], g_ts_cfg.get_old_server_image())
-        cont = check_apiobjects.check_pod_container(
-            self, pod, "sidecar", None, True)
-        self.assertEqual(
-            cont["image"], g_ts_cfg.get_operator_image())
+        pod = kutil.get_po(self.ns, self.cluster_name_valid+"-0")
+        cont = check_apiobjects.check_pod_container(self, pod, "mysql", None, True)
+        self.assertEqual(cont["image"], g_ts_cfg.get_current_lts_version_server_image())
+
+        cont = check_apiobjects.check_pod_container(self, pod, "sidecar", None, True)
+        self.assertEqual(cont["image"], g_ts_cfg.get_operator_image())
 
         # check version of router images
-        pods = kutil.ls_po(self.ns, pattern=self.cluster_name+"-.*-router")
+        pods = kutil.ls_po(self.ns, pattern=self.cluster_name_valid+"-.*-router")
         for p in pods:
             pod = kutil.get_po(self.ns, p["NAME"])
             cont = check_apiobjects.check_pod_container(
@@ -2173,25 +2293,33 @@ spec:
     # TODO config change in spec (and decide what to do)
 
     def test_9_destroy(self):
-        kutil.delete_ic(self.ns, self.cluster_name)
+        kutil.delete_ic(self.ns, self.cluster_name_valid)
 
-        self.wait_pod_gone(self.cluster_name+"-1")
-        self.wait_pod_gone(self.cluster_name+"-0")
+        self.wait_pods_gone(f"{self.cluster_name_valid}-*")
+        self.wait_routers_gone(f"{self.cluster_name_valid}-router-*")
         self.wait_ic_gone(self.cluster_name)
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
 class ClusterCustomImageConf(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    _cluster_size = 1
+    _routers_count = 1
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
+
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, "mycluster-1")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
@@ -2201,87 +2329,94 @@ class ClusterCustomImageConf(tutil.OperatorTest):
         - imagePullSecrets is propagated
         - version is propagated
         """
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="admin", root_host="%", root_pass="secret")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="admin", root_host="%", root_pass="secret")
 
         # create cluster with mostly default configs, but a specific server version
         yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: 1
+  instances: {self.cluster_size}
   router:
-    instances: 1
-  version: "{g_ts_cfg.get_old_version_tag()}"
-  secretName: mypwds
+    instances: {self.routers_count}
+  version: "{g_ts_cfg.get_current_lts_version()}"
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
   imagePullSecrets:
-    - name: pullsecrets
+  - name: pullsecrets
 """
 
         kutil.apply(self.ns, yaml)
 
-        self.wait_pod("mycluster-0", "Running")
+        self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        self.wait_ic("mycluster", "ONLINE", 1)
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        self.wait_routers("mycluster-router-*", 1)
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
 
-        check_all(self, self.ns, "mycluster", instances=1, routers=1,
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
+
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count,
                   primary=0, user="admin", password="secret")
 
         # check server pod
-        pod = kutil.get_po(self.ns, "mycluster-0")
+        pod = kutil.get_po(self.ns, f"{self.cluster_name}-0")
 
         self.assertEqual(pod["spec"]["imagePullSecrets"],
                          [{"name": "pullsecrets"}])
 
-        cont = check_apiobjects.check_pod_container(
-            self, pod, "mysql", None, True)
-        self.assertEqual(
-            cont["image"], g_ts_cfg.get_old_server_image())
-        cont = check_apiobjects.check_pod_container(
-            self, pod, "sidecar", None, True)
-        self.assertEqual(
-            cont["image"],
-            g_ts_cfg.get_operator_image())
+        cont = check_apiobjects.check_pod_container(self, pod, "mysql", None, True)
+        self.assertEqual(cont["image"], g_ts_cfg.get_current_lts_version_server_image())
+
+        cont = check_apiobjects.check_pod_container(self, pod, "sidecar", None, True)
+        self.assertEqual(cont["image"],g_ts_cfg.get_operator_image())
 
         # check router pod
-        pods = kutil.ls_po(self.ns, pattern="mycluster-router-.*")
+        pods = kutil.ls_po(self.ns, pattern=f"{self.cluster_name}-router-.*")
         for p in pods:
             pod = kutil.get_po(self.ns, p["NAME"])
 
             self.assertEqual(pod["spec"]["imagePullSecrets"], [
                              {"name": "pullsecrets"}])
 
-            cont = check_apiobjects.check_pod_container(
-                self, pod, "router", None, True)
+            cont = check_apiobjects.check_pod_container(self, pod, "router", None, True)
             self.assertEqual(
                 cont["image"],
-                g_ts_cfg.get_old_router_image(), p["NAME"])
+                g_ts_cfg.get_current_lts_version_router_image(), p["NAME"])
 
     def test_9_destroy(self):
-        kutil.delete_ic(self.ns, "mycluster")
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_pvc(self.ns, None)
 
-        self.wait_pod_gone("mycluster-0")
-        self.wait_ic_gone("mycluster")
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
-        kutil.delete_secret(self.ns, "mypwds")
 
 class Cluster1CloneWorksWhenTransactionMissingFromBinlog(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    _cluster_size = 1
+    _routers_count = 0
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
+
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, "mycluster-0")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
@@ -2290,32 +2425,35 @@ class Cluster1CloneWorksWhenTransactionMissingFromBinlog(tutil.OperatorTest):
         Checks:
         - that new instance will be populated properly even if some binlogs are missing
         """
-        kutil.create_user_secrets(
-            self.ns, "mypwds", root_user="root", root_host="%", root_pass="sakila")
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
         # create cluster with mostly default configs, but a specific server version
-        yaml = """
+        yaml =f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: 1
+  instances: {self.cluster_size}
   router:
-    instances: 0
-  secretName: mypwds
+    instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
-  imagePullSecrets:
-    - name: pullsecrets
 """
 
         kutil.apply(self.ns, yaml)
 
-        self.wait_pod("mycluster-0", "Running")
+        self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        self.wait_ic("mycluster", "ONLINE", 1)
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
+
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
+
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s:
             s.exec_sql("set autocommit=1")
 
             # Make sure we have some transactions in the binlog
@@ -2332,22 +2470,24 @@ spec:
             s.exec_sql(f"PURGE BINARY LOGS TO '{binlogname}'")
 
         # Try to scale up
-        kutil.patch_ic(self.ns, "mycluster", {
-                       "spec": {"instances": 2}}, type="merge")
-        self.wait_pod("mycluster-1", "Running")
-        self.wait_ic("mycluster", "ONLINE", 2)
+        self.cluster_size = 2
+        kutil.patch_ic(self.ns, self.cluster_name, {
+                       "spec": {"instances": self.cluster_size}}, type="merge")
+        self.wait_pod(f"{self.cluster_name}-1", "Running")
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         # Ensure clone copied all data
-        with mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-1", "root", "sakila") as s:
             rowcount = s.query_sql("SELECT COUNT(*) FROM foo.t").fetch_one()[0]
             self.assertEqual(rowcount, 2)
 
         # Scale down, and  scale back up and verify replica catches up from old data
-        kutil.patch_ic(self.ns, "mycluster", {
-                       "spec": {"instances": 1}}, type="merge")
-        self.wait_pod_gone("mycluster-1")
+        self.cluster_size = 1
+        kutil.patch_ic(self.ns, self.cluster_name, {
+                       "spec": {"instances": self.cluster_size}}, type="merge")
+        self.wait_pod_gone(f"{self.cluster_name}-1")
 
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s:
             s.exec_sql("set autocommit=1")
             s.query_sql("INSERT INTO foo.t VALUES (3)")
 
@@ -2357,22 +2497,24 @@ spec:
             s.exec_sql("INSERT INTO foo.t VALUES (4)")
             s.exec_sql("set session sql_log_bin=1")
 
-        kutil.patch_ic(self.ns, "mycluster", {
-                       "spec": {"instances": 2}}, type="merge")
-        self.wait_pod("mycluster-1", "Running")
-        self.wait_ic("mycluster", "ONLINE", 2)
+        self.cluster_size = 2
+        kutil.patch_ic(self.ns, self.cluster_name, {
+                       "spec": {"instances": self.cluster_size}}, type="merge")
+        self.wait_pod(f"{self.cluster_name}-1", "Running")
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
-        with mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-1", "root", "sakila") as s:
             count = s.query_sql("SELECT COUNT(*) FROM foo.t").fetch_one()[0]
             self.assertEqual(count, 3)
 
         # If transactions are missing from the binlog the old datadir can not be recovered
         # and we have to clone
-        kutil.patch_ic(self.ns, "mycluster", {
-                       "spec": {"instances": 1}}, type="merge")
-        self.wait_pod_gone("mycluster-1")
+        self.cluster_size = 1
+        kutil.patch_ic(self.ns, self.cluster_name, {
+                       "spec": {"instances": self.cluster_size}}, type="merge")
+        self.wait_pod_gone(f"{self.cluster_name}-1")
 
-        with mutil.MySQLPodSession(self.ns, "mycluster-0", "root", "sakila") as s:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s:
             s.exec_sql("set autocommit=1")
 
             # Flush binlog so we can purge
@@ -2383,22 +2525,23 @@ spec:
             binlogname = s.query_sql("SHOW BINARY LOGS").fetch_all().pop()[0]
             s.exec_sql(f"PURGE BINARY LOGS TO '{binlogname}'")
 
-        kutil.patch_ic(self.ns, "mycluster", {
-                       "spec": {"instances": 2}}, type="merge")
-        self.wait_pod("mycluster-1", "Running")
-        self.wait_ic("mycluster", "ONLINE", 2)
+        self.cluster_size = 2
+        kutil.patch_ic(self.ns, self.cluster_name, {
+                       "spec": {"instances": self.cluster_size}}, type="merge")
+        self.wait_pod(f"{self.cluster_name}-1", "Running")
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
-        with mutil.MySQLPodSession(self.ns, "mycluster-1", "root", "sakila") as s:
+        with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-1", "root", "sakila") as s:
             count = s.query_sql("SELECT COUNT(*) FROM foo.t").fetch_one()[0]
             self.assertEqual(count, 4)
 
-        kutil.delete_ic(self.ns, "mycluster")
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_pvc(self.ns, None)
 
-        self.wait_pod_gone("mycluster-1")
-        self.wait_pod_gone("mycluster-0")
-        self.wait_ic_gone("mycluster")
-
-        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 # ClusterErrors():
 # TODO test error creating cluster, adding instance, removing, rejoining

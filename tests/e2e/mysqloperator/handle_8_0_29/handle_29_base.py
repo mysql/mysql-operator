@@ -39,7 +39,7 @@ class Handle29Base(tutil.OperatorTest):
     # --------------------
 
     def create_cluster(self, version_tag):
-        kutil.create_default_user_secrets(self.ns)
+        kutil.create_default_user_secrets(self.ns, name=self.cluster_secret_name)
 
         yaml = f"""
 apiVersion: mysql.oracle.com/v2
@@ -50,7 +50,7 @@ spec:
     instances: {self.cluster_size}
     router:
         instances: {self.routers_count}
-    secretName: mypwds
+    secretName: {self.cluster_secret_name}
     tlsUseSelfSigned: true
     version: "{version_tag}"
 """

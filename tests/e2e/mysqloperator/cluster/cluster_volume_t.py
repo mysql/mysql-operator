@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -15,23 +15,23 @@ class ClusterVolume(tutil.OperatorTest):
     cluster volumes
     """
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    _cluster_size = 4
+    _routers_count = 1
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
 
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-0")
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-1")
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-2")
-        g_full_log.watch_mysql_pod(cls.ns, "mycluster-3")
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, "mycluster-3")
-        g_full_log.stop_watch(cls.ns, "mycluster-2")
-        g_full_log.stop_watch(cls.ns, "mycluster-1")
-        g_full_log.stop_watch(cls.ns, "mycluster-0")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
@@ -154,7 +154,7 @@ class ClusterVolume(tutil.OperatorTest):
         #     {
         #         "name": "datadir",
         #         "persistentVolumeClaim": {
-        #             "claimName": "datadir-mycluster-0"
+        #             "claimName": "datadir-{self.cluster_name}-0"
         #         }
         #     },
         pvc_found = False
@@ -167,18 +167,18 @@ class ClusterVolume(tutil.OperatorTest):
         self.assertTrue(pvc_found, "datadir volume not found")
 
     def test_0_create_with_datadir(self):
-        kutil.create_default_user_secrets(self.ns)
+        kutil.create_default_user_secrets(self.ns, name=self.cluster_secret_name)
 
-        yaml = """
+        yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
-  name: mycluster
+  name: {self.cluster_name}
 spec:
-  instances: 4
+  instances: {self.cluster_size}
   router:
-    instances: 1
-  secretName: mypwds
+    instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
   datadirVolumeClaimTemplate:
     accessModes: [ "ReadWriteOnce" ]
@@ -189,34 +189,32 @@ spec:
 
         kutil.apply(self.ns, yaml)
 
-        self.wait_pod("mycluster-0", "Running")
-        self.wait_pod("mycluster-1", "Running")
-        self.wait_pod("mycluster-2", "Running")
-        self.wait_pod("mycluster-3", "Running")
+        self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
 
-        self.wait_ic("mycluster", "ONLINE", 4)
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        # self.wait_routers("mycluster-router-*", 1)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
-        # check_all(self, self.ns, "mycluster", instances=4, routers=1, primary=0)
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
 
-        self.check_ic_datadir("mycluster")
+        check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
-        self.check_sts_datadir("mycluster")
+        self.check_ic_datadir(self.cluster_name)
 
-        self.check_pod_datadir("mycluster-0")
-        self.check_pod_datadir("mycluster-1")
-        self.check_pod_datadir("mycluster-2")
-        self.check_pod_datadir("mycluster-3")
+        self.check_sts_datadir(self.cluster_name)
+
+        for instance in range(0, self.cluster_size):
+            pod_name = f"{self.cluster_name}-{instance}"
+            with self.subTest(pod_name):
+                self.check_pod_datadir(pod_name)
 
     def test_9_destroy(self):
-        kutil.delete_ic(self.ns, "mycluster")
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_pvc(self.ns, None)
 
-        self.wait_pod_gone("mycluster-3")
-        self.wait_pod_gone("mycluster-2")
-        self.wait_pod_gone("mycluster-1")
-        self.wait_pod_gone("mycluster-0")
-
-        self.wait_ic_gone("mycluster")
-
-        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_secret(self.ns, self.cluster_secret_name)

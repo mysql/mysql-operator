@@ -1,4 +1,4 @@
-# Copyright (c) 2022, Oracle and/or its affiliates.
+# Copyright (c) 2022, 2025, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -23,34 +23,36 @@ from utils.optesting import DEFAULT_MYSQL_ACCOUNTS, COMMON_OPERATOR_ERRORS
   "OCI scheduled backup config path and/or bucket name not set")
 class ScheduledBackupRefOci(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
-    cluster_name = "mycluster"
     profile_name = "scheduled-test-backup-oci"
     schedule_name = "schedule-ref-oci"
-    dump_name_prefix = f"{cluster_name}-{schedule_name}"
     backup_apikey = "backup-apikey"
     oci_storage_prefix = f"/e2etest/{g_ts_cfg.get_worker_label()}"
     oci_storage_output = None
+    _cluster_size = 3
+    _routers_count = 0
 
     @classmethod
     def setUpClass(cls):
         cls.logger = logging.getLogger(__name__+":"+cls.__name__)
         super().setUpClass()
 
-        g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-0")
-        g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-1")
-        g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-2")
+        cls.dump_name_prefix = f"{cls.cluster_name}-{cls.schedule_name}"
+
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
+
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
 
     @classmethod
     def tearDownClass(cls):
-        g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-2")
-        g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-1")
-        g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-0")
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
 
         super().tearDownClass()
 
-
     def test_0_create(self):
-        kutil.create_default_user_secrets(self.ns)
+        kutil.create_default_user_secrets(self.ns, name=self.cluster_secret_name)
 
         kutil.create_apikey_secret(self.ns, self.backup_apikey, g_ts_cfg.oci_config_path, "BACKUP")
 
@@ -60,9 +62,11 @@ kind: InnoDBCluster
 metadata:
   name: {self.cluster_name}
 spec:
-  instances: 3
-  secretName: mypwds
+  instances: {self.cluster_size}
+  secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
+  router:
+    instances: {self.routers_count}
   backupProfiles:
   - name: {self.profile_name}
     dumpInstance:
@@ -81,11 +85,12 @@ spec:
 
         kutil.apply(self.ns, yaml)
 
-        self.wait_pod(f"{self.cluster_name}-0", "Running")
-        self.wait_pod(f"{self.cluster_name}-1", "Running")
-        self.wait_pod(f"{self.cluster_name}-2", "Running")
+        for instance in range(0, self.cluster_size):
+            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
 
-        self.wait_ic(self.cluster_name, "ONLINE", 3)
+        if self.routers_count:
+            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         script = open(tutil.g_test_data_dir+"/sql/sakila-schema.sql").read()
         script += open(tutil.g_test_data_dir+"/sql/sakila-data.sql").read()
@@ -160,16 +165,15 @@ spec:
 
 
     def test_9_destroy(self):
-        kutil.delete_ic(self.ns, self.cluster_name)
-
-        self.wait_pod_gone(f"{self.cluster_name}-2")
-        self.wait_pod_gone(f"{self.cluster_name}-1")
-        self.wait_pod_gone(f"{self.cluster_name}-0")
-        self.wait_ic_gone(self.cluster_name)
-
         kutil.delete_mbks(self.ns, self.dump_name_prefix)
 
-        kutil.delete_secret(self.ns, "mypwds")
+        kutil.delete_ic(self.ns, self.cluster_name)
+
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
+
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
         if self.__class__.oci_storage_output:
             ociutil.bulk_delete("DELETE", g_ts_cfg.oci_bucket_name, self.__class__.oci_storage_output)

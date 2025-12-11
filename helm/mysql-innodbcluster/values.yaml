@@ -11,9 +11,10 @@ credentials:
   root:
     # Option 1: Provide credentials directly (chart will create a secret)
     # Only used when existingSecret is not set
-    #user: root
-    #host: "%%"
-    #password: "test"
+    user: root
+    password: sakila
+    host: "%"
+
 
     # Option 2: Reference an existing Kubernetes secret (recommended for production/GitOps)
     # When set, user/host/password above are ignored and the chart will not create a secret.
@@ -33,10 +34,11 @@ credentials:
     #     rootUser: root
     #     rootHost: "%%"
     #     rootPassword: "my-secure-password"
-    existingSecret: "vault-mysql-credentials"
+
+    # existingSecret: ""
 
 tls:
-  useSelfSigned: true
+  useSelfSigned: false
 #  caSecretName:
 #  serverCertAndPKsecretName:
 #  routerCertAndPKsecretName: # our use router.certAndPKsecretName

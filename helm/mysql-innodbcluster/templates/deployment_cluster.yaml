@@ -69,7 +69,7 @@ spec:
   {{- end }}
     tlsSecretName: {{ $secret_name }}
 {{- end }}
-  secretName: {{ .Release.Name }}-cluster-secret
+  secretName: {{ .Values.credentials.root.existingSecret | default (printf "%s-cluster-secret" .Release.Name) }}
   imagePullPolicy : {{ .Values.image.pullPolicy }}
   baseServerId: {{ required "baseServerId is required" .Values.baseServerId | toString | atoi }}
   version: {{ .Values.serverVersion | default .Chart.AppVersion }}

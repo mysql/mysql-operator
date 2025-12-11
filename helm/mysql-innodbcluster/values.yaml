@@ -9,12 +9,34 @@ image:
 
 credentials:
   root:
-    user: root
-#    password: sakila
-    host: "%"
+    # Option 1: Provide credentials directly (chart will create a secret)
+    # Only used when existingSecret is not set
+    #user: root
+    #host: "%%"
+    #password: "test"
+
+    # Option 2: Reference an existing Kubernetes secret (recommended for production/GitOps)
+    # When set, user/host/password above are ignored and the chart will not create a secret.
+    #
+    # The referenced secret must contain these keys:
+    #   - rootUser: MySQL root username (e.g., "root")
+    #   - rootHost: MySQL root host pattern (e.g., "%%")
+    #   - rootPassword: MySQL root password
+    #
+    # Example secret:
+    #   apiVersion: v1
+    #   kind: Secret
+    #   metadata:
+    #     name: mysql-root-credentials
+    #   type: Opaque
+    #   stringData:
+    #     rootUser: root
+    #     rootHost: "%%"
+    #     rootPassword: "my-secure-password"
+    existingSecret: "vault-mysql-credentials"
 
 tls:
-  useSelfSigned: false
+  useSelfSigned: true
 #  caSecretName:
 #  serverCertAndPKsecretName:
 #  routerCertAndPKsecretName: # our use router.certAndPKsecretName

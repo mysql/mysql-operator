@@ -54,6 +54,7 @@ import asyncio
 import argparse
 import kopf
 import json
+import threading
 from threading import Lock
 
 from .controller import utils, mysqlutils, k8sobject, fqdn, config
@@ -497,7 +498,7 @@ def connect(user: str, password: str, logger: Logger, timeout: Optional[int] = 6
         except mysqlsh.Error as e:
             if mysqlutils.is_client_error(e.code):
                 logger.warning(f"Connect attempt #{i} failed: {e}")
-                time.sleep(2)
+                time.sleep(5)
             else:
                 logger.critical(f"Unexpected MySQL error during connection: {e}")
                 raise
@@ -919,6 +920,7 @@ def configure(settings: kopf.OperatorSettings, logger: Logger, *args, **_):
     logger.info("sidecar: configure()")
     settings.peering.standalone = True
     settings.posting.enabled = False
+    logger.info(f"Kopf max_workers={settings.execution.max_workers}  Executor max_workers={settings.execution.executor._max_workers}  Executor threads={len(settings.execution.executor._threads)}  Total Python threads={len(threading.enumerate())}")
 
 
 def main(argv):

@@ -180,7 +180,7 @@ def main(argv):
     name = args.pod_name[0] # nargs returns a list
     namespace = args.pod_namespace[0] # nargs returns a list
 
-    logger.info(f"Configuring mysql pod {namespace}/{name}, datadir={datadir}")
+    logger.info(f"Configuring MySQL pod {namespace}/{name}, datadir={datadir}")
 
     utils.log_banner(__file__, logger)
 

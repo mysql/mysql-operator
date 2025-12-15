@@ -1151,10 +1151,46 @@ def on_failover_create(name: str, namespace: Optional[str], body: Body,
     # TODO: move this to a proper structure
     logger.info(f'Fetching {body["spec"]["clusterName"]}')
     cluster = cluster_api.InnoDBCluster.read(namespace, body["spec"]["clusterName"])
-    job = cluster_objects.prepare_service_failover_job(name, body["spec"]["force"], body["spec"].get("options"), cluster.parsed_spec, logger)
+    force = body["spec"]["force"]
+    job = cluster_objects.prepare_service_failover_job(name, force, body["spec"].get("options"), cluster.parsed_spec, logger)
 
     kopf.adopt(job)
     api_batch.create_namespaced_job(namespace, body=job)
+    try:
+        connected = False
+        for pod in cluster.get_pods():
+            with shellutils.DbaWrap(shellutils.connect_to_pod_dba(pod, logger)) as dba:
+                try:
+                    cluster_status = dba.get_cluster().status({"extended": 1})
+
+                    if "clusterRole" in cluster_status:
+                        cluster.info(action="FailingOver", reason="FailOverObjectCreated", message=f'{"Failing" if force else "Switching"} over to {cluster.namespace}/{cluster.name} from {cluster_status["primaryCluster"]}')
+                    else:
+                        cluster.warn(action="FailingOverCancel", reason="FailOverObjectCreated", message=f"Cluster {cluster.namespace}/{cluster.name} not part of a ClusterSet")
+                    break
+                except mysqlsh.Error as exc:
+                    # For whatever reaon we fail: this shouldn't stop us from
+                    # decomissioning our pods. Even if not unregistered.
+                    # TODO: maybe the only reason might be if this were the
+                    #       primary cluster, while other clusters exist ...
+                    #       but a) that is a user error and b) there shouldn't
+                    #       be an exception .. but let's keep an eye on it
+                    logger.error(f"Error while trying to check ClusterSet status for failover: {exc}")
+        if not connected:
+            logger.warning(f"Could not connect to any cluster pod of {cluster.namespace}/{cluster.name}")
+    except kopf.TemporaryError as exc:
+        cluster.warn(action="FailingOverPostpone", reason="FailOverObjectCreated", message=f"Temporary error: {exc}")
+        raise
+    except kopf.PermanentError as exc:
+        cluster.warn(action="FailingOverCancel", reason="FailOverObjectCreated", message=f"Permanent error: {exc}")
+        raise
+    except mysqlsh.Error as exc:
+        logger.warning(f"Could not connect to pod {pod.endpoint}: {exc}")
+        cluster.warn(action="FailingOverCancel", reason="FailOverObjectCreated", message=f"MySQL Shell error: {exc}")
+        raise
+    except Exception as exc:
+        cluster.warn(action="FailingOverCancel", reason="FailOverObjectCreated", message=f"General error: {exc}")
+        raise
 
 
 @kopf.on.delete("", "v1", "pods",

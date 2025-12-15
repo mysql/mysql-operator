@@ -343,11 +343,12 @@ def get_meb_container(cluster: InnoDBCluster, spec: InnoDBClusterSpec,
 # (e.g. because of a deadlock), the container is restarted.
 #
 def prepare_cluster_stateful_set(cluster: InnoDBCluster, spec: AbstractServerSetSpec, logger: Logger) -> dict:
-    init_mysql_argv = ["mysqld", "--user=mysql"]
+    mysql_argv = ["mysqld", "--user=mysql"]
 #    if config.enable_mysqld_general_log:
 #        init_mysql_argv.append("--general-log=1")
 
-    mysql_argv = init_mysql_argv
+    init_mysql_argv = mysql_argv
+    init_mysql_argv.append("--innodb-use-native-aio=0")
 
     # we only need this in initconf, we pass it to all operator images to be
     # on the safe side

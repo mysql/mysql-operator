@@ -1064,6 +1064,7 @@ def handle_fields(old, new, body: Body,
             # (None, None) means no change
             if (o, n) != (None, None):
                 logger.info(f"\tValue differs for {prefix}{cr_name}")
+                cluster.info(action="ReconcileResources", reason="SpecChanged", message=f"Field {prefix}{cr_name} modified")
                 handler(o, n, body, cluster, patcher, logger)
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
@@ -1072,36 +1073,49 @@ def on_spec(body: Body, diff, old, new, logger: Logger, **kwargs):
     logger.info("on_spec")
     logger.info(f"old={old}")
     logger.info(f"new={new}")
+    try:
+        if not old:
+            # on IC object created, nothing to do here
+            logger.debug(f"on_spec: Old is empty")
+            return
 
-    if not old:
-        # on IC object created, nothing to do here
-        logger.debug(f"on_spec: Old is empty")
-        return
+        cluster = InnoDBCluster(body)
+        cluster.info(action="ReconcileResources", reason="SpecChanged", message="CR changed")
 
-    cluster = InnoDBCluster(body)
+        if not cluster.ready:
+            # ignore spec changes if the cluster is still being initialized
+            logger.info(f"on_spec: Unready cluster")
+            raise kopf.TemporaryError("Unready cluster", delay=60)
 
-    if not cluster.ready:
-        # ignore spec changes if the cluster is still being initialized
-        logger.debug(f"on_spec: Ignoring on_spec change for unready cluster")
-        return
+        if not (sts:= cluster.get_stateful_set()):
+            logger.warning("STS doesn't exist yet. If this is a change during cluster start it might race and be lost")
+            raise kopf.TemporaryError("Unready STS", delay=60)
 
-    if not (sts:= cluster.get_stateful_set()):
-        logger.warning("STS doesn't exist yet. If this is a change during cluster start it might race and be lost")
-        return
+        patcher = cluster_objects.InnoDBClusterObjectModifier(cluster, logger)
 
-    patcher = cluster_objects.InnoDBClusterObjectModifier(cluster, logger)
+        # TODOA: Enable and test this
+        #cluster.validate_spec(logger)
+        handle_fields(old, new, body, cluster, patcher, spec_tld_handlers, "spec.", logger)
 
-    # TODOA: Enable and test this
-    #cluster.validate_spec(logger)
-    handle_fields(old, new, body, cluster, patcher, spec_tld_handlers, "spec.", logger)
+        old_router, new_router = change_between_old_and_new(old, new, "router", lambda: {})
+        handle_fields(old_router, new_router, body, cluster, patcher, spec_router_handlers, "spec.router.", logger)
+        logger.info("Fields handled. Time to submit the patches to K8s API!")
 
-    old_router, new_router = change_between_old_and_new(old, new, "router", lambda: {})
-    handle_fields(old_router, new_router, body, cluster, patcher, spec_router_handlers, "spec.router.", logger)
-    logger.info("Fields handled. Time to submit the patches to K8s API!")
-
-    # It's time to patch
-    with ClusterMutex(cluster):
-        patcher.submit_patches()
+        # It's time to patch
+        with ClusterMutex(cluster):
+            patcher.submit_patches()
+    except kopf.TemporaryError as exc:
+        cluster.warn(action="SpecChange", reason="SpecChanged", message=f"Temporary error: {exc}")
+        raise
+    except kopf.PermanentError as exc:
+        cluster.warn(action="SpecChange", reason="SpecChanged", message=f"Permanent error: {exc}")
+        raise
+    except mysqlsh.Error as exc:
+        cluster.warn(action="SpecChange", reason="SpecChanged", message=f"MySQL Shell error: {exc}")
+        raise
+    except Exception as exc:
+        cluster.warn(action="SpecChange", reason="SpecChanged", message=f"General error: {exc}")
+        raise
 
 
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,

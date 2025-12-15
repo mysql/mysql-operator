@@ -956,6 +956,7 @@ class ClusterController:
                 self.remove_instance, pod, pod_body, logger)
         elif self.cluster.parsed_spec.instances == 1 and len(diag.online_members) == 0 and pod.phase == "Failed":
             logger.info("One node cluster and the instance is offline. We won't attempt a repair but let k8s to recreate the pod")
+            pod.remove_member_finalizer(pod_body)
             # we can't do when the only pod is offline
             # if we try to repair nothing will happen and then throw a TemporaryError then the Kopf Finalizer
             # will stay attached to the pod and the pod will hang indefinitely in Terminating (Failed) state
@@ -969,6 +970,7 @@ class ClusterController:
             # ONLINE_PARTIAL and there won't be endless loop by the KopfMemberFinalizer and the TemporaryError.
         else:
             logger.info(f"on_pod_deleted: {pod.name} ATTEMPTING CLUSTER REPAIR")
+            pod.remove_member_finalizer(pod_body)
             self.repair_cluster(pod, diag, logger)
             # Retry from scratch in another iteration
             logger.info("on_pod_deleted: RETRYING ON POD DELETE")

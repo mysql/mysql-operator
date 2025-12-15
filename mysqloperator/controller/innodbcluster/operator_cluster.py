@@ -830,67 +830,55 @@ def on_pod_create(body: Body, logger: Logger, **kwargs):
         g_ephemeral_pod_state.set(pod, "mysql-restarts", pod.get_container_restarts("mysql"), context="on_pod_create")
 
 
-@kopf.on.event("", "v1", "pods",
-               labels={"component": "mysqld"})  # type: ignore
-def on_pod_event(event, body: Body, logger: Logger, **kwargs):
+@kopf.on.field("", "v1", "pods",
+               labels={"component": "mysqld"},
+               field="status") # cannot be status.containerStatuses as we check also status.conditions in cluster_ctl.probe_status_if_needed()
+def on_pod_event(body: Body, logger: Logger, **kwargs):
     """
     Handle low-level MySQL server pod events. The events we're interested in are:
     - when a container restarts in a Pod (e.g. because of mysqld crash)
     """
     # TODO ensure that the pod is owned by us
+    pod = MySQLPod.from_json(body)
 
-    while True:
-        try:
-            pod = MySQLPod.from_json(body)
+    member_info = pod.get_membership_info()
+    ready = pod.check_containers_ready()
+    logger.debug(f"pod event: pod={pod.name} containers_ready={ready} deleting={pod.deleting} phase={pod.phase} member_info={member_info}")
+    if pod.phase != "Running" or pod.deleting or not member_info:
+        logger.info(f"ignored pod event")
+        return
 
-            member_info = pod.get_membership_info()
-            ready = pod.check_containers_ready()
-            logger.debug(f"pod event: pod={pod.name} containers_ready={ready} deleting={pod.deleting} phase={pod.phase} member_info={member_info}")
-            if pod.phase != "Running" or pod.deleting or not member_info:
-                logger.info(f"ignored pod event")
-                return
+    mysql_restarts = pod.get_container_restarts("mysql")
 
-            mysql_restarts = pod.get_container_restarts("mysql")
+    event = ""
+    if g_ephemeral_pod_state.get(pod, "mysql-restarts") != mysql_restarts:
+        event = "mysql-restarted"
 
-            event = ""
-            if g_ephemeral_pod_state.get(pod, "mysql-restarts") != mysql_restarts:
-                event = "mysql-restarted"
+    if logger.getEffectiveLevel() == logging.DEBUG:
+        containers = [f"{c.name}={'ready' if c.ready else 'not-ready'}" for c in pod.status.container_statuses]
+        conditions = [f"{c.type}={c.status}" for c in pod.status.conditions]
+        logger.debug(f"POD EVENT {event}: pod={pod.name} containers_ready={ready} deleting={pod.deleting} phase={pod.phase} member_info={member_info} restarts={mysql_restarts} containers={containers} conditions={conditions}")
 
-            containers = [
-                f"{c.name}={'ready' if c.ready else 'not-ready'}" for c in pod.status.container_statuses]
-            conditions = [
-                f"{c.type}={c.status}" for c in pod.status.conditions]
-            logger.debug(f"POD EVENT {event}: pod={pod.name} containers_ready={ready} deleting={pod.deleting} phase={pod.phase} member_info={member_info} restarts={mysql_restarts} containers={containers} conditions={conditions}")
+    cluster = pod.get_cluster()
+    if not cluster:
+        logger.info(f"on_pod_event: Ignoring event for pod {pod.name} belonging to a deleted cluster")
+        return
 
-            cluster = pod.get_cluster()
-            if not cluster:
-                logger.info(f"Ignoring event for pod {pod.name} belonging to a deleted cluster")
-                return
-            with ClusterMutex(cluster, pod):
-                cluster_ctl = ClusterController(cluster)
+    with ClusterMutex(cluster, pod):
+        cluster_ctl = ClusterController(cluster)
 
-                # Check if a container in the pod restarted
-                if ready and event == "mysql-restarted":
-                    logger.info("Pod got restarted")
-                    cluster_ctl.on_pod_restarted(pod, logger)
+        # Check if a container in the pod restarted
+        if ready and event == "mysql-restarted":
+            logger.info("on_pod_event: Pod got restarted")
+            cluster_ctl.on_pod_restarted(pod, logger)
 
-                    logger.info("Updating restart count")
-                    g_ephemeral_pod_state.set(pod, "mysql-restarts", mysql_restarts, context="on_pod_event")
+            logger.info("on_pod_event: Updating restart count")
+            g_ephemeral_pod_state.set(pod, "mysql-restarts", mysql_restarts, context="on_pod_event")
 
-                # Check if we should refresh the cluster status
-                status = cluster_ctl.probe_status_if_needed(pod, logger)
-                if status == diagnose.ClusterDiagStatus.UNKNOWN:
-                    raise kopf.TemporaryError(
-                        f"Cluster has unreachable members. status={status}", delay=15)
-                break
-        except kopf.TemporaryError as e:
-            # TODO review this
-            # Manually handle retries, the event handler isn't getting called again
-            # by kopf (maybe a bug or maybe we're using it wrong)
-            logger.info(f"{e}: retrying after {e.delay} seconds")
-            if e.delay:
-                time.sleep(e.delay)
-            continue
+        # Check if we should refresh the cluster status
+        status = cluster_ctl.probe_status_if_needed(pod, logger)
+        if status == diagnose.ClusterDiagStatus.UNKNOWN:
+            raise kopf.TemporaryError(f"Cluster has unreachable members. status={status}", delay=15)
 
 
 @kopf.on.delete("", "v1", "pods",

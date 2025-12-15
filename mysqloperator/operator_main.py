@@ -27,8 +27,12 @@ k8sobject.g_host = os.getenv("HOSTNAME")
 def main(argv):
     mysqlsh.globals.shell.options.useWizards = False
     # https://dev.mysql.com/doc/mysql-shell/8.0/en/mysql-shell-application-log.html
-    mysqlsh.globals.shell.options.logLevel = 4 # warning
+    mysqlsh.globals.shell.options.logLevel = 4 # 8 for tracing
     mysqlsh.globals.shell.options.verbose = 0
+
+    #mysqlsh.globals.shell.options.logFile= "/tmp/mysqlsh.log"
+    #mysqlsh.globals.shell.options.logLevel= 5
+    #mysqlsh.globals.shell.options.logSql= "all"
 
     myconfig.config_from_env()
 

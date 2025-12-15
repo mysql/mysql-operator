@@ -7,7 +7,7 @@
 from mysqloperator.controller.api_utils import Edition, ImagePullPolicy
 from .kubeutils import k8s_version
 import os
-import pkg_resources
+from importlib.metadata import distributions
 
 debug = False
 #enable_mysqld_general_log = False
@@ -72,10 +72,10 @@ def log_config_banner(logger) -> None:
     logger.info(f"DEFAULT_VERSION_TAG={DEFAULT_VERSION_TAG}")
     logger.info(f"SIDECAR_VERSION_TAG={DEFAULT_OPERATOR_VERSION_TAG}")
     logger.info(f"DEFAULT_IMAGE_REPOSITORY   ={DEFAULT_IMAGE_REPOSITORY}")
-    for dist in pkg_resources.working_set:
-        pkg = str(dist).split(" ")
-        logger.info(f"{pkg[0]:20} = {pkg[1]:10}")
-
+    for dist in distributions():
+        name = dist.metadata['Name']
+        version = dist.version
+        logger.info(f"{name:23}={version:10}")
 
 def config_from_env() -> None:
     import mysqlsh

@@ -203,6 +203,14 @@ def diagnose_instance(pod: MySQLPod, logger, dba: 'Dba' = None) -> InstanceStatu
             else:
                 logger.error(f"{pod.endpoint}: bad state {mystate}")
                 assert False, f"{pod.endpoint}: bad state {mystate}"
+        except RuntimeError as e:
+            e_str = str(e)
+            if "bad_alloc" in e_str or "std::bad_alloc" in e_str:
+                logger.warning(f"cluster.status() hit std::bad_alloc at {pod.endpoint}: treating as UNKNOWN; error={e}")
+            else:
+                logger.info(f"diagnose_instance: RuntimeError from status(): {e}")
+            status.status = InstanceDiagStatus.UNKNOWN
+            return status
         except mysqlsh.Error as e:
             if shellutils.check_fatal(
                     e, pod.endpoint_url_safe, "status()", logger):
@@ -210,6 +218,7 @@ def diagnose_instance(pod: MySQLPod, logger, dba: 'Dba' = None) -> InstanceStatu
 
             logger.info(f"status() failed at {pod.endpoint}: error={e}")
             status.status = InstanceDiagStatus.UNKNOWN
+            return status
 
     return status
 
@@ -309,7 +318,27 @@ def diagnose_cluster_candidate(primary_session: 'ClassicSession', cluster: 'Clus
             logger.warning(
                 f"{pod} has errant transactions relative to the cluster: errant_gtids={status.bad_gtid_set}")
         # TODO disable queryMembers
-        if pod.endpoint in cluster.status()["defaultReplicaSet"]["topology"].keys():
+        is_member = False
+        try:
+            topology = cluster.status()["defaultReplicaSet"]["topology"]
+            is_member = pod.endpoint in topology.keys()
+        except RuntimeError as e:
+            e_str = str(e)
+            if "bad_alloc" in e_str or "std::bad_alloc" in e_str:
+                logger.warning(f"cluster.status() hit std::bad_alloc while checking membership for {pod.endpoint}: treating as BROKEN; error={e}")
+            else:
+                logger.info(f"diagnose_cluster_candidate: RuntimeError from status(): {e}")
+            status.status = CandidateDiagStatus.BROKEN
+            return status
+        except mysqlsh.Error as e:
+            if shellutils.check_fatal(
+                    e, pod.endpoint_url_safe, "status()", logger):
+                raise
+            logger.info(f"cluster.status() failed while checking membership for {pod.endpoint}: error={e}")
+            status.status = CandidateDiagStatus.BROKEN
+            return status
+
+        if is_member:
             # already a member of the cluster
             if not status.bad_gtid_set and not fatal_error:
                 status.status = CandidateDiagStatus.REJOINABLE

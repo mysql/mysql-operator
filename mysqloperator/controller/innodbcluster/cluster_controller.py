@@ -140,7 +140,26 @@ class ClusterController:
         if primary_pod:
             self.dba = shellutils.connect_dba(
                 primary_pod.endpoint_co, logger, max_tries=2)
-            self.dba_cluster = self.dba.get_cluster()
+            try:
+                self.dba_cluster = self.dba.get_cluster()
+            except RuntimeError as e:
+                e_str = str(e)
+                if "bad_alloc" in e_str or "std::bad_alloc" in e_str:
+                    logger.warning(f"Dba.get_cluster() hit std::bad_alloc at {primary_pod.endpoint}: error={e}")
+                else:
+                    logger.info(f"connect_to_primary: RuntimeError from get_cluster(): {e}")
+                raise
+            except mysqlsh.Error as e:
+                # Log and bubble up fatal errors consistently
+                try:
+                    if shellutils.check_fatal(e, primary_pod.endpoint_url_safe, "get_cluster()", logger):
+                        raise
+                except Exception:
+                    # endpoint_url_safe might not exist on some objects; fall back to name
+                    if shellutils.check_fatal(e, primary_pod.name, "get_cluster()", logger):
+                        raise
+                logger.info(f"get_cluster() failed at {primary_pod.endpoint}: error={e}")
+                raise
         else:
             # - check if we should consider pod marker for whether the instance joined
             self.connect_to_cluster(logger, need_primary=True)
@@ -182,18 +201,23 @@ class ClusterController:
                     self.dba_cluster = self.dba.get_cluster()
                     logger.info(f"Connected to {pod}")
                     return pod
+                except RuntimeError as e:
+                    e_str = str(e)
+                    if "bad_alloc" in e_str or "std::bad_alloc" in e_str:
+                        logger.warning(f"Dba.get_cluster() hit std::bad_alloc from {pod.name}: error={e}")
+                    else:
+                        logger.info(f"connect_to_cluster: RuntimeError from get_cluster() at {pod.name}: {e}")
+                    # Try next pod
                 except mysqlsh.Error as e:
-                    logger.info(
-                        f"get_cluster() from {pod.name} failed: {e}")
-
+                    logger.info(f"get_cluster() from {pod.name} failed: {e}")
                     if e.code == errors.SHERR_DBA_BADARG_INSTANCE_NOT_ONLINE:
                         # This member is not ONLINE, so there's no chance of
                         # getting a cluster handle from it
                         offline_pods.append(pod.name)
-
+                    # Try next pod
                 except Exception as e:
-                    logger.info(
-                        f"get_cluster() from {pod.name} failed: {e}")
+                    logger.info(f"get_cluster() from {pod.name} failed: {e}")
+                    # Try next pod
 
             # If all pods are connectable but OFFLINE, then we have complete outage and need a reboot
             if len(offline_pods) == len(all_pods):
@@ -288,7 +312,15 @@ class ClusterController:
                 self.dba_cluster = dba.get_cluster()
                 # maybe from a previous incomplete create attempt
                 logger.info("Cluster already exists")
-            except:
+            except RuntimeError as e:
+                e_str = str(e)
+                if "bad_alloc" in e_str or "std::bad_alloc" in e_str:
+                    logger.warning(f"Dba.get_cluster() hit std::bad_alloc at {seed_pod.endpoint}: error={e}")
+                else:
+                    logger.info(f"create_cluster: RuntimeError from get_cluster(): {e}")
+                self.dba_cluster = None
+            except mysqlsh.Error as e:
+                logger.info(f"get_cluster() failed during create_cluster at {seed_pod.endpoint}: error={e}")
                 self.dba_cluster = None
 
             seed_pod.add_member_finalizer()
@@ -342,7 +374,23 @@ class ClusterController:
 
             self.probe_member_status(seed_pod, dba.session, True, logger)
 
-            logger.debug("Cluster created %s" % self.dba_cluster.status())
+            try:
+                st = self.dba_cluster.status()
+                logger.debug("Cluster created %s" % st)
+            except RuntimeError as e:
+                e_str = str(e)
+                if "bad_alloc" in e_str or "std::bad_alloc" in e_str:
+                    logger.warning(f"cluster.status() hit std::bad_alloc at {seed_pod.endpoint}: error={e}")
+                else:
+                    logger.info(f"create_cluster: RuntimeError from status(): {e}")
+            except mysqlsh.Error as e:
+                try:
+                    if shellutils.check_fatal(e, seed_pod.endpoint_url_safe, "status()", logger):
+                        raise
+                except Exception:
+                    if shellutils.check_fatal(e, seed_pod.name, "status()", logger):
+                        raise
+                logger.info(f"status() failed at {seed_pod.endpoint}: error={e}")
 
             # if there's just 1 pod, then the cluster is ready... otherwise, we
             # need to wait until all pods have joined
@@ -363,10 +411,16 @@ class ClusterController:
                 update = False
             else:
                 raise
-        logger.debug(
-            f"{'Updating' if update else 'Creating'} router account {user}")
-        dba_cluster.setup_router_account(
-            user, {"password": password, "update": update})
+        logger.debug(f"{'Updating' if update else 'Creating'} router account {user}")
+        try:
+            dba_cluster.setup_router_account(
+                user, {"password": password, "update": update})
+        except RuntimeError as e:
+            e_str = str(e)
+            if "Unsupported server version" in e_str or "AdminAPI operations in this version of MySQL Shell support MySQL Server up to version" in e_str:
+                logger.warning(f"Skipping router account setup during post_create_actions due to unsupported server version: {e}")
+            else:
+                raise
 
         # update read replicas
         for rr in self.cluster.parsed_spec.readReplicas:
@@ -412,7 +466,19 @@ class ClusterController:
 
         # TODO: May not be in a ClusterSet (old Cluster?)
         cs = self.dba_cluster.get_cluster_set()
-        cs_status = cs.status()
+        try:
+            cs_status = cs.status()
+        except RuntimeError as e:
+            e_str = str(e)
+            if "bad_alloc" in e_str or "std::bad_alloc" in e_str:
+                logger.warning(f"clusterset.status() hit std::bad_alloc: error={e}")
+            else:
+                logger.info(f"reboot_cluster: RuntimeError from ClusterSet.status(): {e}")
+            cs_status = {}
+        except mysqlsh.Error as e:
+            # We log but continue, treating as empty status for decision below
+            logger.info(f"clusterset.status() failed: error={e}")
+            cs_status = {}
         # TODO: is there really a valid case where
         #       cs_status["clusters"][name] won't exist?
         if cs_status.get("clusters", {}).get(self.cluster.name, {}).get("globalStatus") == "INVALIDATED":
@@ -426,8 +492,19 @@ class ClusterController:
                 import traceback
                 traceback.print_exc()
 
-        status = self.dba_cluster.status()
-        logger.info(f"Cluster reboot successful. status={status}")
+        try:
+            status = self.dba_cluster.status()
+            logger.info(f"Cluster reboot successful. status={status}")
+        except RuntimeError as e:
+            e_str = str(e)
+            if "bad_alloc" in e_str or "std::bad_alloc" in e_str:
+                logger.warning(f"cluster.status() hit std::bad_alloc during reboot: error={e}")
+            else:
+                logger.info(f"reboot_cluster: RuntimeError from status(): {e}")
+            raise
+        except mysqlsh.Error as e:
+            logger.info(f"cluster.status() failed during reboot: error={e}")
+            raise
 
         self.probe_member_status(seed_pod, self.dba.session, True, logger)
 
@@ -440,27 +517,39 @@ class ClusterController:
 
         self.dba_cluster.force_quorum_using_partition_of(seed_pod.endpoint_co)
 
-        status = self.dba_cluster.status()
-        logger.info(f"Force quorum successful. status={status}")
+        try:
+            status = self.dba_cluster.status()
+            logger.info(f"Force quorum successful. status={status}")
+        except RuntimeError as e:
+            e_str = str(e)
+            if "bad_alloc" in e_str or "std::bad_alloc" in e_str:
+                logger.warning(f"cluster.status() hit std::bad_alloc during force_quorum: error={e}")
+            else:
+                logger.info(f"force_quorum: RuntimeError from status(): {e}")
+            raise
+        except mysqlsh.Error as e:
+            logger.info(f"cluster.status() failed during force_quorum: error={e}")
+            raise
 
         # TODO Rejoin OFFLINE members
 
-    def destroy_cluster(self, last_pod, logger: Logger) -> None:
+    def destroy_cluster(self, last_pod: MySQLPod, logger: Logger) -> None:
         logger.info(f"destroy_cluster: Stopping GR for last cluster member {last_pod.name}")
 
-        try:
-            with shellutils.connect_to_pod(last_pod, logger, timeout=5) as session:
-                # Just stop GR
-                session.run_sql("STOP group_replication")
-        except Exception as e:
-            logger.warning(
-                f"Error stopping GR at last cluster member, ignoring... {e}")
-            # Remove the pod membership finalizer even if we couldn't do final cleanup
-            # (it's just stop GR, which should be harmless most of the time)
-            last_pod.remove_member_finalizer()
-            return
-
-        logger.info("destroy_cluster: Stop GR OK")
+        # We destroy the cluster and possible dissolve the clusterset in on_innodbcluster_delete. GR is already down
+        #try:
+        #    with shellutils.connect_to_pod(last_pod, logger, timeout=5) as session:
+        #        # Just stop GR
+        #        session.run_sql("STOP group_replication")
+        #except Exception as e:
+        #    logger.warning(
+        #        f"Error stopping GR at last cluster member, ignoring... {e}")
+        #    # Remove the pod membership finalizer even if we couldn't do final cleanup
+        #    # (it's just stop GR, which should be harmless most of the time)
+        #    last_pod.remove_member_finalizer()
+        #    return
+        #
+        #logger.info("destroy_cluster: Stop GR OK")
 
         last_pod.remove_member_finalizer()
 
@@ -622,11 +711,11 @@ class ClusterController:
             self.__remove_instance_aux(pod, logger, force)
         except Exception as e:
             logger.info(f"Exception {e} caught")
-            pass
         finally:
             # Remove the membership finalizer to allow the pod to be removed
+            logger.info(f"remove_instance: Removing member finalizer")
             pod.remove_member_finalizer(pod_body)
-            logger.info(f"Removed finalizer for pod {pod_body['metadata']['name']}")
+            logger.info(f"remove_instance: Removed finalizer for pod {pod_body['metadata']['name']}")
 
     def __remove_instance_aux(self, pod: MySQLPod, logger: Logger, force: bool = False) -> None:
         print(f"Removing {pod.endpoint} from cluster FORCE={force}")
@@ -806,7 +895,7 @@ class ClusterController:
         print("on_pod_created: probing cluster")
         diag = self.probe_status(logger)
 
-        print(f"on_pod_created: pod={pod.name} primary={diag.primary} cluster_state={diag.status}")
+        logger.info(f"on_pod_created: pod={pod.name} primary={diag.primary} cluster_state={diag.status}")
 
         if diag.status == diagnose.ClusterDiagStatus.INITIALIZING:
             # If cluster is not yet created, then we create it at pod-0
@@ -815,7 +904,7 @@ class ClusterController:
                     raise kopf.PermanentError(
                         f"Internal inconsistency: cluster marked as initialized, but create requested again")
 
-                print("Time to create the cluster")
+                logger.info("on_pod_created: Time to create the cluster")
                 shellutils.RetryLoop(logger).call(self.create_cluster, pod, logger)
 
                 # Mark the cluster object as already created
@@ -825,12 +914,12 @@ class ClusterController:
                 raise kopf.TemporaryError("Cluster is not yet ready", delay=15)
 
         elif diag.status in (diagnose.ClusterDiagStatus.ONLINE, diagnose.ClusterDiagStatus.ONLINE_PARTIAL, diagnose.ClusterDiagStatus.ONLINE_UNCERTAIN):
-            print("Reconciling pod")
+            logger.info("on_pod_created: Reconciling pod")
             # Cluster exists and is healthy, join the pod to it
             shellutils.RetryLoop(logger).call(
                 self.reconcile_pod, diag.primary, pod, logger)
         else:
-            print("Attempting to repair the cluster")
+            logger.info("on_pod_created: Attempting to repair the cluster")
             self.repair_cluster(pod, diag, logger)
 
             # Retry from scratch in another iteration
@@ -850,7 +939,7 @@ class ClusterController:
     def on_pod_deleted(self, pod: MySQLPod, pod_body: Body, logger: Logger) -> None:
         diag = self.probe_status(logger)
 
-        logger.info(f"on_pod_deleted: pod={pod.name} pod.phase={pod.phase} cluster.instances={self.cluster.parsed_spec.instances} online={diag.online_members}  primary={diag.primary}  cluster_state={diag.status} cluster.deleting={self.cluster.deleting}")
+        logger.info(f"on_pod_deleted: {pod.name} pod.phase={pod.phase} cluster.instances={self.cluster.parsed_spec.instances} online={diag.online_members}  primary={diag.primary}  cluster_state={diag.status} cluster.deleting={self.cluster.deleting}")
 
         if self.cluster.deleting:
             logger.info(f"on_pod_deleted: The cluster is being deleted")
@@ -862,7 +951,7 @@ class ClusterController:
                 return
 
         if pod.deleting and diag.status in (diagnose.ClusterDiagStatus.ONLINE, diagnose.ClusterDiagStatus.ONLINE_PARTIAL, diagnose.ClusterDiagStatus.ONLINE_UNCERTAIN, diagnose.ClusterDiagStatus.FINALIZING):
-            logger.info(f"REMOVING INSTANCE {pod.name}")
+            logger.info(f"on_pod_deleted: {pod.name} REMOVING INSTANCE ")
             shellutils.RetryLoop(logger).call(
                 self.remove_instance, pod, pod_body, logger)
         elif self.cluster.parsed_spec.instances == 1 and len(diag.online_members) == 0 and pod.phase == "Failed":
@@ -879,10 +968,10 @@ class ClusterController:
             # be upgraded and will be stuck due to incompatible upgrade. The cluster will still exist and will be
             # ONLINE_PARTIAL and there won't be endless loop by the KopfMemberFinalizer and the TemporaryError.
         else:
-            logger.info("ATTEMPTING CLUSTER REPAIR")
+            logger.info(f"on_pod_deleted: {pod.name} ATTEMPTING CLUSTER REPAIR")
             self.repair_cluster(pod, diag, logger)
             # Retry from scratch in another iteration
-            logger.info("RETRYING ON POD DELETE")
+            logger.info("on_pod_deleted: RETRYING ON POD DELETE")
             raise kopf.TemporaryError(f"Cluster repair from state {diag.status} attempted", delay=3)
 
         # TODO maybe not needed? need to make sure that shrinking cluster will be reported as ONLINE
@@ -993,4 +1082,3 @@ class ClusterController:
             except mysqlsh.Error as e:
                 # We don't fail when setting an option fails
                 logger.warning(f"Failed setting routing option {key} to {new[key]}: {e}")
-

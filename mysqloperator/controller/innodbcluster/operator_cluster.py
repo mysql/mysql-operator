@@ -5,6 +5,7 @@
 
 from typing import Any, List, Optional, Callable
 from kopf._cogs.structs.bodies import Body
+from kopf import Patch
 from kubernetes.client.rest import ApiException
 
 from mysqloperator.controller.api_utils import ApiSpecError
@@ -21,6 +22,7 @@ from .cluster_api import InnoDBCluster, InnoDBClusterSpec, MySQLPod, get_all_clu
 import kopf
 import mysqlsh
 import json
+import logging
 from logging import Logger
 import time
 import traceback
@@ -145,7 +147,7 @@ def do_reconcile_read_replica(cluster: InnoDBCluster,
 
 @kopf.on.create(consts.GROUP, consts.VERSION,
                 consts.INNODBCLUSTER_PLURAL)  # type: ignore
-def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
+def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body, patch: Patch,
                             logger: Logger, **kwargs) -> None:
     logger.info(
         f"Initializing InnoDB Cluster name={name} namespace={namespace} on K8s {k8s_version()}")
@@ -363,6 +365,11 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body,
                 "lastProbeTime": utils.isotime()
             }})
 
+        specified_version = body.get('spec', {}).get('version', None)
+        if specified_version is None:
+            logger.info(f"spec.version not found, setting to {config.DEFAULT_VERSION_TAG}")
+            patch.spec['version'] = config.DEFAULT_VERSION_TAG
+
 
 @kopf.on.delete(consts.GROUP, consts.VERSION,
                 consts.INNODBCLUSTER_PLURAL)  # type: ignore
@@ -490,11 +497,48 @@ def on_innodbcluster_field_version(old, new, body: Body,
     sts = cluster.get_stateful_set()
     if sts:
         logger.info(f"Propagating spec.version={new} for {cluster.namespace}/{cluster.name} (was {old})")
+        cluster.info(action="SetVersion", reason="VersionChangeAttempt", message=f"Attempting version change from {old} to {new}")
 
         try:
             cluster_ctl = ClusterController(cluster)
-            if new > old:
+
+            if old is None:
+                pod_versions = []
+                logger.info("Attempting to get server version info from membership info")
+                for pod in cluster.get_pods():
+                    info = pod.get_membership_info()
+                    if info:
+                        pod_versions.append(info.get("version", None))
+                # get unique
+                pod_versions = list(set(pod_versions))
+                logger.info(f"{pod_versions=}")
+                if len(pod_versions) == 1:
+                    if pod_versions[0] is not None:
+                        old = pod_versions[0]
+                    else:
+                        # TODO How come a this is None?
+                        pass
+                elif len(pod_versions) == 0:
+                    logger.info("No pods or no membership info. Trying to fetch the version from the STS MySQL image")
+                    if (sts := cluster.get_stateful_set()):
+                        [mysql_container] = [c for c in sts.spec.template.spec.containers if c.name == "mysql"]
+                        old = mysql_container.image.split(":")[-1]
+                        logger.info(f'Image is "{mysql_container.image}". Assuming old version {old}')
+                    else:
+                        # TODO: what to do if there isn't even a STS?
+                        pass
+                else:
+                    logger.warning("Could not access the STS")
+                    # TODO Anything else that can be done, when the pod versions differ?
+                    pass
+            # Don't use elif
+            if new is None:
+                new = config.DEFAULT_VERSION_TAG
+
+            # Don't use elif
+            if old is not None and new > old:
                 cluster_ctl.on_router_upgrade(logger)
+
             cluster_ctl.on_server_version_change(new)
         except:
             # revert version in the spec
@@ -503,7 +547,11 @@ def on_innodbcluster_field_version(old, new, body: Body,
         # should not be earlier, as on_server_version_change() checks also for the version and raises
         # a PermanentError while validate() raises ApiSpecError which is turned by Kopf to a TemporaryError
         # spec.version requires this special handling
-        cluster.validate_spec(logger)
+        try:
+            cluster.validate_spec(logger)
+        except ApiSpecError as exc:
+            cluster.warn(action="ValidateSpec", reason="InvalidSpec", message=str(exc))
+            raise
         cluster_objects.on_upgrade(cluster, old, new, sts, patcher, logger)
         cluster_objects.update_mysql_image(sts, cluster, cluster.parsed_spec, patcher, logger)
 
@@ -857,6 +905,7 @@ def on_pod_delete(body: Body, logger: Logger, **kwargs):
     logger.info("on_pod_delete")
     # TODO ensure that the pod is owned by us
     pod = MySQLPod.from_json(body)
+    logger.info(f"on_pod_delete: {pod.namespace}/{pod.name} {pod.deleting=} {pod.phase=}")
 
     # check general assumption
     assert pod.deleting
@@ -865,7 +914,9 @@ def on_pod_delete(body: Body, logger: Logger, **kwargs):
     cluster = pod.get_cluster()
 
     if cluster:
+        logger.info(f"on_pod_delete: cluster {cluster.namespace}/{cluster.name} {cluster.deleting=}")
         with ClusterMutex(cluster, pod):
+            logger.info("on_pod_delete: mutex acquired")
             cluster_ctl = ClusterController(cluster)
 
             cluster_ctl.on_pod_deleted(pod, body, logger)

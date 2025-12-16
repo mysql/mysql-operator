@@ -73,6 +73,7 @@ spec:
             yaml, r'ValidationError\(InnoDBCluster.spec\): unknown field "bogus" in com.oracle.mysql.v2.InnoDBCluster.spec' if kutil.server_version() < '1.25' else
                   r'InnoDBCluster in version "v2" cannot be handled as a InnoDBCluster: strict decoding error: unknown field "spec.bogus"')
 
+
     def test_1_name_too_long(self):
         """
         Checks:
@@ -87,9 +88,14 @@ spec:
   secretName: mypwds
   tlsUseSelfSigned: true
 """
+        if kutil.server_version() < '1.24':
+            too_long_message =  r'metadata.name in body should be at most 40 chars long'
+        elif kutil.server_version() < '1.31':
+            too_long_message = 'The InnoDBCluster "veryveryveryveryveryveryveryverylongnamex" is invalid: metadata.name: Too long: may not be longer than 40'
+        else:
+            too_long_message = 'The InnoDBCluster "veryveryveryveryveryveryveryverylongnamex" is invalid: metadata.name: Too long: may not be more than 40 bytes'
         self.assertApplyFails(
-            yaml, r'metadata.name in body should be at most 40 chars long' if kutil.server_version() < '1.24' else
-                 'The InnoDBCluster "veryveryveryveryveryveryveryverylongnamex" is invalid: metadata.name: Too long: may not be longer than 40')
+            yaml, too_long_message)
 
     def test_1_no_name(self):
         """

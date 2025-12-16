@@ -12,6 +12,8 @@ import base64
 import threading
 import json
 import hashlib
+from logging import Logger
+import importlib.metadata
 
 from . import config
 
@@ -184,17 +186,14 @@ def indent(s: str, spaces: int) -> str:
     return ""
 
 
-def log_banner(path: str, logger) -> None:
-    import pkg_resources
+def log_banner(path: str, logger: Logger) -> None:
     from . import config
 
-    kopf_version = pkg_resources.get_distribution('kopf').version
+    kopf_version = importlib.metadata.version("kopf")
     ts = datetime.datetime.fromtimestamp(os.stat(path).st_mtime).isoformat()
 
     path = os.path.basename(path)
-    logger.info(
-        f"MySQL Operator/{path}={config.OPERATOR_VERSION} timestamp={ts} kopf={kopf_version} uid={os.getuid()}")
-
+    logger.info(f"MySQL Operator/{path}={config.OPERATOR_VERSION}  timestamp={ts}  kopf={kopf_version}  uid={os.getuid()}")
 
 def dict_to_json_string(d : dict) -> str:
     return json.dumps(d, indent = 4)

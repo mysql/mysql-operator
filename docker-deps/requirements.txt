@@ -46,4 +46,3 @@ kubernetes==34.1.0
       certifi==2025.11.12
   urllib3==2.6.2
   durationpy==0.10
-packaging==25.0

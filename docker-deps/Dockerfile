@@ -17,7 +17,10 @@ ENV LD_LIBRARY_PATH=${PYTHON_BASE_DIR}/${PYTHON_ROOT}/lib
 
 COPY requirements.txt .
 
-RUN python3 -m pip install --target=/tmp/site-packages -r requirements.txt
+# we need --no-deps because we need urllib3 @ 2.6.2 because of cves, which is not supported officially by k8s
+# "kubernetes 34.1.0 depends on urllib3<2.4.0 and >=1.24.2"
+# when k8s officially support it, we need to remove --no-deps. --no-deps should be used with care
+RUN python3 -m pip install --target=/tmp/site-packages -r requirements.txt --no-deps
 
 FROM container-registry.oracle.com/os/oraclelinux:8-slim
 

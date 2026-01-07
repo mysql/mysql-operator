@@ -7,7 +7,7 @@
 
 MYSQL_REPO_URL="http://repo.mysql.com"; [ -n "${1}" ] && MYSQL_REPO_URL="${1}"
 MYSQL_OPERATOR_PYTHON_DEPS="mysql-operator-python-deps"; [ -n "${2}" ] && MYSQL_OPERATOR_PYTHON_DEPS="${2}"
-MYSQL_OPERATOR_PYTHON_DEPS_VERSION="3.10.8"; [ -n "${3}" ] && MYSQL_OPERATOR_PYTHON_DEPS_VERSION="${3}"
+MYSQL_OPERATOR_PYTHON_DEPS_VERSION="3.13.9"; [ -n "${3}" ] && MYSQL_OPERATOR_PYTHON_DEPS_VERSION="${3}"
 MYSQL_SHELL_VERSION=9.6.0; [ -n "${4}" ] && MYSQL_SHELL_VERSION="${4}"
 MYSQL_CONFIG_PKG="mysql80-community-release"; [ -n "${5}" ] && MYSQL_CONFIG_PKG="${5}"
 MYSQL_SHELL_REPO="mysql-tools-community"; [ -n "${6}" ] && MYSQL_SHELL_REPO="${6}"

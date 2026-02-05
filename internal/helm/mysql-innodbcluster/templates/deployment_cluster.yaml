@@ -69,7 +69,7 @@ spec:
   {{- end }}
     tlsSecretName: {{ $secret_name }}
 {{- end }}
-  secretName: {{ .Release.Name }}-cluster-secret
+  secretName: {{ coalesce (default dict (default dict .Values.credentials).root).secretName (printf "%s-cluster-secret" $cluster_name) }}
   imagePullPolicy : {{ .Values.image.pullPolicy }}
   baseServerId: {{ required "baseServerId is required" .Values.baseServerId }}
   version: {{ .Values.serverVersion | default .Chart.AppVersion }}

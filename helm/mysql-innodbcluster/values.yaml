@@ -6,12 +6,12 @@ image:
     enabled: false
     secretName:
 
-
-credentials:
-  root:
-    user: root
+#credentials:
+#  root:
+#    user: root
 #    password: sakila
-    host: "%"
+#    host: "%"
+#    secretName: mycluster-cluster-secret
 
 tls:
   useSelfSigned: false

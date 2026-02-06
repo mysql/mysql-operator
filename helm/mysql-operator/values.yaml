@@ -17,6 +17,16 @@ envs:
 
 replicas: 1
 
+## Resource limits and requests for the operator pods
+#resources:
+#  limits:
+#    cpu: 500m
+#    memory: 512Mi
+#  requests:
+#    cpu: 100m
+#    memory: 128Mi
+resources: {}
+
 ## An example of using affinity for scheduling the operator pods
 #affinity:
 #  podAntiAffinity:

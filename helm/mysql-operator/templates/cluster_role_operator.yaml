@@ -1,8 +1,31 @@
-# The main role for the operator
+# Even when `deployment.namespaces` is non-empty, this chart still creates
+# cluster-scoped `ClusterRoles` for the operator, sidecar, and switchover.
+#
+# The access model differs by component:
+# - Operator: the `ClusterRoleBinding` is created externally by Helm.
+# - Sidecar and switchover: use namespace-scoped `RoleBindings`.
+#
+# The sidecar and switchover bindings are created by the operator and adopted
+# by it via `kopf`, so they are automatically deleted when the owning cluster
+# is removed.
+#
+# This is an intentional trade-off for two reasons:
+# 1. Resource scope:
+#    The operator needs access to cluster-scoped resources such as `CRDs` and
+#    `Namespaces`, which cannot be granted through a regular `RoleBinding`.
+# 2. Operational complexity:
+#    If the operator watches multiple namespaces, Helm would need to create and
+#    maintain separate `Roles` for sidecar and switchover, plus `RoleBindings`
+#    for the operator, in every watched namespace. It would also need to remove
+#    them when the watched namespace list changes. The operator can't create these
+#    themselves as it needs the role bound before it starts.
+# All this said : deployment.namespaces is a watch filter, not a strong RBAC boundary.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: mysql-operator
+  name: {{ include "mysql-operator.operatorRoleName" . }}
+  labels:
+    {{- include "mysql-operator.globalLabels" . | nindent 4 }}
 rules:
   - apiGroups: [""]
     resources: ["pods"]
@@ -29,7 +52,7 @@ rules:
     verbs: ["create", "patch", "update"]
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["rolebindings"]
-    verbs: ["get", "create"]
+    verbs: ["get", "create", "patch", "delete"]
   - apiGroups: ["policy"]
     resources: ["poddisruptionbudgets"]
     verbs: ["get", "create"]
@@ -41,7 +64,7 @@ rules:
     verbs: ["get", "create", "update", "delete"]
   - apiGroups: ["apps"]
     resources: ["deployments", "statefulsets"]
-    verbs: ["get", "create", "patch", "update", "watch", "delete"]
+    verbs: ["get", "list", "create", "patch", "update", "watch", "delete"]
   - apiGroups: ["mysql.oracle.com"]
     resources: ["*"]
     verbs: ["*"]

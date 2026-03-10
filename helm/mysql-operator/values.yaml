@@ -17,32 +17,101 @@ envs:
 
 replicas: 1
 
-## Resource limits and requests for the operator pods
-#resources:
-#  limits:
-#    cpu: 500m
-#    memory: 512Mi
-#  requests:
-#    cpu: 100m
-#    memory: 128Mi
-resources: {}
+#deployment:
+  #name: mysql-operator
+  ## deployment.name is part of the operator's persistent identity.
+  ## Set it on first install if you need a custom Deployment name.
+  ## Keeping the default deployment.name preserves the legacy cluster-scoped
+  ## identities mysql-operator, mysql-sidecar, mysql-switchover,
+  ## mysql-operator-rolebinding, and ClusterKopfPeering/mysql-operator.
+  ## On upgrades from older chart releases that had no deployment.name, the
+  ## chart inherits the current live Deployment name automatically.
+  ## After install, deployment.name is immutable and must not be changed.
+  ## Multiple scoped or standalone operators in one cluster therefore require
+  ## unique custom deployment.name values.
+  ## Custom deployment names are validated against the release namespace so the
+  ## derived Service name and app.kubernetes.io/instance label value stay
+  ## within Kubernetes' 63-character budget.
+  ## For custom names this currently leaves at most 53 - len(.Release.Namespace)
+  ## characters.
 
-## An example of using affinity for scheduling the operator pods
-#affinity:
-#  podAntiAffinity:
-#    requiredDuringSchedulingIgnoredDuringExecution:
-#    - labelSelector:
-#        matchLabels:
-#          ....
-#      topologyKey: kubernetes.io/hostname
+  ## if standalone is true, then no peering will be created and there can be no more than 1 replica
+  ## Topology is frozen after install in this release, so deployment.standalone
+  ## must not change on upgrade.
+  #standalone: false
 
-## An example of using nodeSelector for scheduling the operator pods
-#nodeSelector:
-#  failure-domain.beta.kubernetes.io/zone: US-ASHBURN-AD-1
+  ## Optional raw Deployment strategy passed through to the Deployment spec as-is.
+  ## If omitted and standalone is true, the chart renders strategy.type=Recreate.
+  ## Example:
+  #strategy:
+  #  type: RollingUpdate
+  #  rollingUpdate:
+  #    maxSurge: 0
+  #    maxUnavailable: 1
 
-# If you would like to debug the Helm output with `helm template`, you need
-# to turn disableLookups on as during `helm template` Helm won't contact the kube API
-# and all lookups will thus fail
+  ## deployment.name is also used for the operator peering and RBAC identities
+  ## deployment.namespaces accepts explicit namespace names only.
+  ## Empty means cluster-wide watching.
+  ## Non-standalone with empty deployment.namespaces is a global operator.
+  ## All operators, including standalone operators, must watch disjoint
+  ## namespace sets.
+  ## Any existing global operator blocks every other operator install, and any
+  ## requested global operator is rejected if any other operator already exists.
+  ## Topology is frozen after install in this release:
+  ## - global may only upgrade as global/non-standalone
+  ## - scoped operators may not grow, shrink, or otherwise change their
+  ##   namespace set
+  ## - deployment.standalone must not flip
+  ## Standalone and non-standalone use the same explicit namespace grammar.
+  ## Non-standalone creates namespaced KopfPeerings only for explicit namespaces.
+  ## After topology has been persisted on first startup, manual/raw-manifest
+  ## topology changes fail fast at operator startup.
+  ## Important: deployment.namespaces is a watch filter, not a strong RBAC boundary.
+  ##            Even with namespaces set the operator still receives cluster-scoped RBAC.
+  #namespaces:
+  #- ns1
+  #- ns2
+  #deploymentAnnotations:
+  ## The chart manages mysql.oracle.com/operator-topology and rejects user
+  ## overrides of that key.
+  #  deplann2: depl-ann2-value
+  #deploymentLabels:
+  #  depllbl9: depl-lbl9-value
+  #podAnnotations:
+  #  podlann2: pod-ann2-value
+  #podLabels:
+  #  podllbl9: pod-lbl9-value
+  ## Resource limits and requests for the operator pods
+  #resources:
+  #  limits:
+  #    cpu: 500m
+  #    memory: 1Gi
+  #  requests:
+  #    cpu: 100m
+  #    memory: 512Mi
+  ## An example of using affinity for scheduling the operator pods
+  #affinity:
+  #  podAntiAffinity:
+  #    requiredDuringSchedulingIgnoredDuringExecution:
+  #    - labelSelector:
+  #        matchLabels:
+  #          e2e.mysql.oracle.com/affinity-blocker: example
+  #      topologyKey: kubernetes.io/hostname
+
+  ## An example of using nodeSelector for scheduling the operator pods
+  #nodeSelector:
+  #  kubernetes.io/hostname: worker-node-name
+
+# ============================================================================================
+# WARNING: disableLookups=true disables live-cluster lookups and validation.
+# Use this only for render-only workflows such as `helm template`,
+# `helm install --dry-run`, or `helm upgrade --install --dry-run`.
+# Helm does not expose a chart-visible flag that distinguishes those workflows
+# from real installs/upgrades.
+# If you use this for a real install or upgrade against a cluster that already
+# contains a MySQL Operator release, Helm may render the wrong Deployment/RBAC/
+# peering identity or skip collision and immutability checks.
+# ============================================================================================
 disableLookups: false
 debugger:
   enabled: false

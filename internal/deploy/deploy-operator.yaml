@@ -3,6 +3,10 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: mysql-operator
+  labels:
+    app.kubernetes.io/name: mysql-operator
+    app.kubernetes.io/instance: mysql-operator
+    app.kubernetes.io/component: controller
 rules:
   - apiGroups: [""]
     resources: ["pods"]
@@ -29,7 +33,7 @@ rules:
     verbs: ["create", "patch", "update"]
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["rolebindings"]
-    verbs: ["get", "create"]
+    verbs: ["get", "create", "patch", "delete"]
   - apiGroups: ["policy"]
     resources: ["poddisruptionbudgets"]
     verbs: ["get", "create"]
@@ -41,7 +45,7 @@ rules:
     verbs: ["get", "create", "update", "delete"]
   - apiGroups: ["apps"]
     resources: ["deployments", "statefulsets"]
-    verbs: ["get", "create", "patch", "update", "watch", "delete"]
+    verbs: ["get", "list", "create", "patch", "update", "watch", "delete"]
   - apiGroups: ["mysql.oracle.com"]
     resources: ["*"]
     verbs: ["*"]
@@ -64,6 +68,10 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: mysql-sidecar
+  labels:
+    app.kubernetes.io/name: mysql-operator
+    app.kubernetes.io/instance: mysql-operator
+    app.kubernetes.io/component: controller
 rules:
   - apiGroups: [""]
     resources: ["pods"]
@@ -100,10 +108,15 @@ rules:
     resources: ["mysqlbackups/status"]
     verbs: ["get", "patch", "update", "watch"]
 ---
+# Role for the switchover CronJob
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: mysql-switchover
+  labels:
+    app.kubernetes.io/name: mysql-operator
+    app.kubernetes.io/instance: mysql-operator
+    app.kubernetes.io/component: controller
 rules:
   # Kopf needs patch on secrets or the sidecar will throw
   - apiGroups: [""]
@@ -127,6 +140,10 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: mysql-operator-rolebinding
+  labels:
+    app.kubernetes.io/name: mysql-operator
+    app.kubernetes.io/instance: mysql-operator
+    app.kubernetes.io/component: controller
 subjects:
   - kind: ServiceAccount
     name: mysql-operator-sa
@@ -143,7 +160,12 @@ roleRef:
 apiVersion: zalando.org/v1
 kind: ClusterKopfPeering
 metadata:
+  #Should be the same as spec.template.spec.containers[0].env['OPERATOR_PEERING_NAME']
   name: mysql-operator
+  labels:
+    app.kubernetes.io/name: mysql-operator
+    app.kubernetes.io/instance: mysql-operator
+    app.kubernetes.io/component: controller
 ---
 apiVersion: v1
 kind: Namespace
@@ -155,6 +177,10 @@ kind: ServiceAccount
 metadata:
   name: mysql-operator-sa
   namespace: mysql-operator
+  labels:
+    app.kubernetes.io/name: mysql-operator
+    app.kubernetes.io/instance: mysql-operator
+    app.kubernetes.io/component: controller
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -174,10 +200,16 @@ spec:
   selector:
     matchLabels:
       name: mysql-operator
+      app.kubernetes.io/name: mysql-operator
+      app.kubernetes.io/instance: mysql-operator
+      app.kubernetes.io/component: controller
   template:
     metadata:
       labels:
         name: mysql-operator
+        app.kubernetes.io/name: mysql-operator
+        app.kubernetes.io/instance: mysql-operator
+        app.kubernetes.io/component: controller
     spec:
       securityContext:
         runAsNonRoot: true
@@ -198,6 +230,39 @@ spec:
               value: /mysqlsh
             - name: MYSQLSH_CREDENTIAL_STORE_SAVE_PASSWORDS
               value: never
+            - name: MYSQL_OPERATOR_ENTERPRISE
+              value: "1"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: OPERATOR_DEPLOYMENT_NAME
+              value: "mysql-operator"
+            # used when when OPERATOR_STANDALONE is false
+            - name: OPERATOR_PEERING_NAME
+              value: "mysql-operator"
+            - name: OPERATOR_ROLE_NAME
+              value: "mysql-operator"
+            - name: SIDECAR_ROLE_NAME
+              value: "mysql-sidecar"
+            - name: SWITCHOVER_ROLE_NAME
+              value: "mysql-switchover"
+            # These envs define the initial operator topology for raw-manifest installs.
+            # The operator persists mysql.oracle.com/operator-topology from them on first start.
+            # Changing them after bootstrap requires reinstalling the operator.
+            # Standalone also requires a safe Deployment strategy.
+            # Comma-separated explicit watched namespaces. Empty means cluster-wide.
+            # Standalone and non-standalone use the same explicit namespace grammar.
+            - name: OPERATOR_NAMESPACES
+              value: ""
+            - name: OPERATOR_STANDALONE
+              value: "false"
+            - name: MYSQL_OPERATOR_DEBUG
+              value: "0"
           readinessProbe:
             exec:
               command:

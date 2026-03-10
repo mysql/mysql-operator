@@ -694,7 +694,7 @@ class OperatorTest(unittest.TestCase):
                             None, "timeout waiting for pod")
 
     def wait_routers(self, name_pattern, num_online, awaited_status=["Running"], awaited_ready = None,
-                    total_router_pod_containers_getter = g_ts_cfg.get_router_total_containers_per_pod, ns=None, timeout=600):
+                    total_router_pod_containers_getter = g_ts_cfg.get_router_total_containers_per_pod, ns=None, timeout=600, wait=2):
         """
         Wait for routers matching the name-pattern to reach one of the states in the awaited status list.
         Aborts on timeout or when an unexpected error is detected in the operator.
@@ -726,7 +726,7 @@ class OperatorTest(unittest.TestCase):
         def timeout_diagnostics():
             kutil.store_routers_diagnostics(self.ns, name_pattern)
 
-        self.wait(routers_ready, timeout=timeout, timeout_diagnostics=timeout_diagnostics)
+        self.wait(routers_ready, timeout=timeout, timeout_diagnostics=timeout_diagnostics, delay=wait)
 
         return router_names
 
@@ -799,13 +799,29 @@ class OperatorTest(unittest.TestCase):
             self.assertTrue(False, f"============================================\n\n{set1_name}:{set1}\n============================================\n{set2_name}:{set2}\n============================================\n{msg}")
 
 
-def get_rollover_update_waiter(test_obj: OperatorTest, pattern_prefix: str, pattern_suffix: str, is_server: bool, timeout: int, delay: int):
+def get_rollover_update_waiter(test_obj: OperatorTest, ns: str, pattern_prefix: str, pattern_suffix: str, is_server: bool, timeout: int, delay: int):
     pattern = pattern_prefix + pattern_suffix
     def get_instances() -> int:
-        return (kutil.get_sts(test_obj.ns, pattern_prefix) if is_server else kutil.get_deploy(test_obj.ns, pattern_prefix))["spec"]["replicas"]
+        return (kutil.get_sts(ns, pattern_prefix) if is_server else kutil.get_deploy(ns, pattern_prefix))["spec"]["replicas"]
+
+    def get_rollover_pod(pod_name: str):
+        try:
+            return kutil.get_po(ns, pod_name)
+        except subprocess.CalledProcessError as err:
+            stderr = (err.stderr or b"").decode("utf8", errors="replace")
+            if "NotFound" in stderr:
+                print(f"{pod_name} disappeared during rollover polling; retrying")
+                return None
+            raise
 
     def get_pods_uids(pattern) -> set:
-        return set([kutil.get_po(test_obj.ns, pod['NAME'])['metadata']['uid'] for pod in kutil.ls_po(test_obj.ns, pattern=pattern)])
+        pod_uids = set()
+        for pod in kutil.ls_po(ns, pattern=pattern):
+            pod_spec = get_rollover_pod(pod["NAME"])
+            if pod_spec is None:
+                return set()
+            pod_uids.add(pod_spec["metadata"]["uid"])
+        return pod_uids
 
     old_instances = get_instances()
     new_instances = None
@@ -829,13 +845,15 @@ def get_rollover_update_waiter(test_obj: OperatorTest, pattern_prefix: str, patt
 
     def get_if_pods_container_statuses_all_running(pattern, new_instances) -> bool:
         nonlocal new_uids
-        pods = kutil.ls_po(test_obj.ns, pattern=pattern)
+        pods = kutil.ls_po(ns, pattern=pattern)
         if len(pods) != new_instances:
             print(f"{pattern} : GET PODS found {len(pods)} but expected are {new_instances}")
             return False
 
         for pod in pods:
-            pod_spec = kutil.get_po(test_obj.ns, pod['NAME'])
+            pod_spec = get_rollover_pod(pod["NAME"])
+            if pod_spec is None:
+                return False
             if pod_spec['metadata']['uid'] not in new_uids:
                 print(f"{pod['NAME']} FOUND ACCORDING TO THE {pattern} BUT IS NOT IN new_uids {list(new_uids)} - ar")
                 return False
@@ -849,9 +867,11 @@ def get_rollover_update_waiter(test_obj: OperatorTest, pattern_prefix: str, patt
 
     def get_if_gates_are_set(pattern) -> bool:
         nonlocal new_uids
-        pods = kutil.ls_po(test_obj.ns, pattern=pattern)
+        pods = kutil.ls_po(ns, pattern=pattern)
         for pod in pods:
-            pod_spec = kutil.get_po(test_obj.ns, pod['NAME'])
+            pod_spec = get_rollover_pod(pod["NAME"])
+            if pod_spec is None:
+                return False
             if pod_spec['metadata']['uid'] not in new_uids:
                 print(f"{pod['NAME']} FOUND ACCORDING TO THE {pattern} BUT IS NOT IN new_uids {list(new_uids)} - gs")
                 return False
@@ -880,9 +900,11 @@ def get_rollover_update_waiter(test_obj: OperatorTest, pattern_prefix: str, patt
     return waiter
 
 
-def get_sts_rollover_update_waiter(test_obj: OperatorTest, cluster_name: str, timeout: int, delay: int):
-    return get_rollover_update_waiter(test_obj, f"{cluster_name}", "-\d", True, timeout, delay)
+def get_sts_rollover_update_waiter(test_obj: OperatorTest, sts_name: str, timeout: int, delay: int):
+    return get_rollover_update_waiter(test_obj, test_obj.ns, sts_name , "-\d", True, timeout, delay)
 
+def get_deploy_rollover_update_waiter(test_obj: OperatorTest, ns: str, deploy_name: str, timeout: int, delay: int):
+    return get_rollover_update_waiter(test_obj, ns, deploy_name, "-*", False, timeout, delay)
 
-def get_deploy_rollover_update_waiter(test_obj: OperatorTest, cluster_name:str, timeout: int, delay: int):
-    return get_rollover_update_waiter(test_obj, f"{cluster_name}-router", "-*",False, timeout, delay)
+def get_router_deploy_rollover_update_waiter(test_obj: OperatorTest, cluster_name: str, timeout: int, delay: int):
+    return get_deploy_rollover_update_waiter(test_obj, test_obj.ns, f"{cluster_name}-router", timeout, delay)

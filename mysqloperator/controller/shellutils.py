@@ -5,6 +5,7 @@
 
 from logging import Logger
 
+from . import utils
 from .innodbcluster.cluster_api import MySQLPod
 import typing
 from typing import Any, Optional, Callable, TYPE_CHECKING, Union
@@ -47,7 +48,12 @@ FATAL_MYSQL_ERRORS = FATAL_CONNECT_ERRORS.union(FATAL_SQL_ERRORS)
 def check_fatal_connect(err, where, logger) -> bool:
     if err.code in FATAL_MYSQL_ERRORS:
         logger.error(
-            f"Unexpected error connecting to MySQL. This error is not expected and may indicate a bug or corrupted cluster deployment: error={err} target={where}")
+            utils.log_with_thread(
+                "Unexpected error connecting to MySQL. This error is not expected and may indicate a bug or corrupted cluster deployment:",
+                target=where,
+                error=err,
+            )
+        )
         return True
     return False
 
@@ -55,7 +61,13 @@ def check_fatal_connect(err, where, logger) -> bool:
 def check_fatal(err, where, context, logger) -> bool:
     if err.code in FATAL_SQL_ERRORS:
         logger.error(
-            f"Unexpected MySQL error. This error is not expected and may indicate a bug or corrupted cluster deployment: error={err} target={where}{' context=%s' % context if context else ''}")
+            utils.log_with_thread(
+                "Unexpected MySQL error. This error is not expected and may indicate a bug or corrupted cluster deployment:",
+                target=where,
+                context=context,
+                error=err,
+            )
+        )
         return True
     return False
 
@@ -96,7 +108,11 @@ class RetryLoop:
                 raise
             except GiveUp as err:
                 self.logger.error(
-                    f"Error executing {f.__qualname__}, giving up: {err.real_exc}")
+                    utils.log_with_thread(
+                        f"Error executing {f.__qualname__}, giving up:",
+                        error=err.real_exc,
+                    )
+                )
                 if err.real_exc:
                     raise err.real_exc
                 else:
@@ -111,8 +127,6 @@ class RetryLoop:
                     raise
 
                 if total_wait < self.timeout and (self.max_tries is None or tries < self.max_tries):
-                    self.logger.info(
-                        f"Error executing {f.__qualname__}, retrying after {delay}s: {err}")
                     time.sleep(delay)
                     total_wait += delay
                     delay = self.backoff(delay)
@@ -122,7 +136,11 @@ class RetryLoop:
                     print(traceback.format_exc())
                 else:
                     self.logger.error(
-                        f"Error executing {f.__qualname__}, giving up: {err}")
+                        utils.log_with_thread(
+                            f"Error executing {f.__qualname__}, giving up:",
+                            error=err,
+                        )
+                    )
                     raise
 
 
@@ -180,7 +198,8 @@ class ClusterWrap:
 
 
 def connect_dba(target: dict, logger: Logger, **kwargs) -> 'Dba':
-    return RetryLoop(logger, **kwargs).call(mysqlsh.connect_dba, target)
+    dba = RetryLoop(logger, **kwargs).call(mysqlsh.connect_dba, target)
+    return dba
 
 
 def connect_to_pod_dba(pod: MySQLPod, logger: Logger, **kwargs) -> 'Dba':
@@ -290,7 +309,12 @@ def get_valid_cluster_handle(cluster, logger):
                     dba = mysqlsh.connect_dba(pod.endpoint_co)
                 except Exception as e:
                     logger.warning(
-                        f"Could not connect: target={pod.endpoint} error={e}")
+                        utils.log_with_thread(
+                            "get_valid_cluster_handle: Could not connect",
+                            target=pod.endpoint,
+                            error=e,
+                        )
+                    )
                     last_err = e
                     continue
 
@@ -298,7 +322,14 @@ def get_valid_cluster_handle(cluster, logger):
                     return pod, dba, dba.get_cluster()
                 except Exception as e:
                     logger.warning(
-                        f"get_cluster: target={pod.endpoint} error={e}")
+                        utils.log_with_thread(
+                            "get_valid_cluster_handle: get_cluster failed",
+                            target=pod.endpoint,
+                            id_dba=id(dba),
+                            id_session=id(dba.session),
+                            error=e,
+                        )
+                    )
                     last_err = e
                     continue
 

@@ -96,6 +96,8 @@ class Config:
     # runtime environment
     workspace_dir = None
 
+    helm_path = defaults.HELM_PATH
+
     # diagnostics
     work_dir = None
     work_dir_is_tmp = False
@@ -299,6 +301,9 @@ class Config:
     def get_expected_termination_grace_period(self) -> int:
         return self.expected_termination_grace_period
 
+    def get_helm_path(self) -> str:
+        return self.helm_path
+
     def __str__(self):
         return f"""
 Image registry:                      : {self.get_image_registry_repository()}
@@ -318,7 +323,8 @@ Total containers per router pod      : {self.get_router_total_containers_per_pod
 Local path provisioner install       : {self.local_path_provisioner_install}
 Local path provisioner shared path   : {self.get_local_path_provisioner_shared_path()}
 Local path provisioner manifest URL  : {self.get_local_path_provisioner_manifest_url()}
-Expected termination grace period    : {self.get_expected_termination_grace_period()}"""
+Expected termination grace period    : {self.get_expected_termination_grace_period()}
+Helm path                            : {self.get_helm_path()}"""
 
 # test-suite configuration
 g_ts_cfg = Config()

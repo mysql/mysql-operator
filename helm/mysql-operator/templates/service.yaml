@@ -1,14 +1,15 @@
+{{- include "mysql-operator.checkNotDefaultNamespace" . -}}
 apiVersion: v1
 kind: Service
 metadata:
-  name: mysql-operator
-  namespace: {{ if and (.Release.IsInstall) (eq .Release.Namespace "default") }}{{ fail "Please provide a namespace with -n/--namespace" }}{{ else }}{{  .Release.Namespace }}{{ end }}
+  name: {{ include "mysql-operator.deploymentName" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
-    name: mysql-operator
+    {{- include "mysql-operator.labels" . | nindent 4 }}
 spec:
   type: ClusterIP
   ports:
   - port: 9443
     protocol: TCP
   selector:
-    name: mysql-operator
+    {{- include "mysql-operator.serviceSelectorLabels" . | nindent 4 }}

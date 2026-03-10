@@ -1,0 +1,296 @@
+# Copyright (c) 2020, 2026 Oracle and/or its affiliates.
+#
+# Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
+#
+
+from __future__ import annotations
+
+
+class HistoricalImageDigestError(LookupError):
+    pass
+
+
+class KnownMissingImageArtifactError(HistoricalImageDigestError):
+    pass
+
+
+class HistoricalImageDigestCoverageError(HistoricalImageDigestError):
+    pass
+
+
+IMAGE_NAME_ALIASES = {
+    "community-operator": "community-operator",
+    "mysql-operator": "community-operator",
+    "community-server": "community-server",
+    "mysql-server": "community-server",
+    "community-router": "community-router",
+    "mysql-router": "community-router",
+    "enterprise-operator": "enterprise-operator",
+    "mysql-operator-commercial": "enterprise-operator",
+    "enterprise-server": "enterprise-server",
+    "mysql-enterprise-server": "enterprise-server",
+    "enterprise-router": "enterprise-router",
+    "mysql-enterprise-router": "enterprise-router",
+}
+
+
+KNOWN_MISSING_IMAGE_DIGESTS = {
+    ("enterprise-operator", "8.0.36-2.0.13"),
+    ("enterprise-operator", "8.0.42-2.0.18"),
+}
+
+
+IMAGE_DIGESTS = {
+    "community-operator": {
+        "8.0.29-2.0.4": "sha256:08ecb8dbc02fe5dc84af0e5d566e3c8108249aae4815d415ac3cb8adb3bb516d",
+        "8.0.30-2.0.5": "sha256:00ee79ca420fd7501a2c98d3b5527a88c91dbfc00a41e20e69d6ec7de0155b34",
+        "8.0.30-2.0.6": "sha256:2185a31b964fd057674e0ec4fdd43e222f5632537297823b651640bee71e5499",
+        "8.0.31-2.0.7": "sha256:3f8d81469c724e5dc553e6d1f64cd397e437b6bad8097122d765e671011bd3d9",
+        "8.0.32-2.0.8": "sha256:20f5eef07f2be4f5ce5bf8e329cdb73f125d66ca5cb02eb4219780e944777c76",
+        "8.0.33-2.0.9": "sha256:276fb572ede53d6c52b0762bd73682308fd0861c87c23737f462c1cd884e3284",
+        "8.0.33-2.0.10": "sha256:9c411c679b416b7d4bce4e14f65b311105429d25c3183f864fdd9baec8d5647f",
+        "8.0.34-2.0.11": "sha256:504cb55e26849e3d6556944392eb46718bc6659dffb4471059cac39f69bbf527",
+        "8.0.35-2.0.12": "sha256:51359961d216a3581aa707148da3973e8b108b7791628b4d894376d5ce810199",
+        "8.0.36-2.0.13": "sha256:e6478a267579e3b28da0f10fcbd87f8392a4b15a1d631ffcfd1d378feb5d9462",
+        "8.0.37-2.0.14": "sha256:dae5d2054cfa9ff2cdfbde69fd6457839870c60fd5857b59345f5213cb61caba",
+        "8.0.38-2.0.15": "sha256:c2db4be4f1ebceb51c2a9746430b4e32404f704546a4a8dd55abfe3e53da17d2",
+        "8.0.40-2.0.16": "sha256:043162c06372519952a457d41f998eabf504d31effbf684e19008a74c133644e",
+        "8.0.41-2.0.17": "sha256:7e75d3fae20eca98304b77b52c3b302d2b49beee826ece95a40a7a05d5b0989f",
+        "8.0.42-2.0.18": "sha256:b5a0c859fcc594182364150c0c3f1e9fe1a82ed86a138053010e27dbf057302c",
+        "8.0.43-2.0.19": "sha256:5a77a0426be0db7ad975ff1b92525f5cbfeaca2edfe90130b36b2fc5e3ec1c37",
+        "8.0.44-2.0.20": "sha256:1fbebd58f012d5cc6cee7a287712d2e20001555b8da190d89eb11737eaf8a09f",
+        "8.0.45-2.0.21": "sha256:6c69bbb98fc055993ac4fa2c7a72c5bac9b2e1d26723e73f1fa77b9944536865",
+        "8.1.0-2.1.0": "sha256:d647c087961b2e729460306181fc488d14b7f515945aa816e41ac44d52d08d62",
+        "8.2.0-2.1.1": "sha256:935d66add0957c8e5f3b03467afcf3c2bc3ddf7567759270a612adffa59b9c30",
+        "8.3.0-2.1.2": "sha256:3bc079b00bbd8896448ab6bc715150752f777145b6443463089a35bb1601e839",
+        "8.4.0-2.1.3": "sha256:45ab367f3b23e0cee4084b1ddd7300bb61051dd0d63c33b90a54d701f1e52c2d",
+        "8.4.1-2.1.4": "sha256:3b7b4c6ae9a456bdf06294d737975fd8772a264885eb86f63668371afccefd08",
+        "8.4.3-2.1.5": "sha256:0d187544ebf15974a05f8c14bc1e31409a03609073050a110a6ffcf797ce71ae",
+        "8.4.4-2.1.6": "sha256:613e96505d8b05af864cebd192614bf463fb4527973761b99f394af0ac3fe114",
+        "8.4.5-2.1.7": "sha256:896c37290023da00aebdf7980b5a4f809f9f551fb0ba664406f4fca926d3d5d8",
+        "8.4.6-2.1.8": "sha256:c886685f4d49246e85fc74a275fa7c6adba1c85003295ff0db0ede7ac2b9efc2",
+        "8.4.7-2.1.9": "sha256:f04a98bba815c33f649a802a1669f85ebe5ead4dcb54264babd8749b70b056f2",
+        "8.4.8-2.1.10": "sha256:e973999af46c52ff9429e43f77d16b681d83406f978fdb8cc9d4f524dd56f450",
+        "9.0.0-2.2.0": "sha256:1daaad9a004e1e94e4fed1c5b56074e295c507cc7ff51cf38e89e8edef0263f6",
+        "9.0.1-2.2.1": "sha256:f5be910903cceae6445de1dc3f6415f9351a699087ca9639bd5fdc6f74e6456b",
+        "9.1.0-2.2.2": "sha256:1e8d543e50513de4921cc2fe5504c70c7eacfd7b2772f4a5218d4898d542c4f7",
+        "9.2.0-2.2.3": "sha256:3df92a8aae41560f58599d6cf63f6ead8b1c6b4c1005c4f7881ef9a9a4ee05a5",
+        "9.3.0-2.2.4": "sha256:cd424d7c5ec40d95fbaccfa448cfca6d7345235e51647209439b8665307620be",
+        "9.4.0-2.2.5": "sha256:dde1a2bba6d7118440abeded3b72a13b32137d76f4c2a91af84dff12d082c114",
+        "9.5.0-2.2.6": "sha256:94f00afa435f356d0ee1f6a8d77ee610f0b5a551a09891f6a3497aa05d590436",
+        "9.6.0-2.2.7": "sha256:348da90d7b8b6e39ed56072b56edcaec911921af3d053e3d9b550dcdf49fa5ec",
+    },
+    "enterprise-operator": {
+        "8.0.29-2.0.4": "sha256:a45dd9020dad628777a1b6bbd9e7d9ab7123f96b922b29d93f37f0c058097b47",
+        "8.0.30-2.0.5": "sha256:724ce0441272ccac383b7b077300f805b3533e80f69a8ff8ac0ba9e88e9ad275",
+        "8.0.30-2.0.6": "sha256:2dcbf8650613ea8e9368a29fe88023cd07adea4da570aa1604852aa8c8e4d06b",
+        "8.0.31-2.0.7": "sha256:a9b3b22d68841e01b35f1ced1a814753cbd0d5c2e7dab01c2ecfb521661fc886",
+        "8.0.32-2.0.8": "sha256:6fb1f1a5ade8f5d1feeabd36a018286ca43c91a7837e1d97d50cebc80fdea884",
+        "8.0.33-2.0.9": "sha256:22ddc6dac6f79acb95beac5ef0c8ec8d0bcc8e027a197a11f936419be3a1c023",
+        "8.0.33-2.0.10": "sha256:09443d53070035005e3b3ffb65729f625e1e3306182ecf2d5de98a3699fdf70f",
+        "8.0.34-2.0.11": "sha256:064476ed34c989618c61c8d110389d59690521129c45d407879b642867c0a808",
+        "8.0.35-2.0.12": "sha256:4a71b33399c11ed946cad42f6d275ae0332eb028d364db1dd52cea459205ace5",
+        "8.0.37-2.0.14": "sha256:ccfe1942244c5c65f4dca4d36d3c06eb9b7f3963eec7db8d3b8b9c27f36f36bb",
+        "8.0.38-2.0.15": "sha256:62f25a3553eeba9c937ca5bba642250ac8e8bfbf16574821e31b70a1c7cea16e",
+        "8.0.40-2.0.16": "sha256:7b2b0b6ced8fb33c413ae33abee6519793d03f8a827ef1f0499b4d074edf764b",
+        "8.0.41-2.0.17": "sha256:2896f960e842ac12d9b3010d7954f7efeb8b9c14632e0e897806b88e5ed6df56",
+        "8.0.43-2.0.19": "sha256:80f61707d69a4467ee7b051d93cb4d759d26a220ad5d9a138c14192e6a5d5652",
+        "8.0.44-2.0.20": "sha256:6d3f68c777dbf9418fbb7843353f6816be3ad11062820b817135f6a1def8e5c2",
+        "8.0.45-2.0.21": "sha256:4134779b46c8a1045ce1271dcb039724ce5adfd54fee7b8b3bbae1480df77ee4",
+        "8.1.0-2.1.0": "sha256:2e2965bac8acebe0ef62ed4bf8e496fb5fd0a5e330f5f8bb4e9850f6d50d933f",
+        "8.2.0-2.1.1": "sha256:73a872078a1aafeed1f882530851d209f156bf4be91f40308d321a113cb6c2b6",
+        "8.3.0-2.1.2": "sha256:7cf2dde5d05843eabeea547f9b94ce06e15808a09d3861c54283276df085ed6a",
+        "8.4.0-2.1.3": "sha256:7a80c8cf4499f1ff794289aef5b695f44f372b66a927b6f9fd6322ddd3d916e5",
+        "8.4.1-2.1.4": "sha256:385a999515f9632844e3f06a60a83ec276cafe6f1c370c3ee16544c516047dda",
+        "8.4.3-2.1.5": "sha256:b45ddca3a8b02e0b790e39a7c3716ed50da51e689f395df426b018e5fe729a3b",
+        "8.4.4-2.1.6": "sha256:a39a2e03b8a99f6046aa26a74ccde14c5f9bd3bde82f2961aac1400e7077a30d",
+        "8.4.5-2.1.7": "sha256:b84f19aa813c72556f8566e9defdb53f3247d23c3e30e2f039890153130eff0c",
+        "8.4.6-2.1.8": "sha256:538eb680968a8afb0477b2ebb3761e79aec53c7355f6f4247dde9b3c2261d43c",
+        "8.4.7-2.1.9": "sha256:0134e4078db9631dee9f6b4d5ca599d9d80ab37d6162097df969dab439cc7b31",
+        "8.4.8-2.1.10": "sha256:01b25db21de4a4ca4c288214eb576408f58ef3c46dd5d17a350269dc17459600",
+        "9.0.0-2.2.0": "sha256:47e73b03e5eef6de190a2ff3501a0c379643e76393d20a2c2fef5dd86b65c8d9",
+        "9.0.1-2.2.1": "sha256:4600115ef4b7ad689e456cc97199440072f2d3845b731cc163d8e127fb20048b",
+        "9.1.0-2.2.2": "sha256:a164f5406c63928d5077bf306dbf6c78ee25526232ff4b767cae1625ee94b3d6",
+        "9.2.0-2.2.3": "sha256:68421fe12acd31335a77eecc44a1e4c413cc6da31f9f4832d1370be550b4888e",
+        "9.3.0-2.2.4": "sha256:c49d59d45284649f2968b0f7a9c8b5000ebd27f66fc83ee540e392eecdaaf065",
+        "9.4.0-2.2.5": "sha256:c3d15fa4af7c753816c5e96e5cb76088f9f18e0991b5dc48a6b6436f11b4c0c6",
+        "9.5.0-2.2.6": "sha256:4ba3eb8049aa9e2ec322da191c367c84adf2e583ad3d992c004ba5de435dfbca",
+        "9.6.0-2.2.7": "sha256:2119e71b111b609787ffccbf3e53bf292b92fe12e3ab3764cf5fb3e5c6b7c7c3",
+    },
+    "community-server": {
+        "8.0.29": "sha256:b42e633200f60a594b25b132333ca9485217e033657eb054b636101a3c2d56bd",
+        "8.0.30": "sha256:233c1a0674a8f0a8d2eec7967bf866fc2c00b0946496c512294e9c51f80bad6c",
+        "8.0.31": "sha256:d66d87fc06cc566cfcb174fc45cf2b5c8421e807def049d84addab11849e7ad1",
+        "8.0.32": "sha256:a627110b770e4d0228361fc0159ef0b82333b1fc9f0c7e44ff848f5b7687ca1a",
+        "8.0.33": "sha256:b9c6616f9c999905feff04a2a68a42a8b60d0d6c8cb5ba785f456e4207ebb516",
+        "8.0.34": "sha256:7e4cc284b6b2177db02074e3482b0aa8bb7b4bf77b76f65fc398b1e23fac2e5e",
+        "8.0.35": "sha256:a9f9559f1e06d4bb954384052fe0650094586cb9ac1f8863408932fd219ca730",
+        "8.0.36": "sha256:556b0351461bbedb5c809d36266edb4b746c1f2f32b87057e3ccd0390bbe4206",
+        "8.0.37": "sha256:0656dc329c97b72eb5bad55bae9e12e95b730cb4dc3a7fec0940f7ba93ecd188",
+        "8.0.38": "sha256:3525b89a458af27b1938c90fd579d8b799a08b730167f7ba356090174e106c50",
+        "8.0.40": "sha256:5214b7e40fa2c8a363fac2f0a6f439b45043b8815a445046836e4aa6b8106307",
+        "8.0.41": "sha256:18b7ac30e841c9c2d4b4773cacced28615cdc95c1fed98f5bf067912b295b8d1",
+        "8.0.42": "sha256:becd8840b9f86cf5fe2e7c7bb4b556231c06fec2b76e7db70600e9a72ffbfd1c",
+        "8.0.43": "sha256:848c3c6cbac69f4e59d7acffd238323342de2973d02d84e3dcefcac20cad9820",
+        "8.0.44": "sha256:82d299d64ea42acac3ac55e21fb8e73f51d196d455281a5308a885eb6ce2d010",
+        "8.0.45": "sha256:2b2719afdde692582d2bbd10390ee8f8a3ebff666d41df53500b82caf44bb8ce",
+        "8.1.0": "sha256:6d5fe6463add652d081d6078fe9c3d2665e5383168130d7f6a97b5ca03ac7193",
+        "8.2.0": "sha256:54e6e2937d3eb5fcddf83233f1b99ff0a1ec3779d9e0c0cb2af13ef782afe06b",
+        "8.3.0": "sha256:a7af4d2b881e442ce1dd8437d61018367fc97438563f91a5f086a79f1a796cfc",
+        "8.4.0": "sha256:9d327a4ae32223e7f4514c98f9e5fa34be81d8a6684a4d55599911043faa6277",
+        "8.4.1": "sha256:d5500fe333dc0706beba51ceb16d2bd8ec0422919589dcaae532a775596eb839",
+        "8.4.3": "sha256:5710b81b1fe1c019cc29e0e6cd7c5bf14bd72d71fe5e844635eb274f2b1e7e34",
+        "8.4.4": "sha256:59b302b4fd92cd53eb54d4666c078037ac9216d248dd103b2df9e04b767bbbb0",
+        "8.4.5": "sha256:09925395e02c83ebb79621e04ecf788a45325f4577bbb352d14c7c1ef15eebc9",
+        "8.4.6": "sha256:33d8441dc3c1e757cde0576d309c6356d1e061159d27e8355f80b9f7766fe41e",
+        "8.4.7": "sha256:5e274b0e244563921fe9b520f4a2dec301ffc4fc81164a362c6cb3dac60255a9",
+        "8.4.8": "sha256:9c381388be067309c865259094a7c41cbcd6a1bf92a377db6922659d8707a2e2",
+        "9.0.0": "sha256:0d6dfa57e104bddf057d5a3ebee8279dbc737cfc32208bbff29c3977a7b73ddb",
+        "9.0.1": "sha256:fa7a729042bdfa7a0db4e09f78a62ca18edd515f3227fe77dc76e53764394b81",
+        "9.1.0": "sha256:d41e2405f035982ef25911a3e21283cbbccd5e967bafffd3454031c050b37eac",
+        "9.2.0": "sha256:861ccf1ff3975de0a53449370afa01469e99fe6c6f5d0d48b652163a05a93e7b",
+        "9.3.0": "sha256:51a02cee332642951edfb2b3244d3396c016d47e0bb52ae780677ba96c42c6bd",
+        "9.4.0": "sha256:293e5af3aae8daab83551c3a5eed37464e4d1492cf4e8179d2c710fb1bd3b6d8",
+        "9.5.0": "sha256:9a964baff432ca44c625035a60811639047de9c0523b1ad5746edf54428d2129",
+        "9.6.0": "sha256:fea21fd7bff4c1e3be9a2b4cbb62167c54528868864680450ac35bf88cd2b35c",
+    },
+    "enterprise-server": {
+        "8.0.29": "sha256:368f80252910a782dc9e42f2b12ecd482089be159948029126d8c2a9f9299dfd",
+        "8.0.30": "sha256:d733eb2f814ec8cb449b2bd3acb7376aea9749bfbd9106813a7a4e493f901805",
+        "8.0.31": "sha256:f068928d22dc5a0386c67ebda44dde118b1e6acc073b9accee3c3c1ad97d1ffb",
+        "8.0.32": "sha256:5358a489f8e33c7c42d46bc7d816cbabd729d9fa1aebdb14f7c228aad131fbb6",
+        "8.0.33": "sha256:d69e2e7c5e6ec26dd3a9bc76592e5c1adb3232d1d8d7d7a0c14fa0b7880df311",
+        "8.0.34": "sha256:1c5e3d37e4ead6b5ef083af9aee6271f344be7c4403bbb7da8e453bfcbf37e09",
+        "8.0.35": "sha256:0e6a3ca16526d09619d94878b83cab7ab52eca0c0272d9511ef002f7ccfa8774",
+        "8.0.36": "sha256:e95b950f5c13f0e4571b5d79cc4813c0a8e016e17fd4fead9be16596db83632f",
+        "8.0.37": "sha256:5c81495e064163c6c6ba5299bf9063e28034ff4e7b84e0bcc2a30f79e7d22c9c",
+        "8.0.38": "sha256:9236803727c55ba2c0992e399e3b1b404aa40a6dabcc848b34e99bedf7477a5d",
+        "8.0.40": "sha256:feef2fd4c76ac33304eeeaf8a068d34dd773185a588d03bdabd38521ec48f351",
+        "8.0.41": "sha256:1b7280258fd8ac142d521969b632a59e136389c4f052ce332301c0969544c9e0",
+        "8.0.42": "sha256:d12c3a03320f3d2d94a343b2dc356134ff2010cace4e95faa124fd14db7981c6",
+        "8.0.43": "sha256:bcc5d94783188b14581a8e841c667657788f70761e6ec4ccb1ea92d21cded919",
+        "8.0.44": "sha256:1c9c896feefc0d422d66ce3d85e2b6d0416467ba5defa65ebf13b7aae5688080",
+        "8.0.45": "sha256:319f3c5a0c8a4e34ed22e75de53f14789bf357be690ffddccf3cb910fe13930c",
+        "8.1.0": "sha256:f7cad24710c35a5cc356b822b3bccea6778b3b415a3b3484da509d9499ca3fa3",
+        "8.2.0": "sha256:e9b15fcf5624df6a867a342a382e1214c38d8492751f789aa7dfbc237deb8f70",
+        "8.3.0": "sha256:8bbfdcb88b4f87098610ef9cb2ba60930208810aa4de98397ae6178444086ef1",
+        "8.4.0": "sha256:96fc54b812d97c8ce75b3ec3de4e0681c00a1c492345d47aadbe6328a15dddd1",
+        "8.4.1": "sha256:5d3658110fa8d4391438adb14216377f7a61aa90089402849089189248fa02bd",
+        "8.4.3": "sha256:bc1e09b4d2ce7e7008cf7d4c520a9fead83eb5ea478ee7a34fd60e4f7e736230",
+        "8.4.4": "sha256:de57e80ad2d203bb7eec6df1a70673cb1b034d6356b76f14f458c032fb991b0b",
+        "8.4.5": "sha256:1217238e101bee26dfc7bf039a3983f31e501592bb4a11b965b551bdce23f64d",
+        "8.4.6": "sha256:7c298b871e64140d9d4dadf23ad38c1e218ed84ac13ade808ae438ac0bf00fb2",
+        "8.4.7": "sha256:ec9f84b7bbdf9650139170cc57dfef9ace841eba10b6568ae4a83315b940707e",
+        "8.4.8": "sha256:1cdf7e3610ac553ab1eb218b1eb08a161616c3c7e8f826232369981b134f84bb",
+        "9.0.0": "sha256:a9a1def47ff476f9f0a1a3650968e2c53d59379b27299fe8b8999483f4792708",
+        "9.0.1": "sha256:4e8b63d1a8dac25de77e4734617a85c7d4fdc255df4538391785d1e390869775",
+        "9.1.0": "sha256:b42a4ced9a34e15a3ed14b39ca4a448fa0902f0e4dd4e9385e8d562f20a9b55d",
+        "9.2.0": "sha256:5225178395d4920f4675472c4207d10e127690d5704df2103d03bfaea5af992d",
+        "9.3.0": "sha256:5771680e96b6fa5b02cf1242207e34a0da5aee0cab4c65e9680f05335232cef5",
+        "9.4.0": "sha256:5096cf26338e024824e705c8beb2258d9cc16967869409d649d3872bcc34bcb4",
+        "9.5.0": "sha256:0127527bc1fbfa69886cde49557fb40ff2526517a6135c2e7cf39d3107b8c929",
+        "9.6.0": "sha256:b335a84224f8f1f6430fa5c4721e40072c7b1dca2df2d44077b4e79d184adb58",
+    },
+    "community-router": {
+        "8.0.29": "sha256:c16009caf1105a252cd8162f2e728c091d47a19ca5257a672fb2c4fe7e462fb0",
+        "8.0.30": "sha256:c4e1282fb222b785568dad839b9626470fd1667a8e5958b2e8b6219c5133a96c",
+        "8.0.31": "sha256:c288eaf438671b9d0e3dd3d10c00160271dac0bb13c77f37474bcdc519f5ac90",
+        "8.0.32": "sha256:530c1ec55a9c607c580d54fa755f2a9d9dba3d1ebc993bfc13ea2773bc799c02",
+        "8.0.33": "sha256:6eae01b77afeeb3c9de66a63539b4c6fbbd2892869be24ee4350b63276832a3b",
+        "8.0.34": "sha256:7c550bb5d722faddc406f8125a920c85d5cfe95686844fe6fb45b1da8979de21",
+        "8.0.35": "sha256:998d3b3208a8b10b91050576f987df4efea30c019076302b9de9620299ce743d",
+        "8.0.36": "sha256:2c1be36fefa1c137ac9b14b3bf12643a581b3cde2c2fae0439dbd8198bf9c0a3",
+        "8.0.37": "sha256:9d3c718ef6dd0b069d48e3bc8950c7d22a400e0ce2a2ce87949a66ce9896b21d",
+        "8.0.38": "sha256:8ea91f8713d1fbd88ba8299c2a62a0cea216465a4ba4a1c42efbdddc323a6576",
+        "8.0.40": "sha256:8b5259a4b095d24feabf3768eec94a4521c3118bd96626fd908494809e492550",
+        "8.0.41": "sha256:73fc3079d77c2d109c0c15084b56a1beb41b5799a22acec156038cdf266ec586",
+        "8.0.42": "sha256:8b791d2f10202c3eba578b6e4d32a999d3e12c43dddf6c11d7e44331217b1e82",
+        "8.0.43": "sha256:90b1e1994e68f36a3b0d6630431e48b8e96c01186efd6e9624338e2465e725e5",
+        "8.0.44": "sha256:b1177a511d2ee189d67ee25d42c68db8bd0d6518d74c08e08a8901266a78328b",
+        "8.0.45": "sha256:cd653122b74e832e56205de811a011bed5783677abe430545dfc08ca3880246a",
+        "8.1.0": "sha256:41bf03b0afaf9c99576654992a55707ebcf4d17aaaf84d2c3fd3b6cd55f727e1",
+        "8.2.0": "sha256:3ce8446fea5f3da381c449df06255dcefbbb79186de9d91f11c2e185b71be5d6",
+        "8.3.0": "sha256:0e73dcc07c0f68342c8f061b8aed6c2fa4433a60dccd6f4cc22bc32c0d5bec96",
+        "8.4.0": "sha256:290d775128c84ad45d4b3158c0abd7b1244a8214d77c376b6ae959017cbd2b40",
+        "8.4.1": "sha256:228b6674883502e9ff645996ee88b4bd4c5f6426e93a0a05351e2cb911c748e6",
+        "8.4.3": "sha256:c7c66c2748cbe1da1dc18b32e1055130627782880ceed3d8de0b6947114f1392",
+        "8.4.4": "sha256:38706618a3c44bd88ec4debfade4ac1cda316eb29177ed4e951cd435779f4516",
+        "8.4.5": "sha256:458e88eb5d00bcf575a8b253b4ae7d38972aa65dcbe2ff4bac8b682df0978506",
+        "8.4.6": "sha256:468ea2e12477d6c1d8256f575aac33f09a3281531ef982f13bfeea04b1ba02de",
+        "8.4.7": "sha256:b1d63a7ee895db71d9c763085192a378958d2cc5bf3ec6a2a1feb9f21652d9ba",
+        "8.4.8": "sha256:6e7ed964b96f79356db77e3db9517b51cb2d9dcc5a53da86efeba38cf0fc17a2",
+        "9.0.0": "sha256:9368e740cc1ee15ca298df899ce9403f5528ac1a47e06c12a3f14e15f74e2602",
+        "9.0.1": "sha256:613baed48a3af6767ae418c5290467e6dc0dc28340323a1dfb4030c80985fb22",
+        "9.1.0": "sha256:cb64385ca23fa4a12465533ef150c676f66c26a6bddf9fa1694158d77d27fdd8",
+        "9.2.0": "sha256:81c5e4f2e242e72851b5a03afdea90e827debba3a98ed4fbced63b8f73623673",
+        "9.3.0": "sha256:59f3c7c5119e286bc0b2984923a51449735d8450edfbfeeb86cbf8a85c2390ab",
+        "9.4.0": "sha256:5639d2206caa54d7209fddc8fafb6f9f455b36f3a6e9c738e762de25a490ed9d",
+        "9.5.0": "sha256:7af2630c6aeaefbaf7956eba2876114634b0f151b1961c308587fdefddb39a21",
+        "9.6.0": "sha256:84ce0f78b45b680748be75cad8bfcb898cf0d33e5622f3339087d8121349287b",
+    },
+    "enterprise-router": {
+        "8.0.29": "sha256:8c865ff7c06d9556032b953228554a6d1a86822cc37ded59dc32978040ee35c0",
+        "8.0.30": "sha256:bb3e4a1244261f6270b35d7bdb5bfba77e058e1dc9bb34f8c0a793fae8bed532",
+        "8.0.31": "sha256:5ffaeefa01fe3a2854ce994457e293df8cc5ff14b35b16f25304b32c766fe0c3",
+        "8.0.32": "sha256:6cfc55974ed9ab1109ad8b40cc5e00bc06d9564957e5f5e6e366c8b0bcf96ed0",
+        "8.0.33": "sha256:8fb0e28711bccdfed4df5041b11ee99603f7aead8269ea494b504a1d60028de8",
+        "8.0.34": "sha256:2b0cb2174fee514216510fbf1b28a4c9c0ab4cef6f23c172c91f58ef5003c844",
+        "8.0.35": "sha256:cf3227b719f924bda0f61dc4edcb2269c8d3b64e27882764f181f17e87266eda",
+        "8.0.36": "sha256:5bb39a45839a5a69733a2bc6ed81ba92b5960e71449388e13025290fa5f4fe42",
+        "8.0.37": "sha256:0448fc7c0e347f5bbe1b8551662caf7f3b61d528c12e375a6da985e75cde908f",
+        "8.0.38": "sha256:be4b321a44c2df433828a4d4ad185027a4d2c43f7d6acd27980b9e47f7fde994",
+        "8.0.40": "sha256:04235884834c2af4fbc1c40911f92afbb3e09e11d5becfe0978ff12941e43167",
+        "8.0.41": "sha256:05cb7996eed6188b8a86700f600d69dbc2c40b8562272882c5b3e6744b7a8612",
+        "8.0.42": "sha256:e76835f94061347f9ce1585825441a8ea7cd6dce4c3e2a1bd468e63f3d3ff996",
+        "8.0.43": "sha256:e0dfc5e5be932f691d5ead7065251623dc56f1eba7a5ff2faf6e24e2c50355c6",
+        "8.0.44": "sha256:4c835b37a0a305d1691eb8a65491f7241487c7cd4f1927c21f626df25f95f634",
+        "8.0.45": "sha256:6836c1333d7d0d93cfdebf7a636afa7857d654bb402724dd208c1ce965498dad",
+        "8.1.0": "sha256:6c792eae7c744c925b5f691aaa0e7101a229c0db0b57889de1e06fbdd45ce89d",
+        "8.2.0": "sha256:a5287d64bf545cdf9d9b1f4ca175b025631d29d0fe5ad0f63598374a62974346",
+        "8.3.0": "sha256:a68b75506ca44b32d02fb95a2e2c2c5bed044c184ce8e83f09ca49bbf039ccd2",
+        "8.4.0": "sha256:cd01948f4f46f800b86df89d2a20183df0a869375070b7a9d7c1552897b02e99",
+        "8.4.1": "sha256:84e0a281e7f1f073d61b9c31792f6131004ede2de6ba9853c602d97caa719918",
+        "8.4.3": "sha256:f6059f968406699036f53e30b391b271e00efb76888bb0b4b4663f48600f723e",
+        "8.4.4": "sha256:3796f13f9d5e16667718a1ec786f662675e1b0054357c10888956fd9dea376e7",
+        "8.4.5": "sha256:0e63fc14f59d0f294b1e4ce8251eabdec4b0f57e5e75684a79c3b78bd0206fca",
+        "8.4.6": "sha256:30ccebe784a1731c36650987935f3480a43ce9cdeed20126c19b581f29d0f60d",
+        "8.4.7": "sha256:98b7a036e1e8f5e0cb3b5d857dc8f7d0e942d643689365ae602ac1b86422cc4f",
+        "8.4.8": "sha256:25775288a880deb29e7780fa1c1007072690ded56cc416ba2f890c3e8500e6f9",
+        "9.0.0": "sha256:157cd3a39f55dd90f4bafd21d0aa90ac800dba17b33eddeaa98fdd5b40be1122",
+        "9.0.1": "sha256:e96ca4991bd2f6ad5569a341bf490ec08339410be4bb095c73374d2354e78037",
+        "9.1.0": "sha256:677e8498e238466bc5fb82f1325bcf2b3ee74f468226085bc338ecfa75c08549",
+        "9.2.0": "sha256:e88e3d061da25ff1c98c1b117a0dcf35d84263e5f9c5de5c98037b9b39c026dd",
+        "9.3.0": "sha256:2d56ee9c4d45286a0ca4bc21f33b4f167068d6cea585961f99ad4b1966bbd505",
+        "9.4.0": "sha256:cac0b16fc982078cdb4ab2fc8510f29624942952429b92863831dd54516134fe",
+        "9.5.0": "sha256:e112c2e117da24c59d922128c7269d87e8518619ef5fb4361d05490e87542579",
+        "9.6.0": "sha256:fcadcc26ea305c3a8812f0c3adc716cf502acf04d99b33dfad5c8cfcb47d73bb",
+    },
+}
+
+
+def canonicalize_image_name(image_name: str) -> str:
+    return IMAGE_NAME_ALIASES.get(image_name, image_name)
+
+
+def lookup_historical_image_digest(image_name: str, tag: str) -> str:
+    canonical_image_name = canonicalize_image_name(image_name)
+    if (canonical_image_name, tag) in KNOWN_MISSING_IMAGE_DIGESTS:
+        raise KnownMissingImageArtifactError(
+            f"Known missing OCR artifact for historical image "
+            f"{canonical_image_name}:{tag}"
+        )
+
+    image_digests = IMAGE_DIGESTS.get(canonical_image_name)
+    if image_digests is None:
+        raise HistoricalImageDigestCoverageError(
+            f"No embedded historical digest catalog for image "
+            f"{image_name} (canonical {canonical_image_name})"
+        )
+
+    digest = image_digests.get(tag)
+    if digest is None:
+        raise HistoricalImageDigestCoverageError(
+            f"No embedded historical digest for image "
+            f"{canonical_image_name}:{tag}"
+        )
+    return digest

@@ -14,6 +14,7 @@ from kopf._cogs.structs.bodies import Body
 from logging import getLogger, Logger
 
 from .. import fqdn
+from ..finalizers import remove_finalizer_from_body, remove_finalizer_with_json_patch
 from ..k8sobject import K8sInterfaceObject
 from .. import utils, config, consts
 from ..backup.backup_api import BackupProfile, BackupSchedule
@@ -1152,7 +1153,7 @@ class KeyringHashicorpVaultSpec(KeyringSpecBase):
             token = dget_dict(auth, "token", prefix+".auth")
             self.tokenSecret = dget_str(token, "tokenSecret", prefix+".auth.token")
         else:
-            raise kopf.TemporaryError(f"Either 'approle' or 'token' must be set in {path}.auth")
+            raise kopf.TemporaryError(f"Either 'approle' or 'token' must be set in {prefix}.auth")
 
     def post_parse(self) -> None:
         cm_mount_name = "keyringhashicorp-conf"
@@ -1759,7 +1760,7 @@ class AbstractServerSetSpec(abc.ABC):
     imageRepository: str = config.DEFAULT_IMAGE_REPOSITORY
 
     serviceAccountName: Optional[str] = None
-    roleBindingName: Optional[str] = None
+    sidecarRoleBindingName: Optional[str] = None
 
     # number of MySQL instances (required)
     instances: int = 1
@@ -1858,9 +1859,9 @@ class AbstractServerSetSpec(abc.ABC):
                 spec_root, "imagePullSecrets", "spec", content_type=dict)
 
         self.serviceAccountName = dget_str(spec_root, "serviceAccountName", "spec", default_value=f"{self.name}-sidecar-sa")
-        self.roleBindingName = f"{self.name}-sidecar-rb"
-        self.switchoverServiceAccountName = "mysql-switchover-sa"
-        self.switchoverRoleBindingName = "mysql-switchover-rb"
+        self.sidecarRoleBindingName = f"{self.name}-sidecar-rb"
+        self.switchoverServiceAccountName = f"{self.name}-switchover-sa"
+        self.switchoverRoleBindingName = f"{self.name}-switchover-rb"
 
         if "imageRepository" in spec_root:
             self.imageRepository = dget_str(spec_root, "imageRepository", "spec")
@@ -2349,6 +2350,38 @@ class InnoDBCluster(K8sInterfaceObject):
             consts.INNODBCLUSTER_PLURAL, name, body=patch))
 
     @classmethod
+    def _patch_json(cls, ns: str, name: str, patch: list[dict[str, Any]]) -> Body:
+        # TODO: Recheck this helper whenever the kubernetes Python client is upgraded.
+        # For kubernetes==35.0.0 the higher-level
+        # CustomObjectsApi.patch_namespaced_custom_object() still hardcodes
+        # merge-patch semantics for CRs and does not let us select
+        # application/json-patch+json, so removing one finalizer entry safely
+        # requires the lower-level call_api() path below. If the client grows a
+        # supported high-level JSON Patch API in a newer version, prefer that
+        # and drop this custom request code.
+        header_params = {
+            "Accept": "application/json",
+            "Content-Type": "application/json-patch+json",
+        }
+        return cast(Body, api_customobj.api_client.call_api(
+            "/apis/{group}/{version}/namespaces/{namespace}/{plural}/{name}",
+            "PATCH",
+            path_params={
+                "group": consts.GROUP,
+                "version": consts.VERSION,
+                "namespace": ns,
+                "plural": consts.INNODBCLUSTER_PLURAL,
+                "name": name,
+            },
+            query_params=[],
+            header_params=header_params,
+            body=patch,
+            response_type="object",
+            auth_settings=["BearerToken"],
+            _return_http_data_only=True,
+        ))
+
+    @classmethod
     def _patch_status(cls, ns: str, name: str, patch: dict) -> Body:
         return cast(Body, api_customobj.patch_namespaced_custom_object_status(
             consts.GROUP, consts.VERSION, ns,
@@ -2662,15 +2695,13 @@ class InnoDBCluster(K8sInterfaceObject):
 
     @classmethod
     def get_service_account_switchover(cls, spec: AbstractServerSetSpec) -> api_client.V1ServiceAccount:
-        # Not user configurable for now due to limited use. Also, only once per namespace, thus doesn't include cluster name
         return cast(api_client.V1ServiceAccount,
                     api_core.read_namespaced_service_account(spec.switchoverServiceAccountName, spec.namespace))
 
     @classmethod
     def get_role_binding_sidecar(cls, spec: AbstractServerSetSpec) -> api_client.V1RoleBinding:
-        # Not user configurable for now due to limited use. Also, only once per namespace, thus doesn't include cluster name
         return cast(api_client.V1RoleBinding,
-                    api_rbac.read_namespaced_role_binding(spec.roleBindingName, spec.namespace))
+                    api_rbac.read_namespaced_role_binding(spec.sidecarRoleBindingName, spec.namespace))
 
     @classmethod
     def get_role_binding_switchover(cls, spec: AbstractServerSetSpec) -> api_client.V1RoleBinding:
@@ -2848,24 +2879,19 @@ class InnoDBCluster(K8sInterfaceObject):
         }
         self.obj = self._patch(self.namespace, self.name, patch)
 
-    def _remove_finalizer(self, fin: str) -> None:
-        # TODO strategic merge patch not working here??
-        #patch = { "metadata": { "$deleteFromPrimitiveList/finalizers": [fin] }}
-        patch = {"metadata": {"finalizers": [
-            f for f in self.metadata["finalizers"] if f != fin]}}
-
-        self.obj = self._patch(self.namespace, self.name, patch)
+    def _remove_finalizer(self, fin: str, cluster_body: Body = None) -> None:
+        self.obj = remove_finalizer_with_json_patch(
+            lambda: self._get(self.namespace, self.name),
+            lambda patch: self._patch_json(self.namespace, self.name, patch),
+            fin,
+        )
+        remove_finalizer_from_body(cluster_body, fin)
 
     def add_cluster_finalizer(self) -> None:
         self._add_finalizer("mysql.oracle.com/cluster")
 
     def remove_cluster_finalizer(self, cluster_body: dict = None) -> None:
-        print("remove_cluster_finalizer")
-        self._remove_finalizer("mysql.oracle.com/cluster")
-        if cluster_body:
-            # modify the JSON data used internally by kopf to update its finalizer list
-            cluster_body["metadata"]["finalizers"].remove(
-                "mysql.oracle.com/cluster")
+        self._remove_finalizer("mysql.oracle.com/cluster", cluster_body)
 
     def set_operator_version(self, version: str) -> None:
         v = self.operator_version
@@ -2941,16 +2967,33 @@ class InnoDBCluster(K8sInterfaceObject):
             logger.info(f"\tRouter.TLS exists       :\t{router_tls_exists}")
             if router_tls_exists:
                 logger.info(f"\tRouter.TLS.tlsSecretName:\t{self.parsed_spec.router.tlsSecretName}")
-
-
-def get_all_clusters(ns: str = None) -> typing.List[InnoDBCluster]:
+def get_all_clusters(ns: Union[None, str, list[str]] = None) -> typing.List[InnoDBCluster]:
     if ns is None:
-        objects = cast(dict, api_customobj.list_cluster_custom_object(
-            consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL))
-    else:
-        objects = cast(dict, api_customobj.list_namespaced_custom_object(
-            consts.GROUP, consts.VERSION, ns, consts.INNODBCLUSTER_PLURAL))
-    return [InnoDBCluster(o) for o in objects["items"]]
+        try:
+            resp = api_customobj.list_cluster_custom_object(
+                consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL
+            )
+            return [InnoDBCluster(item) for item in resp["items"]]
+        except ApiException as e:
+            if e.status == 404:
+                return []
+            raise
+
+    if isinstance(ns, str):
+        ns = [ns] if ns else []
+
+    ret = []
+    for n in dict.fromkeys(ns):
+        try:
+            resp = api_customobj.list_namespaced_custom_object(
+                consts.GROUP, consts.VERSION, n, consts.INNODBCLUSTER_PLURAL
+            )
+            ret += [InnoDBCluster(item) for item in resp["items"]]
+        except ApiException as e:
+            if e.status == 404:
+                continue
+            raise
+    return ret
 
 
 class MySQLPod(K8sInterfaceObject):

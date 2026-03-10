@@ -6,6 +6,7 @@
 from typing import Any, List, Optional, Callable
 from kopf._cogs.structs.bodies import Body
 from kopf import Patch
+from kubernetes import client as api_client
 from kubernetes.client.rest import ApiException
 
 from mysqloperator.controller.api_utils import ApiSpecError
@@ -18,7 +19,7 @@ from ..backup import backup_objects
 from ..config import DEFAULT_OPERATOR_VERSION_TAG
 from .cluster_controller import ClusterController, ClusterMutex
 from . import cluster_objects, router_objects, cluster_api
-from .cluster_api import InnoDBCluster, InnoDBClusterSpec, MySQLPod, get_all_clusters
+from .cluster_api import InnoDBCluster, InnoDBClusterSpec, MySQLPod
 import kopf
 import mysqlsh
 import json
@@ -26,9 +27,332 @@ import logging
 from logging import Logger
 import time
 import traceback
+import threading
 
 
 # TODO check whether we should store versions in status to make upgrade easier
+
+_SWITCHOVER_RBAC_EVENT_ACTION = "ReconcileSwitchoverRbac"
+
+
+def _get_field(obj: Any, attr_name: str, dict_key: Optional[str] = None) -> Any:
+    if isinstance(obj, dict):
+        return obj.get(dict_key or attr_name)
+    return getattr(obj, attr_name, None)
+
+
+def _compact_mapping(values: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in values.items() if value is not None}
+
+
+def _normalize_owner_references(owner_references: Any) -> list[dict[str, Any]]:
+    return [
+        _compact_mapping(
+            {
+                "apiVersion": _get_field(owner_reference, "api_version", "apiVersion"),
+                "kind": _get_field(owner_reference, "kind"),
+                "name": _get_field(owner_reference, "name"),
+                "uid": _get_field(owner_reference, "uid"),
+                "controller": _get_field(owner_reference, "controller"),
+                "blockOwnerDeletion": _get_field(
+                    owner_reference,
+                    "block_owner_deletion",
+                    "blockOwnerDeletion",
+                ),
+            }
+        )
+        for owner_reference in owner_references or []
+    ]
+
+
+def _normalize_image_pull_secrets(image_pull_secrets: Any) -> list[dict[str, str]]:
+    normalized_image_pull_secrets = []
+    for image_pull_secret in image_pull_secrets or []:
+        if name := _get_field(image_pull_secret, "name"):
+            normalized_image_pull_secrets.append({"name": name})
+    return normalized_image_pull_secrets
+
+
+def _normalize_role_binding_subjects(
+    subjects: Any,
+    default_namespace: str,
+) -> list[dict[str, Any]]:
+    normalized_subjects = []
+    for subject in subjects or []:
+        kind = _get_field(subject, "kind")
+        namespace = _get_field(subject, "namespace")
+        if kind == "ServiceAccount" and namespace is None:
+            namespace = default_namespace
+
+        normalized_subjects.append(
+            _compact_mapping(
+                {
+                    "apiGroup": _get_field(subject, "api_group", "apiGroup"),
+                    "kind": kind,
+                    "name": _get_field(subject, "name"),
+                    "namespace": namespace,
+                }
+            )
+        )
+    return normalized_subjects
+
+
+def _normalize_role_ref(role_ref: Any) -> dict[str, Any]:
+    return _compact_mapping(
+        {
+            "apiGroup": _get_field(role_ref, "api_group", "apiGroup"),
+            "kind": _get_field(role_ref, "kind"),
+            "name": _get_field(role_ref, "name"),
+        }
+    )
+
+
+def _prepare_switchover_service_account_patch(
+    current_service_account: Any,
+    desired_service_account: dict[str, Any],
+) -> Optional[dict[str, Any]]:
+    patch = {}
+
+    desired_owner_references = desired_service_account.get("metadata", {}).get(
+        "ownerReferences",
+        [],
+    )
+    current_owner_references = _normalize_owner_references(
+        _get_field(_get_field(current_service_account, "metadata"), "owner_references", "ownerReferences")
+    )
+    if current_owner_references != _normalize_owner_references(
+        desired_owner_references
+    ):
+        patch.setdefault("metadata", {})["ownerReferences"] = desired_owner_references
+
+    desired_image_pull_secrets = desired_service_account.get("imagePullSecrets", [])
+    current_image_pull_secrets = _normalize_image_pull_secrets(
+        _get_field(current_service_account, "image_pull_secrets", "imagePullSecrets")
+    )
+    if current_image_pull_secrets != _normalize_image_pull_secrets(
+        desired_image_pull_secrets
+    ):
+        patch["imagePullSecrets"] = desired_image_pull_secrets
+
+    return patch or None
+
+
+def _classify_switchover_role_binding_repair(
+    current_role_binding: Any,
+    desired_role_binding: dict[str, Any],
+    default_namespace: str,
+) -> tuple[str, Optional[dict[str, Any]]]:
+    desired_role_ref = _normalize_role_ref(desired_role_binding.get("roleRef", {}))
+    current_role_ref = _normalize_role_ref(
+        _get_field(current_role_binding, "role_ref", "roleRef")
+    )
+    if current_role_ref != desired_role_ref:
+        return ("recreate", None)
+
+    patch = {}
+
+    desired_owner_references = desired_role_binding.get("metadata", {}).get(
+        "ownerReferences",
+        [],
+    )
+    current_owner_references = _normalize_owner_references(
+        _get_field(_get_field(current_role_binding, "metadata"), "owner_references", "ownerReferences")
+    )
+    if current_owner_references != _normalize_owner_references(
+        desired_owner_references
+    ):
+        patch.setdefault("metadata", {})["ownerReferences"] = desired_owner_references
+
+    desired_subjects = desired_role_binding.get("subjects", [])
+    current_subjects = _normalize_role_binding_subjects(
+        _get_field(current_role_binding, "subjects"),
+        default_namespace,
+    )
+    if current_subjects != _normalize_role_binding_subjects(
+        desired_subjects,
+        default_namespace,
+    ):
+        patch["subjects"] = desired_subjects
+
+    if patch:
+        return ("patch", patch)
+
+    return ("noop", None)
+
+
+def _emit_switchover_rbac_event(
+    cluster: InnoDBCluster,
+    logger: Logger,
+    *,
+    reason: str,
+    message: str,
+) -> None:
+    if reason == "RepairFailed":
+        logger.warning(message)
+        cluster.warn(
+            action=_SWITCHOVER_RBAC_EVENT_ACTION,
+            reason=reason,
+            message=message,
+        )
+        return
+
+    logger.info(message)
+    cluster.info(
+        action=_SWITCHOVER_RBAC_EVENT_ACTION,
+        reason=reason,
+        message=message,
+    )
+
+
+def _recreate_switchover_role_binding(
+    cluster: InnoDBCluster,
+    desired_role_binding: dict[str, Any],
+) -> None:
+    delete_options = api_client.V1DeleteOptions(grace_period_seconds=0)
+    try:
+        api_rbac.delete_namespaced_role_binding(
+            name=desired_role_binding["metadata"]["name"],
+            namespace=cluster.namespace,
+            body=delete_options,
+        )
+    except ApiException as exc:
+        if exc.status != 404:
+            raise
+
+    last_conflict: Optional[ApiException] = None
+    for _ in range(3):
+        try:
+            api_rbac.create_namespaced_role_binding(
+                namespace=cluster.namespace,
+                body=desired_role_binding,
+            )
+            return
+        except ApiException as exc:
+            if exc.status != 409:
+                raise
+            last_conflict = exc
+            time.sleep(0.1)
+
+    assert last_conflict is not None
+    raise last_conflict
+
+
+def _reconcile_switchover_service_account(
+    cluster: InnoDBCluster,
+    desired_service_account: dict[str, Any],
+    logger: Logger,
+) -> None:
+    spec = cluster.parsed_spec
+    service_account = ignore_404(
+        lambda: cluster.get_service_account_switchover(spec)
+    )
+    if not service_account:
+        try:
+            api_core.create_namespaced_service_account(
+                namespace=cluster.namespace,
+                body=desired_service_account,
+            )
+            _emit_switchover_rbac_event(
+                cluster,
+                logger,
+                reason="Created",
+                message=(
+                    f"Created switchover ServiceAccount "
+                    f"{cluster.namespace}/{spec.switchoverServiceAccountName} "
+                    f"for cluster {cluster.namespace}/{cluster.name}"
+                ),
+            )
+            return
+        except ApiException as exc:
+            if exc.status != 409:
+                raise
+        service_account = cluster.get_service_account_switchover(spec)
+
+    patch = _prepare_switchover_service_account_patch(
+        service_account,
+        desired_service_account,
+    )
+    if patch:
+        api_core.patch_namespaced_service_account(
+            name=spec.switchoverServiceAccountName,
+            namespace=cluster.namespace,
+            body=patch,
+        )
+        _emit_switchover_rbac_event(
+            cluster,
+            logger,
+            reason="Patched",
+            message=(
+                f"Patched switchover ServiceAccount "
+                f"{cluster.namespace}/{spec.switchoverServiceAccountName} "
+                f"for cluster {cluster.namespace}/{cluster.name}"
+            ),
+        )
+
+
+def _reconcile_switchover_role_binding(
+    cluster: InnoDBCluster,
+    desired_role_binding: dict[str, Any],
+    logger: Logger,
+) -> None:
+    spec = cluster.parsed_spec
+    role_binding = ignore_404(lambda: cluster.get_role_binding_switchover(spec))
+    if not role_binding:
+        try:
+            api_rbac.create_namespaced_role_binding(
+                namespace=cluster.namespace,
+                body=desired_role_binding,
+            )
+            _emit_switchover_rbac_event(
+                cluster,
+                logger,
+                reason="Created",
+                message=(
+                    f"Created switchover RoleBinding "
+                    f"{cluster.namespace}/{spec.switchoverRoleBindingName} "
+                    f"for cluster {cluster.namespace}/{cluster.name}"
+                ),
+            )
+            return
+        except ApiException as exc:
+            if exc.status != 409:
+                raise
+        role_binding = cluster.get_role_binding_switchover(spec)
+
+    repair_action, patch = _classify_switchover_role_binding_repair(
+        role_binding,
+        desired_role_binding,
+        cluster.namespace,
+    )
+    if repair_action == "patch":
+        assert patch is not None
+        api_rbac.patch_namespaced_role_binding(
+            name=spec.switchoverRoleBindingName,
+            namespace=cluster.namespace,
+            body=patch,
+        )
+        _emit_switchover_rbac_event(
+            cluster,
+            logger,
+            reason="Patched",
+            message=(
+                f"Patched switchover RoleBinding "
+                f"{cluster.namespace}/{spec.switchoverRoleBindingName} "
+                f"for cluster {cluster.namespace}/{cluster.name}"
+            ),
+        )
+    elif repair_action == "recreate":
+        _recreate_switchover_role_binding(cluster, desired_role_binding)
+        _emit_switchover_rbac_event(
+            cluster,
+            logger,
+            reason="Recreated",
+            message=(
+                f"Recreated switchover RoleBinding "
+                f"{cluster.namespace}/{spec.switchoverRoleBindingName} "
+                f"for cluster {cluster.namespace}/{cluster.name}"
+            ),
+        )
 
 
 
@@ -51,6 +375,18 @@ def monitor_existing_clusters(clusters: List[InnoDBCluster], logger: Logger) -> 
             g_group_monitor.monitor_cluster(
                 cluster, on_group_view_change, logger)
 
+def refresh_existing_cluster_status(clusters: List[InnoDBCluster], logger: Logger) -> None:
+    for cluster in clusters:
+        if cluster.deleting:
+            continue
+
+        try:
+            ClusterController(cluster).probe_status(logger)
+        except Exception as exc:
+            logger.warning(
+                "Failed to refresh cluster status for %s/%s during startup: %s",
+                cluster.namespace, cluster.name, exc)
+
 
 def ensure_backup_schedules_use_current_image(clusters: List[InnoDBCluster], logger: Logger) -> None:
     for cluster in clusters:
@@ -66,6 +402,62 @@ def ensure_router_accounts_are_uptodate(clusters: List[InnoDBCluster], logger: L
         router_objects.update_router_account(cluster,
                                              lambda: logger.warning(f"Cluster {cluster.namespace}/{cluster.name} unreachable"),
                                              logger)
+
+
+def ensure_switchover_rbac_uptodate(clusters: List[InnoDBCluster], logger: Logger) -> None:
+    failed_clusters: list[str] = []
+
+    for cluster in clusters:
+        if cluster.deleting:
+            continue
+
+        try:
+            reconcile_switchover_rbac(cluster, logger)
+        except Exception as exc:
+            failed_clusters.append(f"{cluster.namespace}/{cluster.name}: {exc}")
+
+    if failed_clusters:
+        raise RuntimeError(
+            "Failed to reconcile switchover RBAC during startup for clusters: "
+            + "; ".join(failed_clusters)
+        )
+
+
+def reconcile_switchover_rbac(cluster: InnoDBCluster, logger: Logger) -> None:
+    if cluster.deleting:
+        return
+
+    try:
+        spec = cluster.parsed_spec
+
+        desired_service_account = cluster_objects.prepare_service_account_switchover(
+            spec
+        )
+        kopf.adopt(desired_service_account, owner=cluster.obj)
+        _reconcile_switchover_service_account(
+            cluster,
+            desired_service_account,
+            logger,
+        )
+
+        desired_role_binding = cluster_objects.prepare_role_binding_switchover(spec)
+        kopf.adopt(desired_role_binding, owner=cluster.obj)
+        _reconcile_switchover_role_binding(
+            cluster,
+            desired_role_binding,
+            logger,
+        )
+    except Exception as exc:
+        _emit_switchover_rbac_event(
+            cluster,
+            logger,
+            reason="RepairFailed",
+            message=(
+                f"Failed to repair switchover RBAC for cluster "
+                f"{cluster.namespace}/{cluster.name}: {exc}"
+            ),
+        )
+        raise
 
 
 def ignore_404(f) -> Any:
@@ -248,15 +640,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body, pat
                 print(f"\tPatching existing SA with {patch}")
                 api_core.patch_namespaced_service_account(name=existing_sa.metadata.name, namespace=namespace, body=patch)
 
-            print("6. Switchover ServiceAccount")
-            if not ignore_404(lambda: cluster.get_service_account_switchover(icspec)):
-                print("\tPreparing...")
-                sa = cluster_objects.prepare_service_account_switchover(icspec)
-                print(f"\tCreating...{sa}")
-                kopf.adopt(sa)
-                api_core.create_namespaced_service_account(namespace=namespace, body=sa)
-
-            print("7. Sidecar RoleBinding ")
+            print("6. Sidecar RoleBinding ")
             if not ignore_404(lambda: cluster.get_role_binding_sidecar(icspec)):
                 print("\tPreparing...")
                 rb = cluster_objects.prepare_role_binding_sidecar(icspec)
@@ -264,15 +648,10 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body, pat
                 kopf.adopt(rb)
                 api_rbac.create_namespaced_role_binding(namespace=namespace, body=rb)
 
-            print("8. Switchover RoleBinding")
-            if not ignore_404(lambda: cluster.get_role_binding_switchover(icspec)):
-                print("\tPreparing...")
-                rb = cluster_objects.prepare_role_binding_switchover(icspec)
-                print(f"\tCreating RoleBinding {rb['metadata']['name']} ...")
-                kopf.adopt(rb)
-                api_rbac.create_namespaced_role_binding(namespace=namespace, body=rb)
+            print("7. Switchover RBAC")
+            reconcile_switchover_rbac(cluster, logger)
 
-            print("9. Cluster StatefulSet")
+            print("8. Cluster StatefulSet")
             if not ignore_404(cluster.get_stateful_set):
                 print("\tPreparing...")
                 statefulset = cluster_objects.prepare_cluster_stateful_set(cluster, icspec, logger)
@@ -280,7 +659,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body, pat
                 kopf.adopt(statefulset)
                 api_apps.create_namespaced_stateful_set(namespace=namespace, body=statefulset)
 
-            print("10. Cluster PodDisruptionBudget")
+            print("9. Cluster PodDisruptionBudget")
             if not ignore_404(cluster.get_disruption_budget):
                 print("\tPreparing...")
                 disruption_budget = cluster_objects.prepare_cluster_pod_disruption_budget(icspec)
@@ -288,7 +667,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body, pat
                 kopf.adopt(disruption_budget)
                 api_policy.create_namespaced_pod_disruption_budget(namespace=namespace, body=disruption_budget)
 
-            print("11. Read Replica StatefulSets")
+            print("10. Read Replica StatefulSets")
             if len(icspec.readReplicas) > 0:
                 print(f"\t{len(icspec.readReplicas)} Read Replica STS ...")
                 for rr in icspec.readReplicas:
@@ -296,7 +675,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body, pat
             else:
                 print("\tNo Read Replica")
 
-            print("12. Router Service")
+            print("11. Router Service")
             if not ignore_404(cluster.get_router_service):
                 print("\tPreparing...")
                 router_service = router_objects.prepare_router_service(icspec)
@@ -304,7 +683,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body, pat
                 kopf.adopt(router_service)
                 api_core.create_namespaced_service(namespace=namespace, body=router_service)
 
-            print("13. Router Deployment")
+            print("12. Router Deployment")
             if not ignore_404(cluster.get_router_deployment):
                 if icspec.router.instances > 0:
                     print("\tPreparing...")
@@ -319,7 +698,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body, pat
                     # will create the deployment
                     print("\tRouter count is 0. No Deployment is created.")
 
-            print("14. Backup Secrets")
+            print("13. Backup Secrets")
             if not ignore_404(cluster.get_backup_account):
                 print("\tPreparing...")
                 secrets = backup_objects.prepare_backup_secrets(icspec)
@@ -329,7 +708,7 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body, pat
                     kopf.adopt(secret)
                     api_core.create_namespaced_secret(namespace=namespace, body=secret)
 
-            print("15. Service Monitors")
+            print("14. Service Monitors")
             monitors = cluster_objects.prepare_metrics_service_monitors(cluster.parsed_spec, logger)
             if len(monitors) == 0:
                 print("\tNone requested")
@@ -418,7 +797,7 @@ def on_innodbcluster_delete(name: str, namespace: str, body: Body,
             # if there is only one pod and it is deleting then on_pod_delete() won't be called
             # in this case the IC finalizer won't be removed and the IC will hang
             logger.info("on_innodbcluster_delete: The cluster's only one pod is already deleting. Removing cluster finalizer here")
-            cluster.remove_cluster_finalizer()
+            cluster.remove_cluster_finalizer(body)
 
         if cluster.get_create_time() and len(pods):
             # TODO: this should be moved to controller or elsewhere
@@ -689,7 +1068,7 @@ def on_innodbcluster_field_router_options(old: dict, new: dict, body: Body,
             new = {}
 
         c = ClusterController(cluster)
-        c.on_router_routing_option_chahnge(old, new, logger)
+        c.on_router_routing_option_change(old, new, logger)
 
 # on_innodbcluster_field_backup_schedules is safe to no go thru on_spec() as this method neither touches the STS nor the Deploy
 @kopf.on.field(consts.GROUP, consts.VERSION, consts.INNODBCLUSTER_PLURAL,
@@ -867,7 +1246,7 @@ def on_pod_event(body: Body, logger: Logger, **kwargs):
     mysql_restarts = pod.get_container_restarts("mysql")
 
     event = ""
-    if g_ephemeral_pod_state.get(pod, "mysql-restarts") != mysql_restarts:
+    if utils.ephemeral_value_changed(pod, "mysql-restarts", mysql_restarts, context="on_pod_event"):
         event = "mysql-restarted"
 
     if logger.getEffectiveLevel() == logging.DEBUG:
@@ -877,7 +1256,6 @@ def on_pod_event(body: Body, logger: Logger, **kwargs):
 
     cluster = pod.get_cluster()
     if not cluster:
-        logger.info(f"on_pod_event: Ignoring event for pod {pod.name} belonging to a deleted cluster")
         return
 
     with ClusterMutex(cluster, pod):
@@ -885,10 +1263,8 @@ def on_pod_event(body: Body, logger: Logger, **kwargs):
 
         # Check if a container in the pod restarted
         if ready and event == "mysql-restarted":
-            logger.info("on_pod_event: Pod got restarted")
             cluster_ctl.on_pod_restarted(pod, logger)
 
-            logger.info("on_pod_event: Updating restart count")
             g_ephemeral_pod_state.set(pod, "mysql-restarts", mysql_restarts, context="on_pod_event")
 
         # Check if we should refresh the cluster status
@@ -1159,10 +1535,10 @@ def on_innodbcluster_field_service_type(old: str, new: str, body: Body,
         svc = cluster.get_router_service()
         router_objects.update_service(svc, cluster.parsed_spec, logger)
 
-
-@kopf.on.create(consts.GROUP, consts.VERSION,
+if config.OPERATOR_EDITION == config.Edition.enterprise:
+ @kopf.on.create(consts.GROUP, consts.VERSION,
                 "mysqlclustersetfailovers")  # type: ignore
-def on_failover_create(name: str, namespace: Optional[str], body: Body,
+ def on_failover_create(name: str, namespace: Optional[str], body: Body,
                        logger: Logger, **kwargs) -> None:
     # TODO: move this to a proper structure
     logger.info(f'Fetching {body["spec"]["clusterName"]}')
@@ -1177,6 +1553,7 @@ def on_failover_create(name: str, namespace: Optional[str], body: Body,
         for pod in cluster.get_pods():
             with shellutils.DbaWrap(shellutils.connect_to_pod_dba(pod, logger)) as dba:
                 try:
+                    logger.info(f"cluster={cluster.namespace}/{cluster.name}")
                     cluster_status = dba.get_cluster().status({"extended": 1})
 
                     if "clusterRole" in cluster_status:

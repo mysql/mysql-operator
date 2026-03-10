@@ -1,8 +1,11 @@
 # role for the server sidecar
+# This MUST be a cluster scoped role
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: mysql-sidecar
+  name: {{ include "mysql-operator.sidecarRoleName" . }}
+  labels:
+    {{- include "mysql-operator.globalLabels" . | nindent 4 }}
 rules:
   - apiGroups: [""]
     resources: ["pods"]
@@ -40,12 +43,14 @@ rules:
     verbs: ["get", "patch", "update", "watch"]
 ---
 # Role for the switchover CronJob
+# This MUST be a cluster scoped role
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: mysql-switchover
+  name: {{ include "mysql-operator.switchoverRoleName" . }}
+  labels:
+    {{- include "mysql-operator.globalLabels" . | nindent 4 }}
 rules:
-  # Kopf needs patch on secrets or the sidecar will throw
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["create", "patch", "update"]

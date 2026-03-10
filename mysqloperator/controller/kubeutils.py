@@ -16,6 +16,7 @@ from kubernetes.client.rest import ApiException, RESTClientObject
 from kubernetes import client, config
 
 from .consts import TLS_VALID_CIPHERS
+from .watched_namespaces import WatchedNamespaces
 
 context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
@@ -76,6 +77,14 @@ def catch_404(f: Callable[..., T]) -> Optional[T]:
 
 def available_apis():
     return api_apis.get_api_versions()
+
+
+def validate_operator_namespaces(namespaces: Optional[str]) -> None:
+    WatchedNamespaces(namespaces).validate()
+
+
+def watched_namespaces(namespaces: Optional[str]) -> list[str]:
+    return WatchedNamespaces(namespaces).resolve_operator_namespaces() or []
 
 def k8s_version() -> str:
     api_instance = client.VersionApi(api_client)

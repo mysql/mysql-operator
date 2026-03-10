@@ -69,6 +69,12 @@ This deploys the latest MySQL Operator for Kubernetes from DockerHub using all d
 can be customized through a variety of options to override built-in defaults. The name of the deployment is
 mysql-operator. See the documentation for details.
 
+In this release, operator topology is frozen after the initial topology has been persisted on first
+startup. A global operator blocks every other operator install, scoped operators must keep a disjoint
+`deployment.namespaces` set, and later manual or raw-manifest topology changes are rejected on operator
+startup. Choose `deployment.namespaces` and `deployment.standalone` up front; changing them after bootstrap
+requires removing the operator and reinstalling it with the desired scope.
+
 ## MySQL InnoDB Cluster Installation
 
 ### Using kubectl

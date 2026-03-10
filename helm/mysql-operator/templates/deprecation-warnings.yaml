@@ -1,0 +1,6 @@
+{{- with (include "mysql-operator.disableLookupsWarning" . | trim) -}}
+# {{ . | replace "\n" "\n# " }}
+{{- end -}}
+{{- with (include "mysql-operator.deprecationWarnings" . | trim) -}}
+# {{ . | replace "\n" "\n# " }}
+{{- end -}}

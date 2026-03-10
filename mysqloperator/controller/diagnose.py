@@ -9,7 +9,7 @@ from .innodbcluster.cluster_api import InnoDBCluster, MySQLPod
 import typing
 from enum import Enum
 from typing import Optional, TYPE_CHECKING, Tuple, List, Set, Dict, cast
-from . import shellutils, consts, errors
+from . import shellutils, consts, errors, utils
 import kopf
 import mysqlsh
 import enum
@@ -90,7 +90,15 @@ def diagnose_instance(pod: MySQLPod, logger, dba: 'Dba' = None) -> InstanceStatu
         try:
             dba = mysqlsh.connect_dba(pod.endpoint_co)
         except mysqlsh.Error as e:
-            logger.info(f"Could not connect to {pod.endpoint}: error={e}")
+            logger.error(
+                utils.log_with_thread(
+                    "diagnose_instance: Could not connect",
+                    pod=pod.name,
+                    endpoint=pod.endpoint,
+                    mysql_target=utils.format_mysql_target(pod.endpoint_co),
+                    error=e,
+                )
+            )
             status.connect_error = e.code
 
             if mysql.ErrorCode.CR_MAX_ERROR >= e.code >= mysql.ErrorCode.CR_MIN_ERROR:
@@ -118,8 +126,16 @@ def diagnose_instance(pod: MySQLPod, logger, dba: 'Dba' = None) -> InstanceStatu
             #       it will now check based from primary N times
             cluster = dba.get_cluster()
         except mysqlsh.Error as e:
-            logger.info(f"get_cluster() error for {pod.endpoint}: error={e}")
-
+            logger.error(
+                utils.log_with_thread(
+                    "diagnose_instance: get_cluster error",
+                    pod=pod.name,
+                    endpoint=pod.endpoint,
+                    id_dba=id(dba),
+                    id_session=id(dba.session),
+                    error=e,
+                )
+            )
             # TODO check for invalid metadata errors
             # Note: get_cluster() on a member that was previously removed
             # can fail as OFFLINE instead of NOT_MANAGED if its copy of the
@@ -138,7 +154,16 @@ def diagnose_instance(pod: MySQLPod, logger, dba: 'Dba' = None) -> InstanceStatu
             if e_str.find("unmanaged replication group"):
                 status.status = InstanceDiagStatus.UNMANAGED
             else:
-                logger.info(f"diagnose_instance: 2 Runtime Error [{e}]")
+                logger.error(
+                    utils.log_with_thread(
+                        "diagnose_instance: RuntimeError from get_cluster()",
+                        pod=pod.name,
+                        endpoint=pod.endpoint,
+                        id_dba=id(dba),
+                        id_session=id(dba.session),
+                        error=e,
+                    )
+                )
                 status.status = InstanceDiagStatus.UNKNOWN
 
     if cluster:
@@ -147,13 +172,10 @@ def diagnose_instance(pod: MySQLPod, logger, dba: 'Dba' = None) -> InstanceStatu
 
             status.cluster_in_cluster_set_type = ClusterInClusterSetType.PRIMARY
             if "clusterRole" in mstatus:
-                logger.info("9.3.0+ cluster, ClusterSet enabled")
                 if mstatus["clusterRole"] == "REPLICA":
                     status.cluster_in_cluster_set_type = ClusterInClusterSetType.REPLICA
                 else:
                     status.cluster_in_cluster_set_type = ClusterInClusterSetType.UNKNOWN
-            else:
-                logger.info("pre 9.3.0 cluster, not ClusterSet enabled")
 
             cluster_status = mstatus["defaultReplicaSet"]["status"]
             status.view_id = mstatus["defaultReplicaSet"]["groupViewId"]
@@ -161,8 +183,6 @@ def diagnose_instance(pod: MySQLPod, logger, dba: 'Dba' = None) -> InstanceStatu
             if cluster_status.startswith("OK"):
                 status.in_quorum = True
             else:
-                logger.info(
-                    f"""No quorum visible from {pod.endpoint}: status={cluster_status}  topology={";".join([f'{m},{i["status"]}' for m, i in mstatus["defaultReplicaSet"]["topology"].items()])}""")
                 status.in_quorum = False
 
             members = {}
@@ -206,17 +226,30 @@ def diagnose_instance(pod: MySQLPod, logger, dba: 'Dba' = None) -> InstanceStatu
         except RuntimeError as e:
             e_str = str(e)
             if "bad_alloc" in e_str or "std::bad_alloc" in e_str:
-                logger.warning(f"cluster.status() hit std::bad_alloc at {pod.endpoint}: treating as UNKNOWN; error={e}")
-            else:
-                logger.info(f"diagnose_instance: RuntimeError from status(): {e}")
+                logger.warning(
+                    utils.log_with_thread(
+                        "diagnose_instance: cluster.status() hit std::bad_alloc; treating as UNKNOWN",
+                        pod=pod.name,
+                        endpoint=pod.endpoint,
+                        id_cluster=id(cluster),
+                        error=e,
+                    )
+                )
             status.status = InstanceDiagStatus.UNKNOWN
             return status
         except mysqlsh.Error as e:
             if shellutils.check_fatal(
                     e, pod.endpoint_url_safe, "status()", logger):
                 raise
-
-            logger.info(f"status() failed at {pod.endpoint}: error={e}")
+            logger.error(
+                utils.log_with_thread(
+                    "diagnose_instance: status() failed",
+                    pod=pod.name,
+                    endpoint=pod.endpoint,
+                    id_cluster=id(cluster),
+                    error=e,
+                )
+            )
             status.status = InstanceDiagStatus.UNKNOWN
             return status
 

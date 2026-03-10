@@ -53,6 +53,8 @@ The following envars are supported:
 * OPERATOR_TEST_VAULT_CONFIG_PATH
 * OPERATOR_TEST_K8S_CLUSTER_NAME
 * OPERATOR_TEST_K8S_CLUSTER_DOMAIN_ALIAS
+* OPERATOR_TEST_HELM_PATH
+  path to the mounted community Helm chart catalog used by the e2e harness; it must contain the current charts either as top-level paths such as `mysql-operator` and `mysql-innodbcluster` or under `<operator-version>/mysql-operator` and `<operator-version>/mysql-innodbcluster`; Helm-based tests use both charts. Helm operator upgrade tests also expect older community `mysql-operator` releases to be present under versioned subdirectories in the same catalog. The external scripts that start the E2E tests are responsible for preparing this mounted chart catalog.
 * OPERATOR_TEST_OLD_VERSION_TAG
 * OPERATOR_TEST_SKIP_AZURE
 * OPERATOR_TEST_AZURE_STORAGE_IMAGE_NAME
@@ -415,6 +417,49 @@ The operator will pull images from `myregistry.local:5000/mysql`. The logs will 
 It will use an existing k3d cluster (nosetup) with an already deployed operator (nodeploy). The operator will pull
 images from `registry.localhost:5000/mysql`. The logs will be verbose (level 2). As no filter was passed, all tests
 will be executed.
+
+## Remote box helpers
+
+For the remote VM workflow described in `.clinerules/30-remote-test-boxes.md`, the repository now includes two helper scripts under [tools](../tools):
+
+```sh
+tools/run_remote_e2e.sh --box p71-4 --edition ce \
+    --tests e2e.mysqloperator.cluster.cluster_t.Cluster1AnnotationsAndLabelsUpdate \
+    --wait yes
+```
+
+This starts a detached `screen` session on the chosen box, sets `TEST` and `TEST_OPTIONS`, optionally does the full remote setup, and can wait for completion without streaming the whole log.
+
+Required parameters:
+
+* `--box <box>` remote VM name such as `p71-4`
+* `--edition <ce|ee>` selects Community or Enterprise setup and `TEST_OPTIONS`
+* `--tests <filter>` exact test, glob, or colon-separated filter with negative masks
+* `--wait <yes|no>` wait for completion and print the tail plus a summary, or return immediately
+
+Useful optional parameters:
+
+* `--setup <full|reuse>` default is `full`; use `reuse` to skip chart packaging, cluster creation, and operator install
+* `--agents <n>` override the worker-node count passed to `k8s_cluster_create.sh`
+* `--session-name <name>` choose the remote `screen` session name
+* `--log-name </absolute/path.log>` choose the remote log file used with `tee`
+  the helper also writes a compact filtered companion log as `<log-name>.filtered`
+* `--tail <n>` tail length printed after completion when waiting
+
+To summarize a finished log, use:
+
+```sh
+tools/summarize_e2e_log.sh /tmp/tests-p71-4.log
+tools/summarize_e2e_log.sh p71-4:/home/vagrant/tests-p71-4-20260420-112514.log
+```
+
+The summary reports the final status, execution time, and failure or error counters.
+
+The filtered companion log is intended for low-noise streaming. It keeps only lines that match one of these categories:
+
+* uppercase failure signals such as `FAIL`, `ERROR`, or `EXCEPTION`
+* unittest test-start lines such as `test_... (e2e....) ...`
+* lowercase result lines starting with `ok`, `fail`, or `error`
 
 =============================
 

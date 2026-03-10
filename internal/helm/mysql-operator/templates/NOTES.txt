@@ -1,3 +1,21 @@
+{{- with (include "mysql-operator.disableLookupsWarning" . | trim) -}}
+{{ . }}
+
+{{- end }}
+{{- with (include "mysql-operator.deprecationWarnings" . | trim) -}}
+{{ . }}
+
+{{- end }}
+Topology notes for this release:
+- Operator topology is frozen after install. Global operators may only upgrade as global/non-standalone, scoped operators may not change deployment.namespaces, and deployment.standalone must not flip.
+- Operator watch scopes must be disjoint across every install, including standalone operators. Any global operator overlaps every namespace and blocks every other operator install.
+- After topology has been persisted on first startup, manual or raw-manifest topology changes fail fast on operator startup.
+{{ "" }}
+{{ if (include "mysql-operator.deployment.standalone" . | trim | eq "true") -}}
+{{- include "mysql-operator.walkNamespaces" (dict "root" . "cb" "mysql-operator.callbacks.warnMissingNamespaceStandalone") -}}
+{{- else -}}
+{{- include "mysql-operator.walkNamespaces" (dict "root" . "cb" "mysql-operator.callbacks.warnMissingNamespace") -}}
+{{- end -}}
 Create an MySQL InnoDB Cluster by executing:
 1. When using a source distribution / git clone: `helm install [cluster-name] -n [ns-name] ~/helm/mysql-innodbcluster`
 2. When using the Helm repo from ArtifactHub

@@ -1,0 +1,3 @@
+{{- with (include "mysql-innodbcluster.disableLookupsWarning" . | trim) -}}
+# {{ . | replace "\n" "\n# " }}
+{{- end -}}

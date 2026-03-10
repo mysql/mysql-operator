@@ -173,15 +173,15 @@ data:
             pods_to_check = self.pods_to_check
             # On keyring_file/keyring_encrypted_file the values are cached, by
             # restarting we can read them from other nodes
-            print(f"Shutting down {self.cluster_name}-1 and waiting to reach Terminating")
+            print(f"Shutting down {self.cluster_name}-1 and waiting for the pod to disappear")
             with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-1", self.user, self.password) as s:
                 s.exec_sql("SHUTDOWN")
-                kutil.wait_pod(self.ns, f"{self.cluster_name}-1", "Terminating")
+                kutil.wait_pod_gone(self.ns, f"{self.cluster_name}-1")
 
-            print(f"Shutting down {self.cluster_name}-2 and waiting to reach Terminating")
+            print(f"Shutting down {self.cluster_name}-2 and waiting for the pod to disappear")
             with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-2", self.user, self.password) as s:
                 s.exec_sql("SHUTDOWN")
-                kutil.wait_pod(self.ns, f"{self.cluster_name}-2", "Terminating")
+                kutil.wait_pod_gone(self.ns, f"{self.cluster_name}-2")
 
             print(f"Checking that {self.cluster_name}-1 is back ready")
             kutil.wait_pod(self.ns, f"{self.cluster_name}-1", checkready=True)

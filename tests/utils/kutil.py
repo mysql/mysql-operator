@@ -20,10 +20,17 @@ import pathlib
 import json
 from setup.config import g_ts_cfg
 from enum import Enum
+from typing import Optional
 
 logger = logging.getLogger("kutil")
 
 debug_kubectl = False
+
+_KUBECTL_EXEC_TRANSPORT_WARNING_RE = re.compile(
+    br"^E\d{4} \d\d:\d\d:\d\d\.\d+\s+\d+\s+websocket\.go:296\] "
+    br"Unknown stream id \d+, discarding message\r?\n?",
+    re.MULTILINE,
+)
 
 ALL_RSRC_TYPES = ["ic", "mbk", "po", "sts", "rs", "deploy",
                   "svc", "cm", "secret", "jobs", "deploy", "pvc", "sa"]
@@ -42,6 +49,10 @@ def strip_blanks(s):
     Strip empty lines in the string.
     """
     return "\n".join([l for l in s.split("\n") if l.strip()])
+
+
+def _strip_kubectl_exec_transport_warnings(output: bytes) -> bytes:
+    return _KUBECTL_EXEC_TRANSPORT_WARNING_RE.sub(b"", output)
 
 
 class TableSplitter:
@@ -249,7 +260,7 @@ def watch(ns, rsrc, name, fn, timeout, format=None):
 
     if not found:
         logger.error(
-            f"Timeout waiting for condition in {rsrc} {ns}/{name}. output={output}")
+            f"Timeout waiting for condition in {rsrc} {ns} / {name}. output={output}")
         store_diagnostics(ns, rsrc, name)
 
     if debug_kubectl:
@@ -301,29 +312,28 @@ def ls_ic(ns, ignore=[]):
 def ls_mbk(ns):
     return __ls(ns, "mbk")
 
-
-def ls_sts(ns):
-    return __ls(ns, "sts")
+def ls_sts(ns, *, pattern=".*"):
+    sts_list = __ls(ns, "sts")
+    r = re.compile(pattern)
+    return [sts for sts in sts_list if r.match(sts["NAME"])]
 
 def ls_sc(pattern=".*"):
     scs = __ls(None, rsrc="sc", w_ns=False)
     r = re.compile(pattern)
     return [sc for sc in scs if r.match(sc["NAME"])]
 
-
 def ls_rs(ns, *, pattern=".*"):
     rss = __ls(ns, "rs")
     r = re.compile(pattern)
     return [rs for rs in rss if r.match(rs["NAME"])]
 
-
-def ls_deploy(ns):
-    return __ls(ns, "deploy")
-
+def ls_deploy(ns, *, pattern=".*"):
+    deploys = __ls(ns, "deploy")
+    r = re.compile(pattern)
+    return [deploy for deploy in deploys if r.match(deploy["NAME"])]
 
 def ls_svc(ns):
     return __ls(ns, "svc")
-
 
 def ls_po(ns, *, pattern=".*"):
     pods = __ls(ns, "po")
@@ -333,25 +343,54 @@ def ls_po(ns, *, pattern=".*"):
 def ls_pod(ns, name):
     return ls_po(ns, pattern=name)
 
-
 def ls_pvc(ns):
     return __ls(ns, "pvc")
-
 
 def ls_pv(ns):
     return __ls(ns, "pv")
 
-def ls_sa(ns):
-    return __ls(ns, "sa")
+def ls_sa(ns, pattern=".*"):
+    sas = __ls(ns, "sa")
+    r = re.compile(pattern)
+    return [sa for sa in sas if r.match(sa["NAME"])]
 
 def ls_secret(ns, pattern=".*"):
     secrets = __ls(ns, "secret")
     r = re.compile(pattern)
     return [secret for secret in secrets if r.match(secret["NAME"])]
 
-
 def ls_cj(ns):
     return __ls(ns, "cj")
+
+def ls_role(ns, pattern=".*"):
+    roles = __ls(ns=ns, rsrc="role")
+    r = re.compile(pattern)
+    return [role for role in roles if r.match(role["NAME"])]
+
+def ls_rolebinding(ns, pattern=".*"):
+    bindings = __ls(ns=ns, rsrc="rolebinding")
+    r = re.compile(pattern)
+    return [binding for binding in bindings if r.match(binding["NAME"])]
+
+def ls_kopfpeering(ns, pattern=".*"):
+    peerings = __ls(ns=ns, rsrc="kopfpeering")
+    r = re.compile(pattern)
+    return [peering for peering in peerings if r.match(peering["NAME"])]
+
+def ls_clusterrole(pattern=".*"):
+    roles = __ls(ns=None, rsrc="clusterrole", w_ns=False)
+    r = re.compile(pattern)
+    return [role for role in roles if r.match(role["NAME"])]
+
+def ls_clusterrolebinding(pattern=".*"):
+    bindings = __ls(ns=None, rsrc="clusterrolebinding", w_ns=False)
+    r = re.compile(pattern)
+    return [binding for binding in bindings if r.match(binding["NAME"])]
+
+def ls_clusterkopfpeering(pattern=".*"):
+    peerings = __ls(ns=None, rsrc="clusterkopfpeering", w_ns=False)
+    r = re.compile(pattern)
+    return [peering for peering in peerings if r.match(peering["NAME"])]
 
 
 def ls_all_raw(ns):
@@ -385,6 +424,9 @@ def ls_all_raw(ns):
 def ls_ns():
     return split_table(kubectl("get", "namespace").stdout.decode("utf8"))
 
+def ls_ns_ex():
+    return [ns["NAME"] for ns in ls_ns()]
+
 def set_new_default_storage_class(new_default_sc: str):
     default_scs = default_scs = ls_sc(".*\(default\)")
     if len(default_scs) == 0:
@@ -400,17 +442,38 @@ def set_new_default_storage_class(new_default_sc: str):
 #
 
 def get_raw(ns, rsrc, name, format="yaml", check=True, cmd_output_log=KubectlCmdOutputLogging.DIAGNOSTICS, **kwargs):
-    r = kubectl("get", rsrc, args=[name, "-n", ns, f"-o={format}"], check=check, cmd_output_log=cmd_output_log, **kwargs)
+    r = kubectl("get",
+                rsrc,
+                args=[name] + (["-n", ns] if ns else []) + [f"-o={format}"],
+                check=check,
+                cmd_output_log=cmd_output_log,
+                **kwargs)
     if r and r.stdout:
         return r.stdout.decode("utf8")
     return None
 
 
-def get(ns, rsrc, name, check=True, cmd_output_log=KubectlCmdOutputLogging.DIAGNOSTICS, **kwargs):
+def get(ns, rsrc, name, check=True, cmd_output_log=KubectlCmdOutputLogging.DIAGNOSTICS, **kwargs) -> Optional[dict]:
     raw_yaml = get_raw(ns, rsrc, name, check=check, cmd_output_log=cmd_output_log, **kwargs)
     if raw_yaml:
         return yaml.safe_load(raw_yaml)
     return None
+
+
+def get_node(name, **kwargs) -> dict:
+    return get(None, "node", name, **kwargs)
+
+
+def get_node_labels(name, **kwargs) -> dict:
+    return (get_node(name, **kwargs) or {}).get("metadata", {}).get("labels", {})
+
+
+def get_ns(name, **kwargs) -> dict:
+    return get(None, "ns", name, **kwargs)
+
+
+def get_ns_labels(name, **kwargs) -> dict:
+    return (get_ns(name, **kwargs) or {}).get("metadata", {}).get("labels", {})
 
 
 def get_ic(ns, name, jpath=None):
@@ -421,8 +484,8 @@ def get_mbk(ns, name, jpath=None):
     return get(ns, "mbk", name)
 
 
-def get_sts(ns, name, jpath=None):
-    return get(ns, "sts", name)
+def get_sts(ns, name, jpath=None, **kwargs):
+    return get(ns, "sts", name, **kwargs)
 
 
 def get_rs(ns, name, jpath=None):
@@ -436,9 +499,14 @@ def get_deploy(ns, name, jpath=None, **kwargs):
 def get_svc(ns, name, jpath=None):
     return get(ns, "svc", name)
 
+def get_po(ns, name, jpath=None, check=True, **kwargs):
+    return get(ns, "po", name, check=check, **kwargs)
 
-def get_po(ns, name, jpath=None, check=True):
-    return get(ns, "po", name, check=check)
+def get_sa(ns, name, jpath=None, check=True):
+    return get(ns, "sa", name, check=check)
+
+def get_secret(ns, name, check=True):
+    return get(ns, "secret", name, check=check)
 
 def get_cj(ns, name, jpath=None, check=True):
     return get(ns, "cj", name, check=check)
@@ -448,6 +516,33 @@ def get_sa(ns, name, jpath=None, check=True):
 
 def get_cm(ns, name):
     return get(ns, "cm", name)
+
+def get_role(ns, name):
+    return get(ns, "role", name)
+
+def get_rolebinding(ns, name):
+    return get(ns, "rolebinding", name)
+
+def get_kopfpeering(ns, name):
+    return get(ns, "kopfpeering", name)
+
+def get_clusterrole(name):
+    return get(None, "clusterrole", name)
+
+def get_clusterrolebinding(name):
+    return get(None, "clusterrolebinding", name)
+
+def get_clusterkopfpeering(name):
+    return get(None, "clusterkopfpeering", name)
+
+def _parse_k8s_timestamp(value):
+    if isinstance(value, datetime.datetime):
+        return value
+
+    if isinstance(value, str):
+        return datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+    raise TypeError(f"Unsupported timestamp value: {value!r}")
 
 def get_ev(ns, selector, *, after=None, fields=None):
     def lookup(obj, field):
@@ -469,10 +564,11 @@ def get_ev(ns, selector, *, after=None, fields=None):
     if r.stdout:
         evs = yaml.safe_load(r.stdout.decode("utf8"))["items"]
         if after or fields:
+            after_ts = _parse_k8s_timestamp(after) if after else None
             res = []
             for ev in evs:
-                if (not after or
-                        ev["metadata"]["creationTimestamp"] >= after):
+                event_ts = _parse_k8s_timestamp(ev["metadata"]["creationTimestamp"])
+                if not after_ts or event_ts >= after_ts:
                     nev = {}
                     if fields:
                         for f in fields:
@@ -498,7 +594,7 @@ def describe_rsrc(ns, rsrc, name, jpath=None, cmd_output_log=KubectlCmdOutputLog
     r = kubectl("describe", rsrc, [name, "-n", ns], cmd_output_log=cmd_output_log)
     if r.stdout:
         return r.stdout.decode("utf8")
-    raise Exception(f"Error for describe {ns}/{name}")
+    raise Exception(f"Error for describe {rsrc} {ns} / {name}")
 
 
 def describe_po(ns, name, jpath=None, cmd_output_log=KubectlCmdOutputLogging.DIAGNOSTICS):
@@ -515,6 +611,7 @@ def describe_ic(ns, name, cmd_output_log=KubectlCmdOutputLogging.DIAGNOSTICS):
 
 def describe_cj(ns, name, cmd_output_log=KubectlCmdOutputLogging.DIAGNOSTICS):
     return describe_rsrc(ns, "cj", name, cmd_output_log=cmd_output_log)
+
 
 
 #
@@ -534,8 +631,8 @@ def delete(ns, rsrc, name, timeout, wait=True, additional_args=None):
     kubectl("delete", rsrc, [name] + args, timeout=timeout, ignore=["NotFound"], timeout_diagnostics=lambda: store_diagnostics(ns, rsrc, name))
 
 
-def delete_ic(ns, name, timeout=600):
-    delete(ns, "ic", name, timeout=timeout)
+def delete_ic(ns, name, timeout=600, wait=True):
+    delete(ns, "ic", name, timeout=timeout, wait=wait)
 
 
 def delete_mbk(ns, name, timeout=240):
@@ -587,11 +684,40 @@ def delete_cm(ns, name, timeout=5):
     delete(ns, "cm", name, timeout=timeout)
 
 
+def delete_sa(ns, name, timeout=60):
+    delete(ns, "sa", name, timeout=timeout)
+
+
 def delete_secret(ns, name, timeout=60):
     delete(ns, "secret", name, timeout=timeout)
 
+
 def delete_default_secret(ns, name="mypwds", timeout=60):
     delete_secret(ns, name, timeout=timeout)
+
+
+def delete_role(ns, name, timeout=60):
+    delete(ns, "role", name, timeout=timeout)
+
+
+def delete_rolebinding(ns, name, timeout=60):
+    delete(ns, "rolebinding", name, timeout=timeout)
+
+
+def delete_kopfpeering(ns, name, timeout=60):
+    delete(ns, "kopfpeering", name, timeout=timeout)
+
+
+def delete_clusterrole(name, timeout=60):
+    delete(None, "clusterrole", name, timeout=timeout)
+
+
+def delete_clusterrolebinding(name, timeout=60):
+    delete(None, "clusterrolebinding", name, timeout=timeout)
+
+
+def delete_clusterkopfpeering(name, timeout=60):
+    delete(None, "clusterkopfpeering", name, timeout=timeout)
 
 #
 
@@ -612,7 +738,7 @@ def logs(ns, name, prev=False, since=None, since_time=None, cmd_output_log=Kubec
         args.extend(["--since", since])
     if since_time:
         args.extend(["--since-time", since_time])
-    return kubectl("logs", None, args + ["-n", ns], cmd_output_log=cmd_output_log).stdout.decode("utf8")
+    return kubectl("logs", None, args + ["-n", ns], cmd_output_log=cmd_output_log).stdout.decode("utf8", errors="replace")
 
 
 def cat(ns, name, path):
@@ -626,7 +752,7 @@ def cat(ns, name, path):
     p = kubectl_popen("exec", args)
     s = p.stdout.read()
     p.terminate()
-    return s
+    return _strip_kubectl_exec_transport_warnings(s)
 
 
 def cat_in(ns, name, path, data):
@@ -662,7 +788,7 @@ def execp(ns, name, cmd):
     p = kubectl_popen("exec", args + ["-n", ns, "--"] + cmd)
     s = p.stdout.read()
     p.terminate()
-    return s
+    return _strip_kubectl_exec_transport_warnings(s)
 
 def kill(ns, name, sig, pid):
     try:
@@ -738,8 +864,10 @@ def apply(ns, y, *, check=True):
         to_apply = stripped
 
     try:
-        return feed_kubectl(to_apply, "apply", args=[
-            "-n", ns, "-f", "-"], check=check)
+        return feed_kubectl(to_apply,
+                            "apply",
+                            args=([*["-n", ns]] if ns else []) + ["-f", "-"],
+                            check=check)
     except subprocess.CalledProcessError as e:
         if debug_kubectl:
             logger.debug("rc = %s, stdout = %s, stderr = %s", e.returncode,
@@ -956,6 +1084,9 @@ def store_diagnostics(ns, rsrc, name):
 def store_operator_diagnostics(ns, name):
     store_diagnostics(ns, "operator", name)
 
+def store_deploy_diagnostics(ns, name):
+    store_diagnostics(ns, "deploy", name)
+
 def store_pod_diagnostics(ns, name):
     store_diagnostics(ns, "pod", name)
 
@@ -971,12 +1102,12 @@ def store_ns_diagnostics(ns):
 #
 
 def wait_pod_exists(ns, name, timeout=300, checkabort=lambda: None):
-    logger.info(f"Waiting for pod {ns}/{name} to come up")
+    logger.info(f"Waiting for Pod {ns} / {name} to come up")
     for i in range(timeout):
         pods = ls_po(ns)
         for pod in pods:
             if pod["NAME"] == name:
-                logger.info(f"{ns}/{name} is {pod['STATUS']}")
+                logger.info(f"Pod {ns} / {name} is {pod['STATUS']}")
                 return pod
         time.sleep(1)
 
@@ -984,11 +1115,11 @@ def wait_pod_exists(ns, name, timeout=300, checkabort=lambda: None):
                 "-n", ns]).stdout.decode("utf8"))
 
     store_pod_diagnostics(ns, name)
-    raise Exception(f"Timeout waiting for pod {ns}/{name}")
+    raise Exception(f"Timeout waiting for Pod {ns} / {name}")
 
 
 def wait_pod_gone(ns, name, timeout=300, checkabort=lambda: None):
-    logger.info(f"Waiting for pod {ns}/{name} to disappear")
+    logger.info(f"Waiting for Pod {ns} / {name} to disappear")
     i = 0
     last_state = None
     while i < timeout:
@@ -1002,7 +1133,7 @@ def wait_pod_gone(ns, name, timeout=300, checkabort=lambda: None):
                     last_state = pod["STATUS"]
                 break
         else:
-            logger.info(f"{ns}/{name} is gone")
+            logger.info(f"Pod {ns} / {name} is gone")
             return True
         time.sleep(1)
         i += 1
@@ -1011,7 +1142,7 @@ def wait_pod_gone(ns, name, timeout=300, checkabort=lambda: None):
                 "-n", ns]).stdout.decode("utf8"))
 
     store_pod_diagnostics(ns, name)
-    raise Exception(f"Timeout waiting for pod {ns}/{name}")
+    raise Exception(f"Timeout waiting for Pod {ns} / {name}")
 
 
 def wait_pod(ns, name, status="Running", timeout=600, checkabort=lambda: None, checkready:bool=False):
@@ -1029,7 +1160,7 @@ def wait_pod(ns, name, status="Running", timeout=600, checkabort=lambda: None, c
 
     wait_pod_exists(ns, name, timeout, checkabort)
 
-    logger.info(f"Waiting for pod {ns}/{name} to become {status}")
+    logger.info(f"Waiting for pod {ns} / {name} to become {status}")
 
     checkabort()
     r = watch(ns, "pod", name, check_status, timeout,
@@ -1041,13 +1172,13 @@ def wait_pod(ns, name, status="Running", timeout=600, checkabort=lambda: None, c
 
 
 def wait_ic_exists(ns, name, timeout=60, checkabort=lambda: None):
-    logger.info(f"Waiting for ic {ns}/{name} to come up")
+    logger.info(f"Waiting for IC {ns} / {name} to come up")
     for i in range(timeout):
         checkabort()
         ics = ls_ic(ns)
         for ic in ics:
             if ic["NAME"] == name:
-                logger.info(f"{ns}/{name} is {ic['STATUS']}")
+                logger.info(f"{ns} / {name} is {ic['STATUS']}")
                 return ic
         time.sleep(1)
 
@@ -1055,11 +1186,11 @@ def wait_ic_exists(ns, name, timeout=60, checkabort=lambda: None):
                 "-n", ns]).stdout.decode("utf8"))
 
     store_ic_diagnostics(ns, name)
-    raise Exception(f"Timeout waiting for ic {ns}/{name}")
+    raise Exception(f"Timeout waiting for ic {ns} / {name}")
 
 
 def wait_ic_gone(ns, name, timeout=150, checkabort=lambda: None):
-    logger.info(f"Waiting for ic {ns}/{name} to disappear")
+    logger.info(f"Waiting for IC {ns} / {name} to disappear")
     last_state = None
     i = 0
     while i < timeout:
@@ -1074,7 +1205,7 @@ def wait_ic_gone(ns, name, timeout=150, checkabort=lambda: None):
                     last_state = ic["STATUS"]
                 break
         else:
-            logger.info(f"{ns}/{name} is gone")
+            logger.info(f"IC {ns} / {name} is gone")
             return True
         time.sleep(1)
         i += 1
@@ -1083,7 +1214,7 @@ def wait_ic_gone(ns, name, timeout=150, checkabort=lambda: None):
                 "-n", ns]).stdout.decode("utf8"))
 
     store_ic_diagnostics(ns, name)
-    raise Exception(f"Timeout waiting for ic {ns}/{name}")
+    raise Exception(f"Timeout waiting for IC {ns} / {name}")
 
 
 def wait_ic(ns, name, status=["ONLINE"], num_online=None, timeout=300, probe_time=None,
@@ -1101,7 +1232,7 @@ def wait_ic(ns, name, status=["ONLINE"], num_online=None, timeout=300, probe_tim
     wait_ic_exists(ns, name, timeout, checkabort)
 
     logger.info(
-        f"Waiting for ic {ns}/{name} to become {status}, num_online={num_online}")
+        f"Waiting for IC {ns} / {name} to become {status}, num_online={num_online}")
 
     checkabort()
     r = watch(ns, "ic", name, check_status, timeout,
@@ -1110,6 +1241,236 @@ def wait_ic(ns, name, status=["ONLINE"], num_online=None, timeout=300, probe_tim
     logger.info(f"{r}")
 
     return r
+
+
+def _get_deploy_ready_status(deploy):
+    spec = deploy.get("spec") or {}
+    deploy_status = deploy.get("status") or {}
+
+    replicas = spec.get("replicas")
+    if replicas is None:
+        replicas = deploy_status.get("replicas", 0)
+
+    ready_replicas = deploy_status.get("readyReplicas", 0)
+    updated_replicas = deploy_status.get("updatedReplicas", 0)
+    available_replicas = deploy_status.get("availableReplicas", 0)
+    current_replicas = deploy_status.get("replicas", 0)
+
+    return replicas, ready_replicas, updated_replicas, available_replicas, current_replicas
+
+
+_DEPLOYMENT_FATAL_POD_REASONS = frozenset(
+    {
+        "CrashLoopBackOff",
+        "CreateContainerConfigError",
+        "CreateContainerError",
+        "ContainerCannotRun",
+        "ErrImageNeverPull",
+        "ErrImagePull",
+        "Error",
+        "ImageInspectError",
+        "ImagePullBackOff",
+        "InvalidImageName",
+        "RegistryUnavailable",
+        "RunContainerError",
+    }
+)
+
+
+def _deployment_label_selector(deploy: Optional[dict]) -> str:
+    selector = (deploy or {}).get("spec", {}).get("selector") or {}
+    requirements = []
+
+    for key, value in sorted((selector.get("matchLabels") or {}).items()):
+        requirements.append(f"{key}={value}")
+
+    for expression in selector.get("matchExpressions") or []:
+        key = str(expression.get("key", "")).strip()
+        operator = str(expression.get("operator", "")).strip()
+        values = [str(value) for value in expression.get("values") or []]
+        if not key or not operator:
+            continue
+        if operator == "In":
+            if values:
+                requirements.append(f"{key} in ({','.join(values)})")
+        elif operator == "NotIn":
+            if values:
+                requirements.append(f"{key} notin ({','.join(values)})")
+        elif operator == "Exists":
+            requirements.append(key)
+        elif operator == "DoesNotExist":
+            requirements.append(f"!{key}")
+        else:
+            logger.warning(
+                "Unsupported deployment selector operator %s for %s",
+                operator,
+                key,
+            )
+
+    return ",".join(requirements)
+
+
+def _list_deploy_pods(ns: str, deploy: Optional[dict]) -> list[dict]:
+    selector = _deployment_label_selector(deploy)
+    if not selector:
+        return []
+
+    pods = kubectl(
+        "get",
+        "po",
+        args=["-n", ns, "-l", selector, "-o", "json"],
+        cmd_output_log=KubectlCmdOutputLogging.MUTE,
+    )
+    if not pods or not pods.stdout:
+        return []
+
+    return json.loads(pods.stdout.decode("utf8")).get("items", [])
+
+
+def _pod_startup_fatal_reason(pod: Optional[dict]) -> Optional[str]:
+    if not isinstance(pod, dict):
+        return None
+
+    status = pod.get("status") or {}
+    phase = status.get("phase")
+    pod_reason = status.get("reason")
+
+    if phase == "Failed":
+        return f"pod phase Failed ({pod_reason})" if pod_reason else "pod phase Failed"
+    if pod_reason == "Evicted":
+        return "pod reason Evicted"
+
+    for container_type, container_statuses in (
+        ("init container", status.get("initContainerStatuses")),
+        ("container", status.get("containerStatuses")),
+    ):
+        for container_status in container_statuses or []:
+            container_name = container_status.get("name", "<unknown>")
+            state = container_status.get("state") or {}
+
+            waiting = state.get("waiting") or {}
+            waiting_reason = waiting.get("reason")
+            if waiting_reason in _DEPLOYMENT_FATAL_POD_REASONS:
+                return (
+                    f"{container_type} {container_name} waiting: "
+                    f"{waiting_reason}"
+                )
+
+            terminated = state.get("terminated") or {}
+            terminated_reason = terminated.get("reason")
+            if terminated_reason in _DEPLOYMENT_FATAL_POD_REASONS:
+                return (
+                    f"{container_type} {container_name} terminated: "
+                    f"{terminated_reason}"
+                )
+
+    return None
+
+
+def _raise_on_fatal_deploy_pod_state(ns: str, deploy_name: str, deploy: dict) -> None:
+    for pod in _list_deploy_pods(ns, deploy):
+        pod_name = pod.get("metadata", {}).get("name", "")
+        fatal_reason = _pod_startup_fatal_reason(pod)
+        if not pod_name or not fatal_reason:
+            continue
+
+        store_deploy_diagnostics(ns, deploy_name)
+        store_pod_diagnostics(ns, pod_name)
+        raise Exception(
+            f"Deployment {ns} / {deploy_name} pod {pod_name} entered fatal "
+            f"startup state: {fatal_reason}"
+        )
+
+
+def wait_deploy_exists(ns, name, timeout=300, checkabort=lambda: None):
+    logger.info(f"Waiting for Deployment {ns} / {name} to come up")
+    for i in range(timeout):
+        checkabort()
+        deploys = ls_deploy(ns)
+        for deploy in deploys:
+            if deploy["NAME"] == name:
+                logger.info(f"Deployment {ns} / {name} exists with READY={deploy.get('READY')}")
+                return deploy
+        time.sleep(1)
+
+    logger.info("%s", kubectl("get", "deploy", args=["-n", ns]).stdout.decode("utf8"))
+
+    store_diagnostics(ns, "deploy", name)
+    raise Exception(f"Timeout waiting for Deployment {ns} / {name}")
+
+
+def wait_deploy_gone(ns, name, timeout=300, checkabort=lambda: None):
+    logger.info(f"Waiting for Deployment {ns} / {name} to disappear")
+    i = 0
+    last_ready = None
+    while i < timeout:
+        checkabort()
+        deploys = ls_deploy(ns)
+        for deploy in deploys:
+            if deploy["NAME"] == name:
+                ready = deploy.get("READY")
+                if last_ready != ready:
+                    last_ready = ready
+                break
+        else:
+            logger.info(f"Deployment {ns} / {name} is gone")
+            return True
+        time.sleep(1)
+        i += 1
+
+    logger.info("%s", kubectl("get", "deploy", args=["-n", ns]).stdout.decode("utf8"))
+
+    store_diagnostics(ns, "deploy", name)
+    raise Exception(f"Timeout waiting for Deployment {ns} / {name}")
+
+def wait_deploy(ns, name, timeout=600, checkabort=lambda: None):
+    wait_deploy_exists(ns, name, timeout, checkabort)
+
+
+    logger.info(f"Waiting for Deployment {ns} / {name} to become ready")
+
+    def deploy_ready():
+        checkabort()
+        deploy = get_deploy(ns, name, check=False)
+        if not deploy:
+            return False
+
+        _raise_on_fatal_deploy_pod_state(ns, name, deploy)
+
+        replicas, ready_replicas, updated_replicas, available_replicas, current_replicas = _get_deploy_ready_status(deploy)
+        logger.debug(
+            "Deployment %s / %s replicas=%s readyReplicas=%s updatedReplicas=%s availableReplicas=%s currentReplicas=%s",
+            ns,
+            name,
+            replicas,
+            ready_replicas,
+            updated_replicas,
+            available_replicas,
+            current_replicas,
+        )
+
+        return (
+            updated_replicas >= replicas and
+            ready_replicas >= replicas and
+            available_replicas >= replicas and
+            current_replicas == replicas
+        )
+
+    for i in range(timeout):
+        if deploy_ready():
+            deploy = get_deploy(ns, name)
+            replicas, ready_replicas, updated_replicas, available_replicas, current_replicas = _get_deploy_ready_status(deploy)
+            logger.info(
+                f"Deployment {ns} / {name} is READY replicas={replicas} readyReplicas={ready_replicas} "
+                f"updatedReplicas={updated_replicas} availableReplicas={available_replicas} currentReplicas={current_replicas}"
+            )
+            return deploy
+        time.sleep(1)
+
+    logger.info("%s", kubectl("get", "deploy", args=["-n", ns]).stdout.decode("utf8"))
+
+    store_diagnostics(ns, "deploy", name)
+    raise Exception(f"Timeout waiting for Deployment {ns} / {name} to become ready")
 
 def portfw(ns, name, in_port, target_type="pod", local_address="127.0.0.1", attempts=5, read_timeout=10):
     """
@@ -1204,8 +1565,20 @@ class PortForward:
 def create_ns(ns, labels = {}):
     kubectl("create", "namespace", [ns], ignore=["AlreadyExists"])
     if len(labels):
-        labels_kv = [ f"{key}={value}" for key, value in labels.items()]
-        kubectl("label", "namespace", [ns, *labels_kv])
+        label_ns(ns, labels)
+
+
+def label_object(name, obj_type, labels: dict):
+    labels_kv = [f"{key}-" if value == None else f"{key}={value}" for key, value in labels.items()]
+    kubectl("label", obj_type, [name, *labels_kv])
+
+
+def label_node(name, labels):
+    label_object(name, "node", labels)
+
+
+def label_ns(name, labels):
+    label_object(name, "ns", labels)
 
 
 def create_testpv(ns, name):

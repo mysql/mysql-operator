@@ -22,6 +22,7 @@ import mysqlsh
 import kopf
 import datetime
 import time
+import threading
 
 common_gr_options = {
     # Abort the server if member is kicked out of the group, which would trigger
@@ -145,9 +146,17 @@ class ClusterController:
             except RuntimeError as e:
                 e_str = str(e)
                 if "bad_alloc" in e_str or "std::bad_alloc" in e_str:
-                    logger.warning(f"Dba.get_cluster() hit std::bad_alloc at {primary_pod.endpoint}: error={e}")
-                else:
-                    logger.info(f"connect_to_primary: RuntimeError from get_cluster(): {e}")
+                    logger.warning(
+                        utils.log_with_thread(
+                            "connect_to_primary: Dba.get_cluster() hit std::bad_alloc",
+                            cluster=f"{self.cluster.namespace}/{self.cluster.name}",
+                            pod=primary_pod.name,
+                            endpoint=primary_pod.endpoint,
+                            id_dba=id(self.dba),
+                            id_session=id(self.dba.session),
+                            error=e,
+                        )
+                    )
                 raise
             except mysqlsh.Error as e:
                 # Log and bubble up fatal errors consistently
@@ -158,7 +167,17 @@ class ClusterController:
                     # endpoint_url_safe might not exist on some objects; fall back to name
                     if shellutils.check_fatal(e, primary_pod.name, "get_cluster()", logger):
                         raise
-                logger.info(f"get_cluster() failed at {primary_pod.endpoint}: error={e}")
+                logger.error(
+                    utils.log_with_thread(
+                        "connect_to_primary: get_cluster() failed",
+                        cluster=f"{self.cluster.namespace}/{self.cluster.name}",
+                        pod=primary_pod.name,
+                        endpoint=primary_pod.endpoint,
+                        id_dba=id(self.dba),
+                        id_session=id(self.dba.session),
+                        error=e,
+                    )
+                )
                 raise
         else:
             # - check if we should consider pod marker for whether the instance joined
@@ -187,37 +206,73 @@ class ClusterController:
 
                         r = res.fetch_one()
                         if r[0] != "PRIMARY":
-                            logger.info(f"Primary requested, but {pod.name} is no primary")
                             self.dba.session.close()
                             continue
 
                 except Exception as e:
-                    logger.debug(f"connect_dba: target={pod.name} error={e}")
+                    logger.error(
+                        utils.log_with_thread(
+                            "connect_to_cluster: connect_dba failed",
+                            cluster=f"{self.cluster.namespace}/{self.cluster.name}",
+                            pod=pod.name,
+                            endpoint=pod.endpoint,
+                            mysql_target=utils.format_mysql_target(pod.endpoint_co),
+                            error=e,
+                        )
+                    )
                     # Try another pod if we can't connect to it
                     last_exc = e
                     continue
 
                 try:
                     self.dba_cluster = self.dba.get_cluster()
-                    logger.info(f"Connected to {pod}")
                     return pod
                 except RuntimeError as e:
                     e_str = str(e)
                     if "bad_alloc" in e_str or "std::bad_alloc" in e_str:
-                        logger.warning(f"Dba.get_cluster() hit std::bad_alloc from {pod.name}: error={e}")
-                    else:
-                        logger.info(f"connect_to_cluster: RuntimeError from get_cluster() at {pod.name}: {e}")
+                        logger.warning(
+                            utils.log_with_thread(
+                                "connect_to_cluster: Dba.get_cluster() hit std::bad_alloc",
+                                cluster=f"{self.cluster.namespace}/{self.cluster.name}",
+                                pod=pod.name,
+                                endpoint=pod.endpoint,
+                                id_dba=id(self.dba),
+                                id_session=id(self.dba.session),
+                                error=e,
+                            )
+                        )
                     # Try next pod
                 except mysqlsh.Error as e:
-                    logger.info(f"get_cluster() from {pod.name} failed: {e}")
+                    logger.error(
+                        utils.log_with_thread(
+                            "connect_to_cluster: get_cluster() failed",
+                            cluster=f"{self.cluster.namespace}/{self.cluster.name}",
+                            pod=pod.name,
+                            endpoint=pod.endpoint,
+                            id_dba=id(self.dba),
+                            id_session=id(self.dba.session),
+                            error=e,
+                        )
+                    )
                     if e.code == errors.SHERR_DBA_BADARG_INSTANCE_NOT_ONLINE:
                         # This member is not ONLINE, so there's no chance of
                         # getting a cluster handle from it
                         offline_pods.append(pod.name)
                     # Try next pod
                 except Exception as e:
-                    logger.info(f"get_cluster() from {pod.name} failed: {e}")
+                    logger.error(
+                        utils.log_with_thread(
+                            "connect_to_cluster: get_cluster() failed",
+                            cluster=f"{self.cluster.namespace}/{self.cluster.name}",
+                            pod=pod.name,
+                            endpoint=pod.endpoint,
+                            id_dba=id(self.dba),
+                            id_session=id(self.dba.session),
+                            error=e,
+                        )
+                    )
                     # Try next pod
+                    continue
 
             # If all pods are connectable but OFFLINE, then we have complete outage and need a reboot
             if len(offline_pods) == len(all_pods):
@@ -382,7 +437,7 @@ class ClusterController:
                 if "bad_alloc" in e_str or "std::bad_alloc" in e_str:
                     logger.warning(f"cluster.status() hit std::bad_alloc at {seed_pod.endpoint}: error={e}")
                 else:
-                    logger.info(f"create_cluster: RuntimeError from status(): {e}")
+                    logger.error(f"create_cluster: RuntimeError from status(): {e}")
             except mysqlsh.Error as e:
                 try:
                     if shellutils.check_fatal(e, seed_pod.endpoint_url_safe, "status()", logger):
@@ -390,7 +445,7 @@ class ClusterController:
                 except Exception:
                     if shellutils.check_fatal(e, seed_pod.name, "status()", logger):
                         raise
-                logger.info(f"status() failed at {seed_pod.endpoint}: error={e}")
+                logger.error(f"status() failed at {seed_pod.endpoint}: error={e}")
 
             # if there's just 1 pod, then the cluster is ready... otherwise, we
             # need to wait until all pods have joined
@@ -411,7 +466,7 @@ class ClusterController:
                 update = False
             else:
                 raise
-        logger.debug(f"{'Updating' if update else 'Creating'} router account {user}")
+        logger.info(f"{'Updating' if update else 'Creating'} router account {user}")
         try:
             dba_cluster.setup_router_account(
                 user, {"password": password, "update": update})
@@ -560,8 +615,6 @@ class ClusterController:
             status = diagnose.diagnose_cluster_candidate(
                 self.dba.session, cluster, pod, pod_dba_session, logger)
 
-            logger.info(
-                f"Reconciling {pod}: state={status.status}  deleting={pod.deleting} cluster_deleting={self.cluster.deleting}")
             if pod.deleting or self.cluster.deleting:
                 return
 
@@ -597,8 +650,6 @@ class ClusterController:
                 self.probe_member_status(pod, pod_dba_session.session, False, logger)
 
     def join_instance(self, pod: MySQLPod, pod_dba_session: 'Dba', logger: Logger) -> None:
-        logger.info(f"Adding {pod.endpoint} to cluster")
-
         peer_pod = self.connect_to_cluster(logger)
 
         self.log_mysql_info(pod, pod_dba_session.session, logger)
@@ -630,9 +681,6 @@ class ClusterController:
         if pod.instance_type == "group-member":
             add_options.update(common_gr_options)
 
-        logger.info(
-            f"ADD INSTANCE: target={pod.endpoint}  instance_type={pod.instance_type} cluster_peer={peer_pod.endpoint}  options={add_options}...")
-
         pod.add_member_finalizer()
 
         report_host = pod_dba_session.session.run_sql('SELECT @@report_host').fetch_one()[0]
@@ -646,19 +694,43 @@ class ClusterController:
 
             logger.debug("add_instance OK")
         except  (mysqlsh.Error, RuntimeError) as e:
-            logger.warning(f"add_instance failed: error={e}")
+            logger.warning(
+                utils.log_with_thread(
+                    "join_instance: add_instance failed",
+                    cluster=f"{self.cluster.namespace}/{self.cluster.name}",
+                    target_pod=pod.name,
+                    target_endpoint=pod.endpoint,
+                    error=e,
+                )
+            )
 
             # Incremetnal may fail if transactions are missing from binlog
             # retry using clone
             add_options["recoveryMethod"] = "clone"
-            logger.warning(f"trying add_instance with clone")
+            logger.warning(
+                utils.log_with_thread(
+                    "join_instance: trying add_instance with clone",
+                    cluster=f"{self.cluster.namespace}/{self.cluster.name}",
+                    target_pod=pod.name,
+                    target_endpoint=pod.endpoint,
+                    options=add_options,
+                )
+            )
             try:
                 if pod.instance_type == "read-replica":
                     self.dba_cluster.add_replica_instance(pod.endpoint, add_options)
                 else:
                     self.dba_cluster.add_instance(pod.endpoint_co, add_options)
             except (mysqlsh.Error, RuntimeError) as e:
-                logger.warning(f"add_instance failed second time: error={e}")
+                logger.warning(
+                    utils.log_with_thread(
+                        "join_instance: add_instance failed second time",
+                        cluster=f"{self.cluster.namespace}/{self.cluster.name}",
+                        target_pod=pod.name,
+                        target_endpoint=pod.endpoint,
+                        error=e,
+                    )
+                )
                 raise
 
         if pod.instance_type == "read-replica":
@@ -684,17 +756,12 @@ class ClusterController:
                 self.post_create_actions(self.dba.session, self.dba_cluster, logger)
 
     def rejoin_instance(self, pod: MySQLPod, pod_session, logger: Logger) -> None:
-        logger.info(f"Rejoining {pod.endpoint} to cluster")
-
         if not self.dba_cluster:
             self.connect_to_cluster(logger)
 
         self.log_mysql_info(pod, pod_session, logger)
 
         rejoin_options = {}
-
-        logger.info(
-            f"rejoin_instance: target={pod.endpoint} options={rejoin_options}...")
 
         try:
             self.dba_cluster.rejoin_instance(pod.endpoint, rejoin_options)
@@ -783,14 +850,13 @@ class ClusterController:
                                     f"force remove_instance failed. error={e} deleting_cluster={deleting}  peer={peer_pod.name}")
                                 raise
                     except RuntimeError as e:
-                        logger.info(f"force remove_instance failed. RuntimeError {e}")
+                        logger.error(f"force remove_instance failed. RuntimeError {e}")
                         if str(e).find("The cluster object is disconnected") == -1:
                             logger.info(f"Can't do anything to remove {pod.name} cleanly")
                             raise
             else:
                 logger.error(
                     f"Cluster is not available, skipping clean removal of {pod.name}")
-
 
 
     def repair_cluster(self, pod: MySQLPod, diagnostic: diagnose.ClusterStatus, logger: Logger) -> None:
@@ -1057,7 +1123,7 @@ class ClusterController:
             ret = self.dba_cluster.remove_router_metadata(router_name + '::')
             logger.info(f"remove_router_metadata returned {ret}")
 
-    def on_router_routing_option_chahnge(self, old: dict, new: dict, logger: Logger) -> None:
+    def on_router_routing_option_change(self, old: dict, new: dict, logger: Logger) -> None:
         self.connect_to_primary(None, logger)
 
         dba = self.dba_cluster

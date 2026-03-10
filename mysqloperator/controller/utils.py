@@ -2,14 +2,16 @@
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
-
+import sys
+import os
+import threading
+import platform
+import socket
 import datetime
 import time
-import os
 import string
 import random
 import base64
-import threading
 import json
 import hashlib
 from logging import Logger
@@ -62,6 +64,40 @@ class EphemeralState:
 
 
 g_ephemeral_pod_state = EphemeralState()
+
+
+def ephemeral_value_changed(obj, key: str, value, context: str) -> bool:
+    """
+    Prime the ephemeral cache on the first observation and report only real
+    changes after that.
+    """
+    previous, _, _ = g_ephemeral_pod_state.testset(obj, key, value, context=context)
+    return previous is not None and previous != value
+
+
+def thread_tag() -> str:
+    return f"tid={threading.get_ident()}"
+
+
+def log_with_thread(message: str, **fields) -> str:
+    parts = [thread_tag()]
+    for key, value in fields.items():
+        if value is not None:
+            parts.append(f"{key}={value}")
+    parts.append(message)
+    return " ".join(parts)
+
+
+def format_mysql_target(target: dict) -> str:
+    user = target.get("user", "?")
+    if target.get("host"):
+        endpoint = target["host"]
+        if target.get("port") is not None:
+            endpoint = f"{endpoint}:{target['port']}"
+    else:
+        endpoint = target.get("socket", "?")
+
+    return f"{user}@{endpoint}"
 
 
 def isotime() -> str:
@@ -191,6 +227,49 @@ def indent(s: str, spaces: int) -> str:
         return " " * spaces + ind.join(s.split("\n"))
     return ""
 
+def get_mem_limits_in_gb():
+    raw = None
+
+    for path in (
+        "/sys/fs/cgroup/memory.max",
+        "/sys/fs/cgroup/memory/memory.limit_in_bytes",
+    ):
+        try:
+            with open(path, "r") as f:
+                raw = f.read().strip()
+                break
+        except OSError:
+            continue
+
+    if not raw or raw == "max":
+        return "Unlimited"
+
+    try:
+        limit = int(raw)
+    except ValueError:
+        return "Unlimited"
+
+    if limit > 10**15:
+        return "Unlimited"
+    return f"{limit / (1024**3):.2f}"
+
+def get_cpu_limits():
+    try:
+        # First we try with cgroup v2
+        with open('/sys/fs/cgroup/cpu.max', 'r') as f:
+            quota, period = f.read().split()
+            if quota == "max": return os.cpu_count()
+            return float(quota) / float(period)
+    except (OSError, ValueError):
+        # Then if this is an old system we try ith cgroup v1
+        try:
+            with open('/sys/fs/cgroup/cpu/cpu.cfs_quota_us') as q, \
+                 open('/sys/fs/cgroup/cpu/cpu.cfs_period_us') as p:
+                quota = int(q.read())
+                period = int(p.read())
+                return quota / period if quota > 0 else os.cpu_count()
+        except (OSError, ValueError):
+            return os.cpu_count()
 
 def log_banner(path: str, logger: Logger) -> None:
     from . import config
@@ -199,8 +278,18 @@ def log_banner(path: str, logger: Logger) -> None:
     ts = datetime.datetime.fromtimestamp(os.stat(path).st_mtime).isoformat()
 
     path = os.path.basename(path)
-    logger.info(f"MySQL Operator/{path}={config.OPERATOR_VERSION}  timestamp={ts}  kopf={kopf_version}  uid={os.getuid()}")
+    logger.info(f"MySQL Operator/{path}={config.OPERATOR_VERSION}  Python={sys.version.split()[0]}  timestamp={ts}  kopf={kopf_version}  uid={os.getuid()}")
 
+    platform_info = platform.uname()._asdict()
+    hostname = socket.gethostname()
+    try:
+        node_ip = socket.gethostbyname(hostname)
+    except Exception as exc:
+        node_ip = f"unresolved ({exc})"
+
+    logger.info(f"cpu={platform.processor()}   kernel={platform_info['release']}")
+    logger.info(f"cpu_limits:{get_cpu_limits()}  memory_limits={get_mem_limits_in_gb()}")
+    logger.info(f"node={platform_info['node']}  ip={node_ip}")
 
 def dict_to_json_string(d : dict) -> str:
     return json.dumps(d, indent = 4)

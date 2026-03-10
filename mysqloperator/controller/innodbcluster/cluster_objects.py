@@ -13,7 +13,7 @@ from .. import utils, config, consts
 from .cluster_api import InnoDBCluster, AbstractServerSetSpec, InnoDBClusterSpec, ReadReplicaSpec, InnoDBClusterSpecProperties
 from .. import fqdn
 import yaml
-from ..kubeutils import api_core, api_apps, api_customobj, k8s_cluster_domain, ApiException
+from ..kubeutils import api_core, api_apps, api_customobj, k8s_cluster_domain, watched_namespaces, ApiException
 from . import router_objects
 import base64
 import os
@@ -845,38 +845,28 @@ metadata:
 
 
 def prepare_role_binding_sidecar(spec: AbstractServerSetSpec) -> dict:
-    rolebinding = f"""
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: {spec.roleBindingName}
-  namespace: {spec.namespace}
-subjects:
-  - kind: ServiceAccount
-    name: {spec.serviceAccountName}
-roleRef:
-  kind: ClusterRole
-  name: mysql-sidecar
-  apiGroup: rbac.authorization.k8s.io
-"""
-    rolebinding = yaml.safe_load(rolebinding)
-
-    return rolebinding
-
+    return prepare_role_binding(spec, spec.sidecarRoleBindingName, spec.serviceAccountName, "sidecar")
 
 def prepare_role_binding_switchover(spec: AbstractServerSetSpec) -> dict:
+    return prepare_role_binding(spec, spec.switchoverRoleBindingName, spec.switchoverServiceAccountName, "switchover")
+
+def prepare_role_binding(spec: AbstractServerSetSpec, role_binding_name:str, sa_name: str, role: str) -> dict:
+    # "mysql" for non-helm, i.e. kubectl, manifests. Although we set it there, let's be defensive for
+    # situations where the containername got changed without updating the roles. Old names are the default value
+    role_name = os.environ.get(f"{role.upper()}_ROLE_NAME", f"mysql-{role}")
+
     rolebinding = f"""
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: {spec.switchoverRoleBindingName}
+  name: {role_binding_name}
   namespace: {spec.namespace}
 subjects:
   - kind: ServiceAccount
-    name: {spec.switchoverServiceAccountName}
+    name: {sa_name}
 roleRef:
   kind: ClusterRole
-  name: mysql-switchover
+  name: {role_name}
   apiGroup: rbac.authorization.k8s.io
 """
     rolebinding = yaml.safe_load(rolebinding)
@@ -936,7 +926,6 @@ max_failures_during_progress=$1
 
 # Ping the server to see if it's up
 mysqladmin -umysqlhealthchecker ping
-# If it's up, we succeed
 if [ $? -eq 0 ]; then
   exit 0
 fi
@@ -1118,7 +1107,7 @@ metadata:
 spec:
   template:
     spec:
-      serviceAccountName: mysql-switchover-sa
+      serviceAccountName: {spec.switchoverServiceAccountName}
       securityContext:
         runAsUser: 27
         runAsGroup: 27

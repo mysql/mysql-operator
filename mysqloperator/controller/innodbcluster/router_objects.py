@@ -5,6 +5,7 @@
 
 import string
 import random
+import threading
 
 from shlex import quote
 from .cluster_api import InnoDBCluster, InnoDBClusterSpec
@@ -465,39 +466,52 @@ def restart_deployment_for_tls(dpl: api_client.V1Deployment, router_tls_crt, rou
 
 
 def update_router_account(cluster: InnoDBCluster, on_nonupdated: Optional[Callable], logger: Logger) -> None:
-      if not cluster.ready:
-          logger.info(f"Cluster {cluster.namespace}/{cluster.name} not ready. Skipping router account update.")
-          return
+    if not cluster.ready:
+        logger.info(f"Cluster {cluster.namespace}/{cluster.name} not ready. Skipping router account update.")
+        return
 
-      try:
-          user, password = cluster.get_router_account()
-      except ApiException as e:
-          if e.status == 404:
-              # Should not happen, as cluster.ready should be False for a cluster with missing router account
-              # In any case handle this case and skip
-              logger.warning(f"Could not find router account of {cluster.name} in {cluster.namespace}")
-              return
-          raise
+    try:
+        user, password = cluster.get_router_account()
+    except ApiException as e:
+        if e.status == 404:
+            # Should not happen, as cluster.ready should be False for a cluster with missing router account
+            # In any case handle this case and skip
+            logger.warning(f"Could not find router account of {cluster.name} in {cluster.namespace}")
+            return
+        raise
 
-      updated = False
+    updated = False
 
-      error_reasons = ["ImagePullBackOff", "ErrImagePull", "CreateContainerConfigError", "CreateContainerError", "ContainerCannotRun", "CrashLoopBackOff", "InvalidImageName"]
-      for pod in cluster.get_pods():
-          if pod.deleting:
-              logger.info(f"Pod {pod.name} is being deleted")
-              continue
-          if pod.check_container_status_any_reason(container_names=["mysql"], reasons=error_reasons):
-              logger.info(f"MySQL Container in error state {pod.get_container_status_reason('mysql')}. Won't be able to connect to {pod.endpoint}")
-              continue
-          try:
-              with shellutils.DbaWrap(shellutils.connect_dba(pod.endpoint_co, logger, max_tries=3)) as dba:
-                  dba.get_cluster().setup_router_account(user, {"update": True})
-                  updated = True
-                  break
+    error_reasons = ["ImagePullBackOff", "ErrImagePull", "CreateContainerConfigError", "CreateContainerError", "ContainerCannotRun", "CrashLoopBackOff", "InvalidImageName"]
+    for pod in cluster.get_pods():
+        if pod.deleting:
+            logger.info(f"Pod {pod.name} is being deleted")
+            continue
+        if pod.check_container_status_any_reason(container_names=["mysql"], reasons=error_reasons):
+            logger.info(f"MySQL Container in error state {pod.get_container_status_reason('mysql')}. Won't be able to connect to {pod.endpoint}")
+            continue
+        try:
+            with shellutils.DbaWrap(shellutils.connect_dba(pod.endpoint_co, logger, max_tries=3)) as dba:
+                dba_cluster = dba.get_cluster()
 
-          except mysqlsh.Error as e:
-              logger.warning(f"Could not connect to {pod.endpoint_co}: {e}")
-              continue
+                update = True
+                try:
+                    dba.session.run_sql("show grants for ?@'%'", [user])
+                except mysqlsh.Error as e:
+                    if e.code == mysqlsh.mysql.ErrorCode.ER_NONEXISTING_GRANT:
+                        update = False
+                    else:
+                        raise
 
-      if not updated and on_nonupdated:
-          on_nonupdated()
+                logger.info(f"{'Updating' if update else 'Creating'} router account {user}")
+                dba_cluster.setup_router_account(
+                    user, {"password": password, "update": update})
+                updated = True
+                break
+
+        except mysqlsh.Error as e:
+            logger.warning(f"Could not connect to {pod.endpoint_co}: {e}")
+            continue
+
+    if not updated and on_nonupdated:
+        on_nonupdated()

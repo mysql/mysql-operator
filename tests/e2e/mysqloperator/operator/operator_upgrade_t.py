@@ -5,15 +5,64 @@
 
 import logging
 import json
+import pathlib
 import time
 import unittest
 import re
 from datetime import datetime, timezone
+import yaml
 
 from utils import tutil
 from utils import kutil
 from utils.optesting import COMMON_OPERATOR_ERRORS
 from setup.config import g_ts_cfg
+
+
+DEFAULT_OPERATOR_CLUSTERROLE_NAMES = (
+    "mysql-operator",
+    "mysql-sidecar",
+    "mysql-switchover",
+)
+DEFAULT_OPERATOR_DEPLOY_MANIFEST = (
+    pathlib.Path(__file__).resolve().parents[4] / "deploy" / "deploy-operator.yaml"
+)
+
+
+def _load_default_operator_clusterrole_rules(
+    manifest_path: pathlib.Path = DEFAULT_OPERATOR_DEPLOY_MANIFEST,
+) -> dict[str, list[dict]]:
+    rules_by_name = {}
+
+    with manifest_path.open(encoding="utf-8") as handle:
+        for doc in yaml.safe_load_all(handle):
+            if not doc or doc.get("kind") != "ClusterRole":
+                continue
+
+            name = doc.get("metadata", {}).get("name")
+            if name in DEFAULT_OPERATOR_CLUSTERROLE_NAMES:
+                rules_by_name[name] = doc["rules"]
+
+    missing = set(DEFAULT_OPERATOR_CLUSTERROLE_NAMES) - set(rules_by_name)
+    if missing:
+        raise AssertionError(
+            f"Missing default operator ClusterRoles in {manifest_path}: {sorted(missing)}"
+        )
+
+    return rules_by_name
+
+
+def _sync_default_operator_clusterroles_from_manifest() -> None:
+    for name, rules in _load_default_operator_clusterrole_rules().items():
+        kutil.patch(
+            None,
+            "clusterrole",
+            name,
+            {"rules": rules},
+            type="merge",
+            data_as_type="json",
+            w_ns=False,
+        )
+
 
 def change_operator_version(version=None, store_operator_log=None, new_on_same_version=False):
     """Change to the given operator version"""
@@ -26,6 +75,12 @@ def change_operator_version(version=None, store_operator_log=None, new_on_same_v
 
     target_image = g_ts_cfg.get_operator_image(version)
 
+    # Keep ClusterRoles aligned with the checked-in operator manifest before
+    # rolling the Pod image. Version-only upgrades in the test harness patch the
+    # Deployment directly, so RBAC would otherwise stay stale and can block the
+    # replacement pod from ever becoming ready.
+    _sync_default_operator_clusterroles_from_manifest()
+
     if target_image == old_pod["spec"]["containers"][0]["image"] and new_on_same_version == False:
         # We are already running the expected version
         return
@@ -35,7 +90,7 @@ def change_operator_version(version=None, store_operator_log=None, new_on_same_v
             "template": {
                 "metadata": {
                     "annotations": {
-                        "kubectl.kubernetes.io/restartedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat()+"Z"
+                        "kubectl.kubernetes.io/restartedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
                     }
                 },
                 "spec": {
@@ -225,7 +280,6 @@ spec:
 
         assert_sidecar_image(g_ts_cfg.get_operator_image())
 
-
     def test_9_destroy(self):
         kutil.delete_ic(self.ns, self.cluster_name)
         self.wait_pods_gone(f"{self.cluster_name}-*")
@@ -269,6 +323,19 @@ class OperatorAndClusterMultiUpgradeBase(tutil.OperatorTest):
 
     def router_tls_defition(self) -> str:
         pass
+
+    def verify_existing_cluster_reconciled_after_operator_restart(self, num_online: int) -> None:
+        before_restart = kutil.get_ic(self.ns, self.cluster_name)
+        probe_time = before_restart["status"]["cluster"].get("lastProbeTime")
+        self.assertIsNotNone(probe_time)
+
+        change_operator_version(store_operator_log=lambda: self.take_log_operator_snapshot(), new_on_same_version=True)
+
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=num_online, probe_time=probe_time)
+
+        after_restart = kutil.get_ic(self.ns, self.cluster_name)
+        self.assertEqual(after_restart["status"]["cluster"]["status"], "ONLINE")
+        self.assertGreater(after_restart["status"]["cluster"]["lastProbeTime"], probe_time)
 
     def _test_00_sidecar_update(self) -> None:
         def compare_image(used_image, expected_image):
@@ -360,6 +427,8 @@ spec:
                         self.logger.info("=================================================")
                         change_operator_version(version=operator_version, store_operator_log=lambda: self.take_log_operator_snapshot(), new_on_same_version=True)
 
+                        self.verify_existing_cluster_reconciled_after_operator_restart(scenario["server_instances"])
+
                         assert_sidecar_image(scenario["server_instances"], old_operator_image)
                         operator_image = g_ts_cfg.get_operator_image(version=operator_version)
 
@@ -381,7 +450,7 @@ spec:
                                     po = None
                                     print(pod)
                                     while attempt > 0 and po is None:
-                                        print(kutil.ls_pod(self.ns, f"{self.cluster_name}-\d"))
+                                        print(kutil.ls_pod(self.ns, f"{self.cluster_name}-\\d"))
                                         try:
                                             po = kutil.get_po(self.ns, pod)
                                         except Exception as exc:
@@ -1106,4 +1175,3 @@ class OperatorAndClusterMultiUpgradeTestTLSCombinedSecretsScenario1(OperatorAndC
 
     def testit(self):
         self.runit()
-

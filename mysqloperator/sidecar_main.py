@@ -918,9 +918,13 @@ def on_secret_create_or_update(name: str, namespace: str, spec, new, logger: Log
 @kopf.on.startup()
 def configure(settings: kopf.OperatorSettings, logger: Logger, *args, **_):
     logger.info("sidecar: configure()")
+    # Standalone is an operator without peering.
+    # Non-standalone operators are
+    # 1. cluster wide, then they use ClusterKopfPeering, which is a global k8s cluster object
+    # 2. namespace bound, then the use KopfPeering, which is a namespace bound object
     settings.peering.standalone = True
     settings.posting.enabled = False
-    logger.info(f"Kopf max_workers={settings.execution.max_workers}  Executor max_workers={settings.execution.executor._max_workers}  Executor threads={len(settings.execution.executor._threads)}  Total Python threads={len(threading.enumerate())}")
+    # TODO: should settings.scanning.disabled be set to True to remove the warnings during sidecar startup?
 
 
 def main(argv):

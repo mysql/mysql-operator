@@ -14,6 +14,12 @@ MYSQLBACKUP_KIND = "MySQLBackup"
 MYSQLBACKUP_PLURAL = "mysqlbackups"
 
 
+GROUP_MONITOR_POLL_TIMEOUT_SECONDS = 1
+# Backwards-compatible alias for older imports. New code should use the
+# explicit *_SECONDS name so the unit is clear.
+GROUP_MONITOR_POLL_TIMEOUT = GROUP_MONITOR_POLL_TIMEOUT_SECONDS
+
+
 # This would be a bit better located in config.py, but we put
 # it here to avoid a cyclic import
 TLS_VALID_CIPHERS = [

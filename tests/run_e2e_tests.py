@@ -11,6 +11,7 @@ from utils.ote import get_driver
 from utils.ote.base import BaseEnvironment
 from utils import kutil, ociutil
 from utils import tutil
+from utils.helmutil import describe_helm_source_tree, validate_helm_test_environment
 import unittest
 import os
 import sys
@@ -62,6 +63,21 @@ def parse_filter(f: str) -> Tuple[list, list]:
             s = s[1:]
         l.append(s)
     return inc, exc
+
+
+def validate_helm_tests() -> None:
+    try:
+        helm_path, helm_tree = describe_helm_source_tree()
+        print(f"Mounted Helm chart tree under {helm_path}:")
+        print(helm_tree)
+    except Exception as exc:
+        print(f"Unable to render mounted Helm chart tree: {exc}")
+    sys.stdout.flush()
+
+    try:
+        validate_helm_test_environment()
+    except Exception as exc:
+        raise SystemExit(f"Helm test environment check failed: {exc}") from exc
 
 
 if __name__ == '__main__':
@@ -158,7 +174,7 @@ if __name__ == '__main__':
         elif arg == "--mount-operator" or arg == "-O":
             opt_mount_operator_path = os.path.join(os.path.dirname(basedir), "mysqloperator")
         elif arg.startswith("--enterprise-operator="):
-            is_ee_operator = True if arg.partition("=")[-1] else False
+            is_ee_operator = arg.partition("=")[-1].lower() in ["true", "1", "yes", "on"]
             g_ts_cfg.is_ee_operator = is_ee_operator
             if is_ee_operator:
                 g_ts_cfg.operator_image_name = g_ts_cfg.operator_ee_image_name
@@ -210,6 +226,8 @@ if __name__ == '__main__':
             g_ts_cfg.s3_config_path = arg.partition("=")[-1]
         elif arg.startswith("--s3-credentials-file="):
             g_ts_cfg.s3_credentials_path = arg.partition("=")[-1]
+        elif arg.startswith("--helm-path="):
+            g_ts_cfg.helm_path = arg.partition("=")[-1]
         elif arg == "--skip-azure":
             g_ts_cfg.azure_skip = True
         elif arg == "--start-azure":
@@ -283,6 +301,7 @@ if __name__ == '__main__':
             opt_exclude += exc
 
     g_ts_cfg.commit()
+    validate_helm_tests()
 
     if g_ts_cfg.store_operator_log:
         tutil.g_store_log_operator = tutil.StoreOperatorLog()
@@ -369,6 +388,5 @@ if __name__ == '__main__':
                                 pass
                         runner = runnerClass(stream=sys.stdout,verbosity=opt_verbosity)
                         runner.run(suites)
-            except:
+            finally:
                 tutil.g_full_log.shutdown()
-                raise

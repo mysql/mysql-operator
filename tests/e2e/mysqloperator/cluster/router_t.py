@@ -4,6 +4,9 @@
 #
 
 import json
+from datetime import datetime, timezone
+from uuid import uuid4
+
 import requests
 
 from time import sleep
@@ -250,6 +253,336 @@ spec:
         kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
+class RouterAccountRefresh(tutil.OperatorTest):
+    default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    _cluster_size = 1
+    _routers_count = 1
+
+    @classmethod
+    def setUpClass(cls):
+        cls.logger = logging.getLogger(__name__ + ":" + cls.__name__)
+        super().setUpClass()
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
+
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
+
+    @classmethod
+    def tearDownClass(cls):
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
+
+        super().tearDownClass()
+
+    def _read_router_account(self) -> tuple[str, str]:
+        secret = kutil.get_secret(self.ns, f"{self.cluster_name}-router")
+        router_user = kutil.b64decode(secret["data"]["routerUsername"])
+        router_password = kutil.b64decode(secret["data"]["routerPassword"])
+        self.set_ts_var("router_user", router_user)
+        self.set_ts_var("router_password", router_password)
+        return router_user, router_password
+
+    def _get_router_user(self) -> str:
+        router_user = self.get_ts_var("router_user")
+        if router_user:
+            return router_user
+
+        router_user, _ = self._read_router_account()
+        return router_user
+
+    def _server_endpoint(self) -> str:
+        return (
+            f"mysql://root:sakila@{self.cluster_name}-0."
+            f"{self.cluster_name}-instances.{self.ns}.svc.cluster.local:3306"
+        )
+
+    def _router_endpoint(self) -> str:
+        return f"mysql://root:sakila@{self.cluster_name}.{self.ns}.svc.cluster.local:6446"
+
+    def _get_operator_pod_name(self) -> str:
+        operator_pods = kutil.ls_po("mysql-operator", pattern="mysql-operator-.*")
+        self.assertEqual(
+            1,
+            len(operator_pods),
+            f"Expected exactly one mysql-operator pod, got {len(operator_pods)}",
+        )
+        return operator_pods[0]["NAME"]
+
+    def _get_operator_pod_logs(self, operator_pod_name: str) -> str:
+        log_chunks = []
+
+        try:
+            previous = kutil.logs(
+                "mysql-operator",
+                [operator_pod_name, "mysql-operator"],
+                prev=True,
+                cmd_output_log=kutil.KubectlCmdOutputLogging.MUTE,
+            )
+        except Exception:
+            previous = ""
+        if previous:
+            log_chunks.append(previous)
+
+        current = kutil.logs(
+            "mysql-operator",
+            [operator_pod_name, "mysql-operator"],
+            cmd_output_log=kutil.KubectlCmdOutputLogging.MUTE,
+        )
+        if current:
+            log_chunks.append(current)
+
+        return "\n".join(log_chunks)
+
+    def _wait_for_operator_log_fragment(
+        self, operator_pod_name: str, fragment: str, *, timeout: int = 120
+    ) -> str:
+        def has_fragment():
+            return fragment in self._get_operator_pod_logs(operator_pod_name)
+
+        self.wait(
+            has_fragment,
+            timeout=timeout,
+            delay=2,
+            timeout_diagnostics=lambda: kutil.store_operator_diagnostics(
+                "mysql-operator", operator_pod_name
+            ),
+        )
+        return self._get_operator_pod_logs(operator_pod_name)
+
+    def _run_mysqlsh_script_from_operator_pod(self, script: str, *, uri: str) -> dict:
+        operator_pod_name = self._get_operator_pod_name()
+        remote_script = f"/tmp/router-account-refresh-{uuid4().hex}.py"
+        operator_container = [operator_pod_name, "mysql-operator"]
+
+        kutil.cat_in("mysql-operator", operator_container, remote_script, script)
+
+        try:
+            result = kutil.execp(
+                "mysql-operator",
+                operator_container,
+                [
+                    "mysqlsh",
+                    uri,
+                    "--py",
+                    "-f",
+                    remote_script,
+                    "--quiet-start=2",
+                ],
+            )
+            try:
+                output = result.decode("utf8")
+                return json.loads(output)
+            except json.decoder.JSONDecodeError as exc:
+                output = result.decode("utf8")
+                for line in reversed(output.splitlines()):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if line.startswith("{") and line.endswith("}"):
+                        try:
+                            return json.loads(line)
+                        except json.decoder.JSONDecodeError:
+                            break
+                self.fail(
+                    f"Failed to decode mysqlsh output for {remote_script}: "
+                    f"{result!r}; error={exc}"
+                )
+        finally:
+            if kutil.file_exists("mysql-operator", operator_container, remote_script):
+                kutil.exec("mysql-operator", operator_container, ["rm", "-f", remote_script])
+
+    def _probe_show_grants_binding(self, user: str) -> dict:
+        script = f"""
+import json
+
+user = {user!r}
+payload = {{}}
+
+try:
+    rows = [list(row) for row in session.run_sql("show grants for ?@'%'", [user]).fetch_all()]
+    payload = {{"ok": True, "rows": rows}}
+except Exception as exc:
+    payload = {{
+        "ok": False,
+        "code": getattr(exc, "code", None),
+        "message": str(exc),
+    }}
+
+print(json.dumps(payload))
+"""
+        return self._run_mysqlsh_script_from_operator_pod(script, uri=self._server_endpoint())
+
+    def _restart_operator_and_wait_for_rollout(self) -> str:
+        previous_operator_pod = self._get_operator_pod_name()
+        patch_payload = {
+            "spec": {
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "kubectl.kubernetes.io/restartedAt": (
+                                datetime.now(timezone.utc)
+                                .replace(microsecond=0)
+                                .isoformat()
+                                .replace("+00:00", "Z")
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        kutil.patch_dp("mysql-operator", "mysql-operator", patch_payload)
+        self.wait_pod_gone(previous_operator_pod, ns="mysql-operator")
+        kutil.wait_deploy("mysql-operator", "mysql-operator", timeout=300)
+
+        operator_pod_name = self._get_operator_pod_name()
+        self.wait_pod(operator_pod_name, "Running", ns="mysql-operator")
+        return operator_pod_name
+
+    def _show_grants_sql(self, user: str):
+        with mutil.MySQLPodSession(
+            self.ns, f"{self.cluster_name}-0", "root", "sakila"
+        ) as session:
+            return session.query_sql(f"SHOW GRANTS FOR '{user}'@'%'").fetch_all()
+
+    def _assert_show_grants_succeeds(self, user: str):
+        grants = self._show_grants_sql(user)
+        self.assertTrue(grants, f"Expected SHOW GRANTS FOR '{user}'@'%' to return rows")
+        return grants
+
+    def _assert_show_grants_fails(self, user: str):
+        try:
+            self._show_grants_sql(user)
+        except Exception as exc:
+            return exc
+
+        self.fail(f"Expected SHOW GRANTS FOR '{user}'@'%' to fail")
+
+    def _drop_router_user(self, user: str) -> None:
+        with mutil.MySQLPodSession(
+            self.ns, f"{self.cluster_name}-0", "root", "sakila"
+        ) as session:
+            session.exec_sql(f"DROP USER '{user}'@'%'")
+
+    def _wait_cluster_and_router_ready(self) -> None:
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
+        self.wait_pod(f"{self.cluster_name}-0", "Running")
+        kutil.wait_deploy(self.ns, f"{self.cluster_name}-router", timeout=300)
+        self.wait_routers(
+            f"{self.cluster_name}-router-*",
+            self.routers_count,
+            timeout=self.cluster_size * 120,
+        )
+
+    def _assert_router_connectivity(self) -> None:
+        def query_router_hostname():
+            try:
+                return tutil.run_from_operator_pod(
+                    self._router_endpoint(),
+                    "print(session.run_sql('select @@hostname').fetch_one()[0])",
+                )
+            except Exception as exc:
+                self.logger.debug(f"Router connectivity probe failed: {exc}")
+                return None
+
+        hostname = self.wait(
+            query_router_hostname,
+            timeout=120,
+            delay=5,
+            timeout_diagnostics=lambda: kutil.store_routers_diagnostics(
+                self.ns, f"{self.cluster_name}-router-*"
+            ),
+        )
+        self.assertEqual(f"{self.cluster_name}-0", hostname)
+
+    def test_00_create(self):
+        kutil.create_user_secrets(
+            self.ns,
+            self.cluster_secret_name,
+            root_user="root",
+            root_host="%",
+            root_pass="sakila",
+        )
+
+        yaml = f"""
+apiVersion: mysql.oracle.com/v2
+kind: InnoDBCluster
+metadata:
+  name: {self.cluster_name}
+spec:
+  instances: {self.cluster_size}
+  router:
+    instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
+  tlsUseSelfSigned: true
+"""
+
+        kutil.apply(self.ns, yaml)
+        self._wait_cluster_and_router_ready()
+        router_user, _ = self._read_router_account()
+        self.assertTrue(router_user.startswith("mysqlrouter-"))
+
+    def test_01_probe_show_grants_binding(self):
+        router_user = self._get_router_user()
+        existing_probe = self._probe_show_grants_binding(router_user)
+        self.assertTrue(existing_probe["ok"], existing_probe)
+        self.assertTrue(existing_probe["rows"], existing_probe)
+
+        missing_user = f"{router_user}-missing"
+        missing_probe = self._probe_show_grants_binding(missing_user)
+        self.assertFalse(missing_probe["ok"], missing_probe)
+        self.assertEqual(1141, int(missing_probe["code"]))
+
+    def test_02_restart_updates_existing_router_account(self):
+        router_user = self._get_router_user()
+        operator_pod_name = self._restart_operator_and_wait_for_rollout()
+
+        self._wait_cluster_and_router_ready()
+        operator_logs = self._wait_for_operator_log_fragment(
+            operator_pod_name,
+            f"Updating router account {router_user}",
+        )
+
+        self.assertNotIn(
+            "Could not proceed with the operation because account",
+            operator_logs,
+        )
+        self._assert_show_grants_succeeds(router_user)
+        self._assert_router_connectivity()
+
+    def test_03_restart_recreates_missing_router_account(self):
+        router_user = self._get_router_user()
+
+        self._assert_show_grants_succeeds(router_user)
+        self._drop_router_user(router_user)
+        self._assert_show_grants_fails(router_user)
+
+        operator_pod_name = self._restart_operator_and_wait_for_rollout()
+        self._wait_cluster_and_router_ready()
+
+        operator_logs = self._wait_for_operator_log_fragment(
+            operator_pod_name,
+            f"Creating router account {router_user}",
+        )
+        self.assertNotIn(
+            "Could not proceed with the operation because account "
+            f"{router_user}@% does not exist and the 'update' option is enabled",
+            operator_logs,
+        )
+
+        self._assert_show_grants_succeeds(router_user)
+        self._assert_router_connectivity()
+
+    def test_99_destroy(self):
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_pvc(self.ns, None)
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
+
+
 class RouterLabelsAndAnnotations(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
     _cluster_size = 1
@@ -375,7 +708,7 @@ spec:
             },
         ]
 
-        waiter = tutil.get_deploy_rollover_update_waiter(self, self.cluster_name, timeout=self.cluster_size*200, delay=5)
+        waiter = tutil.get_router_deploy_rollover_update_waiter(self, self.cluster_name, timeout=self.cluster_size*200, delay=5)
         kutil.patch_ic(self.ns, self.cluster_name, patch, type="json", data_as_type='json')
         waiter()
         server_pods = kutil.ls_po(self.ns, pattern=f"{self.cluster_name}-\d")
@@ -521,7 +854,7 @@ spec:
                 }
             }
         }
-        waiter = tutil.get_deploy_rollover_update_waiter(self, self.cluster_name, timeout=self.cluster_size*200, delay=10)
+        waiter = tutil.get_router_deploy_rollover_update_waiter(self, self.cluster_name, timeout=self.cluster_size*200, delay=10)
         kutil.patch_ic(self.ns, self.cluster_name, patch, type="merge")
         waiter()
 
@@ -540,7 +873,7 @@ spec:
                 }
             }
         }
-        waiter = tutil.get_deploy_rollover_update_waiter(self, self.cluster_name, timeout=self.cluster_size*200, delay=10)
+        waiter = tutil.get_router_deploy_rollover_update_waiter(self, self.cluster_name, timeout=self.cluster_size*200, delay=10)
         kutil.patch_ic(self.ns, self.cluster_name, patch, type="merge")
         waiter()
 

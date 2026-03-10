@@ -1,4 +1,12 @@
-{{- $imagePullPolicies := list "ifnotpresent" "always" "never" }}
+{{- include "mysql-operator.checkNotDefaultNamespace" . -}}
+{{- include "mysql-operator.checkNamespacesExplicitOnly" . -}}
+{{- include "mysql-operator.checkDeploymentNameImmutable" . -}}
+{{- include "mysql-operator.checkTopologyImmutable" . -}}
+{{- include "mysql-operator.checkDeploymentNameLength" . -}}
+{{- include "mysql-operator.checkClusterScopedIdentityConflicts" . -}}
+{{- include "mysql-operator.checkNoOverlappingOperators" . -}}
+{{- $imagePullPolicies := list "ifnotpresent" "always" "never" -}}
+{{- $deploymentValues := default (dict) .Values.deployment -}}
 {{- if (((.Values).image).pullPolicy) }}
   {{- if not (has (lower (((.Values).image).pullPolicy)) ($imagePullPolicies)) }}
     {{- $err := printf "Unknown image pull policy %s. Must be one of %v" (((.Values).image).pullPolicy) $imagePullPolicies }}
@@ -8,32 +16,39 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mysql-operator
-  namespace: {{ if and (.Release.IsInstall) (eq .Release.Namespace "default") }}{{ fail "Please provide a namespace with -n/--namespace" }}{{ else }}{{  .Release.Namespace }}{{ end }}
+  name: {{ include "mysql-operator.deploymentName" . }}
+  namespace: {{ .Release.Namespace }}
+{{- with (include "mysql-operator.deploymentAnnotations" . | trim) }}
+  annotations:
+{{- . | nindent 4 }}
+{{- end }}
   labels:
-    version: "{{ default .Chart.AppVersion }}"
-    app.kubernetes.io/name: mysql-operator
-    app.kubernetes.io/instance: {{ .Release.Name }}
-    app.kubernetes.io/version: "{{ default .Chart.AppVersion }}"
-    app.kubernetes.io/component: controller
-    app.kubernetes.io/managed-by: helm
-    app.kubernetes.io/created-by: helm
+{{- include "mysql-operator.deployment.deploymentLabels" . | nindent 4 }}
 spec:
-  replicas: {{ ((.Values).replicas) | toString | atoi | default 1 }}
+  replicas: {{ include "mysql-operator.deployment.replicas" . }}
+{{ include "mysql-operator.deployment.strategy" . | nindent 2 }}
   selector:
     matchLabels:
-      name: mysql-operator
+      {{- include "mysql-operator.deploymentSelectorLabels" . | nindent 6 }}
   template:
     metadata:
+      {{- with $deploymentValues.podAnnotations }}
+      annotations:
+{{- toYaml . | nindent 8 }}
+      {{- end }}
       labels:
-        name: mysql-operator
+{{- include "mysql-operator.deployment.podLabels" . | nindent 8 }}
     spec:
       securityContext:
         runAsNonRoot: true
+      {{- if .Values.image.pullSecrets.enabled }}
+      imagePullSecrets:
+      - name: {{ .Values.image.pullSecrets.secretName }}
+      {{- end }}
       containers:
         - name: mysql-operator
           image: {{ if (((.Values).image).registry) }}{{ trimSuffix "/" .Values.image.registry }}/{{- end }}{{- if (((.Values).image).repository) }}{{ trimSuffix "/" .Values.image.repository }}/{{ end }}{{ (required "image.name is required" ((.Values).image).name) }}:{{ default .Chart.AppVersion (((.Values).image).tag) }}
-          imagePullPolicy: {{ required "image.pullPolicy is required" (((.Values).image).pullPolicy) }}
+          imagePullPolicy: {{ required "image.pullPolicy is required" (((.Values).image).pullPolicy) | quote }}
           {{- if and ( and ((.Values).debugger) (((.Values).debugger).enabled) ) ( and (((.Values).debugger).bindip) (((.Values).debugger).bindport) )}}
           args: ["mysqlsh", "--log-level=@INFO", "--pym", "debugpy", "--listen", "{{.Values.debugger.bindip}}:{{.Values.debugger.bindport}}", "-m", "mysqloperator", "operator"]
           {{- else }}
@@ -57,12 +72,38 @@ spec:
               {{- fail $err }}
             {{- end }}
           - name: MYSQL_OPERATOR_IMAGE_PULL_POLICY
-            value: {{ .Values.envs.imagesPullPolicy }}
+            value: {{ .Values.envs.imagesPullPolicy | quote }}
           {{- end }}
           {{- if (((.Values).envs).k8sClusterDomain) }}
           - name: MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN
-            value: {{ .Values.envs.k8sClusterDomain }}
+            value: {{ .Values.envs.k8sClusterDomain | quote }}
           {{- end }}
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: OPERATOR_DEPLOYMENT_NAME
+            value: {{ include "mysql-operator.deploymentName" . }}
+          - name: OPERATOR_PEERING_NAME
+            value: {{ include "mysql-operator.envVarPeeringName" . }}
+          - name: OPERATOR_ROLE_NAME
+            value: {{ include "mysql-operator.operatorRoleName" . }}
+          - name: SIDECAR_ROLE_NAME
+            value: {{ include "mysql-operator.sidecarRoleName" . }}
+          - name: SWITCHOVER_ROLE_NAME
+            value: {{ include "mysql-operator.switchoverRoleName" . }}
+          # Comma-separated explicit watched namespaces. Empty means cluster-wide.
+          # Standalone and non-standalone use the same explicit namespace grammar.
+          - name: OPERATOR_NAMESPACES
+            value: "{{ include "mysql-operator.namespaces" . }}"
+          - name: OPERATOR_STANDALONE
+            value: {{ include "mysql-operator.deployment.standalone" . | quote }}
+          - name: MYSQL_OPERATOR_DEBUG
+            value: "{{ .Values.operatorDebug | int | default 0 }}"
           readinessProbe:
             exec:
               command:
@@ -75,8 +116,9 @@ spec:
               mountPath: /mysqlsh
             - name: tmpdir
               mountPath: /tmp
-          {{- if .Values.resources }}
-          resources: {{ toYaml .Values.resources | nindent 12 }}
+          {{- with $deploymentValues.resources }}
+          resources:
+{{- toYaml . | nindent 12 }}
           {{- end }}
           securityContext:
             capabilities:
@@ -92,10 +134,12 @@ spec:
           emptyDir: {}
         - name: tmpdir
           emptyDir: {}
-      serviceAccountName: mysql-operator-sa
-      {{- if ((.Values).affinity) }}
-      affinity: {{ toYaml .Values.affinity | nindent 8 }}
+      serviceAccountName: {{ include "mysql-operator.operatorSAName" . }}
+      {{- with (include "mysql-operator.deployment.affinity" . | trim) }}
+      affinity:
+{{- . | nindent 8 }}
       {{- end }}
-      {{- if ((.Values).nodeSelector) }}
-      nodeSelector: {{ toYaml .Values.nodeSelector | nindent 8 }}
+      {{- with (include "mysql-operator.deployment.nodeSelector" . | trim) }}
+      nodeSelector:
+{{- . | nindent 8 }}
       {{- end }}

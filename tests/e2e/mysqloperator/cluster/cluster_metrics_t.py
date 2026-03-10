@@ -22,7 +22,7 @@ class ClusterMetricsTest(tutil.OperatorTest):
     spec errors checked during admission (by CRD schema or webhook)
     """
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
-    _cluster_size = 2
+    _cluster_size = 3
     _routers_count = 0
 
     @classmethod
@@ -69,7 +69,7 @@ spec:
       enable: true
       image: {g_ts_cfg.get_image(Config.Image.METRICS)}
   podSpec:
-    terminationGracePeriodSeconds: 10
+    terminationGracePeriodSeconds: 30
 """
 
         apply_time = isotime()

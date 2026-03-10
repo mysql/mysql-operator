@@ -1,4 +1,15 @@
+{{- if not (include "mysql-operator.deployment.standalone" . | trim | eq "true") -}}
+{{- include "mysql-operator.checkNamespacesExplicitOnly" . -}}
+{{- $clusterwide := include "mysql-operator.clusterwide" . | int -}}
+  {{- if $clusterwide }}
 apiVersion: zalando.org/v1
 kind: ClusterKopfPeering
 metadata:
-  name: mysql-operator
+  name: {{ include "mysql-operator.clusterPeeringName" . }}
+  labels:
+    {{- include "mysql-operator.globalLabels" . | nindent 4 }}
+  {{- else }}
+    {{- include "mysql-operator.walkNamespaces" (dict "root" . "cb" "mysql-operator.callbacks.createMissingNamespace") }}
+    {{- include "mysql-operator.walkNamespaces" (dict "root" . "cb" "mysql-operator.callbacks.createNamespacedKopfPeering") }}
+  {{- end }}
+{{- end }}

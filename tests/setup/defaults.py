@@ -131,7 +131,7 @@ KMIP_TLS_PATH = os.getenv(
 
 
 FLUENTD_IMAGE_NAME= os.getenv(
-    "OPERATOR_TEST_FLUENTD_IMAGE_NAME", default="fluent/fluentd-kubernetes-daemonset:v1.16-debian-s3-amd64-1")
+    "OPERATOR_TEST_FLUENTD_IMAGE_NAME", default="fluent/fluentd-kubernetes-daemonset:v1.18-debian-s3-amd64-1")
 
 # metrics sidecar
 METRICS_IMAGE_NAME = os.getenv(

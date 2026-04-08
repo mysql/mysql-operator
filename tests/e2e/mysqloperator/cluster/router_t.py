@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -163,12 +163,24 @@ spec:
             return json.loads(router_list)["routers"]
 
         def assert_metadata_matches_running_pods(expected_count):
-            routers = sorted(list(list_routers()))
+            def current_metadata_and_pods():
+                routers = sorted(list(list_routers()))
 
-            expected = sorted([pod['NAME']+'::'
-                               for pod in
-                               kutil.ls_po(self.ns,
-                                           pattern=f"{self.cluster_name}-router-.*")])
+                expected = sorted([pod['NAME']+'::'
+                                   for pod in
+                                   kutil.ls_po(self.ns,
+                                               pattern=f"{self.cluster_name}-router-.*")])
+                return routers, expected
+
+            def metadata_matches_running_pods():
+                routers, expected = current_metadata_and_pods()
+                return len(routers) == expected_count and routers == expected
+
+            # Router metadata cleanup is asynchronous relative to Deployment
+            # scale-down, so wait for metadata to converge with running pods.
+            self.wait(metadata_matches_running_pods, timeout=120)
+
+            routers, expected = current_metadata_and_pods()
 
             # testing ListEqual first gives better error if they mismatch
             self.assertListEqual(routers, expected)

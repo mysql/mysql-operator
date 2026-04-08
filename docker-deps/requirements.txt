@@ -1,48 +1,40 @@
-kopf==1.39.0
+kopf==1.43.0
   python-json-logger==4.0.0
   iso8601==2.1.0
   PyYAML==6.0.3
   click==8.3.1
-  aiohttp==3.13.2
+  aiohttp==3.13.3
     aiohappyeyeballs==2.6.1
     aiosignal==1.4.0
       frozenlist==1.8.0
       typing_extensions==4.15.0
-    async-timeout==5.0.1
     attrs==25.4.0
     frozenlist==1.8.0
-    multidict==6.7.0
-      typing_extensions==4.15.0
+    multidict==6.7.1
     propcache==0.4.1
-    yarl==1.22.0
+    yarl==1.23.0
       idna==3.11
-      multidict==6.7.0
-        typing_extensions==4.15.0
+      multidict==6.7.1
       propcache==0.4.1
-kubernetes==34.1.0
-  certifi==2025.11.12
+kubernetes==35.0.0
+  certifi==2026.2.25
   six==1.17.0
   python-dateutil==2.9.0.post0
     six==1.17.0
   PyYAML==6.0.3
-  google-auth==2.43.0
-    cachetools==6.2.2
-    pyasn1_modules==0.4.2
-      pyasn1==0.6.1
-    rsa==4.9.1
-      pyasn1==0.6.1
   websocket-client==1.9.0
   requests==2.32.5
-    charset-normalizer==3.4.4
+    charset-normalizer==3.4.5
     idna==3.11
-    urllib3==2.6.2
-    certifi==2025.11.12
+    urllib3==2.6.3
+    certifi==2026.2.25
   requests-oauthlib==2.0.0
     oauthlib==3.3.1
     requests==2.32.5
-      charset-normalizer==3.4.4
+      charset-normalizer==3.4.5
       idna==3.11
-      urllib3==2.6.2
-      certifi==2025.11.12
-  urllib3==2.6.2
+      urllib3==2.6.3
+      certifi==2026.2.25
+  urllib3==2.6.3
   durationpy==0.10
+packaging==26.0

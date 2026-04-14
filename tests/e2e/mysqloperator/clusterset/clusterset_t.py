@@ -194,6 +194,113 @@ spec:
 
         self._create_cluster(self.replica_2_cluster_name, self.cluster_definition_replica(self.replica_2_cluster_name, self.cluster_size, self.routers_count, 2100, self.primary_cluster_name, self.ns))
 
+    def _clusterset_cluster_names(self):
+        return (
+            self.primary_cluster_name,
+            self.replica_1_cluster_name,
+            self.replica_2_cluster_name,
+        )
+
+    def _get_clusterset_role(self, cluster_name):
+        return kutil.execp(
+            self.ns,
+            [f"{cluster_name}-0", "sidecar"],
+            [
+                "mysqlsh",
+                f"{self.root_user}:{self.root_pass}@localhost",
+                "--js",
+                "-e",
+                "var status = dba.getCluster().status({extended:1}); print(status.clusterRole || 'PRIMARY')",
+                "--quiet-start=2",
+            ],
+        ).decode("utf8").strip()
+
+    def _wait_clusterset_role(self, cluster_name, expected_type, timeout=300):
+        def cluster_role_matches():
+            try:
+                return self._get_clusterset_role(cluster_name) == expected_type
+            except Exception:
+                return False
+
+        self.wait(cluster_role_matches, timeout=timeout, delay=5)
+
+    def _wait_switchover_job_succeeded(self, job_name, timeout=300):
+        def job_succeeded():
+            job = kutil.get(self.ns, "job", job_name, check=False)
+            if not job:
+                return False
+
+            status = job.get("status", {})
+            if status.get("failed", 0):
+                raise AssertionError(f"Switchover Job {self.ns}/{job_name} failed: {status}")
+
+            return status.get("succeeded", 0) == 1
+
+        self.wait(job_succeeded, timeout=timeout, delay=5)
+
+    def _assert_one_instance_clusterset_roles(self, primary_cluster_name):
+        for cluster_name in self._clusterset_cluster_names():
+            expected_type = "PRIMARY" if cluster_name == primary_cluster_name else "REPLICA"
+            self.wait_ic(cluster_name, "ONLINE", num_online=1)
+            self._wait_clusterset_role(cluster_name, expected_type)
+            self.wait_routers(f"{cluster_name}-router-.*", num_online=1, timeout=180)
+
+    def _write_and_verify_row(self, current_primary_cluster_name, value):
+        row_text = f"value-{value}"
+
+        with mutil.MySQLPodSession(self.ns, f"{current_primary_cluster_name}-0", self.root_user, self.root_pass) as session:
+            session.exec_sql(
+                "INSERT INTO clusterset.t1 (a, b) VALUES (%s, %s)",
+                (value, row_text),
+            )
+            session.exec_sql("COMMIT")
+
+        def row_visible_on_all_clusters():
+            for cluster_name in self._clusterset_cluster_names():
+                with mutil.MySQLPodSession(self.ns, f"{cluster_name}-0", self.root_user, self.root_pass) as session:
+                    row = session.query_sql(
+                        "SELECT a, b FROM clusterset.t1 WHERE a = %s",
+                        (value,),
+                    ).fetch_one()
+
+                if row is None:
+                    return False
+
+                self.assertEqual(row, (value, row_text))
+
+            return True
+
+        self.wait(row_visible_on_all_clusters, timeout=180, delay=5)
+
+    def _cleanup_switchover_resources(self, job_name, timeout=180):
+        kutil.delete(self.ns, "mysqlclustersetfailover", job_name, timeout=timeout)
+        kutil.delete(self.ns, "job", job_name, timeout=timeout)
+
+        def switchover_resources_gone():
+            failover = kutil.get(self.ns, "mysqlclustersetfailover", job_name, check=False)
+            job = kutil.get(self.ns, "job", job_name, check=False)
+            pods = kutil.ls_po(self.ns, pattern=f"{job_name}-.*")
+            return failover is None and job is None and not pods
+
+        self.wait(switchover_resources_gone, timeout=timeout, delay=5)
+
+    def _apply_switchover(self, job_name, target_cluster_name, expected_primary_cluster_name):
+        switchover_manifest = f"""
+apiVersion: mysql.oracle.com/v2
+kind: MySQLClusterSetFailover
+metadata:
+  name: {job_name}
+spec:
+  clusterName: {target_cluster_name}
+  force: false
+"""
+        kutil.apply(self.ns, switchover_manifest)
+        self._wait_switchover_job_succeeded(job_name)
+        self._assert_one_instance_clusterset_roles(expected_primary_cluster_name)
+        self._write_and_verify_row(expected_primary_cluster_name, self._next_write_value)
+        self._next_write_value += 1
+        self._cleanup_switchover_resources(job_name)
+
 
     def _02_test_inserts(self):
           pod_name = f"{self.primary_cluster_name}-0"
@@ -280,6 +387,13 @@ spec:
             self.wait_routers_gone(f"{self.primary_cluster_name}-router-*")
         self.wait_ic_gone(self.primary_cluster_name)
 
+        for switchover_name in (
+            "incident-switchover-to-replica1",
+            "incident-switchover-to-replica2",
+            "incident-switchover-back-to-primary",
+        ):
+            self._cleanup_switchover_resources(switchover_name)
+
         kutil.delete_secret(self.ns, self.cluster_secret_name)
 
         kutil.delete_pvc(self.ns, None)
@@ -290,13 +404,35 @@ spec:
         self._04_switchover()
         self._99_destroy()
 
+    def runit_one_instance(self):
+        self._00_create()
+        self._02_test_inserts()
+        self._next_write_value = 43
+        self._assert_one_instance_clusterset_roles(self.primary_cluster_name)
+        self._apply_switchover(
+            "incident-switchover-to-replica1",
+            self.replica_1_cluster_name,
+            self.replica_1_cluster_name,
+        )
+        self._apply_switchover(
+            "incident-switchover-to-replica2",
+            self.replica_2_cluster_name,
+            self.replica_2_cluster_name,
+        )
+        self._apply_switchover(
+            "incident-switchover-back-to-primary",
+            self.primary_cluster_name,
+            self.primary_cluster_name,
+        )
+        self._99_destroy()
+
 
 @unittest.skipIf(g_ts_cfg.enterprise_skip, "Enterprise test cases are skipped")
 class ClusterSetWithOneInstance(ClusterSetBase):
     _cluster_size = 1
     _routers_count = 1
     def testit(self):
-        self.runit()
+        self.runit_one_instance()
 
 
 @unittest.skipIf(g_ts_cfg.enterprise_skip, "Enterprise test cases are skipped")

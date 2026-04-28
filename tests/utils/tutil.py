@@ -724,7 +724,7 @@ class OperatorTest(unittest.TestCase):
             return num_online == len(router_names)
 
         def timeout_diagnostics():
-            kutil.store_routers_diagnostics(self.ns, name_pattern)
+            kutil.store_routers_diagnostics(ns or self.ns, name_pattern)
 
         self.wait(routers_ready, timeout=timeout, timeout_diagnostics=timeout_diagnostics, delay=wait)
 

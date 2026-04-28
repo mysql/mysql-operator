@@ -1222,12 +1222,44 @@ def wait_ic(ns, name, status=["ONLINE"], num_online=None, timeout=300, probe_tim
     if type(status) not in (tuple, list):
         status = [status]
 
+    def current_status_line():
+        ic = get(
+            ns,
+            "ic",
+            name,
+            check=False,
+            cmd_output_log=KubectlCmdOutputLogging.MUTE,
+        )
+        if not ic:
+            return None
+        cluster_status = ic.get("status", {}).get("cluster", {})
+        return {
+            "NAME": name,
+            "STATUS": cluster_status.get("status", ""),
+            "ONLINE": str(cluster_status.get("onlineInstances", "")),
+            "PROBETIME": cluster_status.get("lastProbeTime", ""),
+        }
+
+    def format_status_line(line):
+        return (
+            f"{line.get('NAME', '')} {line.get('STATUS', '')} "
+            f"{line.get('ONLINE', '')} {line.get('PROBETIME', '')}"
+        )
+
+    def online_instances(line):
+        try:
+            return int(line.get("ONLINE") or 0)
+        except (TypeError, ValueError):
+            return 0
+
     def check_status(line):
         checkabort()
         logger.debug("checking status with %s", line)
-        if probe_time is None or line["PROBETIME"] > probe_time:
-            return line["STATUS"] in status and (num_online is None or int(line["ONLINE"]) >= num_online)
-        return False
+        if probe_time is not None and line.get("PROBETIME", "") <= probe_time:
+            return False
+        return line.get("STATUS") in status and (
+            num_online is None or online_instances(line) >= num_online
+        )
 
     wait_ic_exists(ns, name, timeout, checkabort)
 
@@ -1235,8 +1267,19 @@ def wait_ic(ns, name, status=["ONLINE"], num_online=None, timeout=300, probe_tim
         f"Waiting for IC {ns} / {name} to become {status}, num_online={num_online}")
 
     checkabort()
+    current_line = current_status_line()
+    if current_line is not None and check_status(current_line):
+        r = format_status_line(current_line)
+        logger.info(f"{r}")
+        return r
+
     r = watch(ns, "ic", name, check_status, timeout,
               format="custom-columns=NAME:.metadata.name,STATUS:.status.cluster.status,ONLINE:.status.cluster.onlineInstances,PROBETIME:.status.cluster.lastProbeTime")
+
+    if r is None:
+        current_line = current_status_line()
+        if current_line is not None and check_status(current_line):
+            r = format_status_line(current_line)
 
     logger.info(f"{r}")
 

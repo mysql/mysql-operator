@@ -8,6 +8,7 @@ import unittest
 import os
 import re
 import json
+import pathlib
 from dataclasses import dataclass, field
 from utils import tutil
 from utils import kutil
@@ -80,6 +81,14 @@ def get_switchover_role_name(operator_ns: str, operator_name: str) -> str:
 LEGACY_SWITCHOVER_SERVICE_ACCOUNT_NAME = "mysql-switchover-sa"
 LEGACY_SWITCHOVER_ROLE_BINDING_NAME = "mysql-switchover-rb"
 LEGACY_SWITCHOVER_RBAC_INTRODUCED_VERSION = "9.3.0"
+DEFAULT_OPERATOR_CLUSTERROLE_NAMES = (
+    "mysql-operator",
+    "mysql-sidecar",
+    "mysql-switchover",
+)
+DEFAULT_OPERATOR_DEPLOY_MANIFEST = (
+    pathlib.Path(__file__).resolve().parents[4] / "deploy" / "deploy-operator.yaml"
+)
 # TODO - problem with 9.6.0 - clusterset is not thread safe
 CLUSTERSET_CREATION_GAP_SECONDS = 30
 INVALID_MYSQL_UPGRADE_ERROR_CODES = (
@@ -236,6 +245,43 @@ def get_helm_release_target(helm_options) -> tuple[str, str, str]:
         helm_options.release_name,
         helm_options.kube_context or "",
     )
+
+
+def _load_default_operator_clusterrole_rules(
+    manifest_path: pathlib.Path = DEFAULT_OPERATOR_DEPLOY_MANIFEST,
+) -> dict[str, list[dict]]:
+    rules_by_name = {}
+
+    with manifest_path.open(encoding="utf-8") as handle:
+        for doc in yaml.safe_load_all(handle):
+            if not doc or doc.get("kind") != "ClusterRole":
+                continue
+
+            name = doc.get("metadata", {}).get("name")
+            if name in DEFAULT_OPERATOR_CLUSTERROLE_NAMES:
+                rules_by_name[name] = doc["rules"]
+
+    missing = set(DEFAULT_OPERATOR_CLUSTERROLE_NAMES) - set(rules_by_name)
+    if missing:
+        raise AssertionError(
+            f"Missing default operator ClusterRoles in {manifest_path}: "
+            f"{sorted(missing)}"
+        )
+
+    return rules_by_name
+
+
+def _sync_default_operator_clusterroles_from_manifest() -> None:
+    for name, rules in _load_default_operator_clusterrole_rules().items():
+        kutil.patch(
+            None,
+            "clusterrole",
+            name,
+            {"rules": rules},
+            type="merge",
+            data_as_type="json",
+            w_ns=False,
+        )
 
 
 KubectlManifestObject = tuple[str, str, str]
@@ -2053,27 +2099,69 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         timeout: int = 300,
     ) -> dict:
         last_pod_names: list[str] = []
+        deployment = kutil.get_deploy(
+            namespace,
+            deployment_name,
+            check=False,
+            cmd_output_log=kutil.KubectlCmdOutputLogging.MUTE,
+        )
+        selector_labels = (
+            deployment.get("spec", {})
+            .get("selector", {})
+            .get("matchLabels", {})
+            if deployment
+            else {}
+        )
+
+        def pod_matches_deployment(pod: dict) -> bool:
+            pod_labels = pod.get("metadata", {}).get("labels", {})
+            return all(
+                pod_labels.get(key) == value
+                for key, value in selector_labels.items()
+            )
+
+        def has_operator_container(pod: dict) -> bool:
+            return (
+                get_named_container(
+                    pod.get("spec", {}).get("containers", []),
+                    "mysql-operator",
+                )
+                is not None
+            )
+
+        def operator_container_ready(pod: dict) -> bool:
+            status = get_named_container(
+                pod.get("status", {}).get("containerStatuses", []),
+                "mysql-operator",
+            )
+            return bool(status and status.get("ready"))
+
+        def pod_rank(pod: dict) -> tuple[bool, str, str]:
+            metadata = pod.get("metadata", {})
+            return (
+                operator_container_ready(pod),
+                metadata.get("creationTimestamp", ""),
+                metadata.get("name", ""),
+            )
 
         for _ in range(timeout):
-            operator_pods = kutil.ls_po(
-                namespace,
-                pattern=f"{deployment_name}.*",
+            operator_pods = self._list_active_operator_pods(
+                namespace=namespace,
+                deployment_name=deployment_name,
             )
-            last_pod_names = [pod["NAME"] for pod in operator_pods]
-            replacement_pod_names = [
-                pod_name
-                for pod_name in last_pod_names
-                if pod_name != previous_pod_name
+            last_pod_names = [
+                pod.get("metadata", {}).get("name", "")
+                for pod in operator_pods
             ]
-            if len(replacement_pod_names) == 1:
-                replacement_pod = kutil.get_po(
-                    namespace,
-                    replacement_pod_names[0],
-                    check=False,
-                    cmd_output_log=kutil.KubectlCmdOutputLogging.MUTE,
-                )
-                if replacement_pod is not None:
-                    return replacement_pod
+            replacement_pods = [
+                pod
+                for pod in operator_pods
+                if pod.get("metadata", {}).get("name") != previous_pod_name
+                and pod_matches_deployment(pod)
+                and has_operator_container(pod)
+            ]
+            if replacement_pods:
+                return sorted(replacement_pods, key=pod_rank)[-1]
             time.sleep(1)
 
         raise AssertionError(
@@ -2089,6 +2177,8 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         deployment_name: str,
         previous_pod_name: Optional[str] = None,
     ) -> dict:
+        kutil.wait_deploy(namespace, deployment_name, timeout=300)
+
         operator_pod = None
         if previous_pod_name:
             operator_pod = self._wait_for_replacement_operator_pod(
@@ -2097,7 +2187,6 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                 previous_pod_name=previous_pod_name,
             )
 
-        kutil.wait_deploy(namespace, deployment_name, timeout=300)
         if operator_pod is None:
             operator_pod = self._get_single_operator_pod(
                 namespace=namespace,
@@ -2335,6 +2424,8 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         deployment_name: str,
         previous_pod_name: Optional[str] = None,
     ) -> dict:
+        kutil.wait_deploy(namespace, deployment_name, timeout=300)
+
         operator_pod = None
         if previous_pod_name:
             operator_pod = self._wait_for_replacement_operator_pod(
@@ -2343,7 +2434,6 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                 previous_pod_name=previous_pod_name,
             )
 
-        kutil.wait_deploy(namespace, deployment_name, timeout=300)
         if operator_pod is None:
             operator_pod = self._get_single_helm_operator_pod(
                 namespace=namespace,
@@ -2633,6 +2723,7 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         self,
         *,
         resident_operator_deployment: Optional[dict] = None,
+        include_deployment_topology: bool = False,
     ) -> dict:
         source_helm_options = resolve_install_with_helm_options(
             namespace=self.operator_ns,
@@ -2646,7 +2737,7 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                 )
             ),
         )
-        return {
+        overrides = {
             "image": {
                 "registry": source_helm_options.operator_registry,
                 "repository": source_helm_options.operator_repository,
@@ -2656,6 +2747,80 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                 "imagesDefaultRepository": source_helm_options.operator_repository,
             },
         }
+        if include_deployment_topology:
+            overrides["deployment"] = {
+                "namespaces": source_helm_options.operator_namespaces_list,
+                "standalone": source_helm_options.standalone,
+            }
+        return overrides
+
+    @staticmethod
+    def _helm_operator_overrides_change_topology(
+        operator_overrides: Optional[dict],
+    ) -> bool:
+        deployment_overrides = (
+            operator_overrides.get("deployment", {})
+            if isinstance(operator_overrides, dict)
+            else {}
+        )
+        return any(
+            key in deployment_overrides
+            for key in ("namespaces", "standalone")
+        )
+
+    def _apply_helm_operator_with_synced_default_clusterroles(
+        self,
+        options: HelmOperatorInstallOptions,
+        *,
+        install_if_missing: bool,
+        wait_for_deployment_name: Optional[str] = None,
+    ):
+        original_wait_for_helm = options.wait_for_helm
+        original_replicas = options.deployment_replicas
+        original_operator_replicas = options.operator_values.get("replicas")
+        had_explicit_replicas = "replicas" in options.explicit_operator_values
+        original_explicit_replicas = options.explicit_operator_values.get("replicas")
+        options.wait_for_helm = False
+        options.operator_values["replicas"] = 0
+        options.explicit_operator_values["replicas"] = 0
+        try:
+            if install_if_missing:
+                result = install_with_helm(
+                    options.namespace,
+                    resolved_options=options,
+                )
+            else:
+                result = upgrade_with_helm(
+                    options.namespace,
+                    resolved_options=options,
+                )
+            _sync_default_operator_clusterroles_from_manifest()
+            deployment_name = wait_for_deployment_name or options.deployment_name
+            kutil.patch(
+                options.namespace,
+                "deploy",
+                deployment_name,
+                {"spec": {"replicas": original_replicas}},
+                type="merge",
+                data_as_type="json",
+            )
+            if wait_for_deployment_name is not None:
+                kutil.wait_deploy(
+                    options.namespace,
+                    wait_for_deployment_name,
+                    timeout=300,
+                )
+            return result
+        finally:
+            options.wait_for_helm = original_wait_for_helm
+            if original_operator_replicas is None:
+                options.operator_values.pop("replicas", None)
+            else:
+                options.operator_values["replicas"] = original_operator_replicas
+            if had_explicit_replicas:
+                options.explicit_operator_values["replicas"] = original_explicit_replicas
+            else:
+                options.explicit_operator_values.pop("replicas", None)
 
     def _print_operator_log_from_candidates(
         self,
@@ -3456,6 +3621,11 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         )
         chart_source_overrides = self._resolve_resident_helm_chart_source_overrides(
             resident_operator_deployment=resident_operator_deployment,
+            include_deployment_topology=(
+                not self._helm_operator_overrides_change_topology(
+                    upgraded_operator_overrides,
+                )
+            ),
         )
         upgrade_chart_source_overrides = self._merge_helm_values(
             chart_source_overrides,
@@ -3512,9 +3682,9 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         test_error = None
 
         try:
-            install_result = install_with_helm(
-                self.operator_ns,
-                resolved_options=install_options,
+            install_result = self._apply_helm_operator_with_synced_default_clusterroles(
+                install_options,
+                install_if_missing=True,
             )
             previous_operator_pod = self._wait_for_helm_operator_pod_rollout(
                 namespace=install_options.namespace,
@@ -3619,9 +3789,9 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                     ns=self.ns,
                 )
             else:
-                upgrade_result = upgrade_with_helm(
-                    self.operator_ns,
-                    resolved_options=upgrade_options,
+                upgrade_result = self._apply_helm_operator_with_synced_default_clusterroles(
+                    upgrade_options,
+                    install_if_missing=False,
                 )
                 current_operator_pod = self._wait_for_helm_operator_pod_rollout(
                     namespace=upgrade_options.namespace,
@@ -7779,6 +7949,7 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
         )
         chart_source_overrides = self._resolve_resident_helm_chart_source_overrides(
             resident_operator_deployment=resident_operator_deployment,
+            include_deployment_topology=True,
         )
         install_options = self._build_legacy_switchover_operator_options(
             app_version=current_cluster_release,
@@ -7797,9 +7968,9 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
         )
 
         try:
-            install_with_helm(
-                self.operator_ns,
-                resolved_options=install_options,
+            self._apply_helm_operator_with_synced_default_clusterroles(
+                install_options,
+                install_if_missing=True,
             )
             operator_pod = self._wait_for_helm_operator_pod_rollout(
                 namespace=install_options.namespace,
@@ -7878,9 +8049,9 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
                 )
                 assert operator_pod is not None
                 old_operator_pod_name = operator_pod["metadata"]["name"]
-                upgrade_with_helm(
-                    self.operator_ns,
-                    resolved_options=upgrade_options,
+                self._apply_helm_operator_with_synced_default_clusterroles(
+                    upgrade_options,
+                    install_if_missing=False,
                 )
                 operator_pod = self._wait_for_helm_operator_pod_rollout(
                     namespace=upgrade_options.namespace,
@@ -9108,9 +9279,9 @@ class HelmOperatorSelectorUpgradeCompatibilityTest(
     def test_upgrade_preserves_legacy_selector_and_services_stay_isolated(
         self,
     ) -> None:
-        operator_ns = f"op-sel-upg-{self.random_suffix}"
+        operator_ns = self.operator_ns
         requested_legacy_operator_name = f"sel-old-{self.random_suffix}"
-        legacy_release_name = f"helm-sel-old-{self.random_suffix}"
+        legacy_release_name = self.operator_deploy_name
         legacy_deployment_name = "mysql-operator"
         previous_release = get_previous_operator_chart_release(
             current_app_version=g_ts_cfg.operator_version_tag,
@@ -9128,12 +9299,9 @@ class HelmOperatorSelectorUpgradeCompatibilityTest(
             {
                 "deployment": {
                     "name": requested_legacy_operator_name,
-                    "namespaces": [operator_ns],
-                    "standalone": True,
                 },
             },
         )
-        legacy_upgrade_values = self._merge_helm_values(chart_source_overrides, {})
 
         previous_install_options = HelmOperatorInstallOptions(
             namespace=operator_ns,
@@ -9150,7 +9318,7 @@ class HelmOperatorSelectorUpgradeCompatibilityTest(
             release_name=legacy_release_name,
             kube_context=g_ts_cfg.k8s_context,
             helm_package="mysql-operator",
-            operator_values=legacy_upgrade_values,
+            operator_values=chart_source_overrides,
             use_chart_defaults=True,
         )
 
@@ -9161,9 +9329,10 @@ class HelmOperatorSelectorUpgradeCompatibilityTest(
         test_error = None
 
         try:
-            legacy_install_result = install_with_helm(
-                operator_ns,
-                resolved_options=previous_install_options,
+            legacy_install_result = self._apply_helm_operator_with_synced_default_clusterroles(
+                previous_install_options,
+                install_if_missing=True,
+                wait_for_deployment_name=legacy_deployment_name,
             )
             self.assertIsNone(
                 kutil.get_deploy(
@@ -9194,9 +9363,9 @@ class HelmOperatorSelectorUpgradeCompatibilityTest(
                 ),
             )
 
-            legacy_upgrade_result = upgrade_with_helm(
-                operator_ns,
-                resolved_options=legacy_upgrade_options,
+            legacy_upgrade_result = self._apply_helm_operator_with_synced_default_clusterroles(
+                legacy_upgrade_options,
+                install_if_missing=False,
             )
             self._assert_helm_operator_selector_isolation(
                 namespace=operator_ns,
@@ -12711,18 +12880,12 @@ class HelmMultiNamespaceSingleOperatorTest(OperatorSingleAndMultipleBaseTest):
                 (cluster_watched1_ns, f"ic-watched1-{self.cluster_name}"),
                 (cluster_watched2_ns, f"ic-watched2-{self.cluster_name}"),
             ]:
-                self.wait_ic(cluster_name, ["PENDING", "INITIALIZING", "ONLINE"], ns=ns)
-                for instance in range(0, self.cluster_size):
-                    self.wait_pod(f"{cluster_name}-{instance}", "Running", ns=ns)
-                if self.routers_count:
-                    self.wait_routers(
-                        f"{cluster_name}-router.*",
-                        self.routers_count,
-                        timeout=self.cluster_size * 120,
-                        wait=10,
-                        ns=ns,
-                    )
-                self.wait_ic(cluster_name, "ONLINE", num_online=self.cluster_size, ns=ns)
+                self._wait_for_helm_cluster_ready(
+                    namespace=ns,
+                    cluster_name=cluster_name,
+                    server_instances=self.cluster_size,
+                    router_instances=self.routers_count,
+                )
 
             nonwatched_sts = kutil.ls_sts(cluster_nonwatched_ns, pattern=".*")
             self.assertEqual(len(nonwatched_sts), 0)

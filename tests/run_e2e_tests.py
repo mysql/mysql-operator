@@ -80,6 +80,86 @@ def validate_helm_tests() -> None:
         raise SystemExit(f"Helm test environment check failed: {exc}") from exc
 
 
+def describe_deploy_dir(path: str) -> str:
+    if not os.path.exists(path):
+        return "does not exist"
+    if not os.path.isdir(path):
+        return "exists but is not a directory"
+
+    try:
+        entries = sorted(os.listdir(path))
+    except Exception as exc:
+        return f"exists but could not be listed: {exc}"
+
+    if not entries:
+        return "exists and is empty"
+
+    max_entries = 40
+    visible_entries = entries[:max_entries]
+    suffix = ""
+    if len(entries) > max_entries:
+        suffix = f", ... ({len(entries) - max_entries} more)"
+    return f"contains: {', '.join(visible_entries)}{suffix}"
+
+
+def dedupe_paths(paths: list[str]) -> list[str]:
+    deduped = []
+    seen = set()
+    for path in paths:
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        deduped.append(path)
+    return deduped
+
+
+def get_deploy_dir_candidates(basedir: str) -> list[str]:
+    candidates = []
+    configured_deploy_path = g_ts_cfg.get_deploy_path()
+    if configured_deploy_path:
+        candidates.append(configured_deploy_path)
+        candidates.append(os.path.join(configured_deploy_path, "deploy"))
+        historic_path = g_ts_cfg.get_deploy_historic_path()
+        if historic_path:
+            candidates.append(os.path.join(historic_path, "deploy"))
+            candidates.append(os.path.join(historic_path, g_ts_cfg.operator_version_tag))
+            candidates.append(
+                os.path.join(historic_path, g_ts_cfg.operator_version_tag, "deploy")
+            )
+    else:
+        candidates.append(os.path.join(basedir, "../deploy"))
+
+    return dedupe_paths(candidates)
+
+
+def get_deploy_files_or_fail(basedir: str, deploy_filenames: list[str]) -> list[str]:
+    candidates = get_deploy_dir_candidates(basedir)
+
+    checked = []
+    for deploy_dir in candidates:
+        deploy_files = [os.path.join(deploy_dir, f) for f in deploy_filenames]
+        missing_files = [f for f in deploy_files if not os.path.isfile(f)]
+        if not missing_files:
+            print(f"Using operator deploy manifests from {deploy_dir}")
+            return deploy_files
+        checked.append(
+            f"{deploy_dir}: missing {', '.join(missing_files)}; "
+            f"{describe_deploy_dir(deploy_dir)}"
+        )
+
+    raise SystemExit(
+        "Operator deploy manifest check failed.\n"
+        f"--deploy-path/OPERATOR_TEST_DEPLOY_PATH: {g_ts_cfg.get_deploy_path()}\n"
+        f"--deploy-historic-path/OPERATOR_TEST_DEPLOY_HISTORIC_PATH: "
+        f"{g_ts_cfg.get_deploy_historic_path()}\n"
+        f"Default deploy directory: {os.path.join(basedir, '../deploy')}\n"
+        f"Working directory: {os.getcwd()}\n"
+        f"Required files: {', '.join(deploy_filenames)}\n"
+        "Checked candidates:\n"
+        + "\n".join(f"- {entry}" for entry in checked)
+    )
+
+
 if __name__ == '__main__':
     deploy_files = ["deploy-crds.yaml", "deploy-operator.yaml"]
 
@@ -228,6 +308,10 @@ if __name__ == '__main__':
             g_ts_cfg.s3_credentials_path = arg.partition("=")[-1]
         elif arg.startswith("--helm-path="):
             g_ts_cfg.helm_path = arg.partition("=")[-1]
+        elif arg.startswith("--deploy-path="):
+            g_ts_cfg.deploy_path = arg.partition("=")[-1]
+        elif arg.startswith("--deploy-historic-path="):
+            g_ts_cfg.deploy_historic_path = arg.partition("=")[-1]
         elif arg == "--skip-azure":
             g_ts_cfg.azure_skip = True
         elif arg == "--start-azure":
@@ -333,14 +417,10 @@ if __name__ == '__main__':
     print(
         f"Using environment {g_ts_cfg.env} with kubernetes version {opt_kube_version or 'latest'}...")
 
-    deploy_dir = os.path.join(basedir, "../deploy")
-    deploy_files = [os.path.join(deploy_dir, f) for f in deploy_files]
+    deploy_files = get_deploy_files_or_fail(basedir, deploy_files)
 
     if opt_mount_operator_path:
         print(f"Overriding mysqloperator code with local copy at {opt_mount_operator_path}")
-
-    assert len(deploy_files) == len(
-        [f for f in deploy_files if os.path.isfile(f)]), "deploy files check"
 
     with get_driver(g_ts_cfg.env) as driver:
         if cmd in ("run", "setup"):

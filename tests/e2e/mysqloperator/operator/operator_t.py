@@ -108,6 +108,12 @@ FATAL_DD_UPGRADE_ERROR_FRAGMENTS = (
     "Failed to initialize DD Storage Engine.",
     "Upgrade is not supported after a crash or shutdown with innodb_fast_shutdown = 2.",
 )
+RAW_DEPLOY_MANIFEST_FILES = (
+    "deploy-crds.yaml",
+    "deploy-operator.yaml",
+)
+RAW_MANIFEST_BRIDGE_RELEASE = "9.6.0-2.2.7"
+HISTORICAL_IMAGE_DIGEST_MAX_MYSQL_VERSION = "9.5.0"
 
 OPERATOR_IMAGE_DIGEST_KEYS = frozenset(
     {
@@ -130,6 +136,194 @@ ROUTER_IMAGE_DIGEST_KEYS = frozenset(
 SERVER_ROUTER_IMAGE_DIGEST_KEYS = (
     SERVER_IMAGE_DIGEST_KEYS | ROUTER_IMAGE_DIGEST_KEYS
 )
+
+
+def _dedupe_paths(paths: list[str]) -> list[str]:
+    deduped = []
+    seen = set()
+    for path in paths:
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        deduped.append(path)
+    return deduped
+
+
+def get_raw_deploy_dir_candidates_for_release(release: str) -> list[str]:
+    release = str(release)
+    current_release = str(g_ts_cfg.operator_version_tag)
+    candidates = []
+
+    if release == current_release:
+        deploy_path = g_ts_cfg.get_deploy_path()
+        if deploy_path:
+            candidates.append(deploy_path)
+
+    historic_path = g_ts_cfg.get_deploy_historic_path()
+    if historic_path:
+        if release == current_release:
+            candidates.append(os.path.join(historic_path, "deploy"))
+        candidates.append(os.path.join(historic_path, release))
+        candidates.append(os.path.join(historic_path, release, "deploy"))
+
+    return _dedupe_paths(candidates)
+
+
+def get_raw_deploy_dir_for_release(release: str) -> str:
+    candidates = get_raw_deploy_dir_candidates_for_release(release)
+    if not candidates:
+        raise ValueError(
+            "Raw deploy manifest paths are not configured. Set "
+            "OPERATOR_TEST_DEPLOY_PATH/--deploy-path for the current release "
+            "and OPERATOR_TEST_DEPLOY_HISTORIC_PATH/--deploy-historic-path "
+            "for historic releases."
+        )
+
+    checked = []
+    for candidate in candidates:
+        missing = [
+            filename
+            for filename in RAW_DEPLOY_MANIFEST_FILES
+            if not os.path.isfile(os.path.join(candidate, filename))
+        ]
+        if not missing:
+            return candidate
+        checked.append(f"{candidate} (missing: {', '.join(missing)})")
+
+    raise FileNotFoundError(
+        f"No complete raw deploy manifest directory found for release {release}. "
+        f"Checked: {'; '.join(checked)}"
+    )
+
+
+def get_raw_deploy_manifest_path(release: str, filename: str) -> str:
+    if filename not in RAW_DEPLOY_MANIFEST_FILES:
+        raise ValueError(f"Unknown raw deploy manifest file {filename!r}")
+    return os.path.join(get_raw_deploy_dir_for_release(release), filename)
+
+
+def _set_container_env_value(container: dict, name: str, value: str) -> None:
+    envs = container.setdefault("env", [])
+    for env in envs:
+        if env.get("name") == name:
+            env["value"] = value
+            env.pop("valueFrom", None)
+            return
+    envs.append({"name": name, "value": value})
+
+
+def _ensure_rule_value(rule: dict, key: str, value: str) -> None:
+    values = rule.setdefault(key, [])
+    if value not in values:
+        values.append(value)
+
+
+def _patch_raw_operator_clusterrole_for_test_environment(doc: dict) -> None:
+    if (
+        doc.get("kind") != "ClusterRole"
+        or doc.get("metadata", {}).get("name") != "mysql-operator"
+    ):
+        return
+
+    for rule in doc.setdefault("rules", []):
+        if "apps" not in rule.get("apiGroups", []):
+            continue
+        if "deployments" not in rule.get("resources", []):
+            continue
+        _ensure_rule_value(rule, "verbs", "list")
+        return
+
+    doc["rules"].append(
+        {
+            "apiGroups": ["apps"],
+            "resources": ["deployments"],
+            "verbs": ["list"],
+        }
+    )
+
+
+def _patch_raw_operator_manifest_for_test_environment(
+    docs: list[dict],
+    release: str,
+) -> None:
+    for doc in docs:
+        if not isinstance(doc, dict):
+            continue
+
+        _patch_raw_operator_clusterrole_for_test_environment(doc)
+
+        if doc.get("kind") == "Namespace":
+            custom_labels = g_ts_cfg.get_custom_operator_ns_labels()
+            if custom_labels:
+                doc.setdefault("metadata", {}).setdefault("labels", {}).update(
+                    custom_labels
+                )
+            continue
+
+        if (
+            doc.get("kind") != "Deployment"
+            or doc.get("metadata", {}).get("name") != "mysql-operator"
+        ):
+            continue
+
+        containers = (
+            doc.get("spec", {})
+            .get("template", {})
+            .get("spec", {})
+            .get("containers", [])
+        )
+        operator_container = get_named_container(containers, "mysql-operator")
+        if operator_container is None:
+            raise ValueError(
+                f"Raw operator manifest for release {release} has no "
+                "mysql-operator container"
+            )
+
+        operator_container["image"] = g_ts_cfg.get_operator_image(release)
+        operator_container["imagePullPolicy"] = g_ts_cfg.operator_pull_policy
+        _set_container_env_value(
+            operator_container,
+            "MYSQL_OPERATOR_DEFAULT_REPOSITORY",
+            g_ts_cfg.get_image_registry_repository(),
+        )
+        _set_container_env_value(
+            operator_container,
+            "MYSQL_OPERATOR_IMAGE_PULL_POLICY",
+            g_ts_cfg.operator_pull_policy,
+        )
+
+
+def load_raw_deploy_manifest_docs(release: str, filename: str) -> list[dict]:
+    manifest_path = get_raw_deploy_manifest_path(release, filename)
+    with open(manifest_path, encoding="utf8") as manifest_file:
+        return [
+            doc for doc in yaml.safe_load_all(manifest_file)
+            if doc is not None
+        ]
+
+
+def render_raw_deploy_manifest_for_test_environment(
+    release: str,
+    filename: str,
+) -> str:
+    docs = load_raw_deploy_manifest_docs(release, filename)
+    if filename == "deploy-operator.yaml":
+        _patch_raw_operator_manifest_for_test_environment(docs, release)
+    return yaml.safe_dump_all(docs, sort_keys=False)
+
+
+def get_raw_manifest_upgrade_release_chain() -> list[str]:
+    chain = [
+        g_ts_cfg.operator_current_lts_version_tag,
+        RAW_MANIFEST_BRIDGE_RELEASE,
+        g_ts_cfg.operator_version_tag,
+    ]
+    deduped = []
+    for release in chain:
+        if release and release not in deduped:
+            deduped.append(release)
+    return deduped
+
 
 def get_cluster_switchover_service_account_name(cluster_name: str) -> str:
     return f"{cluster_name}-switchover-sa"
@@ -2203,6 +2397,101 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         )
         return current_operator_pod or operator_pod
 
+    def _apply_raw_operator_release(
+        self,
+        release: str,
+        *,
+        previous_pod_name: Optional[str] = None,
+    ) -> dict:
+        for filename in RAW_DEPLOY_MANIFEST_FILES:
+            kutil.apply(
+                None,
+                render_raw_deploy_manifest_for_test_environment(
+                    release,
+                    filename,
+                ),
+            )
+
+        operator_pod = self._wait_for_operator_pod_rollout(
+            namespace=self.operator_ns,
+            deployment_name=self.operator_deploy_name,
+            previous_pod_name=previous_pod_name,
+        )
+        self._assert_raw_operator_selector_compatible()
+        self._assert_helm_operator_image_tag(operator_pod, release)
+        return operator_pod
+
+    def _remove_live_default_operator_if_present(self) -> None:
+        if self.operator_ns not in kutil.ls_ns_ex():
+            return
+        if kutil.get_deploy(
+            self.operator_ns,
+            self.operator_deploy_name,
+            check=False,
+            cmd_output_log=kutil.KubectlCmdOutputLogging.MUTE,
+        ) is None:
+            return
+
+        live_artifacts = get_operator_artifacts(
+            operator_ns=self.operator_ns,
+            operator_deploy_name=self.operator_deploy_name,
+            crole_names_pattern=self.crole_names_pattern,
+            crole_binding_pattern=self.crole_binding_pattern,
+            ckopf_peerings_pattern=self.ckopf_peerings_pattern,
+            sa_names_pattern=self.sa_names_pattern,
+            role_names_pattern=self.role_names_pattern,
+            role_binding_pattern=self.role_binding_pattern,
+            kopf_peerings_pattern=self.kopf_peerings_pattern,
+        )
+        if live_artifacts is None:
+            return
+
+        remove_operator(
+            operator_ns=self.operator_ns,
+            operator_deploy_name=self.operator_deploy_name,
+            artifacts=live_artifacts,
+            return_manifests=False,
+            delete_namespace=True,
+            check_namespace_empty=False,
+        )
+
+    def _assert_raw_operator_selector_compatible(self) -> dict:
+        deployment = kutil.get_deploy(
+            self.operator_ns,
+            self.operator_deploy_name,
+        )
+        selector_labels = (
+            deployment.get("spec", {})
+            .get("selector", {})
+            .get("matchLabels")
+        )
+        expected_selector_labels = get_legacy_deployment_selector_labels()
+        self.assertEqual(
+            selector_labels,
+            expected_selector_labels,
+            msg=(
+                f"Raw operator Deployment selector must stay "
+                f"{expected_selector_labels!r} for kubectl-apply upgrades, "
+                f"got {selector_labels!r}"
+            ),
+        )
+        template_labels = (
+            deployment.get("spec", {})
+            .get("template", {})
+            .get("metadata", {})
+            .get("labels")
+        )
+        assert_mapping_contains(
+            self,
+            template_labels,
+            expected_selector_labels,
+            label=(
+                f"Deployment {self.operator_ns}/{self.operator_deploy_name} "
+                "spec.template.metadata.labels"
+            ),
+        )
+        return deployment
+
     def _get_single_operator_deployment_name(
         self,
         *,
@@ -2508,7 +2797,25 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
             and tag == g_ts_cfg.version_tag
         ):
             return None
+        if cls._is_after_historical_image_digest_cutoff(tag):
+            return None
         return lookup_historical_image_digest(canonical_image_name, tag)
+
+    @classmethod
+    def _is_after_historical_image_digest_cutoff(cls, release: str) -> bool:
+        return cls._parse_mysql_version(
+            cls._mysql_version_from_release(release)
+        ) > cls._parse_mysql_version(HISTORICAL_IMAGE_DIGEST_MAX_MYSQL_VERSION)
+
+    @classmethod
+    def _should_check_raw_manifest_cluster_operator_image_tag(
+        cls,
+        release: str,
+    ) -> bool:
+        return (
+            release == g_ts_cfg.operator_version_tag
+            or not cls._is_after_historical_image_digest_cutoff(release)
+        )
 
     def _assert_pod_container_image_identity(
         self,
@@ -2517,7 +2824,7 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         container_name: str,
         spec_container_key: str,
         status_container_key: str,
-        expected_tag: str,
+        expected_tag: Optional[str],
         expected_image_name_keys,
         optional: bool = False,
     ) -> None:
@@ -2566,14 +2873,15 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                 f"{identity_details}"
             ),
         )
-        self.assertEqual(
-            tag,
-            expected_tag,
-            msg=(
-                f"Unexpected image tag {tag}; expected {expected_tag}. "
-                f"{identity_details}"
-            ),
-        )
+        if expected_tag is not None:
+            self.assertEqual(
+                tag,
+                expected_tag,
+                msg=(
+                    f"Unexpected image tag {tag}; expected {expected_tag}. "
+                    f"{identity_details}"
+                ),
+            )
         self.assertTrue(
             runtime_image_id,
             msg=f"Missing runtime imageID for {identity_details}",
@@ -2641,10 +2949,19 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         server_instances: int,
         router_instances: int,
         expected_release: str,
+        expected_operator_release: Optional[str] = None,
+        check_operator_image_tag: bool = True,
     ) -> None:
         expected_mysql_version = self._mysql_version_from_release(
             expected_release
         )
+        expected_operator_tag = (
+            expected_operator_release
+            if expected_operator_release is not None
+            else expected_release
+        )
+        if not check_operator_image_tag:
+            expected_operator_tag = None
 
         for instance in range(server_instances):
             pod = kutil.get_po(namespace, f"{cluster_name}-{instance}")
@@ -2653,7 +2970,7 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                 container_name="fixdatadir",
                 spec_container_key="initContainers",
                 status_container_key="initContainerStatuses",
-                expected_tag=expected_release,
+                expected_tag=expected_operator_tag,
                 expected_image_name_keys=OPERATOR_IMAGE_DIGEST_KEYS,
             )
             self._assert_pod_container_image_identity(
@@ -2661,7 +2978,7 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                 container_name="initconf",
                 spec_container_key="initContainers",
                 status_container_key="initContainerStatuses",
-                expected_tag=expected_release,
+                expected_tag=expected_operator_tag,
                 expected_image_name_keys=OPERATOR_IMAGE_DIGEST_KEYS,
             )
             self._assert_pod_container_image_identity(
@@ -2686,7 +3003,7 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                 container_name="sidecar",
                 spec_container_key="containers",
                 status_container_key="containerStatuses",
-                expected_tag=expected_release,
+                expected_tag=expected_operator_tag,
                 expected_image_name_keys=OPERATOR_IMAGE_DIGEST_KEYS,
             )
 
@@ -2835,6 +3152,138 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                 return
             except Exception:
                 continue
+
+    @staticmethod
+    def _pod_container_has_previous_logs(
+        pod: dict,
+        container_name: str,
+    ) -> bool:
+        pod_status = pod.get("status", {})
+        for status_key in ("initContainerStatuses", "containerStatuses"):
+            for status in pod_status.get(status_key, []):
+                if status.get("name") != container_name:
+                    continue
+                if status.get("restartCount", 0) > 0:
+                    return True
+                if status.get("lastState", {}).get("terminated"):
+                    return True
+                return False
+        return False
+
+    @staticmethod
+    def _pod_container_names(pod: dict) -> list[str]:
+        container_names: list[str] = []
+        for container_key in ("initContainers", "containers"):
+            for container in pod.get("spec", {}).get(container_key, []):
+                container_name = container.get("name")
+                if container_name and container_name not in container_names:
+                    container_names.append(container_name)
+        return container_names
+
+    def _print_helm_cluster_pod_diagnostics(
+        self,
+        *,
+        namespace: str,
+        cluster_name: str,
+    ) -> None:
+        print(f"==== Cluster pod diagnostics for {namespace}/{cluster_name} ====")
+
+        try:
+            pods = sorted(
+                kutil.ls_po(namespace, pattern=f"{cluster_name}.*"),
+                key=lambda pod: pod["NAME"],
+            )
+        except Exception as exc:
+            print(f"Failed to list pods for {namespace}/{cluster_name}: {exc}")
+            return
+
+        if not pods:
+            print(f"No pods found for {namespace}/{cluster_name}")
+            return
+
+        for pod_row in pods:
+            pod_name = pod_row["NAME"]
+            pod = kutil.get_po(
+                namespace,
+                pod_name,
+                check=False,
+                cmd_output_log=kutil.KubectlCmdOutputLogging.MUTE,
+            )
+            if pod:
+                print(f"==== image identities for {namespace}/{pod_name} ====")
+                for container_key, status_key in (
+                    ("initContainers", "initContainerStatuses"),
+                    ("containers", "containerStatuses"),
+                ):
+                    for container in pod.get("spec", {}).get(container_key, []):
+                        container_name = container.get("name")
+                        status = get_named_container(
+                            pod.get("status", {}).get(status_key, []),
+                            container_name,
+                        )
+                        runtime_image_id = None
+                        if status is not None:
+                            runtime_image_id = status.get("imageID")
+                        print(
+                            f"{container_key}.{container_name}: "
+                            f"image={container.get('image')} "
+                            f"imageID={runtime_image_id}"
+                        )
+            print(f"==== describe pod {namespace}/{pod_name} ====")
+            try:
+                print(
+                    kutil.describe_po(
+                        namespace,
+                        pod_name,
+                        cmd_output_log=kutil.KubectlCmdOutputLogging.MUTE,
+                    )
+                )
+            except Exception as exc:
+                print(f"Failed to describe pod {namespace}/{pod_name}: {exc}")
+
+            if not pod:
+                print(f"Pod {namespace}/{pod_name} no longer exists")
+                continue
+
+            for container_name in self._pod_container_names(pod):
+                print(
+                    f"==== logs pod {namespace}/{pod_name} container {container_name} ===="
+                )
+                try:
+                    print(
+                        kutil.logs(
+                            namespace,
+                            [pod_name, container_name],
+                            cmd_output_log=kutil.KubectlCmdOutputLogging.MUTE,
+                        )
+                    )
+                except Exception as exc:
+                    print(
+                        f"Failed to fetch current logs for "
+                        f"{namespace}/{pod_name} container {container_name}: {exc}"
+                    )
+
+                if not self._pod_container_has_previous_logs(pod, container_name):
+                    continue
+
+                print(
+                    f"==== previous logs pod {namespace}/{pod_name} "
+                    f"container {container_name} ===="
+                )
+                try:
+                    print(
+                        kutil.logs(
+                            namespace,
+                            [pod_name, container_name],
+                            prev=True,
+                            cmd_output_log=kutil.KubectlCmdOutputLogging.MUTE,
+                        )
+                    )
+                except Exception as exc:
+                    print(
+                        f"Failed to fetch previous logs for "
+                        f"{namespace}/{pod_name} container {container_name}: {exc}"
+                    )
 
     @staticmethod
     def _merge_helm_values(
@@ -3016,6 +3465,72 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         if delete_namespace and namespace_exists:
             try:
                 kutil.delete_ns(cluster_install.namespace)
+            except Exception as exc:
+                if cleanup_error is None:
+                    cleanup_error = exc
+
+        if cleanup_error is not None:
+            raise cleanup_error
+
+    def _cleanup_raw_cluster(
+        self,
+        *,
+        namespace: str,
+        cluster_name: str,
+        delete_namespace: bool = False,
+        delete_pvcs: bool = True,
+    ) -> None:
+        cleanup_error = None
+
+        namespace_exists = namespace in kutil.ls_ns_ex()
+        if namespace_exists:
+            try:
+                cluster = kutil.get(
+                    namespace,
+                    "ic",
+                    cluster_name,
+                    check=False,
+                    cmd_output_log=kutil.KubectlCmdOutputLogging.MUTE,
+                )
+                if cluster is not None:
+                    finalizers = (
+                        cluster.get("metadata", {}).get("finalizers") or []
+                    )
+                    if finalizers:
+                        kutil.patch(
+                            namespace,
+                            "ic",
+                            cluster_name,
+                            [{"op": "remove", "path": "/metadata/finalizers"}],
+                            type="json",
+                            data_as_type="json",
+                        )
+                    kutil.delete_ic(
+                        namespace,
+                        cluster_name,
+                        timeout=60,
+                        wait=False,
+                    )
+                self.wait_pods_gone(
+                    f"{cluster_name}.*",
+                    ns=namespace,
+                )
+                self.wait_routers_gone(
+                    f"{cluster_name}-router.*",
+                    ns=namespace,
+                )
+                self.wait_ic_gone(
+                    cluster_name,
+                    ns=namespace,
+                )
+                if delete_pvcs:
+                    kutil.delete_pvc(namespace, None)
+            except Exception as exc:
+                cleanup_error = exc
+
+        if delete_namespace and namespace_exists:
+            try:
+                kutil.delete_ns(namespace)
             except Exception as exc:
                 if cleanup_error is None:
                     cleanup_error = exc
@@ -7020,6 +7535,252 @@ class HelmGlobalToScopedOperatorUpgradeTest(OperatorSingleAndMultipleBaseTest):
             expect_operator_upgrade_failure=True,
             expected_operator_upgrade_error_fragment=self.upgrade_error_fragment,
         )
+
+
+class RawManifestOperatorSelectorUpgradeCompatibilityTest(
+    OperatorSingleAndMultipleBaseTest
+):
+    def test_raw_manifest_operator_upgrade_preserves_legacy_selector(self) -> None:
+        original_artifacts = self._remove_default_operator_or_fail()
+        operator_pod = None
+        test_error = None
+
+        try:
+            for release in get_raw_manifest_upgrade_release_chain():
+                previous_pod_name = (
+                    operator_pod["metadata"]["name"] if operator_pod else None
+                )
+                operator_pod = self._apply_raw_operator_release(
+                    release,
+                    previous_pod_name=previous_pod_name,
+                )
+        except Exception as exc:
+            test_error = exc
+            self._print_operator_log_from_candidates(
+                namespace=self.operator_ns,
+                deployment_names=[self.operator_deploy_name],
+            )
+            raise
+        finally:
+            cleanup_error = None
+            try:
+                self._remove_live_default_operator_if_present()
+            except Exception as exc:
+                cleanup_error = exc
+            finally:
+                try:
+                    self._restore_default_operator(original_artifacts)
+                except Exception as exc:
+                    if cleanup_error is None:
+                        cleanup_error = exc
+                if cleanup_error is not None and test_error is None:
+                    raise cleanup_error
+
+
+class RawManifestOperatorAndClusterLtsBridgeUpgradeTest(
+    OperatorSingleAndMultipleBaseTest
+):
+    cluster_size = 1
+    routers_count = 1
+
+    @classmethod
+    def tearDownClass(cls):
+        kutil.delete_ns(cls.ns)
+        super().tearDownClass()
+
+    def _apply_raw_cluster(
+        self,
+        *,
+        cluster_name: str,
+        release: str,
+    ) -> None:
+        if self.ns not in kutil.ls_ns_ex():
+            kutil.create_ns(self.ns, labels={})
+        kutil.create_user_secrets(
+            self.ns,
+            self.cluster_secret_name,
+            root_user="root",
+            root_host="%",
+            root_pass="sakila",
+        )
+        kutil.apply(
+            self.ns,
+            f"""
+apiVersion: mysql.oracle.com/v2
+kind: InnoDBCluster
+metadata:
+  name: {cluster_name}
+spec:
+  instances: {self.cluster_size}
+  router:
+    instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
+  tlsUseSelfSigned: true
+  version: "{self._mysql_version_from_release(release)}"
+  podSpec:
+    terminationGracePeriodSeconds: 5
+""",
+        )
+
+    def test_raw_manifest_operator_and_cluster_upgrade_lts_bridge(self) -> None:
+        release_chain = get_raw_manifest_upgrade_release_chain()
+        cluster_name = f"{self.cluster_name}-raw-upg"
+        original_artifacts = self._remove_default_operator_or_fail()
+        operator_pod = None
+        current_cluster_release = release_chain[0]
+        test_error = None
+
+        try:
+            operator_pod = self._apply_raw_operator_release(current_cluster_release)
+            self._apply_raw_cluster(
+                cluster_name=cluster_name,
+                release=current_cluster_release,
+            )
+            self._wait_for_helm_cluster_ready(
+                namespace=self.ns,
+                cluster_name=cluster_name,
+                server_instances=self.cluster_size,
+                router_instances=self.routers_count,
+            )
+            self._assert_helm_cluster_runtime_image_identities(
+                namespace=self.ns,
+                cluster_name=cluster_name,
+                server_instances=self.cluster_size,
+                router_instances=self.routers_count,
+                expected_release=current_cluster_release,
+                check_operator_image_tag=(
+                    self._should_check_raw_manifest_cluster_operator_image_tag(
+                        current_cluster_release
+                    )
+                ),
+            )
+            self._assert_helm_cluster_cr_version(
+                namespace=self.ns,
+                cluster_name=cluster_name,
+                expected_version=self._mysql_version_from_release(
+                    current_cluster_release
+                ),
+            )
+
+            for next_release in release_chain[1:]:
+                previous_pod_name = operator_pod["metadata"]["name"]
+                operator_pod = self._apply_raw_operator_release(
+                    next_release,
+                    previous_pod_name=previous_pod_name,
+                )
+                self._wait_for_helm_cluster_ready(
+                    namespace=self.ns,
+                    cluster_name=cluster_name,
+                    server_instances=self.cluster_size,
+                    router_instances=self.routers_count,
+                )
+                self._assert_helm_cluster_runtime_image_identities(
+                    namespace=self.ns,
+                    cluster_name=cluster_name,
+                    server_instances=self.cluster_size,
+                    router_instances=self.routers_count,
+                    expected_release=current_cluster_release,
+                    check_operator_image_tag=(
+                        self._should_check_raw_manifest_cluster_operator_image_tag(
+                            current_cluster_release
+                        )
+                    ),
+                )
+
+                server_rollover_waiter = tutil.get_sts_rollover_update_waiter(
+                    self,
+                    cluster_name,
+                    timeout=900,
+                    delay=10,
+                )
+                router_rollover_waiter = (
+                    tutil.get_router_deploy_rollover_update_waiter(
+                        self,
+                        cluster_name,
+                        timeout=200,
+                        delay=10,
+                    )
+                    if self.routers_count
+                    else None
+                )
+
+                kutil.patch_ic(
+                    self.ns,
+                    cluster_name,
+                    {
+                        "spec": {
+                            "version": self._mysql_version_from_release(
+                                next_release
+                            )
+                        }
+                    },
+                    type="merge",
+                )
+                server_rollover_waiter()
+                if router_rollover_waiter is not None:
+                    router_rollover_waiter()
+
+                current_cluster_release = next_release
+                self._wait_for_helm_cluster_ready(
+                    namespace=self.ns,
+                    cluster_name=cluster_name,
+                    server_instances=self.cluster_size,
+                    router_instances=self.routers_count,
+                )
+                self._assert_helm_cluster_runtime_image_identities(
+                    namespace=self.ns,
+                    cluster_name=cluster_name,
+                    server_instances=self.cluster_size,
+                    router_instances=self.routers_count,
+                    expected_release=current_cluster_release,
+                    check_operator_image_tag=(
+                        self._should_check_raw_manifest_cluster_operator_image_tag(
+                            current_cluster_release
+                        )
+                    ),
+                )
+                self._assert_helm_cluster_cr_version(
+                    namespace=self.ns,
+                    cluster_name=cluster_name,
+                    expected_version=self._mysql_version_from_release(
+                        current_cluster_release
+                    ),
+                )
+        except Exception as exc:
+            test_error = exc
+            self._print_helm_cluster_pod_diagnostics(
+                namespace=self.ns,
+                cluster_name=cluster_name,
+            )
+            self._print_operator_log_from_candidates(
+                namespace=self.operator_ns,
+                deployment_names=[self.operator_deploy_name],
+            )
+            raise
+        finally:
+            cleanup_error = None
+            try:
+                self._cleanup_raw_cluster(
+                    namespace=self.ns,
+                    cluster_name=cluster_name,
+                    delete_pvcs=True,
+                )
+            except Exception as exc:
+                cleanup_error = exc
+
+            try:
+                self._remove_live_default_operator_if_present()
+            except Exception as exc:
+                if cleanup_error is None:
+                    cleanup_error = exc
+            finally:
+                try:
+                    self._restore_default_operator(original_artifacts)
+                except Exception as exc:
+                    if cleanup_error is None:
+                        cleanup_error = exc
+                if cleanup_error is not None and test_error is None:
+                    raise cleanup_error
 
 
 class RawGlobalOperatorTopologyRestartGuardTest(OperatorSingleAndMultipleBaseTest):

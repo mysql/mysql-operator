@@ -253,6 +253,65 @@ def _make_non_operator_deployment(namespace: str, name: str) -> dict:
     }
 
 
+def _write_raw_deploy_manifests(path: pathlib.Path) -> None:
+    path.mkdir(parents=True)
+    (path / "deploy-crds.yaml").write_text(
+        """---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: innodbclusters.mysql.oracle.com
+""",
+        encoding="utf8",
+    )
+    (path / "deploy-operator.yaml").write_text(
+        """---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mysql-operator
+rules:
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  - statefulsets
+  verbs:
+  - get
+  - create
+  - patch
+  - update
+  - watch
+  - delete
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mysql-operator
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-operator
+  namespace: mysql-operator
+spec:
+  selector:
+    matchLabels:
+      name: mysql-operator
+  template:
+    metadata:
+      labels:
+        name: mysql-operator
+    spec:
+      containers:
+      - name: mysql-operator
+        image: container-registry.oracle.com/mysql/community-operator:old
+        imagePullPolicy: IfNotPresent
+""",
+        encoding="utf8",
+    )
+
+
 @pytest.fixture
 def operator_t_module(monkeypatch):
     monkeypatch.syspath_prepend(str(TESTS_ROOT))
@@ -856,6 +915,179 @@ def test_fatal_mysql_upgrade_logs_detect_server_upgrade_failure(operator_t_modul
     ]
 
 
+def test_raw_deploy_dir_for_current_release_uses_deploy_path(
+    monkeypatch,
+    tmp_path,
+    operator_t_module,
+):
+    current_deploy_path = tmp_path / "deploy"
+    historic_deploy_path = tmp_path / "deploy-historic"
+    _write_raw_deploy_manifests(current_deploy_path)
+    _write_raw_deploy_manifests(
+        historic_deploy_path / operator_t_module.g_ts_cfg.operator_version_tag
+    )
+
+    monkeypatch.setattr(
+        operator_t_module.g_ts_cfg,
+        "deploy_path",
+        str(current_deploy_path),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        operator_t_module.g_ts_cfg,
+        "deploy_historic_path",
+        str(historic_deploy_path),
+        raising=False,
+    )
+
+    assert (
+        operator_t_module.get_raw_deploy_dir_for_release(
+            operator_t_module.g_ts_cfg.operator_version_tag
+        )
+        == str(current_deploy_path)
+    )
+
+
+def test_raw_deploy_dir_for_historic_release_accepts_nested_deploy_layout(
+    monkeypatch,
+    tmp_path,
+    operator_t_module,
+):
+    historic_deploy_path = tmp_path / "deploy-historic"
+    nested_release_path = historic_deploy_path / "9.6.0-2.2.7" / "deploy"
+    _write_raw_deploy_manifests(nested_release_path)
+
+    monkeypatch.setattr(
+        operator_t_module.g_ts_cfg,
+        "deploy_historic_path",
+        str(historic_deploy_path),
+        raising=False,
+    )
+
+    assert (
+        operator_t_module.get_raw_deploy_dir_for_release("9.6.0-2.2.7")
+        == str(nested_release_path)
+    )
+
+
+def test_raw_deploy_dir_for_release_reports_missing_manifests(
+    monkeypatch,
+    tmp_path,
+    operator_t_module,
+):
+    historic_deploy_path = tmp_path / "deploy-historic"
+    (historic_deploy_path / "9.6.0-2.2.7").mkdir(parents=True)
+
+    monkeypatch.setattr(
+        operator_t_module.g_ts_cfg,
+        "deploy_historic_path",
+        str(historic_deploy_path),
+        raising=False,
+    )
+
+    with pytest.raises(FileNotFoundError, match="9.6.0-2.2.7"):
+        operator_t_module.get_raw_deploy_dir_for_release("9.6.0-2.2.7")
+
+
+def test_raw_manifest_upgrade_release_chain_bridges_lts_to_current(
+    monkeypatch,
+    operator_t_module,
+):
+    monkeypatch.setattr(
+        operator_t_module.g_ts_cfg,
+        "operator_current_lts_version_tag",
+        "8.4.7-2.1.9",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        operator_t_module.g_ts_cfg,
+        "operator_version_tag",
+        "9.7.0-2.2.8",
+        raising=False,
+    )
+
+    assert operator_t_module.get_raw_manifest_upgrade_release_chain() == [
+        "8.4.7-2.1.9",
+        "9.6.0-2.2.7",
+        "9.7.0-2.2.8",
+    ]
+
+
+def test_render_raw_deploy_manifest_patches_operator_image_for_test_environment(
+    monkeypatch,
+    tmp_path,
+    operator_t_module,
+):
+    current_deploy_path = tmp_path / "deploy"
+    _write_raw_deploy_manifests(current_deploy_path)
+
+    monkeypatch.setattr(
+        operator_t_module.g_ts_cfg,
+        "deploy_path",
+        str(current_deploy_path),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        operator_t_module.g_ts_cfg,
+        "image_registry",
+        "registry.example.com:5000",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        operator_t_module.g_ts_cfg,
+        "image_repository",
+        "mysql",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        operator_t_module.g_ts_cfg,
+        "operator_image_name",
+        "community-operator",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        operator_t_module.g_ts_cfg,
+        "operator_pull_policy",
+        "Never",
+        raising=False,
+    )
+
+    rendered = operator_t_module.render_raw_deploy_manifest_for_test_environment(
+        operator_t_module.g_ts_cfg.operator_version_tag,
+        "deploy-operator.yaml",
+    )
+    deployment = next(
+        doc
+        for doc in yaml.safe_load_all(rendered)
+        if doc and doc.get("kind") == "Deployment"
+    )
+    cluster_role = next(
+        doc
+        for doc in yaml.safe_load_all(rendered)
+        if doc and doc.get("kind") == "ClusterRole"
+    )
+    container = deployment["spec"]["template"]["spec"]["containers"][0]
+    envs = {env["name"]: env["value"] for env in container["env"]}
+    apps_rule = next(
+        rule
+        for rule in cluster_role["rules"]
+        if "apps" in rule["apiGroups"]
+        and "deployments" in rule["resources"]
+    )
+
+    assert (
+        container["image"]
+        == "registry.example.com:5000/mysql/community-operator:"
+        f"{operator_t_module.g_ts_cfg.operator_version_tag}"
+    )
+    assert container["imagePullPolicy"] == "Never"
+    assert envs["MYSQL_OPERATOR_DEFAULT_REPOSITORY"] == (
+        "registry.example.com:5000/mysql"
+    )
+    assert envs["MYSQL_OPERATOR_IMAGE_PULL_POLICY"] == "Never"
+    assert "list" in apps_rule["verbs"]
+
+
 def test_selector_helper_outputs_match_chart_semantics(operator_t_module):
     service_selector = operator_t_module.get_service_selector_labels(
         "operator-ns",
@@ -885,6 +1117,35 @@ def test_selector_helper_outputs_match_chart_semantics(operator_t_module):
         "name": "custom-op",
         **service_selector,
     }
+
+
+@pytest.mark.parametrize(
+    "manifest_path",
+    [
+        TESTS_ROOT.parent / "deploy" / "deploy-operator.yaml",
+        TESTS_ROOT.parent / "internal" / "deploy" / "deploy-operator.yaml",
+    ],
+)
+def test_checked_in_raw_operator_manifest_selector_is_upgrade_compatible(
+    manifest_path,
+):
+    deployment = next(
+        doc
+        for doc in yaml.safe_load_all(manifest_path.read_text(encoding="utf8"))
+        if doc and doc.get("kind") == "Deployment"
+    )
+
+    selector_labels = deployment["spec"]["selector"]["matchLabels"]
+    template_labels = deployment["spec"]["template"]["metadata"]["labels"]
+
+    assert selector_labels == {
+        "name": "mysql-operator",
+    }
+    for key, value in selector_labels.items():
+        assert template_labels[key] == value
+    assert template_labels["app.kubernetes.io/name"] == "mysql-operator"
+    assert template_labels["app.kubernetes.io/instance"] == "mysql-operator"
+    assert template_labels["app.kubernetes.io/component"] == "controller"
 
 
 def test_get_patched_artifacts_uses_fresh_install_selector_helpers(

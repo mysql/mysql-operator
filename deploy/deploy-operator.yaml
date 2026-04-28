@@ -200,9 +200,6 @@ spec:
   selector:
     matchLabels:
       name: mysql-operator
-      app.kubernetes.io/name: mysql-operator
-      app.kubernetes.io/instance: mysql-operator
-      app.kubernetes.io/component: controller
   template:
     metadata:
       labels:

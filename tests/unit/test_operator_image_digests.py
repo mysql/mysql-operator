@@ -198,6 +198,92 @@ def test_current_dev_tags_are_skipped_from_digest_lookup(
     )
 
 
+def test_digest_lookup_skips_releases_after_9_5_cutoff(operator_t_module):
+    helper = (
+        operator_t_module.OperatorSingleAndMultipleBaseTest
+        ._expected_historical_image_digest_for_tag
+    )
+
+    assert helper("community-operator", "9.6.0-2.2.7") is None
+    assert helper("enterprise-operator", "9.6.0-2.2.7") is None
+    assert helper("community-server", "9.6.0") is None
+    assert helper("enterprise-router", "9.6.0") is None
+
+
+def test_digest_lookup_checks_9_5_cutoff_release(operator_t_module):
+    helper = (
+        operator_t_module.OperatorSingleAndMultipleBaseTest
+        ._expected_historical_image_digest_for_tag
+    )
+
+    assert (
+        helper("community-operator", "9.5.0-2.2.6")
+        == "sha256:94f00afa435f356d0ee1f6a8d77ee610f0b5a551a09891f6a3497aa05d590436"
+    )
+    assert (
+        helper("community-server", "9.5.0")
+        == "sha256:9a964baff432ca44c625035a60811639047de9c0523b1ad5746edf54428d2129"
+    )
+
+
+def test_raw_manifest_operator_sidecar_tag_check_uses_9_5_cutoff(
+    operator_t_module,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        operator_t_module.g_ts_cfg,
+        "operator_version_tag",
+        "9.7.0-2.2.8",
+    )
+    helper = (
+        operator_t_module.OperatorSingleAndMultipleBaseTest
+        ._should_check_raw_manifest_cluster_operator_image_tag
+    )
+
+    assert helper("9.5.0-2.2.6")
+    assert not helper("9.6.0-2.2.7")
+    assert helper("9.7.0-2.2.8")
+
+
+def test_image_identity_can_skip_tag_check_for_local_historic_operator_image(
+    operator_t_module,
+):
+    testcase = operator_t_module.OperatorSingleAndMultipleBaseTest(
+        methodName="runTest"
+    )
+    pod = {
+        "metadata": {"name": "cluster-0"},
+        "spec": {
+            "initContainers": [
+                {
+                    "name": "fixdatadir",
+                    "image": "registry.example.com/mysql/community-operator:9.7.0-2.2.8",
+                }
+            ],
+        },
+        "status": {
+            "initContainerStatuses": [
+                {
+                    "name": "fixdatadir",
+                    "imageID": (
+                        "registry.example.com/mysql/community-operator@"
+                        "sha256:fcd5bc5a5afbaeeed2a99a481f40b5b423ad2bd07c81b8e9fa2bf4eed648f7b1"
+                    ),
+                }
+            ],
+        },
+    }
+
+    testcase._assert_pod_container_image_identity(
+        pod=pod,
+        container_name="fixdatadir",
+        spec_container_key="initContainers",
+        status_container_key="initContainerStatuses",
+        expected_tag=None,
+        expected_image_name_keys=operator_t_module.OPERATOR_IMAGE_DIGEST_KEYS,
+    )
+
+
 def test_extract_runtime_image_digest_supports_docker_pullable(operator_t_module):
     assert (
         operator_t_module.OperatorSingleAndMultipleBaseTest._extract_runtime_image_digest(

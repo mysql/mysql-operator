@@ -164,32 +164,63 @@ def get_current_deploy_dir(basedir: str) -> str:
     return os.path.join(basedir, "../deploy")
 
 
-def get_current_deploy_files_or_fail(
-    basedir: str,
-    deploy_filenames: list[str],
-) -> list[str]:
-    deploy_dir = get_current_deploy_dir(basedir)
-    historic_deploy_dir = g_ts_cfg.get_deploy_historic_path()
-    if historic_deploy_dir:
-        historic_deploy_dir = os.path.expanduser(historic_deploy_dir)
-    deploy_files = [os.path.join(deploy_dir, filename) for filename in deploy_filenames]
-    missing_files = [path for path in deploy_files if not os.path.isfile(path)]
-    if not missing_files:
-        print(f"Using current operator deploy manifests from {deploy_dir}")
-        return deploy_files
+def dedupe_paths(paths: list[str]) -> list[str]:
+    deduped = []
+    seen = set()
+    for path in paths:
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        deduped.append(path)
+    return deduped
+
+
+def get_deploy_dir_candidates(basedir: str) -> list[str]:
+    candidates = []
+    configured_deploy_path = g_ts_cfg.get_deploy_path()
+    if configured_deploy_path:
+        configured_deploy_path = os.path.expanduser(configured_deploy_path)
+        candidates.append(configured_deploy_path)
+        candidates.append(os.path.join(configured_deploy_path, "deploy"))
+        historic_path = g_ts_cfg.get_deploy_historic_path()
+        if historic_path:
+            historic_path = os.path.expanduser(historic_path)
+            candidates.append(os.path.join(historic_path, "deploy"))
+            candidates.append(os.path.join(historic_path, g_ts_cfg.operator_version_tag))
+            candidates.append(
+                os.path.join(historic_path, g_ts_cfg.operator_version_tag, "deploy")
+            )
+    else:
+        candidates.append(os.path.join(basedir, "../deploy"))
+
+    return dedupe_paths(candidates)
+
+
+def get_deploy_files_or_fail(basedir: str, deploy_filenames: list[str]) -> list[str]:
+    candidates = get_deploy_dir_candidates(basedir)
+
+    checked = []
+    for deploy_dir in candidates:
+        deploy_files = [os.path.join(deploy_dir, f) for f in deploy_filenames]
+        missing_files = [f for f in deploy_files if not os.path.isfile(f)]
+        if not missing_files:
+            print(f"Using operator deploy manifests from {deploy_dir}")
+            return deploy_files
+        checked.append(
+            f"{deploy_dir}: missing {', '.join(missing_files)}; "
+            f"{describe_deploy_dir(deploy_dir)}"
+        )
 
     raise SystemExit(
         "Operator deploy manifest check failed.\n"
         f"--deploy-path/OPERATOR_TEST_DEPLOY_PATH: {g_ts_cfg.get_deploy_path()}\n"
         f"--deploy-historic-path/OPERATOR_TEST_DEPLOY_HISTORIC_PATH: "
         f"{g_ts_cfg.get_deploy_historic_path()}\n"
-        f"Current deploy directory: {deploy_dir}\n"
-        f"Current deploy directory status: {describe_deploy_dir(deploy_dir)}\n"
-        f"Current deploy tree:\n{describe_path_tree(deploy_dir)}\n"
-        f"Historic deploy directory: {historic_deploy_dir or '(not configured)'}\n"
-        f"Historic deploy tree:\n{describe_path_tree(historic_deploy_dir)}\n"
-        f"Required current deploy files: {', '.join(deploy_filenames)}\n"
-        f"Missing current deploy files: {', '.join(missing_files)}"
+        f"Default deploy directory: {os.path.join(basedir, '../deploy')}\n"
+        f"Working directory: {os.getcwd()}\n"
+        f"Required files: {', '.join(deploy_filenames)}\n"
+        "Checked candidates:\n"
+        + "\n".join(f"- {entry}" for entry in checked)
     )
 
 
@@ -451,7 +482,7 @@ if __name__ == '__main__':
     print(
         f"Using environment {g_ts_cfg.env} with kubernetes version {opt_kube_version or 'latest'}...")
 
-    deploy_files = get_current_deploy_files_or_fail(basedir, deploy_files)
+    deploy_files = get_deploy_files_or_fail(basedir, deploy_files)
 
     if opt_mount_operator_path:
         print(f"Overriding mysqloperator code with local copy at {opt_mount_operator_path}")

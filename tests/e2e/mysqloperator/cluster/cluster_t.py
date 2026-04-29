@@ -1391,6 +1391,90 @@ spec:
         kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
+class Cluster1SidecarKopfScanningDisabled(tutil.OperatorTest):
+    default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+    _cluster_size = 1
+    _routers_count = 0
+
+    @classmethod
+    def setUpClass(cls):
+        cls.logger = logging.getLogger(__name__+":"+cls.__name__)
+        super().setUpClass()
+        cls.set_ts_var("cluster_size", cls._cluster_size)
+        cls.set_ts_var("routers_count", cls._routers_count)
+
+        for instance in range(0, cls.get_ts_var("cluster_size")):
+            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
+
+    @classmethod
+    def tearDownClass(cls):
+        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
+            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
+
+        super().tearDownClass()
+
+    def _get_sidecar_logs(self):
+        return kutil.logs(
+            self.ns,
+            [f"{self.cluster_name}-0", "sidecar"],
+            cmd_output_log=kutil.KubectlCmdOutputLogging.MUTE)
+
+    def _wait_sidecar_started(self):
+        def started():
+            logs = self._get_sidecar_logs()
+            return logs if "Starting Operator request handler..." in logs else None
+
+        return self.wait(
+            started,
+            timeout=120,
+            delay=2,
+            timeout_diagnostics=lambda: kutil.store_pod_diagnostics(
+                self.ns, f"{self.cluster_name}-0"))
+
+    def test_00_create_and_check_sidecar_logs(self):
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
+
+        yaml = f"""
+apiVersion: mysql.oracle.com/v2
+kind: InnoDBCluster
+metadata:
+  name: {self.cluster_name}
+spec:
+  instances: {self.cluster_size}
+  router:
+    instances: {self.routers_count}
+  secretName: {self.cluster_secret_name}
+  tlsUseSelfSigned: true
+"""
+
+        kutil.apply(self.ns, yaml)
+
+        self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
+        self.wait_pod(f"{self.cluster_name}-0", "Running")
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
+
+        self._wait_sidecar_started()
+        sleep(5)
+        sidecar_logs = self._get_sidecar_logs()
+
+        self.assertIn("Starting Operator request handler...", sidecar_logs)
+        self.assertNotRegex(
+            sidecar_logs,
+            r"APIForbiddenError|['\"]code['\"]:\s*403|cannot (list|watch) resource "
+            r"\"(customresourcedefinitions|namespaces)\"|"
+            r"(customresourcedefinitions|namespaces).* is forbidden")
+        self.assertIn("sidecar: Kopf scanning disabled", sidecar_logs)
+
+    def test_99_destroy(self):
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_routers_gone(f"{self.cluster_name}-router-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_pvc(self.ns, None)
+
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
+
+
 # Test 3 member cluster with default configs
 class Cluster3Defaults(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS

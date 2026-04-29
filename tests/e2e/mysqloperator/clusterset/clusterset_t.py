@@ -294,7 +294,15 @@ spec:
   clusterName: {target_cluster_name}
   force: false
 """
+        apply_time = isotime()
         kutil.apply(self.ns, switchover_manifest)
+        self.wait_got_cluster_event(
+            target_cluster_name,
+            after=apply_time,
+            type="Normal",
+            reason="FailOverObjectCreated",
+            msg=f"Switching over to {self.ns}/{target_cluster_name} from .+",
+        )
         self._wait_switchover_job_succeeded(job_name)
         self._assert_one_instance_clusterset_roles(expected_primary_cluster_name)
         self._write_and_verify_row(expected_primary_cluster_name, self._next_write_value)

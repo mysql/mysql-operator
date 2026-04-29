@@ -9128,11 +9128,7 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
                         server_instances=server_instances,
                         router_instances=router_instances,
                         expected_release=current_cluster_release,
-                        expected_operator_release=self._get_helm_cluster_operator_release(
-                            namespace=self.ns,
-                            cluster_name=cluster_name,
-                            fallback_release=current_cluster_release,
-                        ),
+                        expected_operator_release=next_release,
                     )
                 self._wait_for_namespace_switchover_rbac_state(
                     namespace=self.ns,

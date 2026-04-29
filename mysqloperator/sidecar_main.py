@@ -918,13 +918,18 @@ def on_secret_create_or_update(name: str, namespace: str, spec, new, logger: Log
 @kopf.on.startup()
 def configure(settings: kopf.OperatorSettings, logger: Logger, *args, **_):
     logger.info("sidecar: configure()")
+    configure_operator_settings(settings)
+    logger.info("sidecar: Kopf scanning disabled")
+
+
+def configure_operator_settings(settings: kopf.OperatorSettings) -> None:
     # Standalone is an operator without peering.
     # Non-standalone operators are
     # 1. cluster wide, then they use ClusterKopfPeering, which is a global k8s cluster object
     # 2. namespace bound, then the use KopfPeering, which is a namespace bound object
     settings.peering.standalone = True
     settings.posting.enabled = False
-    # TODO: should settings.scanning.disabled be set to True to remove the warnings during sidecar startup?
+    settings.scanning.disabled = True
 
 
 def main(argv):
@@ -987,8 +992,10 @@ def main(argv):
     logger.info("Starting Operator request handler...")
     try:
         loop = asyncio.get_event_loop()
+        settings = kopf.OperatorSettings()
+        configure_operator_settings(settings)
 
-        loop.run_until_complete(kopf.operator(namespace=namespace))
+        loop.run_until_complete(kopf.operator(namespace=namespace, settings=settings))
     except Exception as e:
         import traceback
         traceback.print_exc()

@@ -362,6 +362,113 @@ def test_image_identity_waits_for_runtime_image_id(
     ]
 
 
+def test_helm_cluster_runtime_image_identities_allow_operator_image_roll_forward(
+    operator_t_module,
+    monkeypatch,
+):
+    testcase = operator_t_module.OperatorSingleAndMultipleBaseTest(
+        methodName="runTest"
+    )
+    cluster_name = "cluster"
+    namespace = "cluster-ns"
+    cluster_release = "9.6.0-2.2.7"
+    operator_release = "9.7.0-2.2.8"
+    mysql_version = "9.6.0"
+    runtime_image_id = "containerd://sha256:" + ("1" * 64)
+
+    def spec_container(name, image_name, tag):
+        return {
+            "name": name,
+            "image": f"registry.example.com/mysql/{image_name}:{tag}",
+        }
+
+    def status_container(name):
+        return {
+            "name": name,
+            "imageID": runtime_image_id,
+        }
+
+    server_pod = {
+        "metadata": {
+            "namespace": namespace,
+            "name": f"{cluster_name}-0",
+        },
+        "spec": {
+            "initContainers": [
+                spec_container("fixdatadir", "community-operator", operator_release),
+                spec_container("initconf", "community-operator", operator_release),
+                spec_container("initmysql", "community-server", mysql_version),
+            ],
+            "containers": [
+                spec_container("mysql", "community-server", mysql_version),
+                spec_container("sidecar", "community-operator", operator_release),
+            ],
+        },
+        "status": {
+            "initContainerStatuses": [
+                status_container("fixdatadir"),
+                status_container("initconf"),
+                status_container("initmysql"),
+            ],
+            "containerStatuses": [
+                status_container("mysql"),
+                status_container("sidecar"),
+            ],
+        },
+    }
+    router_pod_name = f"{cluster_name}-router-abc"
+    router_pod = {
+        "metadata": {
+            "namespace": namespace,
+            "name": router_pod_name,
+        },
+        "spec": {
+            "containers": [
+                spec_container("router", "community-router", mysql_version),
+            ],
+        },
+        "status": {
+            "containerStatuses": [
+                status_container("router"),
+            ],
+        },
+    }
+    pods = {
+        (namespace, f"{cluster_name}-0"): server_pod,
+        (namespace, router_pod_name): router_pod,
+    }
+
+    def get_po(pod_namespace, pod_name):
+        return pods[(pod_namespace, pod_name)]
+
+    def ls_po(pod_namespace, pattern):
+        assert pod_namespace == namespace
+        assert pattern == f"{cluster_name}-router-.*"
+        return [{"NAME": router_pod_name}]
+
+    monkeypatch.setattr(operator_t_module.kutil, "get_po", get_po)
+    monkeypatch.setattr(operator_t_module.kutil, "ls_po", ls_po)
+
+    with pytest.raises(AssertionError, match="Unexpected image tag"):
+        testcase._assert_helm_cluster_runtime_image_identities(
+            namespace=namespace,
+            cluster_name=cluster_name,
+            server_instances=1,
+            router_instances=1,
+            expected_release=cluster_release,
+            expected_operator_release=cluster_release,
+        )
+
+    testcase._assert_helm_cluster_runtime_image_identities(
+        namespace=namespace,
+        cluster_name=cluster_name,
+        server_instances=1,
+        router_instances=1,
+        expected_release=cluster_release,
+        expected_operator_release=operator_release,
+    )
+
+
 def test_extract_runtime_image_digest_supports_docker_pullable(operator_t_module):
     assert (
         operator_t_module.OperatorSingleAndMultipleBaseTest._extract_runtime_image_digest(

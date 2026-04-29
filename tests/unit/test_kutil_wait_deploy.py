@@ -1,5 +1,11 @@
+# Copyright (c) 2026, Oracle and/or its affiliates.
+#
+# Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
+#
+
 import importlib
 import json
+import logging
 import pathlib
 import sys
 import types
@@ -134,6 +140,13 @@ def test_wait_deploy_fails_fast_on_fatal_pod_state(monkeypatch, kutil_module):
         lambda ns, name: diagnostics.append(("pod", ns, name)),
     )
     monkeypatch.setattr(
+        kutil_module,
+        "_dump_deploy_fatal_pod_container_logs",
+        lambda ns, pod: diagnostics.append(
+            ("fatal-logs", ns, pod["metadata"]["name"])
+        ),
+    )
+    monkeypatch.setattr(
         kutil_module.time,
         "sleep",
         lambda seconds: pytest.fail(
@@ -154,4 +167,101 @@ def test_wait_deploy_fails_fast_on_fatal_pod_state(monkeypatch, kutil_module):
     assert diagnostics == [
         ("deploy", "test-ns", "mysql-operator"),
         ("pod", "test-ns", "mysql-operator-abc"),
+        ("fatal-logs", "test-ns", "mysql-operator-abc"),
     ]
+
+
+def test_fatal_pod_container_logs_dump_current_and_previous(
+    monkeypatch,
+    caplog,
+    kutil_module,
+):
+    stored_logs = []
+    log_calls = []
+
+    class FakeDiagnostics:
+        def __init__(self, ns):
+            self.ns = ns
+            self.work_dir = None
+
+        def create_work_dir(self):
+            self.work_dir = "/tmp/diagnostics"
+
+        def store_log(self, rsrc, item_name, kind_of_log, generate_contents):
+            stored_logs.append((rsrc, item_name, kind_of_log, generate_contents()))
+
+    def fake_logs(
+        ns,
+        name,
+        prev=False,
+        since=None,
+        since_time=None,
+        cmd_output_log=None,
+    ):
+        log_calls.append((ns, tuple(name), prev))
+        return "previous crash log" if prev else "current crash log"
+
+    monkeypatch.setattr(kutil_module, "StoreTimeoutDiagnostics", FakeDiagnostics)
+    monkeypatch.setattr(kutil_module, "logs", fake_logs)
+
+    pod = {
+        "metadata": {"name": "mysql-operator-abc"},
+        "status": {
+            "containerStatuses": [
+                {
+                    "name": "mysql-operator",
+                    "restartCount": 2,
+                    "state": {
+                        "waiting": {
+                            "reason": "CrashLoopBackOff",
+                        },
+                    },
+                    "lastState": {
+                        "terminated": {
+                            "reason": "Error",
+                        },
+                    },
+                },
+                {
+                    "name": "healthy-sidecar",
+                    "restartCount": 0,
+                    "state": {
+                        "running": {},
+                    },
+                },
+            ],
+        },
+    }
+
+    caplog.set_level(logging.INFO, logger="kutil")
+
+    kutil_module._dump_deploy_fatal_pod_container_logs("test-ns", pod)
+
+    assert log_calls == [
+        ("test-ns", ("mysql-operator-abc", "mysql-operator"), False),
+        ("test-ns", ("mysql-operator-abc", "mysql-operator"), True),
+    ]
+    assert stored_logs == [
+        (
+            "pod",
+            "mysql-operator-abc-mysql-operator",
+            "logs",
+            "current crash log",
+        ),
+        (
+            "pod",
+            "mysql-operator-abc-mysql-operator",
+            "previous-logs",
+            "previous crash log",
+        ),
+    ]
+    assert (
+        "==== logs pod test-ns/mysql-operator-abc container mysql-operator ===="
+        in caplog.text
+    )
+    assert "current crash log" in caplog.text
+    assert (
+        "==== previous logs pod test-ns/mysql-operator-abc container mysql-operator ===="
+        in caplog.text
+    )
+    assert "previous crash log" in caplog.text

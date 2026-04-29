@@ -1,3 +1,8 @@
+# Copyright (c) 2026, Oracle and/or its affiliates.
+#
+# Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
+#
+
 import importlib
 import pathlib
 import sys
@@ -68,7 +73,30 @@ def operator_upgrade_module(monkeypatch):
     )
 
 
-def test_sync_default_operator_clusterroles_patches_manifest_rules(
+def test_default_operator_manifest_path_uses_configured_deploy_path(
+    operator_upgrade_module,
+    monkeypatch,
+    tmp_path,
+):
+    deploy_path = tmp_path / "deploy"
+    deploy_path.mkdir()
+    manifest_path = deploy_path / "deploy-operator.yaml"
+    manifest_path.write_text("---\nkind: List\n", encoding="utf8")
+
+    monkeypatch.setattr(
+        operator_upgrade_module.g_ts_cfg,
+        "get_deploy_path",
+        lambda: str(deploy_path),
+        raising=False,
+    )
+
+    assert (
+        operator_upgrade_module.get_default_operator_deploy_manifest_path()
+        == manifest_path
+    )
+
+
+def test_sync_default_operator_clusterroles_applies_manifest_rules(
     operator_upgrade_module,
     monkeypatch,
 ):
@@ -77,7 +105,94 @@ def test_sync_default_operator_clusterroles_patches_manifest_rules(
         "mysql-sidecar": [{"resources": ["pods"], "verbs": ["get"]}],
         "mysql-switchover": [{"resources": ["pods"], "verbs": ["get", "patch"]}],
     }
-    patch_calls = []
+    apply_calls = []
+
+    monkeypatch.setattr(
+        operator_upgrade_module,
+        "_load_default_operator_clusterrole_rules",
+        lambda: expected_rules,
+    )
+
+    def fake_apply(
+        ns,
+        manifest,
+        *,
+        check=True,
+        field_manager=None,
+        server_side=False,
+        force_conflicts=False,
+    ):
+        apply_calls.append(
+            {
+                "ns": ns,
+                "manifest": operator_upgrade_module.yaml.safe_load(manifest),
+                "check": check,
+                "field_manager": field_manager,
+                "server_side": server_side,
+                "force_conflicts": force_conflicts,
+            }
+        )
+
+    monkeypatch.setattr(
+        operator_upgrade_module.kutil,
+        "apply",
+        fake_apply,
+        raising=False,
+    )
+
+    operator_upgrade_module._sync_default_operator_clusterroles_from_manifest()
+
+    assert apply_calls == [
+        {
+            "ns": None,
+            "manifest": {
+                "apiVersion": "rbac.authorization.k8s.io/v1",
+                "kind": "ClusterRole",
+                "metadata": {"name": "mysql-operator"},
+                "rules": expected_rules["mysql-operator"],
+            },
+            "check": True,
+            "field_manager": "helm",
+            "server_side": True,
+            "force_conflicts": True,
+        },
+        {
+            "ns": None,
+            "manifest": {
+                "apiVersion": "rbac.authorization.k8s.io/v1",
+                "kind": "ClusterRole",
+                "metadata": {"name": "mysql-sidecar"},
+                "rules": expected_rules["mysql-sidecar"],
+            },
+            "check": True,
+            "field_manager": "helm",
+            "server_side": True,
+            "force_conflicts": True,
+        },
+        {
+            "ns": None,
+            "manifest": {
+                "apiVersion": "rbac.authorization.k8s.io/v1",
+                "kind": "ClusterRole",
+                "metadata": {"name": "mysql-switchover"},
+                "rules": expected_rules["mysql-switchover"],
+            },
+            "check": True,
+            "field_manager": "helm",
+            "server_side": True,
+            "force_conflicts": True,
+        },
+    ]
+
+
+def test_sync_default_operator_clusterroles_creates_missing_role(
+    operator_upgrade_module,
+    monkeypatch,
+):
+    expected_rules = {
+        "mysql-switchover": [{"resources": ["pods"], "verbs": ["get", "patch"]}],
+    }
+    applied = []
 
     monkeypatch.setattr(
         operator_upgrade_module,
@@ -86,52 +201,30 @@ def test_sync_default_operator_clusterroles_patches_manifest_rules(
     )
     monkeypatch.setattr(
         operator_upgrade_module.kutil,
-        "patch",
-        lambda ns, rsrc, name, changes, type=None, data_as_type="yaml", w_ns=True: patch_calls.append(
-            {
-                "ns": ns,
-                "rsrc": rsrc,
-                "name": name,
-                "changes": changes,
-                "type": type,
-                "data_as_type": data_as_type,
-                "w_ns": w_ns,
-            }
+        "apply",
+        lambda ns, manifest, **kwargs: applied.append(
+            (ns, manifest, kwargs)
         ),
         raising=False,
     )
 
     operator_upgrade_module._sync_default_operator_clusterroles_from_manifest()
 
-    assert patch_calls == [
-        {
-            "ns": None,
-            "rsrc": "clusterrole",
-            "name": "mysql-operator",
-            "changes": {"rules": expected_rules["mysql-operator"]},
-            "type": "merge",
-            "data_as_type": "json",
-            "w_ns": False,
-        },
-        {
-            "ns": None,
-            "rsrc": "clusterrole",
-            "name": "mysql-sidecar",
-            "changes": {"rules": expected_rules["mysql-sidecar"]},
-            "type": "merge",
-            "data_as_type": "json",
-            "w_ns": False,
-        },
-        {
-            "ns": None,
-            "rsrc": "clusterrole",
-            "name": "mysql-switchover",
-            "changes": {"rules": expected_rules["mysql-switchover"]},
-            "type": "merge",
-            "data_as_type": "json",
-            "w_ns": False,
-        },
-    ]
+    assert len(applied) == 1
+    ns, manifest, kwargs = applied[0]
+    applied_role = operator_upgrade_module.yaml.safe_load(manifest)
+    assert ns is None
+    assert kwargs == {
+        "field_manager": "helm",
+        "server_side": True,
+        "force_conflicts": True,
+    }
+    assert applied_role == {
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "kind": "ClusterRole",
+        "metadata": {"name": "mysql-switchover"},
+        "rules": expected_rules["mysql-switchover"],
+    }
 
 
 def test_change_operator_version_repairs_clusterroles_even_when_image_is_current(

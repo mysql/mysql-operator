@@ -1,3 +1,8 @@
+# Copyright (c) 2026, Oracle and/or its affiliates.
+#
+# Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
+#
+
 import copy
 import importlib
 import json
@@ -915,6 +920,326 @@ def test_raw_deploy_dir_for_current_release_uses_deploy_path(
         )
         == str(current_deploy_path)
     )
+
+
+def test_default_operator_manifest_path_uses_configured_deploy_path(
+    monkeypatch,
+    tmp_path,
+    operator_t_module,
+):
+    current_deploy_path = tmp_path / "deploy"
+    _write_raw_deploy_manifests(current_deploy_path)
+
+    monkeypatch.setattr(
+        operator_t_module.g_ts_cfg,
+        "deploy_path",
+        str(current_deploy_path),
+        raising=False,
+    )
+
+    assert operator_t_module.get_default_operator_deploy_manifest_path() == (
+        current_deploy_path / "deploy-operator.yaml"
+    )
+
+
+def test_get_helm_cluster_operator_release_uses_cluster_annotation(
+    monkeypatch,
+    operator_t_module,
+):
+    monkeypatch.setattr(
+        operator_t_module.kutil,
+        "get_ic",
+        lambda namespace, name: {
+            "metadata": {
+                "annotations": {
+                    "mysql.oracle.com/mysql-operator-version": "9.7.0-2.2.8",
+                },
+            },
+        },
+        raising=False,
+    )
+
+    assert operator_t_module.OperatorSingleAndMultipleBaseTest._get_helm_cluster_operator_release(
+        namespace="cluster-ns",
+        cluster_name="cluster",
+        fallback_release="9.6.0-2.2.7",
+    ) == "9.7.0-2.2.8"
+
+
+def test_get_helm_cluster_operator_release_falls_back_without_annotation(
+    monkeypatch,
+    operator_t_module,
+):
+    monkeypatch.setattr(
+        operator_t_module.kutil,
+        "get_ic",
+        lambda namespace, name: {"metadata": {"annotations": {}}},
+        raising=False,
+    )
+
+    assert operator_t_module.OperatorSingleAndMultipleBaseTest._get_helm_cluster_operator_release(
+        namespace="cluster-ns",
+        cluster_name="cluster",
+        fallback_release="9.6.0-2.2.7",
+    ) == "9.6.0-2.2.7"
+
+
+def test_current_operator_release_disables_legacy_switchover_rbac_expectation(
+    operator_t_module,
+):
+    assert operator_t_module.OperatorSingleAndMultipleBaseTest._expected_namespace_switchover_rbac_state(
+        operator_release=operator_t_module.g_ts_cfg.operator_version_tag,
+        cluster_releases=["9.6.0-2.2.7"],
+    ) == (False, True)
+
+
+def test_legacy_switchover_cluster_values_request_ephemeral_storage(
+    operator_t_module,
+):
+    values = (
+        operator_t_module._HelmLegacySwitchoverRbacUpgradeBase()
+        ._build_legacy_switchover_cluster_values()
+    )
+
+    pod_spec = values["podSpec"]
+    assert pod_spec["terminationGracePeriodSeconds"] == 5
+
+    server_containers = {
+        container["name"]: container
+        for container in pod_spec["containers"]
+    }
+    init_containers = {
+        container["name"]: container
+        for container in pod_spec["initContainers"]
+    }
+    router_containers = {
+        container["name"]: container
+        for container in values["router"]["podSpec"]["containers"]
+    }
+
+    assert set(server_containers) == {"sidecar", "mysql"}
+    assert set(init_containers) == {"fixdatadir", "initconf", "initmysql"}
+    assert set(router_containers) == {"router"}
+
+    assert server_containers["mysql"]["resources"]["requests"] == {
+        "cpu": "100m",
+        "memory": "128Mi",
+        "ephemeral-storage": "128Mi",
+    }
+    assert init_containers["initmysql"]["resources"]["requests"] == {
+        "cpu": "100m",
+        "memory": "128Mi",
+        "ephemeral-storage": "128Mi",
+    }
+    for container in (
+        server_containers["sidecar"],
+        init_containers["fixdatadir"],
+        init_containers["initconf"],
+        router_containers["router"],
+    ):
+        assert container["resources"]["requests"] == {
+            "cpu": "50m",
+            "memory": "64Mi",
+            "ephemeral-storage": "64Mi",
+        }
+
+    dumped_values = yaml.safe_dump(values)
+    assert "&id" not in dumped_values
+    assert "*id" not in dumped_values
+
+
+def test_apply_cluster_current_switchover_rbac_recreates_rolebinding_for_role_ref_drift(
+    monkeypatch,
+    operator_t_module,
+):
+    deleted = []
+    applied = []
+
+    monkeypatch.setattr(
+        operator_t_module.kutil,
+        "get",
+        lambda ns, rsrc, name, check=False, cmd_output_log=None: {
+            "roleRef": {
+                "apiGroup": "rbac.authorization.k8s.io",
+                "kind": "ClusterRole",
+                "name": "mysql-switchover",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        operator_t_module.kutil,
+        "delete_rolebinding",
+        lambda ns, name: deleted.append((ns, name)),
+    )
+    monkeypatch.setattr(
+        operator_t_module.kutil,
+        "apply",
+        lambda ns, manifest, check=True: applied.append(
+            (ns, list(yaml.safe_load_all(manifest)))
+        ),
+    )
+
+    test_case = operator_t_module.OperatorSingleAndMultipleBaseTest()
+    test_case._apply_cluster_current_switchover_rbac_manifests(
+        namespace="cluster-ns",
+        service_account_manifest={
+            "apiVersion": "v1",
+            "kind": "ServiceAccount",
+            "metadata": {"name": "cluster-a-switchover-sa"},
+        },
+        role_binding_manifest={
+            "apiVersion": "rbac.authorization.k8s.io/v1",
+            "kind": "RoleBinding",
+            "metadata": {"name": "cluster-a-switchover-rb"},
+            "roleRef": {
+                "apiGroup": "rbac.authorization.k8s.io",
+                "kind": "ClusterRole",
+                "name": "manual-drift-role",
+            },
+            "subjects": [
+                {
+                    "kind": "ServiceAccount",
+                    "name": "manual-drift-sa",
+                },
+            ],
+        },
+    )
+
+    assert deleted == [("cluster-ns", "cluster-a-switchover-rb")]
+    assert applied[0][0] == "cluster-ns"
+    assert [manifest["kind"] for manifest in applied[0][1]] == [
+        "ServiceAccount",
+        "RoleBinding",
+    ]
+    assert applied[0][1][1]["roleRef"]["name"] == "manual-drift-role"
+
+
+def test_default_operator_clusterrole_manifest_can_include_helm_ownership(
+    operator_t_module,
+):
+    manifest = operator_t_module._build_default_operator_clusterrole_manifest(
+        "mysql-switchover",
+        [{"resources": ["pods"], "verbs": ["get"]}],
+        helm_release_name="mysql-operator",
+        helm_release_namespace="mysql-operator",
+    )
+
+    assert manifest["metadata"] == {
+        "name": "mysql-switchover",
+        "labels": {"app.kubernetes.io/managed-by": "Helm"},
+        "annotations": {
+            "meta.helm.sh/release-name": "mysql-operator",
+            "meta.helm.sh/release-namespace": "mysql-operator",
+        },
+    }
+
+
+def test_sync_existing_operator_clusterrole_merges_missing_rules(
+    monkeypatch,
+    operator_t_module,
+):
+    applied = []
+    existing_clusterrole = {
+        "rules": [
+            {
+                "apiGroups": ["apps"],
+                "resources": ["deployments", "statefulsets"],
+                "verbs": ["get", "create", "patch", "update", "watch", "delete"],
+            },
+            {
+                "apiGroups": [""],
+                "resources": ["pods"],
+                "verbs": ["get", "list"],
+            },
+        ],
+    }
+
+    monkeypatch.setattr(
+        operator_t_module.kutil,
+        "get",
+        lambda ns, rsrc, name, check=False: existing_clusterrole,
+    )
+
+    def fake_apply(
+        ns,
+        manifest,
+        *,
+        check=True,
+        field_manager=None,
+        server_side=False,
+        force_conflicts=False,
+    ):
+        applied.append(
+            (
+                ns,
+                yaml.safe_load(manifest),
+                check,
+                field_manager,
+                server_side,
+                force_conflicts,
+            )
+        )
+
+    monkeypatch.setattr(operator_t_module.kutil, "apply", fake_apply)
+
+    operator_t_module._sync_existing_operator_clusterrole_missing_rules(
+        "mysql-operator",
+        [
+            {
+                "apiGroups": ["apps"],
+                "resources": ["deployments", "statefulsets"],
+                "verbs": [
+                    "get",
+                    "list",
+                    "create",
+                    "patch",
+                    "update",
+                    "watch",
+                    "delete",
+                ],
+            },
+            {
+                "apiGroups": ["apiextensions.k8s.io"],
+                "resources": ["customresourcedefinitions"],
+                "verbs": ["list", "watch"],
+            },
+        ],
+    )
+
+    assert len(applied) == 1
+    ns, manifest, check, field_manager, server_side, force_conflicts = applied[0]
+    assert ns is None
+    assert check is True
+    assert field_manager == "helm"
+    assert server_side is True
+    assert force_conflicts is True
+    assert manifest["apiVersion"] == "rbac.authorization.k8s.io/v1"
+    assert manifest["kind"] == "ClusterRole"
+    assert manifest["metadata"] == {"name": "mysql-operator"}
+    patched_rules = manifest["rules"]
+    assert patched_rules[0]["verbs"] == [
+        "get",
+        "create",
+        "patch",
+        "update",
+        "watch",
+        "delete",
+        "list",
+    ]
+    assert patched_rules[1]["verbs"] == ["get", "list"]
+    assert patched_rules[2] == {
+        "apiGroups": ["apiextensions.k8s.io"],
+        "resources": ["customresourcedefinitions"],
+        "verbs": ["list", "watch"],
+    }
+    assert existing_clusterrole["rules"][0]["verbs"] == [
+        "get",
+        "create",
+        "patch",
+        "update",
+        "watch",
+        "delete",
+    ]
 
 
 def test_raw_deploy_dir_for_historic_release_accepts_nested_deploy_layout(

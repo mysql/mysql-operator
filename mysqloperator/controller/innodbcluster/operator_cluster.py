@@ -1535,6 +1535,23 @@ def on_innodbcluster_field_service_type(old: str, new: str, body: Body,
         svc = cluster.get_router_service()
         router_objects.update_service(svc, cluster.parsed_spec, logger)
 
+
+def _get_clusterset_primary_cluster_name(dba: Any, logger: Logger) -> Optional[str]:
+    try:
+        cluster_set_status = dba.get_cluster_set().status(extended=1)
+    except Exception as exc:
+        logger.warning(f"Could not read ClusterSet status for failover event: {exc}")
+        return None
+
+    clusters = cluster_set_status.get("clusters", {}) if isinstance(cluster_set_status, dict) else {}
+    for cluster_name, cluster_data in clusters.items():
+        if isinstance(cluster_data, dict) and cluster_data.get("clusterRole") == "PRIMARY":
+            return cluster_name
+
+    logger.warning(f"Could not find PRIMARY ClusterSet member in status: {cluster_set_status}")
+    return None
+
+
 if config.OPERATOR_EDITION == config.Edition.enterprise:
  @kopf.on.create(consts.GROUP, consts.VERSION,
                 "mysqlclustersetfailovers")  # type: ignore
@@ -1555,9 +1572,11 @@ if config.OPERATOR_EDITION == config.Edition.enterprise:
                 try:
                     logger.info(f"cluster={cluster.namespace}/{cluster.name}")
                     cluster_status = dba.get_cluster().status({"extended": 1})
+                    connected = True
 
                     if "clusterRole" in cluster_status:
-                        cluster.info(action="FailingOver", reason="FailOverObjectCreated", message=f'{"Failing" if force else "Switching"} over to {cluster.namespace}/{cluster.name} from {cluster_status["primaryCluster"]}')
+                        primary_cluster = _get_clusterset_primary_cluster_name(dba, logger) or "unknown primary cluster"
+                        cluster.info(action="FailingOver", reason="FailOverObjectCreated", message=f'{"Failing" if force else "Switching"} over to {cluster.namespace}/{cluster.name} from {primary_cluster}')
                     else:
                         cluster.warn(action="FailingOverCancel", reason="FailOverObjectCreated", message=f"Cluster {cluster.namespace}/{cluster.name} not part of a ClusterSet")
                     break

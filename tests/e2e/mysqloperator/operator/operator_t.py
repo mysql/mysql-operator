@@ -9,6 +9,7 @@ import os
 import re
 import json
 import pathlib
+import uuid
 from dataclasses import dataclass, field
 from utils import tutil
 from utils import kutil
@@ -89,6 +90,7 @@ DEFAULT_OPERATOR_CLUSTERROLE_NAMES = (
 DEFAULT_OPERATOR_DEPLOY_MANIFEST = (
     pathlib.Path(__file__).resolve().parents[4] / "deploy" / "deploy-operator.yaml"
 )
+HELM_FIELD_MANAGER = "helm"
 # TODO - problem with 9.6.0 - clusterset is not thread safe
 CLUSTERSET_CREATION_GAP_SECONDS = 30
 INVALID_MYSQL_UPGRADE_ERROR_CODES = (
@@ -438,10 +440,25 @@ def get_helm_release_target(helm_options) -> tuple[str, str, str]:
     )
 
 
+def get_default_operator_deploy_manifest_path() -> pathlib.Path:
+    try:
+        return pathlib.Path(
+            get_raw_deploy_manifest_path(
+                g_ts_cfg.operator_version_tag,
+                "deploy-operator.yaml",
+            )
+        )
+    except (AttributeError, FileNotFoundError, ValueError):
+        if DEFAULT_OPERATOR_DEPLOY_MANIFEST.is_file():
+            return DEFAULT_OPERATOR_DEPLOY_MANIFEST
+        raise
+
+
 def _load_default_operator_clusterrole_rules(
-    manifest_path: pathlib.Path = DEFAULT_OPERATOR_DEPLOY_MANIFEST,
+    manifest_path: Optional[pathlib.Path] = None,
 ) -> dict[str, list[dict]]:
     rules_by_name = {}
+    manifest_path = manifest_path or get_default_operator_deploy_manifest_path()
 
     with manifest_path.open(encoding="utf-8") as handle:
         for doc in yaml.safe_load_all(handle):
@@ -462,16 +479,135 @@ def _load_default_operator_clusterrole_rules(
     return rules_by_name
 
 
-def _sync_default_operator_clusterroles_from_manifest() -> None:
+def _build_default_operator_clusterrole_manifest(
+    name: str,
+    rules: list[dict],
+    *,
+    helm_release_name: Optional[str] = None,
+    helm_release_namespace: Optional[str] = None,
+) -> dict:
+    metadata = {"name": name}
+    if helm_release_name and helm_release_namespace:
+        metadata["labels"] = {"app.kubernetes.io/managed-by": "Helm"}
+        metadata["annotations"] = {
+            "meta.helm.sh/release-name": helm_release_name,
+            "meta.helm.sh/release-namespace": helm_release_namespace,
+        }
+    return {
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "kind": "ClusterRole",
+        "metadata": metadata,
+        "rules": rules,
+    }
+
+
+def _apply_default_operator_clusterrole(
+    name: str,
+    rules: list[dict],
+    *,
+    helm_release_name: Optional[str] = None,
+    helm_release_namespace: Optional[str] = None,
+) -> None:
+    kutil.apply(
+        None,
+        yaml.safe_dump(
+            _build_default_operator_clusterrole_manifest(
+                name,
+                rules,
+                helm_release_name=helm_release_name,
+                helm_release_namespace=helm_release_namespace,
+            ),
+            sort_keys=False,
+        ),
+        field_manager=HELM_FIELD_MANAGER,
+        server_side=True,
+        force_conflicts=True,
+    )
+
+
+def _clusterrole_rule_key(
+    rule: dict,
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+    return (
+        tuple(rule.get("apiGroups") or []),
+        tuple(rule.get("resources") or []),
+        tuple(rule.get("resourceNames") or []),
+        tuple(rule.get("nonResourceURLs") or []),
+    )
+
+
+def _merge_missing_clusterrole_rules(
+    existing_rules: list[dict],
+    default_rules: list[dict],
+) -> tuple[list[dict], bool]:
+    merged_rules = copy.deepcopy(existing_rules)
+    rule_indexes = {
+        _clusterrole_rule_key(rule): index
+        for index, rule in enumerate(merged_rules)
+    }
+    changed = False
+
+    for default_rule in default_rules:
+        index = rule_indexes.get(_clusterrole_rule_key(default_rule))
+        if index is None:
+            merged_rules.append(copy.deepcopy(default_rule))
+            changed = True
+            continue
+
+        existing_verbs = merged_rules[index].setdefault("verbs", [])
+        for verb in default_rule.get("verbs") or []:
+            if verb not in existing_verbs:
+                existing_verbs.append(verb)
+                changed = True
+
+    return merged_rules, changed
+
+
+def _sync_existing_operator_clusterrole_missing_rules(
+    name: str,
+    default_rules: list[dict],
+) -> None:
+    clusterrole = kutil.get(None, "clusterrole", name, check=False)
+    if clusterrole is None:
+        return
+
+    merged_rules, changed = _merge_missing_clusterrole_rules(
+        clusterrole.get("rules") or [],
+        default_rules,
+    )
+    if not changed:
+        return
+
+    _apply_default_operator_clusterrole(
+        name,
+        merged_rules,
+    )
+
+
+def _sync_default_operator_clusterroles_from_manifest(
+    *,
+    create_missing_only: bool = False,
+    helm_release_name: Optional[str] = None,
+    helm_release_namespace: Optional[str] = None,
+) -> None:
     for name, rules in _load_default_operator_clusterrole_rules().items():
-        kutil.patch(
-            None,
-            "clusterrole",
+        if create_missing_only:
+            if kutil.get(None, "clusterrole", name, check=False) is not None:
+                _sync_existing_operator_clusterrole_missing_rules(name, rules)
+                continue
+            _apply_default_operator_clusterrole(
+                name,
+                rules,
+                helm_release_name=helm_release_name,
+                helm_release_namespace=helm_release_namespace,
+            )
+            continue
+
+        _apply_default_operator_clusterrole(
             name,
-            {"rules": rules},
-            type="merge",
-            data_as_type="json",
-            w_ns=False,
+            rules,
+            helm_release_name=helm_release_name,
+            helm_release_namespace=helm_release_namespace,
         )
 
 
@@ -2828,7 +2964,9 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         expected_image_name_keys,
         optional: bool = False,
     ) -> None:
-        pod_name = pod.get("metadata", {}).get("name", "<unknown>")
+        pod_metadata = pod.get("metadata", {})
+        pod_name = pod_metadata.get("name", "<unknown>")
+        pod_namespace = pod_metadata.get("namespace")
         spec_containers = pod.get("spec", {}).get(spec_container_key, [])
         status_containers = pod.get("status", {}).get(status_container_key, [])
         spec_container = get_named_container(spec_containers, container_name)
@@ -2858,6 +2996,15 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         image_name, tag = self._split_image_reference(spec_image)
         canonical_image_name = canonicalize_image_name(image_name)
         runtime_image_id = status_container.get("imageID")
+        if not runtime_image_id:
+            runtime_image_id = self._wait_for_pod_container_runtime_image_id(
+                pod_namespace=pod_namespace,
+                pod_name=pod_name,
+                container_name=container_name,
+                status_container_key=status_container_key,
+            )
+            if runtime_image_id:
+                status_container["imageID"] = runtime_image_id
         identity_details = self._format_image_identity_details(
             pod_name=pod_name,
             container_name=container_name,
@@ -2926,6 +3073,55 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                 f"{expected_identity_details}"
             ),
         )
+
+    @staticmethod
+    def _get_pod_container_runtime_image_id(
+        pod: dict,
+        *,
+        container_name: str,
+        status_container_key: str,
+    ) -> Optional[str]:
+        status_container = get_named_container(
+            pod.get("status", {}).get(status_container_key, []),
+            container_name,
+        )
+        if status_container is None:
+            return None
+        return status_container.get("imageID")
+
+    def _wait_for_pod_container_runtime_image_id(
+        self,
+        *,
+        pod_namespace: Optional[str],
+        pod_name: str,
+        container_name: str,
+        status_container_key: str,
+        timeout: int = 60,
+        delay: int = 2,
+    ) -> Optional[str]:
+        if not pod_namespace or not pod_name or pod_name == "<unknown>":
+            return None
+
+        deadline = time.time() + timeout
+        while True:
+            refreshed_pod = kutil.get_po(
+                pod_namespace,
+                pod_name,
+                check=False,
+                cmd_output_log=kutil.KubectlCmdOutputLogging.MUTE,
+            )
+            if refreshed_pod:
+                runtime_image_id = self._get_pod_container_runtime_image_id(
+                    refreshed_pod,
+                    container_name=container_name,
+                    status_container_key=status_container_key,
+                )
+                if runtime_image_id:
+                    return runtime_image_id
+
+            if time.time() >= deadline:
+                return None
+            time.sleep(delay)
 
     def _assert_helm_operator_image_tag(
         self,
@@ -3108,7 +3304,13 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                     options.namespace,
                     resolved_options=options,
                 )
-            _sync_default_operator_clusterroles_from_manifest()
+            _sync_default_operator_clusterroles_from_manifest(
+                create_missing_only=(
+                    options.app_version != g_ts_cfg.operator_version_tag
+                ),
+                helm_release_name=options.release_name,
+                helm_release_namespace=options.namespace,
+            )
             deployment_name = wait_for_deployment_name or options.deployment_name
             kutil.patch(
                 options.namespace,
@@ -3117,6 +3319,7 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                 {"spec": {"replicas": original_replicas}},
                 type="merge",
                 data_as_type="json",
+                field_manager=HELM_FIELD_MANAGER,
             )
             if wait_for_deployment_name is not None:
                 kutil.wait_deploy(
@@ -3594,6 +3797,21 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         )
 
     @staticmethod
+    def _get_helm_cluster_operator_release(
+        *,
+        namespace: str,
+        cluster_name: str,
+        fallback_release: str,
+    ) -> str:
+        cluster = kutil.get_ic(namespace, cluster_name)
+        operator_release = (
+            cluster.get("metadata", {})
+            .get("annotations", {})
+            .get("mysql.oracle.com/mysql-operator-version")
+        )
+        return operator_release or fallback_release
+
+    @staticmethod
     def _mysql_version_from_release(release: str) -> str:
         return release.split("-", 1)[0]
 
@@ -3634,6 +3852,7 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                 "expect_legacy_switchover_objects_before_current",
                 True,
             )
+            and not cls._release_uses_current_switchover_rbac(operator_release)
             and any(
                 cls._release_creates_legacy_switchover_rbac(release)
                 for release in cluster_releases
@@ -3867,7 +4086,7 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                 "apiVersion": "mysql.oracle.com/v2",
                 "kind": "InnoDBCluster",
                 "name": f"foreign-{owner_tag}",
-                "uid": f"foreign-{owner_tag}-uid",
+                "uid": str(uuid.uuid5(uuid.NAMESPACE_DNS, owner_tag)),
             }
         ]
 
@@ -3937,6 +4156,21 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         service_account_manifest: dict,
         role_binding_manifest: dict,
     ) -> None:
+        role_binding_name = role_binding_manifest["metadata"]["name"]
+        desired_role_ref = role_binding_manifest.get("roleRef", {})
+        existing_role_binding = kutil.get(
+            namespace,
+            "rolebinding",
+            role_binding_name,
+            check=False,
+            cmd_output_log=kutil.KubectlCmdOutputLogging.MUTE,
+        )
+        if (
+            existing_role_binding is not None
+            and existing_role_binding.get("roleRef", {}) != desired_role_ref
+        ):
+            kutil.delete_rolebinding(namespace, role_binding_name)
+
         kutil.apply(
             namespace,
             "---\n".join(
@@ -4226,12 +4460,18 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                 server_instances=server_instances,
                 router_instances=router_instances,
             )
+            active_cluster_operator_release = self._get_helm_cluster_operator_release(
+                namespace=self.ns,
+                cluster_name=cluster_name,
+                fallback_release=previous_release,
+            )
             self._assert_helm_cluster_runtime_image_identities(
                 namespace=self.ns,
                 cluster_name=cluster_name,
                 server_instances=server_instances,
                 router_instances=router_instances,
                 expected_release=previous_release,
+                expected_operator_release=active_cluster_operator_release,
             )
             self._assert_helm_cluster_cr_version(
                 namespace=self.ns,
@@ -4288,6 +4528,7 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                     server_instances=server_instances,
                     router_instances=router_instances,
                     expected_release=previous_release,
+                    expected_operator_release=active_cluster_operator_release,
                 )
                 self._assert_helm_cluster_cr_version(
                     namespace=self.ns,
@@ -4349,6 +4590,7 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                     server_instances=server_instances,
                     router_instances=router_instances,
                     expected_release=previous_release,
+                    expected_operator_release=active_cluster_operator_release,
                 )
 
                 server_rollover_waiter = tutil.get_sts_rollover_update_waiter(
@@ -8306,6 +8548,15 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
         ]
 
     def _build_legacy_switchover_cluster_values(self) -> dict:
+        def resources(cpu: str, memory: str, ephemeral_storage: str) -> dict:
+            return {
+                "requests": {
+                    "cpu": cpu,
+                    "memory": memory,
+                    "ephemeral-storage": ephemeral_storage,
+                },
+            }
+
         return {
             "credentials": {
                 "root": {
@@ -8317,8 +8568,42 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
             "tls": {
                 "useSelfSigned": True,
             },
+            "router": {
+                "podSpec": {
+                    "containers": [
+                        {
+                            "name": "router",
+                            "resources": resources("50m", "64Mi", "64Mi"),
+                        },
+                    ],
+                },
+            },
             "podSpec": {
                 "terminationGracePeriodSeconds": 5,
+                "initContainers": [
+                    {
+                        "name": "fixdatadir",
+                        "resources": resources("50m", "64Mi", "64Mi"),
+                    },
+                    {
+                        "name": "initconf",
+                        "resources": resources("50m", "64Mi", "64Mi"),
+                    },
+                    {
+                        "name": "initmysql",
+                        "resources": resources("100m", "128Mi", "128Mi"),
+                    },
+                ],
+                "containers": [
+                    {
+                        "name": "sidecar",
+                        "resources": resources("50m", "64Mi", "64Mi"),
+                    },
+                    {
+                        "name": "mysql",
+                        "resources": resources("100m", "128Mi", "128Mi"),
+                    },
+                ],
             },
         }
 
@@ -8769,6 +9054,11 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
                     server_instances=server_instances,
                     router_instances=router_instances,
                     expected_release=current_cluster_release,
+                    expected_operator_release=self._get_helm_cluster_operator_release(
+                        namespace=self.ns,
+                        cluster_name=cluster_name,
+                        fallback_release=current_cluster_release,
+                    ),
                 )
             self._assert_helm_clusters_cr_version(
                 namespace=self.ns,
@@ -8777,16 +9067,21 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
                     current_cluster_release
                 ),
             )
+            active_cluster_operator_release = self._get_helm_cluster_operator_release(
+                namespace=self.ns,
+                cluster_name=cluster_names[0],
+                fallback_release=current_cluster_release,
+            )
             self._wait_for_namespace_switchover_rbac_state(
                 namespace=self.ns,
                 cluster_names=cluster_names,
-                operator_release=current_cluster_release,
+                operator_release=active_cluster_operator_release,
                 cluster_releases=applied_cluster_releases,
             )
             self._assert_namespace_switchover_rbac_state(
                 namespace=self.ns,
                 cluster_names=cluster_names,
-                operator_release=current_cluster_release,
+                operator_release=active_cluster_operator_release,
                 cluster_releases=applied_cluster_releases,
             )
 
@@ -8833,6 +9128,11 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
                         server_instances=server_instances,
                         router_instances=router_instances,
                         expected_release=current_cluster_release,
+                        expected_operator_release=self._get_helm_cluster_operator_release(
+                            namespace=self.ns,
+                            cluster_name=cluster_name,
+                            fallback_release=current_cluster_release,
+                        ),
                     )
                 self._wait_for_namespace_switchover_rbac_state(
                     namespace=self.ns,
@@ -8935,6 +9235,7 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
                         server_instances=server_instances,
                         router_instances=router_instances,
                         expected_release=current_cluster_release,
+                        expected_operator_release=next_release,
                     )
                 for cluster_name in cluster_names:
                     self._assert_mysql_server_upgrade_logged(

@@ -26,12 +26,27 @@ DEFAULT_OPERATOR_CLUSTERROLE_NAMES = (
 DEFAULT_OPERATOR_DEPLOY_MANIFEST = (
     pathlib.Path(__file__).resolve().parents[4] / "deploy" / "deploy-operator.yaml"
 )
+HELM_FIELD_MANAGER = "helm"
+
+
+def get_default_operator_deploy_manifest_path() -> pathlib.Path:
+    configured_deploy_path = getattr(g_ts_cfg, "get_deploy_path", lambda: "")()
+    if configured_deploy_path:
+        manifest_path = pathlib.Path(configured_deploy_path) / "deploy-operator.yaml"
+        if manifest_path.is_file():
+            return manifest_path
+
+    if DEFAULT_OPERATOR_DEPLOY_MANIFEST.is_file():
+        return DEFAULT_OPERATOR_DEPLOY_MANIFEST
+
+    return pathlib.Path(configured_deploy_path) / "deploy-operator.yaml"
 
 
 def _load_default_operator_clusterrole_rules(
-    manifest_path: pathlib.Path = DEFAULT_OPERATOR_DEPLOY_MANIFEST,
+    manifest_path: pathlib.Path | None = None,
 ) -> dict[str, list[dict]]:
     rules_by_name = {}
+    manifest_path = manifest_path or get_default_operator_deploy_manifest_path()
 
     with manifest_path.open(encoding="utf-8") as handle:
         for doc in yaml.safe_load_all(handle):
@@ -51,17 +66,37 @@ def _load_default_operator_clusterrole_rules(
     return rules_by_name
 
 
+def _build_default_operator_clusterrole_manifest(
+    name: str,
+    rules: list[dict],
+) -> dict:
+    return {
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "kind": "ClusterRole",
+        "metadata": {"name": name},
+        "rules": rules,
+    }
+
+
+def _apply_default_operator_clusterrole(
+    name: str,
+    rules: list[dict],
+) -> None:
+    kutil.apply(
+        None,
+        yaml.safe_dump(
+            _build_default_operator_clusterrole_manifest(name, rules),
+            sort_keys=False,
+        ),
+        field_manager=HELM_FIELD_MANAGER,
+        server_side=True,
+        force_conflicts=True,
+    )
+
+
 def _sync_default_operator_clusterroles_from_manifest() -> None:
     for name, rules in _load_default_operator_clusterrole_rules().items():
-        kutil.patch(
-            None,
-            "clusterrole",
-            name,
-            {"rules": rules},
-            type="merge",
-            data_as_type="json",
-            w_ns=False,
-        )
+        _apply_default_operator_clusterrole(name, rules)
 
 
 def change_operator_version(version=None, store_operator_log=None, new_on_same_version=False):

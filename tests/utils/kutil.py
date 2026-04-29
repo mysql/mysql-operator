@@ -857,16 +857,33 @@ def _preprocess_yaml(y) -> str:
     return "---\n".join(to_apply)
 
 
-def apply(ns, y, *, check=True):
+def apply(
+    ns,
+    y,
+    *,
+    check=True,
+    field_manager=None,
+    server_side=False,
+    force_conflicts=False,
+):
     stripped = strip_blanks(y)
     to_apply = _preprocess_yaml(stripped)
     if not to_apply:
         to_apply = stripped
 
     try:
+        field_manager_arg = ["--field-manager", field_manager] if field_manager else []
+        server_side_arg = ["--server-side"] if server_side else []
+        force_conflicts_arg = ["--force-conflicts"] if force_conflicts else []
         return feed_kubectl(to_apply,
                             "apply",
-                            args=([*["-n", ns]] if ns else []) + ["-f", "-"],
+                            args=(
+                                ([*["-n", ns]] if ns else [])
+                                + ["-f", "-"]
+                                + field_manager_arg
+                                + server_side_arg
+                                + force_conflicts_arg
+                            ),
                             check=check)
     except subprocess.CalledProcessError as e:
         if debug_kubectl:
@@ -875,12 +892,30 @@ def apply(ns, y, *, check=True):
         raise
 
 
-def patch(ns, rsrc, name, changes, type=None, data_as_type='yaml', w_ns = True):
-    data_processor = json.dumps if data_as_type and str(data_as_type).lower() =='json' else yaml.dump
+def patch(
+    ns,
+    rsrc,
+    name,
+    changes,
+    type=None,
+    data_as_type='yaml',
+    w_ns=True,
+    field_manager=None,
+):
+    data_processor = (
+        json.dumps
+        if data_as_type and str(data_as_type).lower() == 'json'
+        else yaml.dump
+    )
     patch_data = data_processor(changes)
     type_param = ["--type=%s" % type] if type else []
     ns_arg = ["-n", ns] if w_ns else []
-    kubectl("patch", rsrc, [name, "-p", patch_data, *ns_arg, *type_param])
+    field_manager_arg = ["--field-manager", field_manager] if field_manager else []
+    kubectl(
+        "patch",
+        rsrc,
+        [name, "-p", patch_data, *ns_arg, *type_param, *field_manager_arg],
+    )
 
 
 def patch_pod(ns, name, changes, type=None, data_as_type='yaml'):
@@ -963,8 +998,20 @@ class StoreTimeoutDiagnostics:
     def describe_pod(self, pod, ns=None):
         self.store_log("pod", pod, "describe", lambda: describe_po(ns if ns else self.ns, pod, cmd_output_log=KubectlCmdOutputLogging.MUTE))
 
-    def logs_pod(self, pod, container, ns=None, since=None):
-        self.store_log("pod", f"{pod}-{container}", "logs", lambda: logs(ns if ns else self.ns, [pod, container], since=since, cmd_output_log=KubectlCmdOutputLogging.MUTE))
+    def logs_pod(self, pod, container, ns=None, since=None, prev=False):
+        kind_of_log = "previous-logs" if prev else "logs"
+        self.store_log(
+            "pod",
+            f"{pod}-{container}",
+            kind_of_log,
+            lambda: logs(
+                ns if ns else self.ns,
+                [pod, container],
+                prev=prev,
+                since=since,
+                cmd_output_log=KubectlCmdOutputLogging.MUTE,
+            ),
+        )
 
 
     def process_operators(self):
@@ -1410,6 +1457,106 @@ def _pod_startup_fatal_reason(pod: Optional[dict]) -> Optional[str]:
     return None
 
 
+def _pod_container_has_previous_logs(container_status: dict) -> bool:
+    if container_status.get("restartCount", 0) > 0:
+        return True
+    return bool((container_status.get("lastState") or {}).get("terminated"))
+
+
+def _fatal_pod_container_log_targets(pod: dict) -> list[tuple[str, bool]]:
+    targets = []
+    status = pod.get("status") or {}
+
+    for container_statuses in (
+        status.get("initContainerStatuses"),
+        status.get("containerStatuses"),
+    ):
+        for container_status in container_statuses or []:
+            container_name = container_status.get("name")
+            if not container_name:
+                continue
+
+            state = container_status.get("state") or {}
+            waiting_reason = (state.get("waiting") or {}).get("reason")
+            terminated_reason = (state.get("terminated") or {}).get("reason")
+            if (
+                waiting_reason not in _DEPLOYMENT_FATAL_POD_REASONS
+                and terminated_reason not in _DEPLOYMENT_FATAL_POD_REASONS
+            ):
+                continue
+
+            targets.append(
+                (container_name, _pod_container_has_previous_logs(container_status))
+            )
+
+    return targets
+
+
+def _dump_deploy_fatal_pod_container_logs(ns: str, pod: dict) -> None:
+    pod_name = pod.get("metadata", {}).get("name", "")
+    if not pod_name:
+        return
+
+    targets = _fatal_pod_container_log_targets(pod)
+    if not targets:
+        return
+
+    diagnostics = StoreTimeoutDiagnostics(ns)
+    diagnostics.create_work_dir()
+    logger.info(
+        "storing fatal pod container logs for %s/%s into %s ...",
+        ns,
+        pod_name,
+        diagnostics.work_dir,
+    )
+
+    for container_name, has_previous_logs in targets:
+        for prev in (False, True):
+            if prev and not has_previous_logs:
+                continue
+
+            log_label = "previous logs" if prev else "logs"
+            try:
+                contents = logs(
+                    ns,
+                    [pod_name, container_name],
+                    prev=prev,
+                    cmd_output_log=KubectlCmdOutputLogging.MUTE,
+                )
+            except BaseException as err:
+                logger.error(
+                    "Failed to fetch %s for fatal pod container "
+                    "%s/%s/%s: %s",
+                    log_label,
+                    ns,
+                    pod_name,
+                    container_name,
+                    err,
+                )
+                continue
+
+            logger.info(
+                "==== %s pod %s/%s container %s ====\n%s",
+                log_label,
+                ns,
+                pod_name,
+                container_name,
+                contents,
+            )
+            diagnostics.store_log(
+                "pod",
+                f"{pod_name}-{container_name}",
+                "previous-logs" if prev else "logs",
+                lambda contents=contents: contents,
+            )
+
+    logger.info(
+        "storing fatal pod container logs for %s/%s completed",
+        ns,
+        pod_name,
+    )
+
+
 def _raise_on_fatal_deploy_pod_state(ns: str, deploy_name: str, deploy: dict) -> None:
     for pod in _list_deploy_pods(ns, deploy):
         pod_name = pod.get("metadata", {}).get("name", "")
@@ -1419,6 +1566,15 @@ def _raise_on_fatal_deploy_pod_state(ns: str, deploy_name: str, deploy: dict) ->
 
         store_deploy_diagnostics(ns, deploy_name)
         store_pod_diagnostics(ns, pod_name)
+        try:
+            _dump_deploy_fatal_pod_container_logs(ns, pod)
+        except BaseException as err:
+            logger.error(
+                "Failed to dump fatal pod container logs for %s/%s: %s",
+                ns,
+                pod_name,
+                err,
+            )
         raise Exception(
             f"Deployment {ns} / {deploy_name} pod {pod_name} entered fatal "
             f"startup state: {fatal_reason}"

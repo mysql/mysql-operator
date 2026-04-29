@@ -633,7 +633,24 @@ class ClusterController:
             elif status.status == diagnose.CandidateDiagStatus.MEMBER:
                 logger.info(f"{pod.endpoint} already a member")
 
-                self.probe_member_status(pod, pod_dba_session.session, False, logger)
+                minfo = self.probe_member_status(
+                    pod,
+                    pod_dba_session.session,
+                    False,
+                    logger,
+                )
+                _, _, member_status, _, _, member_count, _ = minfo
+                if (
+                    pod.instance_type == "group-member"
+                    and member_status == "ONLINE"
+                    and not router_objects.get_size(self.cluster)
+                    and member_count == self.cluster.parsed_spec.instances
+                ):
+                    self.post_create_actions(
+                        self.dba.session,
+                        self.dba_cluster,
+                        logger,
+                    )
 
             elif status.status == diagnose.CandidateDiagStatus.UNREACHABLE:
                 # TODO check if we should throw a tmp error or do nothing

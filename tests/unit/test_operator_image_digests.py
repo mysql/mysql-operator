@@ -1,3 +1,8 @@
+# Copyright (c) 2026, Oracle and/or its affiliates.
+#
+# Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
+#
+
 import importlib
 import pathlib
 import sys
@@ -282,6 +287,79 @@ def test_image_identity_can_skip_tag_check_for_local_historic_operator_image(
         expected_tag=None,
         expected_image_name_keys=operator_t_module.OPERATOR_IMAGE_DIGEST_KEYS,
     )
+
+
+def test_image_identity_waits_for_runtime_image_id(
+    operator_t_module,
+    monkeypatch,
+):
+    testcase = operator_t_module.OperatorSingleAndMultipleBaseTest(
+        methodName="runTest"
+    )
+    pod = {
+        "metadata": {"namespace": "cluster-ns", "name": "cluster-0"},
+        "spec": {
+            "containers": [
+                {
+                    "name": "sidecar",
+                    "image": "registry.example.com/mysql/community-operator:9.7.0-2.2.8",
+                }
+            ],
+        },
+        "status": {
+            "containerStatuses": [
+                {
+                    "name": "sidecar",
+                    "imageID": "",
+                }
+            ],
+        },
+    }
+    refreshed_pod = {
+        "status": {
+            "containerStatuses": [
+                {
+                    "name": "sidecar",
+                    "imageID": (
+                        "registry.example.com/mysql/community-operator@"
+                        "sha256:fcd5bc5a5afbaeeed2a99a481f40b5b423ad2bd07c81b8e9fa2bf4eed648f7b1"
+                    ),
+                }
+            ],
+        },
+    }
+    get_po_calls = []
+
+    def get_po(namespace, name, **kwargs):
+        get_po_calls.append((namespace, name, kwargs))
+        return refreshed_pod
+
+    monkeypatch.setattr(operator_t_module.kutil, "get_po", get_po)
+    monkeypatch.setattr(
+        operator_t_module.g_ts_cfg,
+        "operator_version_tag",
+        "9.7.0-2.2.8",
+    )
+
+    testcase._assert_pod_container_image_identity(
+        pod=pod,
+        container_name="sidecar",
+        spec_container_key="containers",
+        status_container_key="containerStatuses",
+        expected_tag="9.7.0-2.2.8",
+        expected_image_name_keys=operator_t_module.OPERATOR_IMAGE_DIGEST_KEYS,
+    )
+
+    assert get_po_calls == [
+        (
+            "cluster-ns",
+            "cluster-0",
+            {
+                "check": False,
+                "cmd_output_log": operator_t_module.kutil.KubectlCmdOutputLogging.MUTE,
+            },
+        )
+    ]
 
 
 def test_extract_runtime_image_digest_supports_docker_pullable(operator_t_module):

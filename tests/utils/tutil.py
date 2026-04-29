@@ -49,6 +49,30 @@ def get_pod_container(pod, container_name):
     return None
 
 
+_INACTIVE_POD_ROW_STATUSES = frozenset(
+    (
+        "Completed",
+        "Error",
+        "Evicted",
+        "Failed",
+        "Succeeded",
+        "Terminating",
+    )
+)
+_INACTIVE_POD_PHASES = frozenset(("Failed", "Succeeded"))
+
+
+def _is_active_pod_row(pod_row: dict) -> bool:
+    return pod_row.get("STATUS") not in _INACTIVE_POD_ROW_STATUSES
+
+
+def _is_active_pod_spec(pod_spec: dict) -> bool:
+    return (
+        not pod_spec.get("metadata", {}).get("deletionTimestamp")
+        and pod_spec.get("status", {}).get("phase") not in _INACTIVE_POD_PHASES
+    )
+
+
 class Rule:
     def __init__(self):
         pass
@@ -712,7 +736,11 @@ class OperatorTest(unittest.TestCase):
             awaited_ready = f"{total_router_pod_containers}/{total_router_pod_containers}"
 
         def routers_ready():
-            pods = kutil.ls_po(ns or self.ns, pattern=name_pattern)
+            pods = [
+                pod
+                for pod in kutil.ls_po(ns or self.ns, pattern=name_pattern)
+                if _is_active_pod_row(pod)
+            ]
 
             # there may be a case where other routers are still running (termination may take some time)
             # we expect the exact number of routers with a given status
@@ -814,12 +842,22 @@ def get_rollover_update_waiter(test_obj: OperatorTest, ns: str, pattern_prefix: 
                 return None
             raise
 
-    def get_pods_uids(pattern) -> set:
-        pod_uids = set()
+    def is_rollover_pod_active(pod_row: dict, pod_spec: dict) -> bool:
+        return _is_active_pod_row(pod_row) and _is_active_pod_spec(pod_spec)
+
+    def list_rollover_pods(pattern) -> list[dict]:
+        active_pods = []
         for pod in kutil.ls_po(ns, pattern=pattern):
             pod_spec = get_rollover_pod(pod["NAME"])
             if pod_spec is None:
-                return set()
+                return []
+            if is_rollover_pod_active(pod, pod_spec):
+                active_pods.append(pod_spec)
+        return active_pods
+
+    def get_pods_uids(pattern) -> set:
+        pod_uids = set()
+        for pod_spec in list_rollover_pods(pattern):
             pod_uids.add(pod_spec["metadata"]["uid"])
         return pod_uids
 
@@ -845,45 +883,50 @@ def get_rollover_update_waiter(test_obj: OperatorTest, ns: str, pattern_prefix: 
 
     def get_if_pods_container_statuses_all_running(pattern, new_instances) -> bool:
         nonlocal new_uids
-        pods = kutil.ls_po(ns, pattern=pattern)
+        pods = list_rollover_pods(pattern)
         if len(pods) != new_instances:
             print(f"{pattern} : GET PODS found {len(pods)} but expected are {new_instances}")
             return False
 
-        for pod in pods:
-            pod_spec = get_rollover_pod(pod["NAME"])
-            if pod_spec is None:
-                return False
+        for pod_spec in pods:
             if pod_spec['metadata']['uid'] not in new_uids:
-                print(f"{pod['NAME']} FOUND ACCORDING TO THE {pattern} BUT IS NOT IN new_uids {list(new_uids)} - ar")
+                print(f"{pod_spec['metadata']['name']} FOUND ACCORDING TO THE {pattern} BUT IS NOT IN new_uids {list(new_uids)} - ar")
                 return False
 
-            for cont_status in pod_spec['status']['containerStatuses']:
-                print(f"POD {pod['NAME']}, IMAGE {cont_status['image']:70} IS {list(cont_status['state'].keys())}")
-                if "running" not in cont_status['state']:
+            container_statuses = pod_spec.get("status", {}).get("containerStatuses")
+            if not container_statuses:
+                print(f"{pod_spec['metadata']['name']} has no containerStatuses yet")
+                return False
+
+            for cont_status in container_statuses:
+                container_state = cont_status.get("state", {})
+                print(f"POD {pod_spec['metadata']['name']}, IMAGE {cont_status.get('image', '<unknown>'):70} IS {list(container_state.keys())}")
+                if "running" not in container_state:
                     return False
         return True
 
 
     def get_if_gates_are_set(pattern) -> bool:
         nonlocal new_uids
-        pods = kutil.ls_po(ns, pattern=pattern)
-        for pod in pods:
-            pod_spec = get_rollover_pod(pod["NAME"])
-            if pod_spec is None:
-                return False
+        pods = list_rollover_pods(pattern)
+        for pod_spec in pods:
             if pod_spec['metadata']['uid'] not in new_uids:
-                print(f"{pod['NAME']} FOUND ACCORDING TO THE {pattern} BUT IS NOT IN new_uids {list(new_uids)} - gs")
+                print(f"{pod_spec['metadata']['name']} FOUND ACCORDING TO THE {pattern} BUT IS NOT IN new_uids {list(new_uids)} - gs")
+                return False
+
+            conditions = pod_spec.get("status", {}).get("conditions")
+            if not conditions:
+                print(f"{pod_spec['metadata']['name']} has no conditions yet")
                 return False
 
             cond_configured = False
             cond_ready = False
-            for condition in pod_spec['status']['conditions']:
+            for condition in conditions:
                 if condition['type'] == 'mysql.oracle.com/configured':
                    cond_configured = True
                 elif condition['type'] == 'mysql.oracle.com/ready':
                    cond_ready = True
-            print(f"{pod['NAME']} configured={cond_configured} ready={cond_ready}")
+            print(f"{pod_spec['metadata']['name']} configured={cond_configured} ready={cond_ready}")
             if not cond_configured or not cond_ready:
                 return False
         return True
@@ -901,7 +944,7 @@ def get_rollover_update_waiter(test_obj: OperatorTest, ns: str, pattern_prefix: 
 
 
 def get_sts_rollover_update_waiter(test_obj: OperatorTest, sts_name: str, timeout: int, delay: int):
-    return get_rollover_update_waiter(test_obj, test_obj.ns, sts_name , "-\d", True, timeout, delay)
+    return get_rollover_update_waiter(test_obj, test_obj.ns, sts_name , r"-\d", True, timeout, delay)
 
 def get_deploy_rollover_update_waiter(test_obj: OperatorTest, ns: str, deploy_name: str, timeout: int, delay: int):
     return get_rollover_update_waiter(test_obj, ns, deploy_name, "-*", False, timeout, delay)

@@ -7,19 +7,14 @@
 
 from __future__ import annotations
 
-import json
-
 from dataclasses import dataclass
 from typing import Any, Iterable
 
 from .watched_namespaces import WatchedNamespaces
 
 
-TOPOLOGY_ANNOTATION = "mysql.oracle.com/operator-topology"
-TOPOLOGY_VERSION = 1
 DEFAULT_DEPLOYMENT_NAME = "mysql-operator"
 OPERATOR_CONTAINER_NAME = "mysql-operator"
-RAW_MANIFEST_MANAGER = "mysql-operator"
 
 _MISSING = object()
 _NO_DEFAULT = object()
@@ -110,17 +105,6 @@ class OperatorTopology:
     def is_global(self) -> bool:
         return self.scope == "global"
 
-    def to_annotation_dict(self) -> dict[str, Any]:
-        return {
-            "version": TOPOLOGY_VERSION,
-            "scope": self.scope,
-            "standalone": self.standalone,
-            "namespaces": list(self.namespaces),
-        }
-
-    def to_annotation_value(self) -> str:
-        return json.dumps(self.to_annotation_dict(), separators=(",", ":"))
-
     def describe(self) -> str:
         if self.is_global:
             mode = "standalone" if self.standalone else "non-standalone"
@@ -156,58 +140,13 @@ class OperatorTopology:
             namespaces=explicit_namespaces,
         )
 
-    @classmethod
-    def from_annotation(cls, raw_annotation: str) -> "OperatorTopology":
-        try:
-            loaded = json.loads(raw_annotation)
-        except json.JSONDecodeError as exc:
-            raise OperatorTopologyError(
-                f"{TOPOLOGY_ANNOTATION} must contain valid JSON: {exc.msg}"
-            ) from exc
-
-        if not isinstance(loaded, dict):
-            raise OperatorTopologyError(
-                f"{TOPOLOGY_ANNOTATION} must decode to an object."
-            )
-
-        version = loaded.get("version")
-        if version != TOPOLOGY_VERSION:
-            raise OperatorTopologyError(
-                f"{TOPOLOGY_ANNOTATION} version must be {TOPOLOGY_VERSION}, got {version!r}."
-            )
-
-        scope = loaded.get("scope")
-        if not isinstance(scope, str):
-            raise OperatorTopologyError(
-                f"{TOPOLOGY_ANNOTATION}.scope must be a string."
-            )
-
-        standalone = loaded.get("standalone")
-        if not isinstance(standalone, bool):
-            raise OperatorTopologyError(
-                f"{TOPOLOGY_ANNOTATION}.standalone must be a boolean."
-            )
-
-        namespaces = loaded.get("namespaces")
-        if not isinstance(namespaces, list) or any(not isinstance(ns, str) for ns in namespaces):
-            raise OperatorTopologyError(
-                f"{TOPOLOGY_ANNOTATION}.namespaces must be an array of strings."
-            )
-
-        return cls(
-            scope=scope,
-            standalone=standalone,
-            namespaces=canonicalize_namespaces(namespaces),
-        )
-
 
 @dataclass(frozen=True)
 class ResolvedOperatorDeploymentTopology:
     namespace: str
     name: str
     topology: OperatorTopology
-    needs_bootstrap_annotation: bool = False
-    source: str = "annotation"
+    source: str = "env"
 
     @property
     def ref(self) -> str:
@@ -224,11 +163,6 @@ def deployment_name(deployment: Any) -> str:
 
 def deployment_namespace(deployment: Any) -> str:
     return str(_dig(deployment, "metadata", "namespace", default="") or "")
-
-
-def deployment_annotations(deployment: Any) -> dict[str, Any]:
-    annotations = _dig(deployment, "metadata", "annotations", default=None)
-    return annotations if isinstance(annotations, dict) else {}
 
 
 def deployment_labels(deployment: Any) -> dict[str, Any]:
@@ -315,24 +249,12 @@ def is_legacy_global_operator_deployment(deployment: Any) -> bool:
     )
 
 
-def is_initial_raw_manifest_operator_deployment(deployment: Any) -> bool:
-    # Raw manifests intentionally start without a persisted topology annotation.
-    # Restrict env-based bootstrap to the first Deployment generation so later
-    # manual edits still have to preserve the persisted topology.
-    labels = deployment_labels(deployment)
-    return (
-        labels.get("app.kubernetes.io/managed-by") == RAW_MANIFEST_MANAGER
-        and labels.get("app.kubernetes.io/created-by") == RAW_MANIFEST_MANAGER
-        and deployment_generation(deployment) == 1
-    )
-
-
 def is_recognized_operator_deployment(deployment: Any) -> bool:
     if not operator_container_exists(deployment):
         return False
 
-    annotations = deployment_annotations(deployment)
-    if TOPOLOGY_ANNOTATION in annotations:
+    env_map = operator_container_env_map(deployment)
+    if "OPERATOR_NAMESPACES" in env_map or "OPERATOR_STANDALONE" in env_map:
         return True
 
     labels = deployment_labels(deployment)
@@ -341,6 +263,13 @@ def is_recognized_operator_deployment(deployment: Any) -> bool:
         and labels.get("app.kubernetes.io/component") == "controller"
     )
     return has_managed_operator_labels or is_legacy_global_operator_deployment(deployment)
+
+
+def deployment_generation_source(deployment: Any) -> str:
+    generation = deployment_generation(deployment)
+    if generation == 1:
+        return "env-install"
+    return "env-upgrade"
 
 
 def resolve_operator_deployment_topology(
@@ -352,46 +281,24 @@ def resolve_operator_deployment_topology(
     namespace = deployment_namespace(deployment)
     name = deployment_name(deployment)
     ref = f"{namespace}/{name}"
-    annotations = deployment_annotations(deployment)
-    if TOPOLOGY_ANNOTATION in annotations:
-        persisted_topology = annotations[TOPOLOGY_ANNOTATION]
-        try:
-            topology = OperatorTopology.from_annotation(str(persisted_topology))
-        except OperatorTopologyError as exc:
-            raise OperatorTopologyError(
-                f"Recognized operator deployment {ref} has invalid {TOPOLOGY_ANNOTATION}: {exc}"
-            ) from exc
-
-        return ResolvedOperatorDeploymentTopology(
-            namespace=namespace,
-            name=name,
-            topology=topology,
-        )
-
     env_map = operator_container_env_map(deployment)
     has_namespaces = "OPERATOR_NAMESPACES" in env_map
     has_standalone = "OPERATOR_STANDALONE" in env_map
     if has_namespaces or has_standalone:
         if not (has_namespaces and has_standalone):
             raise OperatorTopologyError(
-                f"Recognized operator deployment {ref} is missing {TOPOLOGY_ANNOTATION} and has incomplete topology env configuration."
+                f"Recognized operator deployment {ref} has incomplete topology env configuration."
             )
 
         topology = OperatorTopology.from_env(
             env_map.get("OPERATOR_NAMESPACES", ""),
             env_map.get("OPERATOR_STANDALONE", ""),
         )
-        if is_initial_raw_manifest_operator_deployment(deployment):
-            return ResolvedOperatorDeploymentTopology(
-                namespace=namespace,
-                name=name,
-                topology=topology,
-                needs_bootstrap_annotation=True,
-                source="initial-raw-env",
-            )
-
-        raise OperatorTopologyError(
-            f"Recognized operator deployment {ref} is missing {TOPOLOGY_ANNOTATION} and can only bootstrap persisted topology during the initial raw-manifest install flow."
+        return ResolvedOperatorDeploymentTopology(
+            namespace=namespace,
+            name=name,
+            topology=topology,
+            source=deployment_generation_source(deployment),
         )
 
     if is_legacy_global_operator_deployment(deployment):
@@ -403,10 +310,9 @@ def resolve_operator_deployment_topology(
                 standalone=False,
                 namespaces=(),
             ),
-            needs_bootstrap_annotation=True,
             source="legacy-global",
         )
 
     raise OperatorTopologyError(
-        f"Recognized operator deployment {ref} is missing {TOPOLOGY_ANNOTATION} and does not match a supported legacy global topology."
+        f"Recognized operator deployment {ref} has no topology env configuration and does not match a supported legacy global topology."
     )

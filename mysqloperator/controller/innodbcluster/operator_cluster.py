@@ -1552,10 +1552,9 @@ def _get_clusterset_primary_cluster_name(dba: Any, logger: Logger) -> Optional[s
     return None
 
 
-if config.OPERATOR_EDITION == config.Edition.enterprise:
- @kopf.on.create(consts.GROUP, consts.VERSION,
+@kopf.on.create(consts.GROUP, consts.VERSION,
                 "mysqlclustersetfailovers")  # type: ignore
- def on_failover_create(name: str, namespace: Optional[str], body: Body,
+def on_failover_create(name: str, namespace: Optional[str], body: Body,
                        logger: Logger, **kwargs) -> None:
     # TODO: move this to a proper structure
     logger.info(f'Fetching {body["spec"]["clusterName"]}')

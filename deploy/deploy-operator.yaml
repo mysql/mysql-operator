@@ -246,9 +246,7 @@ spec:
               value: "mysql-sidecar"
             - name: SWITCHOVER_ROLE_NAME
               value: "mysql-switchover"
-            # These envs define the initial operator topology for raw-manifest installs.
-            # The operator persists mysql.oracle.com/operator-topology from them on first start.
-            # Changing them after bootstrap requires reinstalling the operator.
+            # These envs define operator topology for raw-manifest installs and upgrades.
             # Standalone also requires a safe Deployment strategy.
             # Comma-separated explicit watched namespaces. Empty means cluster-wide.
             # Standalone and non-standalone use the same explicit namespace grammar.

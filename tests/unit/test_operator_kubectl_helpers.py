@@ -5,7 +5,6 @@
 
 import copy
 import importlib
-import json
 import pathlib
 import subprocess
 import sys
@@ -1465,9 +1464,6 @@ def test_get_patched_artifacts_uses_fresh_install_selector_helpers(
     deployment = patched["deployment"]
     template_labels = deployment["spec"]["template"]["metadata"]["labels"]
     envs = operator_t_module.get_operator_envs_from_deployment(deployment)
-    topology_annotation = deployment["metadata"]["annotations"][
-        operator_t_module.TOPOLOGY_ANNOTATION_KEY
-    ]
 
     assert deployment["metadata"]["name"] == "custom-op"
     assert deployment["metadata"]["namespace"] == "operator-ns"
@@ -1482,15 +1478,9 @@ def test_get_patched_artifacts_uses_fresh_install_selector_helpers(
     assert envs["OPERATOR_DEPLOYMENT_NAME"] == "custom-op"
     assert envs["OPERATOR_NAMESPACES"] == "operator-ns"
     assert envs["OPERATOR_STANDALONE"] == "true"
-    assert json.loads(topology_annotation) == {
-        "version": 1,
-        "scope": "scoped",
-        "standalone": True,
-        "namespaces": ["operator-ns"],
-    }
 
 
-def test_get_patched_artifacts_canonicalizes_topology_annotation_namespace_sets(
+def test_get_patched_artifacts_canonicalizes_topology_env_namespace_sets(
     operator_t_module,
 ):
     patched = operator_t_module.get_patched_artifacts(
@@ -1504,16 +1494,6 @@ def test_get_patched_artifacts_canonicalizes_topology_annotation_namespace_sets(
 
     deployment = patched["deployment"]
     envs = operator_t_module.get_operator_envs_from_deployment(deployment)
-    topology_annotation = json.loads(
-        deployment["metadata"]["annotations"][
-            operator_t_module.TOPOLOGY_ANNOTATION_KEY
-        ]
-    )
 
     assert envs["OPERATOR_NAMESPACES"] == "ns-b,ns-a"
-    assert topology_annotation == {
-        "version": 1,
-        "scope": "scoped",
-        "standalone": False,
-        "namespaces": ["ns-a", "ns-b"],
-    }
+    assert envs["OPERATOR_STANDALONE"] == "false"

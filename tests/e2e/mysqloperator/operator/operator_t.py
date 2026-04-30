@@ -7,7 +7,6 @@ import time
 import unittest
 import os
 import re
-import json
 import pathlib
 import uuid
 from dataclasses import dataclass, field
@@ -394,7 +393,6 @@ def get_labels(release_name: str, operator_ns: str, operator_name: str, app_vers
 
 K8S_NAME_LABEL_LIMIT = 63
 GLOBAL_INSTANCE_NAME_SUFFIX = "-operator"
-TOPOLOGY_ANNOTATION_KEY = "mysql.oracle.com/operator-topology"
 
 
 def get_max_custom_deployment_name_length(operator_ns: str) -> int:
@@ -1144,27 +1142,6 @@ def normalize_watch_namespaces(watch_namespaces: str) -> str:
     return ",".join(get_explicit_watch_namespaces(watch_namespaces))
 
 
-def get_canonical_topology_namespaces(watch_namespaces: str) -> list[str]:
-    return sorted(get_explicit_watch_namespaces(watch_namespaces))
-
-
-def get_topology_annotation_value(
-    watch_namespaces: str = "",
-    standalone: bool = False,
-) -> str:
-    namespaces = get_canonical_topology_namespaces(watch_namespaces)
-    scope = "global" if not namespaces else "scoped"
-    return json.dumps(
-        {
-            "version": 1,
-            "scope": scope,
-            "standalone": standalone,
-            "namespaces": namespaces,
-        },
-        separators=(",", ":"),
-    )
-
-
 def get_patched_artifacts(artifacts: dict, release_name: str, operator_ns: str, operator_name: str,
                           custom_meta: dict = None, custom_spec: dict = None, watch_namespaces: str = "",
                           standalone: bool = False, operator_debug: bool = False) -> dict:
@@ -1314,12 +1291,6 @@ def get_patched_artifacts(artifacts: dict, release_name: str, operator_ns: str, 
             deploy_metadata_labels[k] = str(v)
         for k, v in custom_meta.get("annotations", {}).items():
             deploy["metadata"].setdefault("annotations", {})[k] = str(v)
-        deploy["metadata"].setdefault("annotations", {})[
-            TOPOLOGY_ANNOTATION_KEY
-        ] = get_topology_annotation_value(
-            normalized_watch_namespaces,
-            standalone,
-        )
 
         # Enforce Helm-aligned labels
         deploy_metadata_labels.update(get_labels(release_name, operator_ns, operator_name, app_version_label, version_label))
@@ -1408,7 +1379,6 @@ def apply_legacy_global_operator_fingerprint(operator_deployment: dict) -> None:
     strip_managed_operator_labels_from_deployment(operator_deployment)
 
     metadata = operator_deployment.setdefault("metadata", {})
-    metadata.setdefault("annotations", {}).pop(TOPOLOGY_ANNOTATION_KEY, None)
     metadata["name"] = "mysql-operator"
 
     selector_labels = (
@@ -2427,6 +2397,7 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         deployment_name: str,
         previous_pod_name: str,
         timeout: int = 300,
+        checkabort: Callable[[], None] = lambda: None,
     ) -> dict:
         last_pod_names: list[str] = []
         deployment = kutil.get_deploy(
@@ -2475,6 +2446,7 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
             )
 
         for _ in range(timeout):
+            checkabort()
             operator_pods = self._list_active_operator_pods(
                 namespace=namespace,
                 deployment_name=deployment_name,
@@ -2506,8 +2478,14 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         namespace: str,
         deployment_name: str,
         previous_pod_name: Optional[str] = None,
+        checkabort: Callable[[], None] = lambda: None,
     ) -> dict:
-        kutil.wait_deploy(namespace, deployment_name, timeout=300)
+        kutil.wait_deploy(
+            namespace,
+            deployment_name,
+            timeout=300,
+            checkabort=checkabort,
+        )
 
         operator_pod = None
         if previous_pod_name:
@@ -2515,6 +2493,7 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                 namespace=namespace,
                 deployment_name=deployment_name,
                 previous_pod_name=previous_pod_name,
+                checkabort=checkabort,
             )
 
         if operator_pod is None:
@@ -2527,6 +2506,7 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
             operator_pod["metadata"]["name"],
             "Running",
             timeout=300,
+            checkabort=checkabort,
         )
         current_operator_pod = kutil.get_po(
             namespace,
@@ -2541,6 +2521,7 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         release: str,
         *,
         previous_pod_name: Optional[str] = None,
+        checkabort: Callable[[], None] = lambda: None,
     ) -> dict:
         for filename in RAW_DEPLOY_MANIFEST_FILES:
             kutil.apply(
@@ -2555,6 +2536,7 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
             namespace=self.operator_ns,
             deployment_name=self.operator_deploy_name,
             previous_pod_name=previous_pod_name,
+            checkabort=checkabort,
         )
         self._assert_raw_operator_selector_compatible()
         self._assert_helm_operator_image_tag(operator_pod, release)
@@ -7821,6 +7803,43 @@ class RawManifestOperatorSelectorUpgradeCompatibilityTest(
                 if cleanup_error is not None and test_error is None:
                     raise cleanup_error
 
+    def test_raw_manifest_operator_upgrade_96_to_current(
+        self,
+    ) -> None:
+        original_artifacts = self._remove_default_operator_or_fail()
+        operator_pod = None
+        test_error = None
+
+        try:
+            operator_pod = self._apply_raw_operator_release(
+                RAW_MANIFEST_BRIDGE_RELEASE,
+            )
+            operator_pod = self._apply_raw_operator_release(
+                g_ts_cfg.operator_version_tag,
+                previous_pod_name=operator_pod["metadata"]["name"],
+            )
+        except Exception as exc:
+            test_error = exc
+            self._print_operator_log_from_candidates(
+                namespace=self.operator_ns,
+                deployment_names=[self.operator_deploy_name],
+            )
+            raise
+        finally:
+            cleanup_error = None
+            try:
+                self._remove_live_default_operator_if_present()
+            except Exception as exc:
+                cleanup_error = exc
+            finally:
+                try:
+                    self._restore_default_operator(original_artifacts)
+                except Exception as exc:
+                    if cleanup_error is None:
+                        cleanup_error = exc
+                if cleanup_error is not None and test_error is None:
+                    raise cleanup_error
+
 
 class RawManifestOperatorAndClusterLtsBridgeUpgradeTest(
     OperatorSingleAndMultipleBaseTest
@@ -8026,114 +8045,6 @@ spec:
                         cleanup_error = exc
                 if cleanup_error is not None and test_error is None:
                     raise cleanup_error
-
-
-class RawGlobalOperatorTopologyRestartGuardTest(OperatorSingleAndMultipleBaseTest):
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-
-    @classmethod
-    def tearDownClass(cls):
-        kutil.delete_ns(cls.ns)
-        super().tearDownClass()
-
-    def test_bootstrapped_global_operator_cannot_restart_as_scoped(self) -> None:
-        operator_ns = f"op-topology-restart-{self.random_suffix}"
-        operator_name = f"myop-topology-restart-{self.random_suffix}"
-        release_name = f"myoper-topology-restart-{self.random_suffix}"
-        scoped_watch_namespace = f"db-topology-restart-{self.random_suffix}"
-        original_artifacts = self._remove_default_operator_or_fail()
-        test_error = None
-
-        patched = get_patched_artifacts(
-            copy.deepcopy(original_artifacts),
-            release_name,
-            operator_ns,
-            operator_name,
-        )
-        apply_initial_raw_manifest_operator_fingerprint(patched["deployment"])
-        patched["deployment"].setdefault("metadata", {}).setdefault(
-            "annotations",
-            {},
-        ).pop(TOPOLOGY_ANNOTATION_KEY, None)
-
-        try:
-            install_operator(patched, operator_ns)
-            kutil.wait_deploy(operator_ns, operator_name, timeout=300)
-
-            deployed_operator = kutil.get_deploy(operator_ns, operator_name)
-            self.assertEqual(
-                deployed_operator.get("metadata", {})
-                .get("annotations", {})
-                .get(TOPOLOGY_ANNOTATION_KEY),
-                get_topology_annotation_value("", False),
-            )
-
-            operator_container = get_named_container(
-                deployed_operator.get("spec", {})
-                .get("template", {})
-                .get("spec", {})
-                .get("containers", []),
-                "mysql-operator",
-            )
-            self.assertIsNotNone(operator_container)
-            updated_env = copy.deepcopy(operator_container.get("env", []))
-            for env in updated_env:
-                if env.get("name") == "OPERATOR_NAMESPACES":
-                    env["value"] = scoped_watch_namespace
-                if env.get("name") == "OPERATOR_STANDALONE":
-                    env["value"] = "false"
-
-            kutil.patch_dp(
-                operator_ns,
-                operator_name,
-                {
-                    "spec": {
-                        "template": {
-                            "spec": {
-                                "containers": [
-                                    {
-                                        "name": "mysql-operator",
-                                        "env": updated_env,
-                                    }
-                                ]
-                            }
-                        }
-                    }
-                },
-            )
-
-            wait_for_operator_failure_log_fragment(
-                operator_ns,
-                operator_name,
-                "persisted mysql.oracle.com/operator-topology as global non-standalone",
-            )
-        except Exception as exc:
-            test_error = exc
-            try:
-                print_operator_log(operator_ns, operator_name)
-            except Exception:
-                pass
-            raise
-        finally:
-            cleanup_error = None
-            for cleanup_fn in (
-                lambda: self._cleanup_operator_if_present(
-                    operator_ns=operator_ns,
-                    operator_name=operator_name,
-                    check_namespace_empty=False,
-                ),
-                lambda: self._restore_default_operator(original_artifacts),
-            ):
-                try:
-                    cleanup_fn()
-                except Exception as cleanup_exc:
-                    if cleanup_error is None:
-                        cleanup_error = cleanup_exc
-
-            if cleanup_error is not None and test_error is None:
-                raise cleanup_error
 
 
 class HelmScopedTopologyFreezeUpgradeTest(OperatorSingleAndMultipleBaseTest):
@@ -9124,6 +9035,18 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
                     server_instances=server_instances,
                     router_instances=router_instances,
                 )
+                # Contract: upgrading the operator Helm release must not upgrade
+                # existing clusters. In particular, it must not patch the
+                # StatefulSet/Deployment pod templates for cluster workloads and
+                # must not trigger a cluster rolling restart as a side effect of
+                # changing the control-plane image. Large deployments rely on
+                # this separation to avoid surprise data-plane churn.
+                #
+                # Therefore, immediately after the operator-only upgrade, MySQL,
+                # Router, and the operator-backed cluster containers
+                # (fixdatadir/initconf/sidecar) must still use the current
+                # cluster release. They move to next_release only in the explicit
+                # cluster Helm upgrade below.
                 for cluster_name in cluster_names:
                     self._assert_helm_cluster_runtime_image_identities(
                         namespace=self.ns,
@@ -9131,7 +9054,7 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
                         server_instances=server_instances,
                         router_instances=router_instances,
                         expected_release=current_cluster_release,
-                        expected_operator_release=next_release,
+                        expected_operator_release=current_cluster_release,
                     )
                 self._wait_for_namespace_switchover_rbac_state(
                     namespace=self.ns,

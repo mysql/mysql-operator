@@ -73,9 +73,17 @@ def check_all(test, ns, name, instances, routers=None, primary=None, count_sessi
         # check_mysqld_health(test, ns, pod["metadata"]["name"])
         check_sidecar_health(test, ns, pod["metadata"]["name"])
 
-    router_pods = kutil.ls_po(ns, pattern=f"{name}-router-.*")
+    router_pods = [
+        pod
+        for pod in kutil.ls_po(ns, pattern=f"{name}-router-.*")
+        if tutil._is_active_pod_row(pod)
+    ]
     if routers is not None:
-        test.assertEqual(len(router_pods), routers)
+        test.assertEqual(
+            len(router_pods),
+            routers,
+            f"router_pods={router_pods}",
+        )
         for router in router_pods:
             test.assertEqual(router["STATUS"], "Running", router["NAME"])
 

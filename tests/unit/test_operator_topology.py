@@ -15,7 +15,6 @@ from kubernetes.client import (
 )
 
 from mysqloperator.controller.operator_topology import (
-    TOPOLOGY_ANNOTATION,
     OperatorTopology,
     OperatorTopologyError,
     ResolvedOperatorDeploymentTopology,
@@ -30,20 +29,12 @@ def _make_modern_operator_deployment(
     annotations: dict | None = None,
     env: list[dict] | None = None,
     labels: dict | None = None,
-    raw_manifest: bool = False,
     generation: int | None = None,
 ):
     deployment_labels = {
         "app.kubernetes.io/name": "mysql-operator",
         "app.kubernetes.io/component": "controller",
     }
-    if raw_manifest:
-        deployment_labels.update(
-            {
-                "app.kubernetes.io/managed-by": "mysql-operator",
-                "app.kubernetes.io/created-by": "mysql-operator",
-            }
-        )
     if labels:
         deployment_labels.update(labels)
 
@@ -147,72 +138,21 @@ def _make_typed_legacy_global_operator_deployment():
     )
 
 
-def test_topology_annotation_round_trip_uses_canonical_namespace_set():
+def test_topology_env_uses_canonical_namespace_set():
     topology = OperatorTopology.from_env(" ns2, ns1 , ns2 ", True)
 
     assert topology.scope == "scoped"
     assert topology.standalone is True
     assert topology.namespaces == ("ns1", "ns2")
-    assert topology.to_annotation_value() == (
-        '{"version":1,"scope":"scoped","standalone":true,"namespaces":["ns1","ns2"]}'
-    )
+    assert topology.describe() == "scoped standalone watching [ns1, ns2]"
 
 
-def test_resolve_deployment_uses_persisted_annotation_when_present():
-    persisted_topology = OperatorTopology.from_env("ns-b,ns-a", False)
-    deployment = _make_modern_operator_deployment(
-        annotations={
-            TOPOLOGY_ANNOTATION: persisted_topology.to_annotation_value(),
-        },
-        env=[
-            {"name": "OPERATOR_NAMESPACES", "value": "ignored"},
-            {"name": "OPERATOR_STANDALONE", "value": "true"},
-        ],
-    )
-
-    resolved = resolve_operator_deployment_topology(deployment)
-
-    assert resolved == ResolvedOperatorDeploymentTopology(
-        namespace="operator-ns",
-        name="custom-operator",
-        topology=OperatorTopology(
-            scope="scoped",
-            standalone=False,
-            namespaces=("ns-a", "ns-b"),
-        ),
-        needs_bootstrap_annotation=False,
-        source="annotation",
-    )
-
-
-def test_resolve_empty_persisted_annotation_fails_without_env_fallback():
-    deployment = _make_modern_operator_deployment(
-        annotations={
-            TOPOLOGY_ANNOTATION: "",
-        },
-        env=[
-            {"name": "OPERATOR_NAMESPACES", "value": "team-b,team-a"},
-            {"name": "OPERATOR_STANDALONE", "value": "false"},
-        ],
-        raw_manifest=True,
-        generation=1,
-    )
-
-    with pytest.raises(
-        OperatorTopologyError,
-        match=r"has invalid mysql\.oracle\.com/operator-topology: "
-        r"mysql\.oracle\.com/operator-topology must contain valid JSON",
-    ):
-        resolve_operator_deployment_topology(deployment)
-
-
-def test_resolve_initial_raw_global_without_annotation_requests_bootstrap():
+def test_resolve_env_global_generation_one_is_install():
     deployment = _make_modern_operator_deployment(
         env=[
             {"name": "OPERATOR_NAMESPACES", "value": ""},
             {"name": "OPERATOR_STANDALONE", "value": "false"},
         ],
-        raw_manifest=True,
         generation=1,
     )
 
@@ -226,19 +166,17 @@ def test_resolve_initial_raw_global_without_annotation_requests_bootstrap():
             standalone=False,
             namespaces=(),
         ),
-        needs_bootstrap_annotation=True,
-        source="initial-raw-env",
+        source="env-install",
     )
 
 
-def test_resolve_initial_raw_scoped_without_annotation_requests_bootstrap():
+def test_resolve_env_scoped_generation_greater_than_one_is_upgrade():
     deployment = _make_modern_operator_deployment(
         env=[
             {"name": "OPERATOR_NAMESPACES", "value": "team-b,team-a"},
             {"name": "OPERATOR_STANDALONE", "value": "false"},
         ],
-        raw_manifest=True,
-        generation=1,
+        generation=2,
     )
 
     resolved = resolve_operator_deployment_topology(deployment)
@@ -251,19 +189,17 @@ def test_resolve_initial_raw_scoped_without_annotation_requests_bootstrap():
             standalone=False,
             namespaces=("team-a", "team-b"),
         ),
-        needs_bootstrap_annotation=True,
-        source="initial-raw-env",
+        source="env-upgrade",
     )
 
 
-def test_resolve_initial_raw_standalone_without_annotation_requests_bootstrap():
+def test_resolve_env_standalone_generation_greater_than_one_is_upgrade():
     deployment = _make_modern_operator_deployment(
         env=[
             {"name": "OPERATOR_NAMESPACES", "value": "team-a"},
             {"name": "OPERATOR_STANDALONE", "value": "true"},
         ],
-        raw_manifest=True,
-        generation=1,
+        generation=3,
     )
 
     resolved = resolve_operator_deployment_topology(deployment)
@@ -276,12 +212,11 @@ def test_resolve_initial_raw_standalone_without_annotation_requests_bootstrap():
             standalone=True,
             namespaces=("team-a",),
         ),
-        needs_bootstrap_annotation=True,
-        source="initial-raw-env",
+        source="env-upgrade",
     )
 
 
-def test_resolve_legacy_global_without_annotation_requests_bootstrap():
+def test_resolve_legacy_global_without_env_uses_default_global_topology():
     resolved = resolve_operator_deployment_topology(
         _make_legacy_global_operator_deployment()
     )
@@ -294,12 +229,11 @@ def test_resolve_legacy_global_without_annotation_requests_bootstrap():
             standalone=False,
             namespaces=(),
         ),
-        needs_bootstrap_annotation=True,
         source="legacy-global",
     )
 
 
-def test_resolve_typed_legacy_global_without_annotation_requests_bootstrap():
+def test_resolve_typed_legacy_global_without_env_uses_default_global_topology():
     resolved = resolve_operator_deployment_topology(
         _make_typed_legacy_global_operator_deployment()
     )
@@ -312,51 +246,33 @@ def test_resolve_typed_legacy_global_without_annotation_requests_bootstrap():
             standalone=False,
             namespaces=(),
         ),
-        needs_bootstrap_annotation=True,
         source="legacy-global",
     )
 
 
 @pytest.mark.parametrize(
-    ("namespaces", "standalone"),
+    "env",
     [
-        ("", "false"),
-        ("team-a,team-b", "false"),
-        ("team-a", "true"),
+        [{"name": "OPERATOR_NAMESPACES", "value": ""}],
+        [{"name": "OPERATOR_STANDALONE", "value": "false"}],
     ],
 )
-def test_resolve_missing_annotation_outside_initial_raw_install_fails_closed(
-    namespaces: str,
-    standalone: str,
-):
-    deployment = _make_modern_operator_deployment(
-        env=[
-            {"name": "OPERATOR_NAMESPACES", "value": namespaces},
-            {"name": "OPERATOR_STANDALONE", "value": standalone},
-        ],
-        generation=1,
-    )
+def test_resolve_incomplete_topology_env_fails(env: list[dict]):
+    deployment = _make_modern_operator_deployment(env=env, generation=1)
 
     with pytest.raises(
         OperatorTopologyError,
-        match=r"initial raw-manifest install flow",
+        match=r"incomplete topology env configuration",
     ):
         resolve_operator_deployment_topology(deployment)
 
 
-def test_resolve_raw_missing_annotation_after_initial_install_fails_closed():
-    deployment = _make_modern_operator_deployment(
-        env=[
-            {"name": "OPERATOR_NAMESPACES", "value": "team-a"},
-            {"name": "OPERATOR_STANDALONE", "value": "true"},
-        ],
-        raw_manifest=True,
-        generation=2,
-    )
+def test_resolve_modern_operator_without_topology_env_fails():
+    deployment = _make_modern_operator_deployment(generation=1)
 
     with pytest.raises(
         OperatorTopologyError,
-        match=r"initial raw-manifest install flow",
+        match=r"has no topology env configuration",
     ):
         resolve_operator_deployment_topology(deployment)
 

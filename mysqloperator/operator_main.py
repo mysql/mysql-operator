@@ -13,7 +13,6 @@ import logging
 from .controller import k8sobject, config as myconfig
 from .controller.kubeutils import ApiException, api_apps, k8s_cluster_domain
 from .controller.operator_topology import (
-    TOPOLOGY_ANNOTATION,
     OperatorTopology,
     OperatorTopologyError,
     deployment_name as resolved_deployment_name,
@@ -37,24 +36,6 @@ def get_operator_deployments():
 def get_configured_operator_replicas(deployment) -> int:
     replicas = deployment.spec.replicas
     return replicas if replicas is not None else 1
-
-
-def persist_operator_topology_annotation(
-    namespace: str,
-    deployment_name: str,
-    topology: OperatorTopology,
-) -> None:
-    api_apps.patch_namespaced_deployment(
-        deployment_name,
-        namespace,
-        {
-            "metadata": {
-                "annotations": {
-                    TOPOLOGY_ANNOTATION: topology.to_annotation_value(),
-                }
-            }
-        },
-    )
 
 
 def _format_topology_conflict_message(
@@ -92,31 +73,20 @@ def ensure_operator_topology_consistency(
             f"Deployment {namespace}/{deployment_name} is not recognized as a MySQL operator Deployment."
         )
 
-    if resolved_self.needs_bootstrap_annotation:
-        if resolved_self.topology != current_topology:
-            raise RuntimeError(
-                f"Deployment {resolved_self.ref} is missing {TOPOLOGY_ANNOTATION} and "
-                f"can only bootstrap as {resolved_self.topology.describe()}, but the current "
-                f"configuration resolves to {current_topology.describe()}."
-            )
-
-        persist_operator_topology_annotation(
-            namespace,
-            deployment_name,
-            current_topology,
-        )
-        logging.info(
-            "Persisted %s on Deployment %s using %s bootstrap.",
-            TOPOLOGY_ANNOTATION,
-            resolved_self.ref,
-            resolved_self.source,
-        )
-    elif resolved_self.topology != current_topology:
+    if resolved_self.topology != current_topology:
         raise RuntimeError(
-            f"Deployment {resolved_self.ref} persisted {TOPOLOGY_ANNOTATION} as "
-            f"{resolved_self.topology.describe()}, but the current configuration "
+            f"Deployment {resolved_self.ref} resolves topology as "
+            f"{resolved_self.topology.describe()} from {resolved_self.source}, "
+            f"but the current configuration "
             f"resolves to {current_topology.describe()}."
         )
+
+    logging.info(
+        "Resolved operator topology for Deployment %s from %s as %s.",
+        resolved_self.ref,
+        resolved_self.source,
+        resolved_self.topology.describe(),
+    )
 
     for other_deployment in get_operator_deployments():
         other_namespace = resolved_deployment_namespace(other_deployment)

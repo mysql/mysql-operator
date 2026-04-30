@@ -108,7 +108,6 @@ def _make_operator_deployment(
     name: str,
     annotations: dict | None = None,
     env: list[dict] | None = None,
-    raw_manifest: bool = False,
     generation: int | None = None,
     strategy: dict | None = None,
 ):
@@ -116,13 +115,6 @@ def _make_operator_deployment(
         "app.kubernetes.io/name": "mysql-operator",
         "app.kubernetes.io/component": "controller",
     }
-    if raw_manifest:
-        labels.update(
-            {
-                "app.kubernetes.io/managed-by": "mysql-operator",
-                "app.kubernetes.io/created-by": "mysql-operator",
-            }
-        )
 
     metadata = {
         "namespace": namespace,
@@ -210,10 +202,13 @@ def _set_operator_main_env(monkeypatch, **env):
         monkeypatch.setenv(key, value)
 
 
-def test_main_bootstraps_missing_global_annotation_before_startup(monkeypatch):
+def _reject_deployment_patch(name, namespace, body):
+    pytest.fail("operator topology must not be patched into Deployment metadata")
+
+
+def test_main_resolves_global_env_topology_before_startup(monkeypatch):
     operator_main = _load_operator_main_module()
     fake_loop = _FakeLoop()
-    patch_calls = []
 
     deployment = _make_operator_deployment(
         namespace="operator-ns",
@@ -222,16 +217,13 @@ def test_main_bootstraps_missing_global_annotation_before_startup(monkeypatch):
             {"name": "OPERATOR_NAMESPACES", "value": ""},
             {"name": "OPERATOR_STANDALONE", "value": "false"},
         ],
-        raw_manifest=True,
         generation=1,
     )
 
     operator_main.api_apps.read_namespaced_deployment = (
         lambda name, namespace: deployment
     )
-    operator_main.api_apps.patch_namespaced_deployment = (
-        lambda name, namespace, body: patch_calls.append((name, namespace, body))
-    )
+    operator_main.api_apps.patch_namespaced_deployment = _reject_deployment_patch
     operator_main.api_apps.list_deployment_for_all_namespaces = (
         lambda: types.SimpleNamespace(items=[deployment])
     )
@@ -247,21 +239,6 @@ def test_main_bootstraps_missing_global_annotation_before_startup(monkeypatch):
     )
 
     assert operator_main.main([]) == 0
-    assert patch_calls == [
-        (
-            "mysql-operator",
-            "operator-ns",
-            {
-                "metadata": {
-                    "annotations": {
-                        "mysql.oracle.com/operator-topology": (
-                            '{"version":1,"scope":"global","standalone":false,"namespaces":[]}'
-                        )
-                    }
-                }
-            },
-        )
-    ]
     assert fake_loop.run_until_complete_called is True
     assert fake_loop.value["clusterwide"] is True
     assert fake_loop.value["namespaces"] == []
@@ -270,10 +247,9 @@ def test_main_bootstraps_missing_global_annotation_before_startup(monkeypatch):
     assert isinstance(fake_loop.value["priority"], int)
 
 
-def test_main_bootstraps_typed_legacy_global_annotation_before_startup(monkeypatch):
+def test_main_resolves_typed_legacy_global_topology_before_startup(monkeypatch):
     operator_main = _load_operator_main_module()
     fake_loop = _FakeLoop()
-    patch_calls = []
 
     deployment = _make_typed_legacy_global_operator_deployment(
         namespace="operator-ns",
@@ -282,9 +258,7 @@ def test_main_bootstraps_typed_legacy_global_annotation_before_startup(monkeypat
     operator_main.api_apps.read_namespaced_deployment = (
         lambda name, namespace: deployment
     )
-    operator_main.api_apps.patch_namespaced_deployment = (
-        lambda name, namespace, body: patch_calls.append((name, namespace, body))
-    )
+    operator_main.api_apps.patch_namespaced_deployment = _reject_deployment_patch
     operator_main.api_apps.list_deployment_for_all_namespaces = (
         lambda: types.SimpleNamespace(items=[deployment])
     )
@@ -300,21 +274,6 @@ def test_main_bootstraps_typed_legacy_global_annotation_before_startup(monkeypat
     )
 
     assert operator_main.main([]) == 0
-    assert patch_calls == [
-        (
-            "mysql-operator",
-            "operator-ns",
-            {
-                "metadata": {
-                    "annotations": {
-                        "mysql.oracle.com/operator-topology": (
-                            '{"version":1,"scope":"global","standalone":false,"namespaces":[]}'
-                        )
-                    }
-                }
-            },
-        )
-    ]
     assert fake_loop.run_until_complete_called is True
     assert fake_loop.value["clusterwide"] is True
     assert fake_loop.value["namespaces"] == []
@@ -323,10 +282,9 @@ def test_main_bootstraps_typed_legacy_global_annotation_before_startup(monkeypat
     assert isinstance(fake_loop.value["priority"], int)
 
 
-def test_main_bootstraps_missing_scoped_annotation_before_startup(monkeypatch):
+def test_main_resolves_scoped_env_topology_before_startup(monkeypatch):
     operator_main = _load_operator_main_module()
     fake_loop = _FakeLoop()
-    patch_calls = []
 
     deployment = _make_operator_deployment(
         namespace="operator-ns",
@@ -335,16 +293,13 @@ def test_main_bootstraps_missing_scoped_annotation_before_startup(monkeypatch):
             {"name": "OPERATOR_NAMESPACES", "value": "team-b,team-a"},
             {"name": "OPERATOR_STANDALONE", "value": "false"},
         ],
-        raw_manifest=True,
-        generation=1,
+        generation=2,
     )
 
     operator_main.api_apps.read_namespaced_deployment = (
         lambda name, namespace: deployment
     )
-    operator_main.api_apps.patch_namespaced_deployment = (
-        lambda name, namespace, body: patch_calls.append((name, namespace, body))
-    )
+    operator_main.api_apps.patch_namespaced_deployment = _reject_deployment_patch
     operator_main.api_apps.list_deployment_for_all_namespaces = (
         lambda: types.SimpleNamespace(items=[deployment])
     )
@@ -360,21 +315,6 @@ def test_main_bootstraps_missing_scoped_annotation_before_startup(monkeypatch):
     )
 
     assert operator_main.main([]) == 0
-    assert patch_calls == [
-        (
-            "mysql-operator",
-            "operator-ns",
-            {
-                "metadata": {
-                    "annotations": {
-                        "mysql.oracle.com/operator-topology": (
-                            '{"version":1,"scope":"scoped","standalone":false,"namespaces":["team-a","team-b"]}'
-                        )
-                    }
-                }
-            },
-        )
-    ]
     assert fake_loop.run_until_complete_called is True
     assert fake_loop.value["clusterwide"] is False
     assert fake_loop.value["namespaces"] == ["team-a", "team-b"]
@@ -382,10 +322,9 @@ def test_main_bootstraps_missing_scoped_annotation_before_startup(monkeypatch):
     assert fake_loop.value["standalone"] is False
 
 
-def test_main_bootstraps_missing_standalone_annotation_before_startup(monkeypatch):
+def test_main_resolves_standalone_env_topology_before_startup(monkeypatch):
     operator_main = _load_operator_main_module()
     fake_loop = _FakeLoop()
-    patch_calls = []
     safety_calls = []
 
     deployment = _make_operator_deployment(
@@ -395,22 +334,19 @@ def test_main_bootstraps_missing_standalone_annotation_before_startup(monkeypatc
             {"name": "OPERATOR_NAMESPACES", "value": "team-a"},
             {"name": "OPERATOR_STANDALONE", "value": "true"},
         ],
-        raw_manifest=True,
-        generation=1,
+        generation=2,
         strategy={"type": "Recreate"},
     )
 
     operator_main.api_apps.read_namespaced_deployment = (
         lambda name, namespace: deployment
     )
-    operator_main.api_apps.patch_namespaced_deployment = (
-        lambda name, namespace, body: patch_calls.append((name, namespace, body))
-    )
+    operator_main.api_apps.patch_namespaced_deployment = _reject_deployment_patch
     operator_main.api_apps.list_deployment_for_all_namespaces = (
         lambda: types.SimpleNamespace(items=[deployment])
     )
+
     def _fake_ensure_standalone_safe_deployment(standalone, namespace, deployment_name):
-        assert len(patch_calls) == 1
         safety_calls.append((standalone, namespace, deployment_name))
 
     operator_main.ensure_standalone_safe_deployment = (
@@ -428,24 +364,7 @@ def test_main_bootstraps_missing_standalone_annotation_before_startup(monkeypatc
     )
 
     assert operator_main.main([]) == 0
-    assert patch_calls == [
-        (
-            "mysql-operator",
-            "operator-ns",
-            {
-                "metadata": {
-                    "annotations": {
-                        "mysql.oracle.com/operator-topology": (
-                            '{"version":1,"scope":"scoped","standalone":true,"namespaces":["team-a"]}'
-                        )
-                    }
-                }
-            },
-        )
-    ]
-    assert safety_calls == [
-        (True, "operator-ns", "mysql-operator")
-    ]
+    assert safety_calls == [(True, "operator-ns", "mysql-operator")]
     assert fake_loop.run_until_complete_called is True
     assert fake_loop.value["clusterwide"] is False
     assert fake_loop.value["namespaces"] == ["team-a"]
@@ -453,77 +372,24 @@ def test_main_bootstraps_missing_standalone_annotation_before_startup(monkeypatc
     assert fake_loop.value["standalone"] is True
 
 
-def test_main_rejects_empty_persisted_annotation_before_startup(monkeypatch):
+def test_main_rejects_deployment_env_mismatch_before_startup(monkeypatch):
     operator_main = _load_operator_main_module()
     fake_loop = _FakeLoop()
 
     deployment = _make_operator_deployment(
         namespace="operator-ns",
         name="mysql-operator",
-        annotations={
-            "mysql.oracle.com/operator-topology": "",
-        },
-        env=[
-            {"name": "OPERATOR_NAMESPACES", "value": "team-a"},
-            {"name": "OPERATOR_STANDALONE", "value": "false"},
-        ],
-        raw_manifest=True,
-        generation=1,
-    )
-
-    operator_main.api_apps.read_namespaced_deployment = (
-        lambda name, namespace: deployment
-    )
-    operator_main.api_apps.patch_namespaced_deployment = (
-        lambda name, namespace, body: pytest.fail("topology annotation should not be patched")
-    )
-    operator_main.api_apps.list_deployment_for_all_namespaces = (
-        lambda: types.SimpleNamespace(items=[deployment])
-    )
-    operator_main.kopf.operator = lambda **kwargs: kwargs
-    monkeypatch.setattr(operator_main.asyncio, "get_event_loop", lambda: fake_loop)
-
-    _set_operator_main_env(
-        monkeypatch,
-        OPERATOR_STANDALONE="false",
-        OPERATOR_NAMESPACES="team-a",
-        OPERATOR_DEPLOYMENT_NAME="mysql-operator",
-        POD_NAMESPACE="operator-ns",
-    )
-
-    with pytest.raises(
-        RuntimeError,
-        match=r"has invalid mysql\.oracle\.com/operator-topology",
-    ):
-        operator_main.main([])
-
-    assert fake_loop.run_until_complete_called is False
-
-
-def test_main_rejects_persisted_topology_change_before_startup(monkeypatch):
-    operator_main = _load_operator_main_module()
-    fake_loop = _FakeLoop()
-
-    deployment = _make_operator_deployment(
-        namespace="operator-ns",
-        name="mysql-operator",
-        annotations={
-            "mysql.oracle.com/operator-topology": (
-                '{"version":1,"scope":"global","standalone":false,"namespaces":[]}'
-            )
-        },
         env=[
             {"name": "OPERATOR_NAMESPACES", "value": ""},
             {"name": "OPERATOR_STANDALONE", "value": "false"},
         ],
+        generation=2,
     )
 
     operator_main.api_apps.read_namespaced_deployment = (
         lambda name, namespace: deployment
     )
-    operator_main.api_apps.patch_namespaced_deployment = (
-        lambda name, namespace, body: pytest.fail("topology annotation should not be patched")
-    )
+    operator_main.api_apps.patch_namespaced_deployment = _reject_deployment_patch
     operator_main.api_apps.list_deployment_for_all_namespaces = (
         lambda: types.SimpleNamespace(items=[deployment])
     )
@@ -540,7 +406,7 @@ def test_main_rejects_persisted_topology_change_before_startup(monkeypatch):
 
     with pytest.raises(
         RuntimeError,
-        match=r"persisted mysql\.oracle\.com/operator-topology as global non-standalone",
+        match=r"resolves topology as global non-standalone from env-upgrade",
     ):
         operator_main.main([])
 
@@ -554,36 +420,26 @@ def test_main_rejects_overlapping_operator_before_startup(monkeypatch):
     current_deployment = _make_operator_deployment(
         namespace="operator-ns",
         name="mysql-operator",
-        annotations={
-            "mysql.oracle.com/operator-topology": (
-                '{"version":1,"scope":"scoped","standalone":false,"namespaces":["team-a"]}'
-            )
-        },
         env=[
             {"name": "OPERATOR_NAMESPACES", "value": "team-a"},
             {"name": "OPERATOR_STANDALONE", "value": "false"},
         ],
+        generation=2,
     )
     other_deployment = _make_operator_deployment(
         namespace="other-operator-ns",
         name="other-operator",
-        annotations={
-            "mysql.oracle.com/operator-topology": (
-                '{"version":1,"scope":"scoped","standalone":true,"namespaces":["team-a","team-b"]}'
-            )
-        },
         env=[
             {"name": "OPERATOR_NAMESPACES", "value": "team-a,team-b"},
             {"name": "OPERATOR_STANDALONE", "value": "true"},
         ],
+        generation=2,
     )
 
     operator_main.api_apps.read_namespaced_deployment = (
         lambda name, namespace: current_deployment
     )
-    operator_main.api_apps.patch_namespaced_deployment = (
-        lambda name, namespace, body: pytest.fail("topology annotation should not be patched")
-    )
+    operator_main.api_apps.patch_namespaced_deployment = _reject_deployment_patch
     operator_main.api_apps.list_deployment_for_all_namespaces = (
         lambda: types.SimpleNamespace(items=[current_deployment, other_deployment])
     )

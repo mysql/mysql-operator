@@ -262,6 +262,12 @@ def operator_cluster_module(monkeypatch):
     sys.modules.pop("mysqloperator.controller.innodbcluster.operator_cluster", None)
 
 
+def test_failover_create_handler_is_registered_for_community_operator(
+    operator_cluster_module,
+):
+    assert callable(operator_cluster_module.on_failover_create)
+
+
 def _owner_reference(
     *,
     api_version: str,

@@ -2,73 +2,73 @@ apiVersion: v1
 entries:
   mysql-innodbcluster:
   - apiVersion: v2
-    appVersion: 9.6.0
-    created: "2026-01-21T16:45:18.29689374+01:00"
+    appVersion: 9.7.0
+    created: "2026-05-04T12:00:05.626823557+02:00"
     description: MySQL InnoDB Cluster Helm Chart for deploying MySQL InnoDB Cluster
       in Kubernetes
-    digest: 11330b4dfbfa2142932289ca5b15cfde43455c94d49bae0e05dd0725dd86044d
+    digest: 5323bdfea6544841d4ba815169f3e58a367dce6eac6ec9cd511dd28c224e0ff0
     icon: https://www.mysql.com/common/logos/logo-mysql-170x115.png
     name: mysql-innodbcluster
     type: application
     urls:
-    - mysql-innodbcluster-2.2.7.tgz
-    version: 2.2.7
+    - mysql-innodbcluster-2.2.8.tgz
+    version: 2.2.8
   - apiVersion: v2
-    appVersion: 8.4.8
-    created: "2026-01-21T16:45:18.296430538+01:00"
+    appVersion: 8.4.9
+    created: "2026-05-04T12:00:05.626118147+02:00"
     description: MySQL InnoDB Cluster Helm Chart for deploying MySQL InnoDB Cluster
       in Kubernetes
-    digest: 8528e9b99d66819a871890dedda78c197b8e661c05e99b8c9159948697a8d91f
+    digest: 9d8075d29b57ebaeac80a3dbda48c7e6829c3d103a2ece4061c1e08b7d01ccc3
     icon: https://www.mysql.com/common/logos/logo-mysql-170x115.png
     name: mysql-innodbcluster
     type: application
     urls:
-    - mysql-innodbcluster-2.1.10.tgz
-    version: 2.1.10
+    - mysql-innodbcluster-2.1.11.tgz
+    version: 2.1.11
   - apiVersion: v2
-    appVersion: 8.0.45
-    created: "2026-01-21T16:45:18.295995741+01:00"
+    appVersion: 8.0.46
+    created: "2026-05-04T12:00:05.625548335+02:00"
     description: MySQL InnoDB Cluster Helm Chart for deploying MySQL InnoDB Cluster
       in Kubernetes
-    digest: 955abf64dcf05caa152fe80516a0e1b13655067d6a0fd581b7b67e0d6a906677
+    digest: 83cd4e33e84799bee0bc545aeabb06ab0a8dc9e25917c661eeb49282e5858c3c
     icon: https://www.mysql.com/common/logos/logo-mysql-170x115.png
     name: mysql-innodbcluster
     type: application
     urls:
-    - mysql-innodbcluster-2.0.21.tgz
-    version: 2.0.21
+    - mysql-innodbcluster-2.0.22.tgz
+    version: 2.0.22
   mysql-operator:
   - apiVersion: v2
-    appVersion: 9.6.0-2.2.7
-    created: "2026-01-21T16:45:18.299489564+01:00"
+    appVersion: 9.7.0-2.2.8
+    created: "2026-05-04T12:00:05.629943796+02:00"
     description: MySQL Operator Helm Chart for deploying MySQL InnoDB Cluster in Kubernetes
-    digest: d88db508e87e70224d534a936bcbe56446d1a62e4136744a6ccaeb8582637191
+    digest: 35e32495c88a703ea85d86cebe305c7732639e9981837ad2aecef0493a2cbaa4
     icon: https://www.mysql.com/common/logos/logo-mysql-170x115.png
     name: mysql-operator
     type: application
     urls:
-    - mysql-operator-2.2.7.tgz
-    version: 2.2.7
+    - mysql-operator-2.2.8.tgz
+    version: 2.2.8
   - apiVersion: v2
-    appVersion: 8.4.8-2.1.10
-    created: "2026-01-21T16:45:18.29841968+01:00"
+    appVersion: 8.4.9-2.1.11
+    created: "2026-05-04T12:00:05.628986257+02:00"
     description: MySQL Operator Helm Chart for deploying MySQL InnoDB Cluster in Kubernetes
-    digest: 76dc23c727fb8b689afea54a28a6537093d9382341170f292c99d8d2a38456de
+    digest: 5c3b57bf7057fcb0ff405f0221e8c353caa2c4f1bfdc57f6c79cdb2446b9e0c2
     icon: https://www.mysql.com/common/logos/logo-mysql-170x115.png
     name: mysql-operator
     type: application
     urls:
-    - mysql-operator-2.1.10.tgz
-    version: 2.1.10
+    - mysql-operator-2.1.11.tgz
+    version: 2.1.11
   - apiVersion: v2
-    appVersion: 8.0.45-2.0.21
-    created: "2026-01-21T16:45:18.297433996+01:00"
+    appVersion: 8.0.46-2.0.22
+    created: "2026-05-04T12:00:05.628380375+02:00"
     description: MySQL Operator Helm Chart for deploying MySQL InnoDB Cluster in Kubernetes
-    digest: fa122d813d91b7ba82cbd797becc1e5af88587c08f8e8684bd0c3a45ceff954e
+    digest: 0536c243c5c0de690bd52a45498c4fa83beb631b274afeabe8e044b405a0fe39
     icon: https://www.mysql.com/common/logos/logo-mysql-170x115.png
     name: mysql-operator
     type: application
     urls:
-    - mysql-operator-2.0.21.tgz
-    version: 2.0.21
-generated: "2026-01-21T16:45:18.29546908+01:00"
+    - mysql-operator-2.0.22.tgz
+    version: 2.0.22
+generated: "2026-05-04T12:00:05.624980115+02:00"

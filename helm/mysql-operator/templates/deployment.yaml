@@ -39,8 +39,10 @@ spec:
       labels:
 {{- include "mysql-operator.deployment.podLabels" . | nindent 8 }}
     spec:
+      {{- with .Values.podSecurityContext }}
       securityContext:
-        runAsNonRoot: true
+{{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- if .Values.image.pullSecrets.enabled }}
       imagePullSecrets:
       - name: {{ .Values.image.pullSecrets.secretName }}
@@ -120,15 +122,10 @@ spec:
           resources:
 {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- with .Values.containerSecurityContext }}
           securityContext:
-            capabilities:
-              drop:
-              - ALL
-            runAsUser: 2
-            allowPrivilegeEscalation: false
-            privileged: false
-            readOnlyRootFilesystem: true
-            runAsNonRoot: true
+{{- toYaml . | nindent 12 }}
+          {{- end }}
       volumes:
         - name: mysqlsh-home
           emptyDir: {}

@@ -17,17 +17,20 @@ envs:
 
 replicas: 1
 
-# Pod-level security context
+
+# Pod-level security context for the mysql-operator Pod.
+# Required for Kubernetes restricted Pod Security Standard.
 podSecurityContext:
   runAsNonRoot: true
   seccompProfile:
     type: RuntimeDefault
 
-# Container-level security context
+# Container-level security context for the mysql-operator container.
+# Required for Kubernetes restricted Pod Security Standard.
 containerSecurityContext:
   capabilities:
     drop:
-    - ALL
+      - ALL
   runAsUser: 2
   allowPrivilegeEscalation: false
   privileged: false

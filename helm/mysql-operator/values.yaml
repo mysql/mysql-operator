@@ -17,6 +17,25 @@ envs:
 
 replicas: 1
 
+# Pod-level security context
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+# Container-level security context
+containerSecurityContext:
+  capabilities:
+    drop:
+    - ALL
+  runAsUser: 2
+  allowPrivilegeEscalation: false
+  privileged: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+    
 #deployment:
   #name: mysql-operator
   ## deployment.name is part of the operator's persistent identity.

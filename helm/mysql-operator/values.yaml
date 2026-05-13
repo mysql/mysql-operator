@@ -17,7 +17,6 @@ envs:
 
 replicas: 1
 
-
 # Pod-level security context for the mysql-operator Pod.
 # Required for Kubernetes restricted Pod Security Standard.
 podSecurityContext:

@@ -80,6 +80,119 @@ def validate_helm_tests() -> None:
         raise SystemExit(f"Helm test environment check failed: {exc}") from exc
 
 
+def describe_deploy_dir(path: str) -> str:
+    if not os.path.exists(path):
+        return "does not exist"
+    if not os.path.isdir(path):
+        return "exists but is not a directory"
+
+    try:
+        entries = sorted(os.listdir(path))
+    except Exception as exc:
+        return f"exists but could not be listed: {exc}"
+
+    if not entries:
+        return "exists and is empty"
+
+    max_entries = 40
+    visible_entries = entries[:max_entries]
+    suffix = ""
+    if len(entries) > max_entries:
+        suffix = f", ... ({len(entries) - max_entries} more)"
+    return f"contains: {', '.join(visible_entries)}{suffix}"
+
+
+def describe_path_tree(path: str) -> str:
+    if not path:
+        return "(not configured)"
+    if not os.path.exists(path):
+        return "(does not exist)"
+    if not os.path.isdir(path):
+        return "(exists but is not a directory)"
+
+    tree_lines = ["."]
+
+    def _append_tree_lines(current_dir: str, prefix: str) -> None:
+        try:
+            with os.scandir(current_dir) as entries:
+                sorted_entries = sorted(entries, key=lambda entry: entry.name)
+        except Exception as exc:
+            tree_lines.append(f"{prefix}`- <could not list: {exc}>")
+            return
+
+        for index, entry in enumerate(sorted_entries):
+            is_last = index == len(sorted_entries) - 1
+            branch = "`- " if is_last else "|- "
+            child_prefix = prefix + ("   " if is_last else "|  ")
+            entry_path = entry.path
+
+            if entry.is_symlink():
+                link_target = os.readlink(entry_path)
+                suffix = " [broken]" if not os.path.exists(entry_path) else ""
+                tree_lines.append(f"{prefix}{branch}{entry.name} -> {link_target}{suffix}")
+                continue
+
+            if entry.is_dir(follow_symlinks=False):
+                tree_lines.append(f"{prefix}{branch}{entry.name}/")
+                _append_tree_lines(entry_path, child_prefix)
+                continue
+
+            tree_lines.append(f"{prefix}{branch}{entry.name}")
+
+    _append_tree_lines(path, "")
+    return "\n".join(tree_lines)
+
+
+def print_deploy_mount_trees(basedir: str) -> None:
+    current_deploy_dir = get_current_deploy_dir(basedir)
+    historic_deploy_dir = g_ts_cfg.get_deploy_historic_path()
+    if historic_deploy_dir:
+        historic_deploy_dir = os.path.expanduser(historic_deploy_dir)
+
+    print(f"Mounted current deploy tree under {current_deploy_dir}:")
+    print(describe_path_tree(current_deploy_dir))
+    print(f"Mounted historic deploy tree under {historic_deploy_dir or '(not configured)'}:")
+    print(describe_path_tree(historic_deploy_dir))
+    sys.stdout.flush()
+
+
+def get_current_deploy_dir(basedir: str) -> str:
+    configured_deploy_path = g_ts_cfg.get_deploy_path()
+    if configured_deploy_path:
+        return os.path.expanduser(configured_deploy_path)
+
+    return os.path.join(basedir, "../deploy")
+
+
+def get_current_deploy_files_or_fail(
+    basedir: str,
+    deploy_filenames: list[str],
+) -> list[str]:
+    deploy_dir = get_current_deploy_dir(basedir)
+    historic_deploy_dir = g_ts_cfg.get_deploy_historic_path()
+    if historic_deploy_dir:
+        historic_deploy_dir = os.path.expanduser(historic_deploy_dir)
+    deploy_files = [os.path.join(deploy_dir, filename) for filename in deploy_filenames]
+    missing_files = [path for path in deploy_files if not os.path.isfile(path)]
+    if not missing_files:
+        print(f"Using current operator deploy manifests from {deploy_dir}")
+        return deploy_files
+
+    raise SystemExit(
+        "Operator deploy manifest check failed.\n"
+        f"--deploy-path/OPERATOR_TEST_DEPLOY_PATH: {g_ts_cfg.get_deploy_path()}\n"
+        f"--deploy-historic-path/OPERATOR_TEST_DEPLOY_HISTORIC_PATH: "
+        f"{g_ts_cfg.get_deploy_historic_path()}\n"
+        f"Current deploy directory: {deploy_dir}\n"
+        f"Current deploy directory status: {describe_deploy_dir(deploy_dir)}\n"
+        f"Current deploy tree:\n{describe_path_tree(deploy_dir)}\n"
+        f"Historic deploy directory: {historic_deploy_dir or '(not configured)'}\n"
+        f"Historic deploy tree:\n{describe_path_tree(historic_deploy_dir)}\n"
+        f"Required current deploy files: {', '.join(deploy_filenames)}\n"
+        f"Missing current deploy files: {', '.join(missing_files)}"
+    )
+
+
 if __name__ == '__main__':
     deploy_files = ["deploy-crds.yaml", "deploy-operator.yaml"]
 
@@ -228,6 +341,10 @@ if __name__ == '__main__':
             g_ts_cfg.s3_credentials_path = arg.partition("=")[-1]
         elif arg.startswith("--helm-path="):
             g_ts_cfg.helm_path = arg.partition("=")[-1]
+        elif arg.startswith("--deploy-path="):
+            g_ts_cfg.deploy_path = arg.partition("=")[-1]
+        elif arg.startswith("--deploy-historic-path="):
+            g_ts_cfg.deploy_historic_path = arg.partition("=")[-1]
         elif arg == "--skip-azure":
             g_ts_cfg.azure_skip = True
         elif arg == "--start-azure":
@@ -302,6 +419,7 @@ if __name__ == '__main__':
 
     g_ts_cfg.commit()
     validate_helm_tests()
+    print_deploy_mount_trees(basedir)
 
     if g_ts_cfg.store_operator_log:
         tutil.g_store_log_operator = tutil.StoreOperatorLog()
@@ -333,14 +451,10 @@ if __name__ == '__main__':
     print(
         f"Using environment {g_ts_cfg.env} with kubernetes version {opt_kube_version or 'latest'}...")
 
-    deploy_dir = os.path.join(basedir, "../deploy")
-    deploy_files = [os.path.join(deploy_dir, f) for f in deploy_files]
+    deploy_files = get_current_deploy_files_or_fail(basedir, deploy_files)
 
     if opt_mount_operator_path:
         print(f"Overriding mysqloperator code with local copy at {opt_mount_operator_path}")
-
-    assert len(deploy_files) == len(
-        [f for f in deploy_files if os.path.isfile(f)]), "deploy files check"
 
     with get_driver(g_ts_cfg.env) as driver:
         if cmd in ("run", "setup"):

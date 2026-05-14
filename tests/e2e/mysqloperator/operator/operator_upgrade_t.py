@@ -28,10 +28,53 @@ DEFAULT_OPERATOR_DEPLOY_MANIFEST = (
 )
 
 
+def get_current_operator_deploy_manifest_path() -> pathlib.Path:
+    configured_deploy_path = getattr(g_ts_cfg, "get_deploy_path", lambda: "")()
+    if configured_deploy_path:
+        return pathlib.Path(configured_deploy_path).expanduser() / "deploy-operator.yaml"
+
+    return DEFAULT_OPERATOR_DEPLOY_MANIFEST
+
+
+def get_historic_operator_deploy_manifest_path(version: str) -> pathlib.Path:
+    configured_historic_path = getattr(
+        g_ts_cfg,
+        "get_deploy_historic_path",
+        lambda: "",
+    )()
+    if not configured_historic_path:
+        raise FileNotFoundError(
+            "Historic operator deploy manifests are not configured. Set "
+            "OPERATOR_TEST_DEPLOY_HISTORIC_PATH or --deploy-historic-path."
+        )
+
+    historic_path = pathlib.Path(configured_historic_path).expanduser()
+    candidates = [
+        historic_path / version / "deploy-operator.yaml",
+        historic_path / version / "deploy" / "deploy-operator.yaml",
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+
+    raise FileNotFoundError(
+        f"No historic operator deploy manifest found for {version}. "
+        f"Checked: {', '.join(str(candidate) for candidate in candidates)}"
+    )
+
+
+def get_operator_deploy_manifest_path(version: str | None = None) -> pathlib.Path:
+    if version is None or str(version) == str(g_ts_cfg.operator_version_tag):
+        return get_current_operator_deploy_manifest_path()
+
+    return get_historic_operator_deploy_manifest_path(str(version))
+
+
 def _load_default_operator_clusterrole_rules(
-    manifest_path: pathlib.Path = DEFAULT_OPERATOR_DEPLOY_MANIFEST,
+    manifest_path: pathlib.Path | None = None,
 ) -> dict[str, list[dict]]:
     rules_by_name = {}
+    manifest_path = manifest_path or get_current_operator_deploy_manifest_path()
 
     with manifest_path.open(encoding="utf-8") as handle:
         for doc in yaml.safe_load_all(handle):
@@ -51,8 +94,9 @@ def _load_default_operator_clusterrole_rules(
     return rules_by_name
 
 
-def _sync_default_operator_clusterroles_from_manifest() -> None:
-    for name, rules in _load_default_operator_clusterrole_rules().items():
+def _sync_default_operator_clusterroles_from_manifest(version: str | None = None) -> None:
+    manifest_path = get_operator_deploy_manifest_path(version)
+    for name, rules in _load_default_operator_clusterrole_rules(manifest_path).items():
         kutil.patch(
             None,
             "clusterrole",
@@ -79,7 +123,7 @@ def change_operator_version(version=None, store_operator_log=None, new_on_same_v
     # rolling the Pod image. Version-only upgrades in the test harness patch the
     # Deployment directly, so RBAC would otherwise stay stale and can block the
     # replacement pod from ever becoming ready.
-    _sync_default_operator_clusterroles_from_manifest()
+    _sync_default_operator_clusterroles_from_manifest(version)
 
     if target_image == old_pod["spec"]["containers"][0]["image"] and new_on_same_version == False:
         # We are already running the expected version

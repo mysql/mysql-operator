@@ -825,6 +825,37 @@ def test_failed_helm_operator_upgrade_target_state_rejects_created_new_target(
         )
 
 
+def test_fatal_mysql_upgrade_logs_detect_server_upgrade_failure(operator_t_module):
+    log_contents = "\n".join(
+        [
+            "2026-05-08T09:05:19.052926Z 6 [System] [MY-013381] "
+            "[Server] Server upgrade from '90600' to '90700' started.",
+            "2026-05-08T09:06:11.239889Z 6 [ERROR] [MY-013178] "
+            "[Server] Execution of server-side SQL statement failed with "
+            "error code = 1205, error message = 'Lock wait timeout exceeded; "
+            "try restarting transaction'.",
+            "2026-05-08T09:06:11.242191Z 0 [ERROR] [MY-013380] "
+            "[Server] Failed to upgrade server.",
+            "2026-05-08T09:06:11.242242Z 0 [ERROR] [MY-010119] "
+            "[Server] Aborting",
+        ]
+    )
+
+    fatal_lines = (
+        operator_t_module._HelmLegacySwitchoverRbacUpgradeBase
+        ._get_fatal_mysql_upgrade_log_lines(log_contents)
+    )
+
+    assert fatal_lines == [
+        "2026-05-08T09:06:11.239889Z 6 [ERROR] [MY-013178] "
+        "[Server] Execution of server-side SQL statement failed with "
+        "error code = 1205, error message = 'Lock wait timeout exceeded; "
+        "try restarting transaction'.",
+        "2026-05-08T09:06:11.242242Z 0 [ERROR] [MY-010119] "
+        "[Server] Aborting",
+    ]
+
+
 def test_selector_helper_outputs_match_chart_semantics(operator_t_module):
     service_selector = operator_t_module.get_service_selector_labels(
         "operator-ns",

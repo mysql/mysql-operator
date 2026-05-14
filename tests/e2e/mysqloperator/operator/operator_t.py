@@ -11,7 +11,6 @@ import json
 from dataclasses import dataclass, field
 from utils import tutil
 from utils import kutil
-from utils import utils
 import logging
 import yaml
 import copy
@@ -92,12 +91,15 @@ FATAL_DD_UPGRADE_ERROR_CODES = (
     "MY-011015",
     "MY-010334",
     "MY-012526",
+    "MY-013178",
+    "MY-013380",
 )
 FATAL_DD_UPGRADE_ERROR_FRAGMENTS = (
     "Found partially upgraded DD. Aborting upgrade and deleting all DD tables. Start the upgrade process again.",
     "Data Dictionary initialization failed.",
     "Failed to upgrade the data dictionary.",
     "Failed to initialize DD Storage Engine.",
+    "Failed to upgrade server.",
     "Upgrade is not supported after a crash or shutdown with innodb_fast_shutdown = 2.",
 )
 

@@ -46,6 +46,8 @@ def operator_upgrade_module(monkeypatch):
     config_module.g_ts_cfg = types.SimpleNamespace(
         get_operator_image=lambda version=None: "repo/operator:current",
         get_current_lts_version=lambda: "8.4.5",
+        get_deploy_path=lambda: "",
+        get_deploy_historic_path=lambda: "",
         operator_old_version_tag="8.0.31-2.0.7",
         operator_current_lts_version_tag="8.4.5-2.1.7",
         current_lts_version="8.4.5",
@@ -82,7 +84,7 @@ def test_sync_default_operator_clusterroles_patches_manifest_rules(
     monkeypatch.setattr(
         operator_upgrade_module,
         "_load_default_operator_clusterrole_rules",
-        lambda: expected_rules,
+        lambda manifest_path=None: expected_rules,
     )
     monkeypatch.setattr(
         operator_upgrade_module.kutil,
@@ -134,6 +136,143 @@ def test_sync_default_operator_clusterroles_patches_manifest_rules(
     ]
 
 
+def test_operator_deploy_manifest_path_uses_configured_deploy_path(
+    operator_upgrade_module,
+    monkeypatch,
+    tmp_path,
+):
+    deploy_path = tmp_path / "deploy"
+    deploy_path.mkdir()
+    manifest_path = deploy_path / "deploy-operator.yaml"
+    manifest_path.write_text("---\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        operator_upgrade_module.g_ts_cfg,
+        "get_deploy_path",
+        lambda: str(deploy_path),
+        raising=False,
+    )
+
+    assert operator_upgrade_module.get_operator_deploy_manifest_path() == manifest_path
+    assert (
+        operator_upgrade_module.get_operator_deploy_manifest_path("9.7.0-2.2.8")
+        == manifest_path
+    )
+
+
+def test_operator_deploy_manifest_path_uses_historic_path_for_old_version(
+    operator_upgrade_module,
+    monkeypatch,
+    tmp_path,
+):
+    historic_path = tmp_path / "deploy-historic"
+    release_path = historic_path / "9.6.0-2.2.7"
+    release_path.mkdir(parents=True)
+    manifest_path = release_path / "deploy-operator.yaml"
+    manifest_path.write_text("---\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        operator_upgrade_module.g_ts_cfg,
+        "get_deploy_historic_path",
+        lambda: str(historic_path),
+        raising=False,
+    )
+
+    assert (
+        operator_upgrade_module.get_operator_deploy_manifest_path("9.6.0-2.2.7")
+        == manifest_path
+    )
+
+
+def test_operator_deploy_manifest_path_accepts_nested_historic_deploy_dir(
+    operator_upgrade_module,
+    monkeypatch,
+    tmp_path,
+):
+    historic_path = tmp_path / "deploy-historic"
+    release_path = historic_path / "9.6.0-2.2.7" / "deploy"
+    release_path.mkdir(parents=True)
+    manifest_path = release_path / "deploy-operator.yaml"
+    manifest_path.write_text("---\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        operator_upgrade_module.g_ts_cfg,
+        "get_deploy_historic_path",
+        lambda: str(historic_path),
+        raising=False,
+    )
+
+    assert (
+        operator_upgrade_module.get_operator_deploy_manifest_path("9.6.0-2.2.7")
+        == manifest_path
+    )
+
+
+def test_change_operator_version_syncs_clusterroles_from_target_manifest(
+    operator_upgrade_module,
+    monkeypatch,
+    tmp_path,
+):
+    manifest_path = tmp_path / "deploy-operator.yaml"
+    manifest_path.write_text("---\n", encoding="utf-8")
+    manifest_versions = []
+    sync_calls = []
+    patch_dp_calls = []
+
+    monkeypatch.setattr(
+        operator_upgrade_module,
+        "get_operator_deploy_manifest_path",
+        lambda version=None: manifest_versions.append(version) or manifest_path,
+    )
+    monkeypatch.setattr(
+        operator_upgrade_module,
+        "_load_default_operator_clusterrole_rules",
+        lambda path=None: sync_calls.append(path) or {},
+    )
+    monkeypatch.setattr(
+        operator_upgrade_module.kutil,
+        "ls_pod",
+        lambda ns, pattern: [{"NAME": "mysql-operator-current"}],
+        raising=False,
+    )
+    monkeypatch.setattr(
+        operator_upgrade_module.kutil,
+        "get_po",
+        lambda ns, name: {"spec": {"containers": [{"image": "repo/operator:current"}]}},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        operator_upgrade_module.kutil,
+        "patch_dp",
+        lambda *args, **kwargs: patch_dp_calls.append((args, kwargs)),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        operator_upgrade_module.g_ts_cfg,
+        "get_operator_image",
+        lambda version=None: "repo/operator:old",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        operator_upgrade_module.kutil,
+        "wait_pod_gone",
+        lambda *args, **kwargs: None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        operator_upgrade_module.kutil,
+        "wait_pod",
+        lambda *args, **kwargs: None,
+        raising=False,
+    )
+
+    operator_upgrade_module.change_operator_version("9.6.0-2.2.7")
+
+    assert manifest_versions == ["9.6.0-2.2.7"]
+    assert sync_calls == [manifest_path]
+    assert patch_dp_calls
+
+
 def test_change_operator_version_repairs_clusterroles_even_when_image_is_current(
     operator_upgrade_module,
     monkeypatch,
@@ -146,7 +285,7 @@ def test_change_operator_version_repairs_clusterroles_even_when_image_is_current
     monkeypatch.setattr(
         operator_upgrade_module,
         "_sync_default_operator_clusterroles_from_manifest",
-        lambda: sync_calls.append("sync"),
+        lambda version=None: sync_calls.append(version),
     )
     monkeypatch.setattr(
         operator_upgrade_module.kutil,
@@ -187,7 +326,7 @@ def test_change_operator_version_repairs_clusterroles_even_when_image_is_current
 
     operator_upgrade_module.change_operator_version()
 
-    assert sync_calls == ["sync"]
+    assert sync_calls == [None]
     assert patch_dp_calls == []
     assert wait_pod_gone_calls == []
     assert wait_pod_calls == []

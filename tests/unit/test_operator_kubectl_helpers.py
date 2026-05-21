@@ -1014,13 +1014,132 @@ def test_get_helm_cluster_operator_release_falls_back_without_annotation(
     ) == "9.6.0-2.2.7"
 
 
-def test_current_operator_release_disables_legacy_switchover_rbac_expectation(
+def test_current_operator_release_requires_current_switchover_rbac(
     operator_t_module,
 ):
     assert operator_t_module.OperatorSingleAndMultipleBaseTest._expected_namespace_switchover_rbac_state(
-        operator_release=operator_t_module.g_ts_cfg.operator_version_tag,
+        switchover_rbac_release=operator_t_module.g_ts_cfg.operator_version_tag,
         cluster_releases=["9.6.0-2.2.7"],
     ) == (False, True)
+
+
+def test_current_switchover_wait_allows_complete_legacy_rbac_when_opted_in(
+    monkeypatch,
+    operator_t_module,
+):
+    current_release = operator_t_module.g_ts_cfg.operator_version_tag
+    test_case = operator_t_module.OperatorSingleAndMultipleBaseTest()
+    state = {
+        "legacy_sa": {"metadata": {"name": "mysql-switchover-sa"}},
+        "legacy_rb": {"metadata": {"name": "mysql-switchover-rb"}},
+        "clusters": {
+            "cluster-a": {
+                "sa": {"metadata": {"name": "cluster-a-switchover-sa"}},
+                "rb": {"metadata": {"name": "cluster-a-switchover-rb"}},
+            },
+        },
+    }
+
+    monkeypatch.setattr(
+        test_case,
+        "_get_namespace_switchover_rbac_state",
+        lambda *, namespace, cluster_names: state,
+    )
+    monkeypatch.setattr(
+        test_case,
+        "_assert_cluster_current_switchover_rbac_state",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
+        test_case,
+        "wait",
+        lambda callback, **kwargs: callback(),
+        raising=False,
+    )
+
+    assert test_case._wait_for_namespace_switchover_rbac_state(
+        namespace="cluster-ns",
+        cluster_names=["cluster-a"],
+        switchover_rbac_release=current_release,
+        cluster_releases=["9.6.0-2.2.7", current_release],
+        allow_legacy_if_present=True,
+    ) == state
+
+
+def test_current_switchover_assertion_allows_complete_legacy_rbac_when_opted_in(
+    monkeypatch,
+    operator_t_module,
+):
+    current_release = operator_t_module.g_ts_cfg.operator_version_tag
+    test_case = operator_t_module.OperatorSingleAndMultipleBaseTest()
+    checked_clusters = []
+
+    monkeypatch.setattr(
+        test_case,
+        "_get_namespace_switchover_rbac_state",
+        lambda *, namespace, cluster_names: {
+            "legacy_sa": {"metadata": {"name": "mysql-switchover-sa"}},
+            "legacy_rb": {"metadata": {"name": "mysql-switchover-rb"}},
+            "clusters": {
+                "cluster-a": {
+                    "sa": {"metadata": {"name": "cluster-a-switchover-sa"}},
+                    "rb": {"metadata": {"name": "cluster-a-switchover-rb"}},
+                },
+            },
+        },
+    )
+    monkeypatch.setattr(
+        test_case,
+        "_assert_cluster_current_switchover_rbac_state",
+        lambda **kwargs: checked_clusters.append(kwargs["cluster_name"]),
+    )
+
+    test_case._assert_namespace_switchover_rbac_state(
+        namespace="cluster-ns",
+        cluster_names=["cluster-a"],
+        switchover_rbac_release=current_release,
+        cluster_releases=["9.6.0-2.2.7", current_release],
+        allow_legacy_if_present=True,
+    )
+
+    assert checked_clusters == ["cluster-a"]
+
+
+def test_current_switchover_assertion_rejects_partial_legacy_rbac(
+    monkeypatch,
+    operator_t_module,
+):
+    current_release = operator_t_module.g_ts_cfg.operator_version_tag
+    test_case = operator_t_module.OperatorSingleAndMultipleBaseTest()
+
+    monkeypatch.setattr(
+        test_case,
+        "_get_namespace_switchover_rbac_state",
+        lambda *, namespace, cluster_names: {
+            "legacy_sa": {"metadata": {"name": "mysql-switchover-sa"}},
+            "legacy_rb": None,
+            "clusters": {
+                "cluster-a": {
+                    "sa": {"metadata": {"name": "cluster-a-switchover-sa"}},
+                    "rb": {"metadata": {"name": "cluster-a-switchover-rb"}},
+                },
+            },
+        },
+    )
+    monkeypatch.setattr(
+        test_case,
+        "_assert_cluster_current_switchover_rbac_state",
+        lambda **kwargs: None,
+    )
+
+    with pytest.raises(AssertionError, match="both exist or both be absent"):
+        test_case._assert_namespace_switchover_rbac_state(
+            namespace="cluster-ns",
+            cluster_names=["cluster-a"],
+            switchover_rbac_release=current_release,
+            cluster_releases=["9.6.0-2.2.7", current_release],
+            allow_legacy_if_present=True,
+        )
 
 
 def test_legacy_switchover_cluster_values_request_ephemeral_storage(

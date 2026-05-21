@@ -70,7 +70,7 @@ class CustomHandler(SimpleHTTPRequestHandler):
                                                     storage_opts['oci']['bucketName'],
                                                     storage_opts['oci']['namespace']))
                 else:
-                    raise Exception("Need either meb or s3 storage specification")
+                    raise Exception("Need either oci or s3 storage specification")
 
                 incremental = info["incremental"]
                 incremental_base = info["incremental_base"]

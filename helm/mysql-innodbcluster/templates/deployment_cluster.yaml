@@ -370,6 +370,8 @@ spec:
   backupProfiles:
   {{- $isDumpInstance := false }}
   {{- $isSnapshot := false }}
+  {{- $isMeb := false }}
+  {{- $backupProfile := dict }}
   {{- range $_, $profile := .Values.backupProfiles }}
     {{- if $profile.name }}
   - name: {{ $profile.name | quote -}}
@@ -381,22 +383,49 @@ spec:
       {{- end }}
       {{- $isDumpInstance = hasKey $profile "dumpInstance" }}
       {{- $isSnapshot = hasKey $profile "snapshot" }}
-      {{- if or $isDumpInstance $isSnapshot }}
-        {{- $backupProfile := ternary $profile.dumpInstance $profile.snapshot $isDumpInstance }}
+      {{- $isMeb = hasKey $profile "meb" }}
+      {{- $backupProfile = dict }}
+      {{- if or $isDumpInstance $isSnapshot $isMeb}}
         {{- if $isDumpInstance }}
     dumpInstance:
+          {{- $backupProfile = $profile.dumpInstance }}
+          {{- if hasKey $profile "dumpOptions" }}
+      dumpOptions: {{ toYaml $profile.dumpOptions | nindent 8 }}
+          {{- end }}
         {{- else if $isSnapshot }}
     snapshot:
+        {{- $backupProfile = $profile.snapshot }}
+        {{- else if $isMeb }}
+    meb:
+          {{- $backupProfile = $profile.meb }}
+          {{- if hasKey $profile "extraOptions" }}
+      extraOptions: {{ toYaml $profile.extraOptions | nindent 8 }}
+          {{- end }}
         {{- else }}
           {{- fail "Impossible backup type" }}
         {{- end }}
         {{- if not (hasKey $backupProfile "storage") }}
           {{- fail "backup profile $profile.name has no storage section" }}
+        # oci is MEB specific
+        {{- else if hasKey $backupProfile.storage "oci" }}
+      storage:
+        oci:
+        {{- if $backupProfile.storage.oci.prefix }}
+          prefix: {{ $backupProfile.storage.oci.prefix }}
+        {{- end }}
+        {{- if $backupProfile.storage.oci.namespace }}
+          namespace: {{ $backupProfile.storage.oci.namespace }}
+        {{- end }}
+          bucketName: {{ required "bucketName is required"  $backupProfile.storage.oci.bucketName }}
+          credentials: {{ required "credentials is required"  $backupProfile.storage.oci.credentials }}
         {{- else if hasKey $backupProfile.storage "ociObjectStorage" }}
       storage:
         ociObjectStorage:
         {{- if $backupProfile.storage.ociObjectStorage.prefix }}
           prefix: {{ $backupProfile.storage.ociObjectStorage.prefix }}
+        {{- end }}
+        {{- if $backupProfile.storage.ociObjectStorage.namespace }}
+          namespace: {{ $backupProfile.storage.ociObjectStorage.namespace }}
         {{- end }}
           bucketName: {{ required "bucketName is required"  $backupProfile.storage.ociObjectStorage.bucketName }}
           credentials: {{ required "credentials is required"  $backupProfile.storage.ociObjectStorage.credentials }}
@@ -429,7 +458,7 @@ spec:
           {{- fail "dumpInstance backup profile $profile.name has empty storage section - neither ociObjectStorage nor persistentVolumeClaim defined" }}
         {{- end -}}
       {{- else }}
-        {{- fail "One of dumpInstance or snapshot must be methods of a backupProfile" }}
+        {{- fail "One of dumpInstance, snapshot or meb must be methods of a backupProfile" }}
       {{- end }}
     {{- end }}
   {{- end }}

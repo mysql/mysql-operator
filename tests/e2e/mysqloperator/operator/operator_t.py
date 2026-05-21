@@ -2831,7 +2831,12 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         deployment_name: str,
         previous_pod_name: Optional[str] = None,
     ) -> dict:
-        kutil.wait_deploy(namespace, deployment_name, timeout=300)
+        kutil.wait_deploy(
+            namespace,
+            deployment_name,
+            timeout=300,
+            fail_fast_on_fatal_pod_state=False,
+        )
 
         operator_pod = None
         if previous_pod_name:
@@ -3828,7 +3833,7 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
     def _expected_namespace_switchover_rbac_state(
         cls,
         *,
-        operator_release: str,
+        switchover_rbac_release: str,
         cluster_releases: list[str],
     ) -> tuple[bool, bool]:
         expect_legacy_present = (
@@ -3837,14 +3842,16 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                 "expect_legacy_switchover_objects_before_current",
                 True,
             )
-            and not cls._release_uses_current_switchover_rbac(operator_release)
+            and not cls._release_uses_current_switchover_rbac(
+                switchover_rbac_release
+            )
             and any(
                 cls._release_creates_legacy_switchover_rbac(release)
                 for release in cluster_releases
             )
         )
         expect_current_present = cls._release_uses_current_switchover_rbac(
-            operator_release
+            switchover_rbac_release
         )
         return expect_legacy_present, expect_current_present
 
@@ -3914,13 +3921,15 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         *,
         namespace: str,
         cluster_names: list[str],
-        operator_release: str,
+        switchover_rbac_release: str,
         cluster_releases: list[str],
+        allow_legacy_if_present: bool = False,
+        allow_current_if_present: bool = False,
         timeout: int = 300,
     ) -> dict[str, object]:
         expect_legacy_present, expect_current_present = (
             self._expected_namespace_switchover_rbac_state(
-                operator_release=operator_release,
+                switchover_rbac_release=switchover_rbac_release,
                 cluster_releases=cluster_releases,
             )
         )
@@ -3930,20 +3939,32 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                 namespace=namespace,
                 cluster_names=cluster_names,
             )
-            if (state["legacy_sa"] is not None) != expect_legacy_present:
+            legacy_sa_present = state["legacy_sa"] is not None
+            legacy_rb_present = state["legacy_rb"] is not None
+            if legacy_sa_present != legacy_rb_present:
                 return None
-            if (state["legacy_rb"] is not None) != expect_legacy_present:
-                return None
+            if expect_legacy_present:
+                if not legacy_sa_present:
+                    return None
+            elif legacy_sa_present:
+                if not allow_legacy_if_present:
+                    return None
 
             cluster_states = state["clusters"]
             assert isinstance(cluster_states, dict)
             for cluster_name, cluster_state in cluster_states.items():
                 assert isinstance(cluster_state, dict)
-                if (cluster_state["sa"] is not None) != expect_current_present:
+                current_sa_present = cluster_state["sa"] is not None
+                current_rb_present = cluster_state["rb"] is not None
+                if current_sa_present != current_rb_present:
                     return None
-                if (cluster_state["rb"] is not None) != expect_current_present:
-                    return None
-                if not expect_current_present:
+                if expect_current_present:
+                    if not current_sa_present:
+                        return None
+                elif current_sa_present:
+                    if not allow_current_if_present:
+                        return None
+                else:
                     continue
 
                 try:
@@ -4243,12 +4264,14 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         *,
         namespace: str,
         cluster_names: list[str],
-        operator_release: str,
+        switchover_rbac_release: str,
         cluster_releases: list[str],
+        allow_legacy_if_present: bool = False,
+        allow_current_if_present: bool = False,
     ) -> None:
         expect_legacy_present, expect_current_present = (
             self._expected_namespace_switchover_rbac_state(
-                operator_release=operator_release,
+                switchover_rbac_release=switchover_rbac_release,
                 cluster_releases=cluster_releases,
             )
         )
@@ -4260,21 +4283,49 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         legacy_sa_count = int(state["legacy_sa"] is not None)
         legacy_rb_count = int(state["legacy_rb"] is not None)
         self.assertEqual(
-            legacy_sa_count,
-            int(expect_legacy_present),
-            msg=(
-                f"Expected {int(expect_legacy_present)} legacy switchover ServiceAccount "
-                f"in {namespace}, got {legacy_sa_count}"
-            ),
-        )
-        self.assertEqual(
             legacy_rb_count,
-            int(expect_legacy_present),
+            legacy_sa_count,
             msg=(
-                f"Expected {int(expect_legacy_present)} legacy switchover RoleBinding "
-                f"in {namespace}, got {legacy_rb_count}"
+                f"Expected legacy switchover ServiceAccount and RoleBinding "
+                f"to both exist or both be absent in {namespace}, got "
+                f"{legacy_sa_count} ServiceAccounts and {legacy_rb_count} "
+                f"RoleBindings"
             ),
         )
+        if expect_legacy_present:
+            self.assertEqual(
+                legacy_sa_count,
+                1,
+                msg=(
+                    f"Expected 1 legacy switchover ServiceAccount "
+                    f"in {namespace}, got {legacy_sa_count}"
+                ),
+            )
+            self.assertEqual(
+                legacy_rb_count,
+                1,
+                msg=(
+                    f"Expected 1 legacy switchover RoleBinding "
+                    f"in {namespace}, got {legacy_rb_count}"
+                ),
+            )
+        elif not allow_legacy_if_present:
+            self.assertEqual(
+                legacy_sa_count,
+                0,
+                msg=(
+                    f"Expected 0 legacy switchover ServiceAccounts "
+                    f"in {namespace}, got {legacy_sa_count}"
+                ),
+            )
+            self.assertEqual(
+                legacy_rb_count,
+                0,
+                msg=(
+                    f"Expected 0 legacy switchover RoleBindings "
+                    f"in {namespace}, got {legacy_rb_count}"
+                ),
+            )
 
         cluster_states = state["clusters"]
         assert isinstance(cluster_states, dict)
@@ -4288,7 +4339,23 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
             current_sa_count += int(current_sa is not None)
             current_rb_count += int(current_rb is not None)
 
-            if not expect_current_present:
+            if current_sa is None and current_rb is None:
+                if expect_current_present:
+                    self.fail(
+                        f"Expected current switchover RBAC for "
+                        f"{namespace}/{cluster_name}"
+                    )
+                continue
+
+            if current_sa is None or current_rb is None:
+                self.fail(
+                    f"Expected current switchover ServiceAccount and RoleBinding "
+                    f"to both exist or both be absent for {namespace}/{cluster_name}, "
+                    f"got ServiceAccount={current_sa is not None} "
+                    f"RoleBinding={current_rb is not None}"
+                )
+
+            if not expect_current_present and not allow_current_if_present:
                 self.assertIsNone(
                     current_sa,
                     msg=(
@@ -4311,23 +4378,52 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                 cluster_state=cluster_state,
             )
 
-        expected_current_count = len(cluster_names) if expect_current_present else 0
-        self.assertEqual(
-            current_sa_count,
-            expected_current_count,
-            msg=(
-                f"Expected {expected_current_count} current switchover ServiceAccounts "
-                f"in {namespace}, got {current_sa_count}"
-            ),
-        )
-        self.assertEqual(
-            current_rb_count,
-            expected_current_count,
-            msg=(
-                f"Expected {expected_current_count} current switchover RoleBindings "
-                f"in {namespace}, got {current_rb_count}"
-            ),
-        )
+        if expect_current_present:
+            expected_current_count = len(cluster_names)
+            self.assertEqual(
+                current_sa_count,
+                expected_current_count,
+                msg=(
+                    f"Expected {expected_current_count} current switchover ServiceAccounts "
+                    f"in {namespace}, got {current_sa_count}"
+                ),
+            )
+            self.assertEqual(
+                current_rb_count,
+                expected_current_count,
+                msg=(
+                    f"Expected {expected_current_count} current switchover RoleBindings "
+                    f"in {namespace}, got {current_rb_count}"
+                ),
+            )
+        elif allow_current_if_present:
+            self.assertEqual(
+                current_sa_count,
+                current_rb_count,
+                msg=(
+                    f"Expected optional current switchover ServiceAccount and "
+                    f"RoleBinding counts to match in {namespace}, got "
+                    f"{current_sa_count} ServiceAccounts and {current_rb_count} "
+                    f"RoleBindings"
+                ),
+            )
+        else:
+            self.assertEqual(
+                current_sa_count,
+                0,
+                msg=(
+                    f"Expected 0 current switchover ServiceAccounts in "
+                    f"{namespace}, got {current_sa_count}"
+                ),
+            )
+            self.assertEqual(
+                current_rb_count,
+                0,
+                msg=(
+                    f"Expected 0 current switchover RoleBindings in "
+                    f"{namespace}, got {current_rb_count}"
+                ),
+            )
 
     def _run_helm_operator_upgrade_cycle(
         self,
@@ -8892,6 +8988,25 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
     ) -> None:
         return None
 
+    def _before_cluster_upgrade(
+        self,
+        *,
+        namespace: str,
+        cluster_names: list[str],
+        current_release: str,
+        next_release: str,
+    ) -> None:
+        return None
+
+    def _after_cluster_upgrade(
+        self,
+        *,
+        namespace: str,
+        cluster_names: list[str],
+        cluster_release: str,
+    ) -> None:
+        return None
+
     def _run_helm_legacy_switchover_rbac_upgrade_chain(self) -> None:
         cluster_names = self._build_legacy_switchover_cluster_names()
         cluster_values = self._build_legacy_switchover_cluster_values()
@@ -8952,6 +9067,16 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
                     cluster_install,
                     create_namespace=index == 0,
                 )
+                # Legacy 9.6 operator startup can wedge while multiple
+                # bootstrap clusters are still converging. Keep bootstrap
+                # creation serial; later upgrade checks still cover both
+                # clusters together.
+                self._wait_for_helm_cluster_ready(
+                    namespace=self.ns,
+                    cluster_name=cluster_name,
+                    server_instances=server_instances,
+                    router_instances=router_instances,
+                )
                 if index < len(cluster_names) - 1:
                     time.sleep(CLUSTERSET_CREATION_GAP_SECONDS)
 
@@ -8989,13 +9114,13 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
             self._wait_for_namespace_switchover_rbac_state(
                 namespace=self.ns,
                 cluster_names=cluster_names,
-                operator_release=active_cluster_operator_release,
+                switchover_rbac_release=active_cluster_operator_release,
                 cluster_releases=applied_cluster_releases,
             )
             self._assert_namespace_switchover_rbac_state(
                 namespace=self.ns,
                 cluster_names=cluster_names,
-                operator_release=active_cluster_operator_release,
+                switchover_rbac_release=active_cluster_operator_release,
                 cluster_releases=applied_cluster_releases,
             )
 
@@ -9056,11 +9181,19 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
                         expected_release=current_cluster_release,
                         expected_operator_release=current_cluster_release,
                     )
-                self._wait_for_namespace_switchover_rbac_state(
+                self._after_operator_upgrade(
                     namespace=self.ns,
                     cluster_names=cluster_names,
                     operator_release=next_release,
+                )
+                self._wait_for_namespace_switchover_rbac_state(
+                    namespace=self.ns,
+                    cluster_names=cluster_names,
+                    switchover_rbac_release=current_cluster_release,
                     cluster_releases=applied_cluster_releases,
+                    allow_current_if_present=(
+                        self._release_uses_current_switchover_rbac(next_release)
+                    ),
                 )
                 self._assert_helm_clusters_cr_version(
                     namespace=self.ns,
@@ -9072,13 +9205,11 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
                 self._assert_namespace_switchover_rbac_state(
                     namespace=self.ns,
                     cluster_names=cluster_names,
-                    operator_release=next_release,
+                    switchover_rbac_release=current_cluster_release,
                     cluster_releases=applied_cluster_releases,
-                )
-                self._after_operator_upgrade(
-                    namespace=self.ns,
-                    cluster_names=cluster_names,
-                    operator_release=next_release,
+                    allow_current_if_present=(
+                        self._release_uses_current_switchover_rbac(next_release)
+                    ),
                 )
 
                 new_cluster_installs = [
@@ -9094,28 +9225,15 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
                 ]
                 active_cluster_installs = new_cluster_installs
 
-                server_rollover_waiters = [
-                    tutil.get_sts_rollover_update_waiter(
-                        self,
-                        cluster_install.cluster_name,
-                        timeout=900,
-                        delay=10,
-                    )
-                    for cluster_install in new_cluster_installs
-                ]
-                router_rollover_waiters = [
-                    tutil.get_router_deploy_rollover_update_waiter(
-                        self,
-                        cluster_install.cluster_name,
-                        timeout=200,
-                        delay=10,
-                    )
-                    for cluster_install in new_cluster_installs
-                ]
-
                 diagnostic_context = (
                     f"upgrading clusters to {next_release} "
                     f"({', '.join(cluster_names)})"
+                )
+                self._before_cluster_upgrade(
+                    namespace=self.ns,
+                    cluster_names=cluster_names,
+                    current_release=current_cluster_release,
+                    next_release=next_release,
                 )
                 self._activate_mysql_upgrade_abort_checks(
                     namespace=self.ns,
@@ -9126,14 +9244,27 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
                 )
                 try:
                     for cluster_install in new_cluster_installs:
+                        server_rollover_waiter = (
+                            tutil.get_sts_rollover_update_waiter(
+                                self,
+                                cluster_install.cluster_name,
+                                timeout=900,
+                                delay=10,
+                            )
+                        )
+                        router_rollover_waiter = (
+                            tutil.get_router_deploy_rollover_update_waiter(
+                                self,
+                                cluster_install.cluster_name,
+                                timeout=200,
+                                delay=10,
+                            )
+                        )
                         upgrade_cluster_with_helm(
                             self.ns,
                             resolved_options=cluster_install.options,
                         )
-
-                    for server_rollover_waiter in server_rollover_waiters:
                         server_rollover_waiter()
-                    for router_rollover_waiter in router_rollover_waiters:
                         router_rollover_waiter()
                 finally:
                     self._clear_mysql_upgrade_abort_checks()
@@ -9167,11 +9298,25 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
                         previous_release=applied_cluster_releases[-2],
                         target_release=current_cluster_release,
                     )
+                diagnostic_context = (
+                    f"verifying switchover RBAC after cluster upgrade to "
+                    f"{next_release} ({', '.join(cluster_names)})"
+                )
+                self._after_cluster_upgrade(
+                    namespace=self.ns,
+                    cluster_names=cluster_names,
+                    cluster_release=current_cluster_release,
+                )
                 self._wait_for_namespace_switchover_rbac_state(
                     namespace=self.ns,
                     cluster_names=cluster_names,
-                    operator_release=next_release,
+                    switchover_rbac_release=current_cluster_release,
                     cluster_releases=applied_cluster_releases,
+                    allow_legacy_if_present=(
+                        self._release_uses_current_switchover_rbac(
+                            current_cluster_release
+                        )
+                    ),
                 )
                 self._assert_helm_clusters_cr_version(
                     namespace=self.ns,
@@ -9183,8 +9328,13 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
                 self._assert_namespace_switchover_rbac_state(
                     namespace=self.ns,
                     cluster_names=cluster_names,
-                    operator_release=next_release,
+                    switchover_rbac_release=current_cluster_release,
                     cluster_releases=applied_cluster_releases,
+                    allow_legacy_if_present=(
+                        self._release_uses_current_switchover_rbac(
+                            current_cluster_release
+                        )
+                    ),
                 )
         except Exception:
             print(
@@ -9306,6 +9456,8 @@ class HelmLegacySwitchoverRbacDriftRepairUpgradeTest(_HelmLegacySwitchoverRbacUp
         if next_release != g_ts_cfg.operator_version_tag:
             return
 
+        # Drift repair is an operator startup responsibility. Cluster Helm
+        # upgrades do not run this repair path.
         for index, cluster_name in enumerate(cluster_names, start=1):
             self._apply_cluster_current_switchover_rbac_manifests(
                 namespace=namespace,

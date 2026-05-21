@@ -1622,7 +1622,10 @@ def wait_deploy_gone(ns, name, timeout=300, checkabort=lambda: None):
     store_diagnostics(ns, "deploy", name)
     raise Exception(f"Timeout waiting for Deployment {ns} / {name}")
 
-def wait_deploy(ns, name, timeout=600, checkabort=lambda: None):
+def wait_deploy(
+    ns, name, timeout=600, checkabort=lambda: None,
+    fail_fast_on_fatal_pod_state=True,
+):
     wait_deploy_exists(ns, name, timeout, checkabort)
 
 
@@ -1634,7 +1637,8 @@ def wait_deploy(ns, name, timeout=600, checkabort=lambda: None):
         if not deploy:
             return False
 
-        _raise_on_fatal_deploy_pod_state(ns, name, deploy)
+        if fail_fast_on_fatal_pod_state:
+            _raise_on_fatal_deploy_pod_state(ns, name, deploy)
 
         replicas, ready_replicas, updated_replicas, available_replicas, current_replicas = _get_deploy_ready_status(deploy)
         logger.debug(
@@ -1665,6 +1669,11 @@ def wait_deploy(ns, name, timeout=600, checkabort=lambda: None):
             )
             return deploy
         time.sleep(1)
+
+    if not fail_fast_on_fatal_pod_state:
+        deploy = get_deploy(ns, name, check=False)
+        if deploy:
+            _raise_on_fatal_deploy_pod_state(ns, name, deploy)
 
     logger.info("%s", kubectl("get", "deploy", args=["-n", ns]).stdout.decode("utf8"))
 

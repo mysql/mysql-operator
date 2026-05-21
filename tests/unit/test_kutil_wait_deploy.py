@@ -171,6 +171,198 @@ def test_wait_deploy_fails_fast_on_fatal_pod_state(monkeypatch, kutil_module):
     ]
 
 
+def test_wait_deploy_can_defer_fatal_pod_state_check(monkeypatch, kutil_module):
+    sleep_calls = []
+    not_ready_deploy = {
+        "spec": {
+            "replicas": 1,
+            "selector": {
+                "matchLabels": {
+                    "app": "mysql-operator",
+                },
+            },
+        },
+        "status": {
+            "replicas": 2,
+            "readyReplicas": 1,
+            "updatedReplicas": 1,
+            "availableReplicas": 1,
+        },
+    }
+    ready_deploy = {
+        "spec": {
+            "replicas": 1,
+            "selector": {
+                "matchLabels": {
+                    "app": "mysql-operator",
+                },
+            },
+        },
+        "status": {
+            "replicas": 1,
+            "readyReplicas": 1,
+            "updatedReplicas": 1,
+            "availableReplicas": 1,
+        },
+    }
+    deploys = [not_ready_deploy, ready_deploy, ready_deploy]
+
+    monkeypatch.setattr(
+        kutil_module,
+        "wait_deploy_exists",
+        lambda ns, name, timeout=300, checkabort=lambda: None: {"NAME": name},
+    )
+    monkeypatch.setattr(
+        kutil_module,
+        "get_deploy",
+        lambda ns, name, check=False: deploys.pop(0),
+    )
+    monkeypatch.setattr(
+        kutil_module,
+        "kubectl",
+        lambda *args, **kwargs: pytest.fail(
+            "fatal pod state should not be inspected"
+        ),
+    )
+    monkeypatch.setattr(
+        kutil_module.time,
+        "sleep",
+        lambda seconds: sleep_calls.append(seconds),
+    )
+
+    deploy = kutil_module.wait_deploy(
+        "test-ns",
+        "mysql-operator",
+        timeout=5,
+        fail_fast_on_fatal_pod_state=False,
+    )
+
+    assert deploy == ready_deploy
+    assert sleep_calls == [1]
+
+
+def test_wait_deploy_checks_deferred_fatal_pod_state_on_timeout(
+    monkeypatch,
+    kutil_module,
+):
+    diagnostics = []
+    pod_list_calls = []
+    sleep_calls = []
+    deploy = {
+        "spec": {
+            "replicas": 1,
+            "selector": {
+                "matchLabels": {
+                    "app": "mysql-operator",
+                },
+            },
+        },
+        "status": {
+            "replicas": 2,
+            "readyReplicas": 1,
+            "updatedReplicas": 1,
+            "availableReplicas": 1,
+        },
+    }
+
+    monkeypatch.setattr(
+        kutil_module,
+        "wait_deploy_exists",
+        lambda ns, name, timeout=300, checkabort=lambda: None: {"NAME": name},
+    )
+    monkeypatch.setattr(
+        kutil_module,
+        "get_deploy",
+        lambda ns, name, check=False: deploy,
+    )
+
+    def fake_kubectl(
+        cmd,
+        rsrc=None,
+        args=None,
+        timeout=None,
+        check=True,
+        ignore=None,
+        timeout_diagnostics=None,
+        cmd_output_log=None,
+    ):
+        pod_list_calls.append((cmd, rsrc))
+        assert (cmd, rsrc) == ("get", "po")
+        return types.SimpleNamespace(
+            stdout=json.dumps(
+                {
+                    "items": [
+                        {
+                            "metadata": {
+                                "name": "mysql-operator-abc",
+                            },
+                            "status": {
+                                "phase": "Running",
+                                "containerStatuses": [
+                                    {
+                                        "name": "mysql-operator",
+                                        "state": {
+                                            "waiting": {
+                                                "reason": "CrashLoopBackOff",
+                                            },
+                                        },
+                                    },
+                                ],
+                            },
+                        },
+                    ],
+                }
+            ).encode("utf8")
+        )
+
+    monkeypatch.setattr(kutil_module, "kubectl", fake_kubectl)
+    monkeypatch.setattr(
+        kutil_module,
+        "store_deploy_diagnostics",
+        lambda ns, name: diagnostics.append(("deploy", ns, name)),
+    )
+    monkeypatch.setattr(
+        kutil_module,
+        "store_pod_diagnostics",
+        lambda ns, name: diagnostics.append(("pod", ns, name)),
+    )
+    monkeypatch.setattr(
+        kutil_module,
+        "_dump_deploy_fatal_pod_container_logs",
+        lambda ns, pod: diagnostics.append(
+            ("fatal-logs", ns, pod["metadata"]["name"])
+        ),
+    )
+    monkeypatch.setattr(
+        kutil_module.time,
+        "sleep",
+        lambda seconds: sleep_calls.append(seconds),
+    )
+
+    with pytest.raises(
+        Exception,
+        match=(
+            r"Deployment test-ns / mysql-operator pod mysql-operator-abc "
+            r"entered fatal startup state: "
+            r"container mysql-operator waiting: CrashLoopBackOff"
+        ),
+    ):
+        kutil_module.wait_deploy(
+            "test-ns",
+            "mysql-operator",
+            timeout=2,
+            fail_fast_on_fatal_pod_state=False,
+        )
+
+    assert pod_list_calls == [("get", "po")]
+    assert sleep_calls == [1, 1]
+    assert diagnostics == [
+        ("deploy", "test-ns", "mysql-operator"),
+        ("pod", "test-ns", "mysql-operator-abc"),
+        ("fatal-logs", "test-ns", "mysql-operator-abc"),
+    ]
+
+
 def test_fatal_pod_container_logs_dump_current_and_previous(
     monkeypatch,
     caplog,

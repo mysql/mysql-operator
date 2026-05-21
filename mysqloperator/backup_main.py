@@ -36,15 +36,23 @@ def get_secret(secret_name: str, namespace: str, logger: logging.Logger) -> dict
     if not secret_name:
         raise Exception(f"No secret provided")
 
+    logger.info(f"Loading secret {namespace}/{secret_name}")
     ret = {}
+    secret = None
     try:
         secret = cast(api_client.V1Secret, api_core.read_namespaced_secret(secret_name, namespace))
-        for k, v in secret.data.items():
-            ret[k] = utils.b64decode(v)
+        logger.info(f"Secret found - secret.data.keys()={secret.data.keys()}")
     except Exception:
         raise Exception(f"Secret {secret_name} in namespace {namespace} cannot be found")
 
+    for k, v in secret.data.items():
+        if len(v) == 0 and k != "passphrase":
+            raise Exception(f"Secret {namespace}/{secret_name} field {k} is empty")
+
+        ret[k] = utils.b64decode(v)
+
     return ret
+
 
 def get_dir_size(d):
     size = 0

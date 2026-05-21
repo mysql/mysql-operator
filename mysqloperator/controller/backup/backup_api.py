@@ -50,7 +50,7 @@ class MEB:
         return f"Object MEBInstance: storage={self.storage}"
 
     def __eq__(self, other: 'MEB') -> bool:
-        assert other is None or isinstance(other, DumpInstance)
+        assert other is None or isinstance(other, MEB)
         return other is not None \
                and self.storage == other.storage \
                and self.extra_options == other.extra_options
@@ -139,12 +139,16 @@ class BackupProfile:
             self.meb = MEB()
             self.meb.parse(method_spec, prefix+".meb")
 
-        if self.dumpInstance and self.snapshot:
-            # TODO MEB!
+        types_sum = sum(x is not None for x in [
+            self.dumpInstance,
+            self.snapshot,
+            self.meb,
+        ])
+        if types_sum > 1:
             raise ApiSpecError(
-                f"Only one of dumpInstance or snapshot may be set in {prefix}")
+                f"Only one of dumpInstance, snapshot or meb may be set in {prefix}")
 
-        if not self.dumpInstance and not self.snapshot and not self.meb:
+        if types_sum == 0:
             raise ApiSpecError(
                 f"One of dumpInstance, snapshot or meb must be set in a {prefix}")
 
@@ -158,6 +162,7 @@ class BackupProfile:
                 and self.dumpInstance == other.dumpInstance \
                 and self.snapshot == other.snapshot \
                 and self.meb == other.meb)
+
 
 class BackupSchedule:
     def __init__(self, cluster_spec):

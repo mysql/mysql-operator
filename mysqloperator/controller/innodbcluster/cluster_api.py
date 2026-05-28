@@ -18,6 +18,7 @@ from ..finalizers import remove_finalizer_from_body, remove_finalizer_with_json_
 from ..k8sobject import K8sInterfaceObject
 from .. import utils, config, consts
 from ..backup.backup_api import BackupProfile, BackupSchedule
+from ..backup.meb.meb_options import RESTORE_EXTRA_OPTIONS, MebOptionError, validate_extra_options
 from ..storage_api import StorageSpec
 from ..api_utils import Edition, dget_bool, dget_dict, dget_enum, dget_str, dget_int, dget_float, dget_list, ApiSpecError, ImagePullPolicy
 from ..kubeutils import api_core, api_apps, api_customobj, api_policy, api_rbac, api_batch, api_cron_job
@@ -609,6 +610,7 @@ class MebInitDBSpec:
     pitr_gtid_purge: Optional[str] = None
     pitr_end_term: Optional[str] = None
     pitr_end_value: Optional[str] = None
+    extra_options: Optional[List[str]] = []
 
     def parse(self, spec: dict, prefix: str) -> None:
         # TODO other storage types ....
@@ -631,6 +633,14 @@ class MebInitDBSpec:
 
         self.full_backup = dget_str(spec, "fullBackup", prefix)
         self.incremental_backups = dget_list(spec, "incrementalBackups", prefix, default_value = [])
+        self.extra_options = dget_list(
+            spec, "extraOptions", prefix, default_value=[], content_type=str)
+        try:
+            validate_extra_options(
+                self.extra_options, RESTORE_EXTRA_OPTIONS,
+                prefix+".extraOptions")
+        except MebOptionError as exc:
+            raise ApiSpecError(str(exc)) from exc
 
         if "pitr" in spec:
             pitr_spec = dget_dict(spec, "pitr", prefix)

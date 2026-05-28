@@ -16,6 +16,7 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import unquote as urlunquote
 
 from . import meb_controller as meb
+from . import meb_options
 
 TLS_WATCH_INTERVAL = 60
 
@@ -56,7 +57,10 @@ class CustomHandler(SimpleHTTPRequestHandler):
 
                 options = ["-u", username, f"-p{password}", f"--host=127.0.0.1"]
                 if 'extra_options' in backup_profile and backup_profile['extra_options']:
-                    options += backup_profile['extra_options']
+                    options += meb_options.validate_extra_options(
+                        backup_profile['extra_options'],
+                        meb_options.BACKUP_EXTRA_OPTIONS,
+                        "spec.extra_options")
 
 
                 storage_opts = backup_profile['storage']

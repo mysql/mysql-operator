@@ -221,13 +221,29 @@ def get_meb_container(cluster: InnoDBCluster, spec: InnoDBClusterSpec,
         ssl_cert = "/var/lib/mysql/server-cert.pem"
         ssl_key = "/var/lib/mysql/server-key.pem"
         mount = ""
+        mebtls = f"""
+      - name: mebtls
+        secret:
+            secretName: {cluster.name}-meb-tls
+"""
     else:
         ssl_cert = "/etc/mysql-ssl/key/tls.crt"
         ssl_key = "/etc/mysql-ssl/key/tls.key"
+        ca_file_name = cluster.get_ca_and_tls()["CA"]
         mount = """
-        - mountPath: /etc/mysql-ssl/key"
+        - mountPath: /etc/mysql-ssl/key
           name: ssl-key-data
        """
+        mebtls = f"""
+      - name: mebtls
+        projected:
+          sources:
+          - secret:
+              name: {spec.tlsCASecretName}
+              items:
+              - key: {ca_file_name}
+                path: ca.pem
+"""
 
     container = f"""
       - name: meb
@@ -295,9 +311,7 @@ def get_meb_container(cluster: InnoDBCluster, spec: InnoDBClusterSpec,
       - name: mebcode
         configMap:
             name: {cluster.name}-mebcode
-      - name: mebtls
-        secret:
-            secretName: {cluster.name}-meb-tls
+{mebtls}
 """
 
     return (container, volumes)

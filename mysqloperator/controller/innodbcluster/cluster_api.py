@@ -1724,6 +1724,14 @@ class DataDirPermissionsSpec:
             self.fsGroupChangePolicy = dget_str(spec, "fsGroupChangePolicy", prefix)
 
 
+class MebSpec:
+    tlsSecretName: str = ""
+
+    def parse(self, spec: dict, prefix: str) -> None:
+        if "tlsSecretName" in spec:
+            self.tlsSecretName = dget_str(spec, "tlsSecretName", prefix)
+
+
 # Must correspond to the names in the CRD
 class InnoDBClusterSpecProperties(Enum):
     SERVICE = "service"
@@ -1735,6 +1743,7 @@ class InnoDBClusterSpecProperties(Enum):
     METRICS = "metrics"
     INITDB = "initDB"
     KEYRING = "keyring"
+    MEB = "meb"
 
 
 class AbstractServerSetSpec(abc.ABC):
@@ -1769,6 +1778,7 @@ class AbstractServerSetSpec(abc.ABC):
     # override volumeClaimTemplates for datadir in MySQL pods (optional)
     datadirVolumeClaimTemplate = None
     dataDirPermissions: Optional[DataDirPermissionsSpec] = DataDirPermissionsSpec()
+    meb: Optional[MebSpec] = MebSpec()
 
     # additional MySQL configuration options
     mycnf: str = ""
@@ -1835,6 +1845,11 @@ class AbstractServerSetSpec(abc.ABC):
 
         if "tlsUseSelfSigned" in spec_root:
             self.tlsUseSelfSigned = dget_bool(spec_root, "tlsUseSelfSigned", "spec")
+
+        self.meb = MebSpec()
+        section = InnoDBClusterSpecProperties.MEB.value
+        if section in spec_root:
+            self.meb.parse(dget_dict(spec_root, section, "spec"), f"spec.{section}")
 
         self.instances = dget_int(spec_specific, "instances", where_specific)
         if "version" in spec_specific:
@@ -2004,6 +2019,16 @@ class AbstractServerSetSpec(abc.ABC):
 
         if self.tlsSecretName and not self.tlsCASecretName:
             logger.info("spec.tlsSecretName is set but will be ignored because self.tlsCASecretName is not set")
+
+        if any(getattr(profile, 'meb', None) for profile in self.backupProfiles) and not self.tlsUseSelfSigned:
+            if not self.meb.tlsSecretName:
+                raise ApiSpecError("spec.meb.tlsSecretName must be set when using MEB backups with tlsUseSelfSigned=false")
+            try:
+                api_core.read_namespaced_secret(self.meb.tlsSecretName, self.namespace)
+            except ApiException as e:
+                if e.status == 404:
+                    raise ApiSpecError(f'Secret "{self.meb.tlsSecretName}" NOT found')
+                raise
 
         # TODO ensure that if version is set, then image and routerImage are not
         # TODO should we support upgrading router only?

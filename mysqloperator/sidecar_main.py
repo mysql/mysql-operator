@@ -244,8 +244,100 @@ def meb_do_pitr(datadir:str, session: 'ClassicSession', cluster: InnoDBCluster,
 
     import time
 
+    def read_restored_gtid_set():
+        if init_spec.pitr_gtid_purge:
+            return init_spec.pitr_gtid_purge
+
+        backup_variables_path = "/var/run/mysqld/backup_variables.txt"
+        try:
+            with open(backup_variables_path, "rt", encoding="utf8") as f:
+                for line in f:
+                    name, _, value = line.strip().partition("=")
+                    if name == "gtid_executed":
+                        return value.strip()
+        except FileNotFoundError:
+            logger.warning(
+                "Could not find MEB backup variables at %s; PITR will not "
+                "pre-seed gtid_purged", backup_variables_path)
+
+        return ""
+
+    def seed_gtid_purged():
+        gtid_set = read_restored_gtid_set()
+        if not gtid_set:
+            logger.info("No restored GTID set found before PITR")
+            return
+
+        before = session.run_sql(
+            "SELECT @@GLOBAL.gtid_executed, @@GLOBAL.gtid_purged").fetch_one()
+        logger.info(
+            "PITR GTID state before purge: executed=%s purged=%s",
+            before[0], before[1])
+
+        missing = session.run_sql(
+            "SELECT GTID_SUBTRACT(?, @@GLOBAL.gtid_executed)",
+            [gtid_set]).fetch_one()[0]
+        if not missing:
+            logger.info("Restored GTIDs are already present before PITR")
+            return
+
+        logger.info("Adding restored GTIDs to gtid_purged before PITR: %s",
+                    missing)
+        session.run_sql("SET GLOBAL gtid_purged = ?", [f"+{missing}"])
+
+        after = session.run_sql(
+            "SELECT @@GLOBAL.gtid_executed, @@GLOBAL.gtid_purged").fetch_one()
+        logger.info(
+            "PITR GTID state after purge: executed=%s purged=%s",
+            after[0], after[1])
+
+    def set_replica_parallel_workers(value):
+        session.run_sql("SET GLOBAL replica_parallel_workers = ?", [value])
+
+    def collect_relay_log_errors(replica_status):
+        errors = []
+
+        def status_value(name, default=None):
+            try:
+                return replica_status[name]
+            except KeyError:
+                return default
+
+        for name, errno_key, error_key in (
+                ("SQL", "Last_SQL_Errno", "Last_SQL_Error"),
+                ("IO", "Last_IO_Errno", "Last_IO_Error")):
+            errno = int(status_value(errno_key, 0) or 0)
+            if errno:
+                errors.append(
+                    f"{name} error {errno}: {status_value(error_key, '')}")
+
+        try:
+            rows = session.run_sql("""
+                SELECT LAST_ERROR_NUMBER, LAST_ERROR_MESSAGE
+                  FROM performance_schema.replication_applier_status_by_coordinator
+                 WHERE CHANNEL_NAME = 'pitr' AND LAST_ERROR_NUMBER <> 0
+            """).fetch_all()
+            for errno, message in rows:
+                errors.append(f"coordinator error {errno}: {message}")
+        except mysqlsh.Error as e:
+            logger.warning("Could not query PITR coordinator status: %s", e)
+
+        try:
+            rows = session.run_sql("""
+                SELECT WORKER_ID, LAST_ERROR_NUMBER, LAST_ERROR_MESSAGE
+                  FROM performance_schema.replication_applier_status_by_worker
+                 WHERE CHANNEL_NAME = 'pitr' AND LAST_ERROR_NUMBER <> 0
+            """).fetch_all()
+            for worker_id, errno, message in rows:
+                errors.append(
+                    f"worker {worker_id} error {errno}: {message}")
+        except mysqlsh.Error as e:
+            logger.warning("Could not query PITR worker status: %s", e)
+
+        return errors
+
     def is_relay_log_fully_applied(session, logger):
-        res = session.run_sql("SHOW REPLICA STATUS")
+        res = session.run_sql("SHOW REPLICA STATUS FOR CHANNEL 'pitr'")
         replica_status = res.fetch_one_object()
 
         if not replica_status:
@@ -268,20 +360,24 @@ def meb_do_pitr(datadir:str, session: 'ClassicSession', cluster: InnoDBCluster,
         logger.info((f"Applying PITR: IO Running: {io_running}, "
                      f"SQL Running: {sql_running}, SQL State: {sql_running_state}"))
 
+        errors = collect_relay_log_errors(replica_status)
+        if errors:
+            raise RuntimeError(
+                "PITR relay log apply failed: " + "; ".join(errors))
+
         return io_running == "No" and sql_running == "No" and sql_running_state in end_states
 
 
     logger.info("Applying Binary Logs")
 
-    session.run_sql(f"CHANGE REPLICATION SOURCE TO RELAY_LOG_FILE='{cluster.name}-0-relay-bin-pitr.000001', RELAY_LOG_POS=1, SOURCE_HOST='pitr' FOR CHANNEL 'pitr'")
-
-    if (init_spec.pitr_end_term and init_spec.pitr_end_value):
-        logger.info(f"START REPLICA SQL_THREAD UNTIL {init_spec.pitr_end_term} = ? FOR CHANNEL 'pitr'",
-                        [init_spec.pitr_end_value])
-        session.run_sql(f"START REPLICA SQL_THREAD UNTIL {init_spec.pitr_end_term} = ? FOR CHANNEL 'pitr'",
-                        [init_spec.pitr_end_value])
-    else:
-        session.run_sql("START REPLICA SQL_THREAD FOR CHANNEL 'pitr'")
+    seed_gtid_purged()
+    replica_parallel_workers = session.run_sql(
+        "SELECT @@GLOBAL.replica_parallel_workers").fetch_one()[0]
+    if int(replica_parallel_workers or 0):
+        logger.info(
+            "Disabling parallel replica workers for PITR; previous value=%s",
+            replica_parallel_workers)
+        set_replica_parallel_workers(0)
 
     def growing_sleep():
         """When only short log is to be applied (especially in testcases likely
@@ -302,12 +398,32 @@ def meb_do_pitr(datadir:str, session: 'ClassicSession', cluster: InnoDBCluster,
         while True:
             yield time.sleep(15)
 
-    for _ in growing_sleep():
-        if is_relay_log_fully_applied(session, logger):
-            break
+    completed = False
+    try:
+        session.run_sql(f"CHANGE REPLICATION SOURCE TO RELAY_LOG_FILE='{cluster.name}-0-relay-bin-pitr.000001', RELAY_LOG_POS=1, SOURCE_HOST='pitr' FOR CHANNEL 'pitr'")
 
-    session.run_sql("STOP REPLICA SQL_THREAD FOR CHANNEL 'pitr'").fetch_all()
-    session.run_sql("RESET REPLICA ALL").fetch_all()
+        if (init_spec.pitr_end_term and init_spec.pitr_end_value):
+            logger.info("START REPLICA SQL_THREAD UNTIL %s = %s FOR CHANNEL 'pitr'",
+                        init_spec.pitr_end_term, init_spec.pitr_end_value)
+            session.run_sql(f"START REPLICA SQL_THREAD UNTIL {init_spec.pitr_end_term} = ? FOR CHANNEL 'pitr'",
+                            [init_spec.pitr_end_value])
+        else:
+            session.run_sql("START REPLICA SQL_THREAD FOR CHANNEL 'pitr'")
+
+        for _ in growing_sleep():
+            if is_relay_log_fully_applied(session, logger):
+                completed = True
+                break
+    finally:
+        try:
+            session.run_sql("STOP REPLICA SQL_THREAD FOR CHANNEL 'pitr'").fetch_all()
+        except mysqlsh.Error as e:
+            logger.warning("Could not stop PITR SQL thread: %s", e)
+        if int(replica_parallel_workers or 0):
+            set_replica_parallel_workers(replica_parallel_workers)
+
+    if completed:
+        session.run_sql("RESET REPLICA ALL").fetch_all()
 
 
 def populate_with_meb(datadir: str, session: 'ClassicSession',

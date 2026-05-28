@@ -122,6 +122,14 @@ spec:
   {{- end }}
   tlsSecretName: {{ $secret_name }}
 {{- end }}
+{{- if (((.Values).meb).tlsSecretName) }}
+  {{- if and (not $disable_lookups) (not (lookup "v1" "Secret" $install_namespace (((.Values).meb).tlsSecretName))) }}
+    {{- $err := printf "meb.tlsSecretName: secret '%s' not found in namespace '%s'" (((.Values).meb).tlsSecretName) $install_namespace }}
+    {{- fail $err }}
+  {{- end }}
+  meb:
+    tlsSecretName: {{ (((.Values).meb).tlsSecretName) }}
+{{- end }}
   # mycnf
 {{- if ((.Values).serverConfig) }}
   {{- if (((.Values).serverConfig).mycnf) }}
@@ -307,6 +315,9 @@ spec:
  {{- if and (and (and .Values.initDB.dump .Values.initDB.dump.name) (and .Values.initDB.clone .Values.initDB.clone.donorUrl)) }}
     {{- fail "Dump and Clone are mutually exclusive for initDB" }}
   {{- end }}
+  {{- if and .Values.initDB.meb (or (and .Values.initDB.dump .Values.initDB.dump.name) (and .Values.initDB.clone .Values.initDB.clone.donorUrl)) }}
+    {{- fail "Dump, Clone and MEB are mutually exclusive for initDB" }}
+  {{- end }}
   ## Clone
   {{- if (((.Values).initDB).clone) }}
     {{- with .Values.initDB.clone }}
@@ -361,6 +372,28 @@ spec:
         {{- if .persistentVolumeClaim }}
         persistentVolumeClaim: {{ toYaml .persistentVolumeClaim | nindent 10}}
         {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  ## MEB
+  {{- if (((.Values).initDB).meb) }}
+    {{- with .Values.initDB.meb }}
+  initDB:
+    meb:
+      storage:
+{{ required "initDB.meb.storage is required" .storage | toYaml | indent 8 }}
+      fullBackup: {{ required "initDB.meb.fullBackup is required" .fullBackup | quote }}
+      {{- if .incrementalBackups }}
+      incrementalBackups:
+{{ toYaml .incrementalBackups | indent 6 }}
+      {{- end }}
+      {{- if .pitr }}
+      pitr:
+{{ toYaml .pitr | indent 8 }}
+      {{- end }}
+      {{- if .extraOptions }}
+      extraOptions:
+{{ toYaml .extraOptions | indent 6 }}
       {{- end }}
     {{- end }}
   {{- end }}

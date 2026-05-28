@@ -46,8 +46,10 @@ def do_restore(datadir: str, cluster_name: str, mebinfo: dict,
     if 'incrementalBackups' in mebspec:
         incrementals = mebspec['incrementalBackups']
 
-    m.restore(mebspec['fullBackup'], incrementals)
-    m.cleanup()
+    try:
+        m.restore(mebspec['fullBackup'], incrementals)
+    finally:
+        m.cleanup()
 
     logger.info("Restored full backup %s", mebspec['fullBackup'])
     if 'incrementalBackups' in mebspec:
@@ -86,6 +88,10 @@ def prepare_binlogs_as_relay_logs_for_pitr(datadir: str,
         pattern = re.compile(rf'^{re.escape(binlog_base)}\.\d{{6}}$')
         binlogs = [l for l in os.listdir(f"{tmpdir}/datadir") if pattern.match(l)]
         binlogs.sort()
+        if not binlogs:
+            raise RuntimeError(
+                f"No binlogs matching {binlog_base}.NNNNNN found in "
+                f"PITR backup image {mebspec['pitr']['backupFile']}")
 
         logger.info("Trying to prepare binlogs from backup as relay logs")
 
@@ -93,9 +99,10 @@ def prepare_binlogs_as_relay_logs_for_pitr(datadir: str,
         with open(f"{datadir}/{cluster_name}-0-relay-bin-pitr.index", "wt") as relay_index:
             for logfile in binlogs:
                 i += 1
-                logger.info(f"Preparing for PITR: COPY {tmpdir}/datadir/{logfile.strip()} TO {datadir}/{cluster_name}-0-relay-bin.{i:06}")
+                logger.info(f"Preparing for PITR: COPY {tmpdir}/datadir/{logfile.strip()} TO {datadir}/{cluster_name}-0-relay-bin-pitr.{i:06}")
                 shutil.copy(f"{tmpdir}/datadir/{logfile.strip()}", f"{datadir}/{cluster_name}-0-relay-bin-pitr.{i:06}")
                 relay_index.write(f"./{cluster_name}-0-relay-bin-pitr.{i:06}\n")
+        logger.info("Prepared %d binlog files as relay logs for PITR", i)
     finally:
         m.cleanup()
 

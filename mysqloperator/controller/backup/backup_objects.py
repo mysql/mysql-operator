@@ -70,7 +70,7 @@ data:
 def prepare_backup_secrets(spec: InnoDBClusterSpec) -> list[dict]:
     secrets = [_prepare_backup_auth_secret(spec)]
 
-    if any(getattr(profile, 'meb', None) for profile in spec.backupProfiles):
+    if any(getattr(profile, 'meb', None) for profile in spec.backupProfiles) and spec.tlsUseSelfSigned:
         secrets.append(meb_cert.prepare_meb_tls_secret(spec))
 
     return secrets

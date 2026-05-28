@@ -56,9 +56,39 @@ class MEB:
                and self.extra_options == other.extra_options
 
 
-    def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
+    def add_to_pod_spec(self, pod_spec: dict, container_name: str,
+                        cluster_spec: Optional['cluster_api.InnoDBClusterSpec'] = None,
+                        ca_and_tls: Optional[dict] = None) -> None:
         cluster_name = pod_spec['metadata']['labels']['mysql.oracle.com/cluster']
-        patch = f"""
+        if cluster_spec and not cluster_spec.tlsUseSelfSigned:
+            ca_file_name = ca_and_tls["CA"]
+            patch = f"""
+spec:
+  containers:
+  - name: {container_name}
+    volumeMounts:
+    - mountPath: /tls
+      name: mebtlsclient
+  volumes:
+  - name: mebtlsclient
+    projected:
+      defaultMode: 200
+      sources:
+      - secret:
+          name: {cluster_spec.meb.tlsSecretName}
+          items:
+          - key: tls.crt
+            path: client.pem
+          - key: tls.key
+            path: client.key
+      - secret:
+          name: {cluster_spec.tlsCASecretName}
+          items:
+          - key: {ca_file_name}
+            path: ca.pem
+"""
+        else:
+            patch = f"""
 spec:
   containers:
   - name: {container_name}
@@ -241,6 +271,7 @@ class MySQLBackupSpec:
         self.clusterName: str = ""
         self.backupProfileName: str = ""
         self.backupProfile: BackupProfile = None
+        self.cluster: Optional[cluster_api.InnoDBCluster] = None
         self.deleteBackupData: bool = False # unused
         self.timeZone: str = ""
         self.addTimestampToBackupDirectory: bool = True
@@ -253,6 +284,8 @@ class MySQLBackupSpec:
 
     def add_to_pod_spec(self, pod_spec: dict, container_name: str) -> None:
         assert self.backupProfile
+        if self.backupProfile.meb and self.cluster:
+            return self.backupProfile.meb.add_to_pod_spec(pod_spec, container_name, self.cluster.parsed_spec, self.cluster.get_ca_and_tls())
         return self.backupProfile.add_to_pod_spec(pod_spec, container_name)
 
     def parse(self, spec: dict) -> Optional[ApiSpecError]:
@@ -273,6 +306,7 @@ class MySQLBackupSpec:
 
         try:
             cluster = cluster_api.InnoDBCluster.read(self.namespace, self.clusterName)
+            self.cluster = cluster
         except ApiException as e:
             if e.status == 404:
                 return ApiSpecError(f"Invalid clusterName {self.namespace}/{self.clusterName}")

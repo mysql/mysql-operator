@@ -4,15 +4,20 @@
 #
 
 import argparse
+import hashlib
 import json
 import logging
 import ssl
 import sys
+import threading
+import time
 
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import unquote as urlunquote
 
 from . import meb_controller as meb
+
+TLS_WATCH_INTERVAL = 60
 
 class CustomHandler(SimpleHTTPRequestHandler):
     datadir = None
@@ -108,7 +113,38 @@ class CustomHandler(SimpleHTTPRequestHandler):
         self.wfile.write(b"false\n")
 
 
-def serve_http(sslopts: dict, datadir: str):
+def file_hash(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            data = f.read(1024 * 1024)
+            if not data:
+                break
+            h.update(data)
+    return h.hexdigest()
+
+
+def watch_tls_files(httpd: HTTPServer, paths: list[str], logger: logging.Logger):
+    hashes = {}
+    for path in paths:
+        hashes[path] = file_hash(path)
+
+    while True:
+        time.sleep(TLS_WATCH_INTERVAL)
+        for path in paths:
+            try:
+                new_hash = file_hash(path)
+            except Exception as exc:
+                logger.warning("TLS file %s cannot be read: %s", path, exc)
+                httpd.shutdown()
+                return
+            if hashes[path] != new_hash:
+                logger.info("TLS file %s changed, restarting MEB daemon", path)
+                httpd.shutdown()
+                return
+
+
+def serve_http(sslopts: dict, datadir: str, logger: logging.Logger):
     server_address = ('0.0.0.0', 4443)
 
     handler_class = CustomHandler
@@ -122,7 +158,13 @@ def serve_http(sslopts: dict, datadir: str):
     context.verify_mode = ssl.CERT_REQUIRED
 
     httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
+    watcher = threading.Thread(
+        target=watch_tls_files,
+        args=(httpd, [sslopts["cert"], sslopts["key"], "/tls/ca.pem"], logger),
+        daemon=True)
+    watcher.start()
     httpd.serve_forever()
+    httpd.server_close()
 
 def main(argv):
     parser = argparse.ArgumentParser(description="MySQL InnoDB Cluster MySQL Enterprise Backup Daemon")
@@ -152,7 +194,7 @@ def main(argv):
     try:
         logger.info("Starting MEB Daemon for %s/%s", namespace, name)
 
-        serve_http(sslopts, datadir)
+        serve_http(sslopts, datadir, logger)
     except Exception as e:
         import traceback
         traceback.print_exc()

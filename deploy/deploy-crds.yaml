@@ -36,6 +36,12 @@ spec:
                   type: boolean
                   default: false
                   description: "Enables use of self-signed TLS certificates, reducing or disabling TLS based security verifications"
+                meb:
+                  type: object
+                  properties:
+                    tlsSecretName:
+                      type: string
+                      description: "Name of a Secret containing MySQL Enterprise Backup client certificate and private key"
                 version:
                   type: string
                   pattern: '^\d+\.\d+\.\d+(-.+)?'

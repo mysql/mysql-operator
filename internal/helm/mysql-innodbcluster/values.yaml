@@ -248,6 +248,22 @@ baseServerId: 1000
 #    donorUrl:
 #    rootUser:
 #    credentials:
+#  meb:
+#    storage:
+#      ociObjectStorage:
+#        credentials:
+#    fullBackup:
+#    incrementalBackups:
+#    pitr:
+#      backupFile:
+#      binlogName:
+#      end:
+#        afterGtids:
+#        beforeGtids:
+#    extraOptions:
+
+#meb:
+#  tlsSecretName:
 
 
 #backupProfiles:

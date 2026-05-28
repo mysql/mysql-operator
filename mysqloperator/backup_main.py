@@ -9,6 +9,7 @@ import os
 import multiprocessing
 import requests
 import argparse
+import time
 from urllib.parse import quote as urlquote
 
 import mysqlsh
@@ -196,8 +197,25 @@ def execute_meb(backup: MySQLBackup, backup_source: dict, backup_name: str, logg
     url = f"https://{backup_source['host']}:4443/backup/{name}"
     logger.info(f"Triggering {url}")
 
-    response = requests.post(url, data=request_s,
-                             cert=cert, verify=False) #, verify=ca)
+    verify = False
+    if not backup_obj.get_cluster().parsed_spec.tlsUseSelfSigned:
+        verify = ca
+
+    response = None
+    for attempt in range(6):
+        try:
+            response = requests.post(url, data=request_s,
+                                     cert=cert, verify=verify)
+            break
+        except requests.exceptions.RequestException as exc:
+            if attempt == 5:
+                raise
+            logger.info(
+                f"MEB daemon request failed, retrying in 5s: {exc}")
+            time.sleep(5)
+
+    if response is None:
+        raise Exception("MEB daemon request failed")
 
     print(response.content.decode())
 

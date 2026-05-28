@@ -15,6 +15,7 @@ import mysqlsh
 from .controller import fqdn, utils, k8sobject, config
 from .controller.api_utils import Edition
 from .controller.innodbcluster.cluster_api import MySQLPod, InnoDBCluster
+from .controller.backup.meb.meb_options import RESTORE_EXTRA_OPTIONS, validate_extra_options
 from .controller.kubeutils import k8s_cluster_domain
 from .controller.kubeutils import client as api_client, api_core, ApiException
 
@@ -150,6 +151,10 @@ def init_meb_restore(pod: MySQLPod, cluster: InnoDBCluster, logger: logging.Logg
         "spec": cluster.spec["initDB"]["meb"],
         "credentials": credentials
     }
+    validate_extra_options(
+        meb_init_spec["spec"].get("extraOptions", []),
+        RESTORE_EXTRA_OPTIONS,
+        "spec.initDB.meb.extraOptions")
 
     with open('/tmp/meb_restore.json', 'w') as f:
         json.dump(meb_init_spec, f)

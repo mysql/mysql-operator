@@ -13,6 +13,7 @@ import sys
 import traceback
 
 from . import meb_controller as meb
+from . import meb_options
 
 def _get_storage(mebinfo: dict):
     if 'ociObjectStorage' in mebinfo['spec']['storage']:
@@ -32,9 +33,10 @@ def do_restore(datadir: str, cluster_name: str, mebinfo: dict,
     storage = _get_storage(mebinfo)
     mebspec = mebinfo['spec']
 
-    options = []
-    if "extraOptions" in mebspec:
-        options = mebspec["extraOptions"]
+    options = meb_options.validate_extra_options(
+        mebspec.get("extraOptions", []),
+        meb_options.RESTORE_EXTRA_OPTIONS,
+        "spec.extraOptions")
 
     m = meb.MySQLEnterpriseBackup(
         storage,
@@ -63,9 +65,10 @@ def prepare_binlogs_as_relay_logs_for_pitr(datadir: str,
     storage = _get_storage(mebinfo)
     mebspec = mebinfo['spec']
 
-    options = []
-    if "extraOptions" in mebspec:
-        options = mebspec["extraOptions"]
+    options = meb_options.validate_extra_options(
+        mebspec.get("extraOptions", []),
+        meb_options.RESTORE_EXTRA_OPTIONS,
+        "spec.extraOptions")
 
     if not "pitr" in mebspec or not "backupFile" in mebspec["pitr"]:
         return

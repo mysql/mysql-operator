@@ -14,6 +14,7 @@ from .. kubeutils import api_core, api_apps, api_customobj, ApiException
 from .. storage_api import StorageSpec
 from .. utils import merge_patch_object
 from .. innodbcluster import cluster_api
+from .meb.meb_options import BACKUP_EXTRA_OPTIONS, MebOptionError, validate_extra_options
 
 
 class Snapshot:
@@ -44,7 +45,14 @@ class MEB:
 
     def parse(self, spec: dict, prefix: str) -> None:
         self.storage = dget_dict(spec, "storage", prefix)
-        self.extra_options = dget_list(spec, "extraOptions", prefix, [])
+        self.extra_options = dget_list(
+            spec, "extraOptions", prefix, [], content_type=str)
+        try:
+            validate_extra_options(
+                self.extra_options, BACKUP_EXTRA_OPTIONS,
+                prefix+".extraOptions")
+        except MebOptionError as exc:
+            raise ApiSpecError(str(exc)) from exc
 
     def __str__(self) -> str:
         return f"Object MEBInstance: storage={self.storage}"

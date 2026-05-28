@@ -13,6 +13,7 @@ from utils import kutil
 from utils import mutil
 from utils import ociutil
 from utils import tutil
+from utils.auxutil import isotime
 from utils.helmutil import HelmClusterInstallOptions
 from utils.helmutil import install_cluster_with_helm
 from utils.helmutil import uninstall_with_helm
@@ -1012,6 +1013,80 @@ class MEBHelmMixin:
             self.delete_tls_secrets_for_cluster(cluster_name)
 
 
+class MEBExtraOptionsValidationScenario(MEBBase):
+    _cluster_size = 1
+    _routers_count = 0
+    profile_name = "meb-extra-options"
+    invalid_extra_options = ["--compress", "--exec_when_locked=id"]
+
+    def assert_invalid_extra_options_rendered(self):
+        ic = kutil.get_ic(self.ns, self.cluster_name)
+        meb = ic["spec"]["backupProfiles"][0]["meb"]
+        self.assertEqual(meb["extraOptions"], self.invalid_extra_options)
+
+    def assert_invalid_extra_options_rejected(self, start_time):
+        self.wait_ic(self.cluster_name, "INVALID", num_online=0, timeout=120)
+        self.assert_invalid_extra_options_rendered()
+        self.assertFalse(kutil.ls_sts(self.ns, pattern=f"{self.cluster_name}.*"))
+        self.assertFalse(kutil.ls_po(self.ns, pattern=f"{self.cluster_name}.*"))
+        self.wait_got_cluster_event(
+            self.cluster_name, after=start_time, timeout=120, delay=5,
+            type="Error", reason="InvalidArgument",
+            msg=r".*extraOptions\[1\].*exec-when-locked.*not allowed")
+
+    def test_0_reject_exec_when_locked_extra_option(self):
+        start_time = isotime()
+        self.create_invalid_extra_options_cluster()
+        self.assert_invalid_extra_options_rejected(start_time)
+
+    def test_9_destroy(self):
+        self.delete_cluster_resource(self.cluster_name)
+        self.__class__.source_cluster_deleted = True
+        self.delete_cluster_secret_resource(self.cluster_secret_name)
+
+
+class MEBExtraOptionsValidationRawMixin(MEBRawMixin):
+    def create_invalid_extra_options_cluster(self):
+        yaml = f"""
+apiVersion: mysql.oracle.com/v2
+kind: InnoDBCluster
+metadata:
+  name: {self.cluster_name}
+spec:
+  instances: {self.cluster_size}
+  secretName: {self.cluster_secret_name}
+  router:
+    instances: {self.routers_count}
+  tlsUseSelfSigned: true
+  edition: enterprise
+  backupProfiles:
+  - name: {self.profile_name}
+    meb:
+      storage:
+        oci:
+          prefix: {self.meb_storage_prefix}
+          bucketName: meb-extra-options-test
+          credentials: {self.backup_apikey}
+          namespace: meb-extra-options-test
+      extraOptions:
+      - {self.invalid_extra_options[0]}
+      - {self.invalid_extra_options[1]}
+"""
+        kutil.apply(self.ns, yaml)
+
+
+class MEBExtraOptionsValidationHelmMixin(MEBHelmMixin):
+    def create_invalid_extra_options_cluster(self):
+        values = self.create_cluster_values(
+            self.cluster_name, with_backup_profile=True)
+        values["backupProfiles"][0]["extraOptions"] = self.invalid_extra_options
+        values["backupProfiles"][0]["meb"]["storage"]["oci"].update({
+            "bucketName": "meb-extra-options-test",
+            "namespace": "meb-extra-options-test",
+        })
+        self.install_cluster(self.cluster_name, values)
+
+
 class MEBFullBackupScenario(MEBBase):
     profile_name = "meb-full-oci"
     backup_name = "meb-full-oci"
@@ -1237,6 +1312,20 @@ class MEBPITRRestoreScenario(MEBRestoreScenario):
                 },
             },
         }
+
+
+class MEBExtraOptionsValidationRaw(MEBExtraOptionsValidationRawMixin,
+                                   MEBExtraOptionsValidationScenario,
+                                   tutil.OperatorTest):
+    cluster_name = "meb-extra-raw"
+    cluster_secret_name = f"{cluster_name}-mypwds"
+
+
+class MEBExtraOptionsValidationHelm(MEBExtraOptionsValidationHelmMixin,
+                                    MEBExtraOptionsValidationScenario,
+                                    tutil.OperatorTest):
+    cluster_name = "meb-extra-helm"
+    cluster_secret_name = f"{cluster_name}-mypwds"
 
 
 @skip_no_meb_oci

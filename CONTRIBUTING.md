@@ -1,6 +1,46 @@
 # Contributing Guidelines
 
-We love getting feedback from our users. Bugs and code contributions are great forms of feedback and we thank you for any bugs you report or code you contribute.
+We welcome your code contributions. Before submitting code via a GitHub pull 
+request, or by filing a bug in https://bugs.mysql.com you will need to have 
+signed the Oracle Contributor Agreement (see https://oca.opensource.oracle.com).
+Only pull requests from committers that can be verified as having signed the OCA
+can be accepted.
+
+## Contributing Code
+
+1. Make sure you have a user account at bugs.mysql.com. You'll need to reference this 
+    user account when you submit your OCA (Oracle Contributor Agreement).
+2. Sign the Oracle OCA. You can find instructions for doing that at the OCA Page,
+    at https://oca.opensource.oracle.com
+3. Validate your contribution by including tests that sufficiently cover the functionality.
+4. Verify that the entire test suite passes with your code applied.
+5. Submit your pull request via GitHub or uploading it using the contribution tab to a bug 
+    record in https://bugs.mysql.com (using the 'contribution' tab).
+
+## Non-Code Contributions
+
+Submissions Other than Code. These terms apply to all of Your Submissions other than
+code contributions. "You" means you personally, as well as any person or entity on
+whose behalf you are Using the Site. "You" does not include Oracle or its employees
+using the Site on Oracle's behalf. "Use" and its variants are to be interpreted in
+their broadest sense and include, without limitation, the acts of using, accessing,
+receiving, browsing, downloading from, and uploading to. A "User" is a person or
+entity who Uses the site.
+"Submissions" means any materials (other than code contributions), including but not
+limited to technology specifications, technical materials, documentation, discussion
+thread postings, blogs, wikis, data, and any other content, information, technology
+or services submitted to by You to the site.
+You hereby grant to Oracle and all Users a royalty-free, perpetual, irrevocable,
+worldwide, non-exclusive and fully sub-licensable right and license under Your
+intellectual property rights to reproduce, modify, adapt, publish, translate, create
+derivative works from, distribute, perform, display and use Your Submissions (in whole
+or part) and to incorporate or implement them in other works in any form, media, or
+technology now known or later developed. This includes, without limitation, the right
+to incorporate or implement the Submission into any product or service, and to display,
+market, sublicense and distribute the Submissions as incorporated or embedded in any
+product or service distributed or offered by Oracle without compensation to you.
+All Users, Oracle, and their sublicensees are responsible for any modifications they
+make to the Submissions of others.
 
 ## Reporting Issues
 
@@ -13,19 +53,6 @@ Please report detailed bugs by including the following:
 * Specific version of the relevant products you are using.
 * Specific version of the server being used.
 * Sample code to help reproduce the issue, if possible.
-
-## Contributing Code
-
-Contributing to MySQL projects is easy by following these steps:
-
-* Make sure you have a user account at [bugs.mysql.com](https://bugs.mysql.com). This account is referenced when submitting an Oracle Contributor Agreement (OCA).
-* Sign the Oracle Contributor Agreement. You can find instructions for doing that at the [OCA Page](https://oca.opensource.oracle.com/).
-* Develop your pull request. Make sure you are aware of the requirements for the project (e.g. do not require Kubernetes 1.10.x if we are supporting Kubernetes 1.12.x and higher).
-* Ideally validate your pull request by including tests that sufficiently cover the functionality you are adding.
-* Verify that the entire test suite passes with your code applied.
-* Submit your pull request. While you can submit the pull request via [GitHub](https://github.com/mysql/mysql-operator/pulls), you can also submit it directly via [bugs.mysql.com](https://bugs.mysql.com).
-
-Thanks again for your wish to contribute to MySQL. We truly believe in the principles of open source development and appreciate any contributions to our projects.
 
 ## Setting Up a Development Environment
 

@@ -1,8 +1,24 @@
 # MySQL Operator for Kubernetes
 
+Copyright (c) 2020, 2026, Oracle and/or its affiliates.
+
+This is a release of MySQL Operator for Kubernetes.
+
+License information can be found in the [LICENSE](LICENSE) file.
+This distribution may include materials developed by third parties. For license
+and attribution notices for these materials, please refer to the
+[LICENSE](LICENSE) file.
+
+For more information on MySQL Operator for Kubernetes visit https://dev.mysql.com/doc/mysql-operator/en/
+For additional downloads and the source of MySQL Operator for Kubernetes visit https://dev.mysql.com/downloads/operator/
+
+Contributing information for code and non-code submissions can be found in the [CONTRIBUTING](CONTRIBUTING.md) file.
+
+MySQL Operator for Kubernetes is brought to you by the MySQL team at Oracle.
+
 ## Introduction
 
-The MySQL Operator for Kubernetes is an operator for managing MySQL InnoDB Cluster setups inside a Kubernetes Cluster. 
+The MySQL Operator for Kubernetes is an operator for managing MySQL InnoDB Cluster setups inside a Kubernetes Cluster.
 It manages the full lifecycle with set up and maintenance that includes automating upgrades and backup.
 
 MySQL Operator for Kubernetes is brought to you by the MySQL team at Oracle.
@@ -14,14 +30,6 @@ As with all MySQL projects, issues (including bugs and feature requests) are tra
   * https://bugs.mysql.com/
 
 Pull requests submitted via github are also tracked at bugs.mysql.com; see [CONTRIBUTING](CONTRIBUTING.md) for related information.
-
-## License
-
-Copyright (c) 2020, 2025, Oracle and/or its affiliates.
-
-License information can be found in the [LICENSE](https://github.com/mysql/mysql-operator/blob/trunk/LICENSE) file.
-This distribution may include materials developed by third parties. For license
-and attribution notices for these materials, please refer to the `LICENSE` file.
 
 ## MySQL Operator for Kubernetes Installation
 

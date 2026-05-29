@@ -197,15 +197,11 @@ def execute_meb(backup: MySQLBackup, backup_source: dict, backup_name: str, logg
     url = f"https://{backup_source['host']}:4443/backup/{name}"
     logger.info(f"Triggering {url}")
 
-    verify = False
-    if not backup_obj.get_cluster().parsed_spec.tlsUseSelfSigned:
-        verify = ca
-
     response = None
     for attempt in range(6):
         try:
             response = requests.post(url, data=request_s,
-                                     cert=cert, verify=verify)
+                                     cert=cert, verify=ca)
             break
         except requests.exceptions.RequestException as exc:
             if attempt == 5:

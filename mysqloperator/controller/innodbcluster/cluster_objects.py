@@ -218,8 +218,8 @@ def get_meb_container(cluster: InnoDBCluster, spec: InnoDBClusterSpec,
         return ("", "")
 
     if spec.tlsUseSelfSigned:
-        ssl_cert = "/var/lib/mysql/server-cert.pem"
-        ssl_key = "/var/lib/mysql/server-key.pem"
+        ssl_cert = "/tls/server.pem"
+        ssl_key = "/tls/server.key"
         mount = ""
         mebtls = f"""
       - name: mebtls

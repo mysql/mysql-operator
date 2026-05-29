@@ -48,6 +48,7 @@ def on_startup(settings: kopf.OperatorSettings, logger: Logger, *args, **_):
 
     operator_cluster.ensure_backup_schedules_use_current_image(clusters, logger)
     operator_cluster.ensure_switchover_rbac_uptodate(clusters, logger)
+    operator_cluster.ensure_meb_self_signed_tls_uptodate(clusters, logger)
     operator_cluster.monitor_existing_clusters(clusters, logger)
     operator_cluster.refresh_existing_cluster_status(clusters, logger)
     operator_cluster.ensure_router_accounts_are_uptodate(clusters, logger)

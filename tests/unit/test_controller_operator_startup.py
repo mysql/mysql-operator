@@ -134,6 +134,9 @@ def _load_controller_operator_module():
     operator_cluster_stub.ensure_switchover_rbac_uptodate = (
         lambda clusters, logger: None
     )
+    operator_cluster_stub.ensure_meb_self_signed_tls_uptodate = (
+        lambda clusters, logger: None
+    )
     operator_cluster_stub.monitor_existing_clusters = lambda clusters, logger: None
     operator_cluster_stub.refresh_existing_cluster_status = (
         lambda clusters, logger: None
@@ -192,6 +195,11 @@ def test_on_startup_blocks_follow_up_steps_when_switchover_rbac_repair_fails(
         operator_module.operator_cluster,
         "ensure_switchover_rbac_uptodate",
         fail_switchover,
+    )
+    monkeypatch.setattr(
+        operator_module.operator_cluster,
+        "ensure_meb_self_signed_tls_uptodate",
+        lambda clusters, logger: call_order.append("meb"),
     )
     monkeypatch.setattr(
         operator_module.operator_cluster,
@@ -257,6 +265,11 @@ def test_on_startup_emits_operator_restarted_only_after_success(
     )
     monkeypatch.setattr(
         operator_module.operator_cluster,
+        "ensure_meb_self_signed_tls_uptodate",
+        lambda clusters, logger: call_order.append("meb"),
+    )
+    monkeypatch.setattr(
+        operator_module.operator_cluster,
         "monitor_existing_clusters",
         lambda clusters, logger: call_order.append("monitor"),
     )
@@ -286,6 +299,7 @@ def test_on_startup_emits_operator_restarted_only_after_success(
     assert call_order == [
         "backup",
         "switchover",
+        "meb",
         "monitor",
         "refresh",
         "router",

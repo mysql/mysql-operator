@@ -10,9 +10,9 @@ import yaml
 import kopf
 from copy import deepcopy
 from .backup_api import BackupProfile, BackupSchedule, MySQLBackupSpec
-from .. import utils, config, consts
+from .. import utils, config, consts, fqdn
 from .. innodbcluster.cluster_api import InnoDBClusterSpec
-from .. kubeutils import api_cron_job, k8s_cluster_domain
+from .. kubeutils import api_core, api_cron_job, k8s_cluster_domain
 from . import meb_cert
 
 def prepare_meb_code_configmap(spec: InnoDBClusterSpec) -> dict:
@@ -67,13 +67,71 @@ data:
 """
     return yaml.safe_load(tmpl)
 
+def _uses_self_signed_meb_tls(spec: InnoDBClusterSpec) -> bool:
+    return (spec.tlsUseSelfSigned and
+            any(getattr(profile, 'meb', None) for profile in spec.backupProfiles))
+
+
+def _prepare_meb_tls_secret(spec: InnoDBClusterSpec, logger: Logger = None) -> dict:
+    return meb_cert.prepare_meb_tls_secret(
+        spec,
+        k8s_cluster_domain(logger),
+        fqdn.idc_service_fqdn_template(spec))
+
+
 def prepare_backup_secrets(spec: InnoDBClusterSpec) -> list[dict]:
     secrets = [_prepare_backup_auth_secret(spec)]
 
-    if any(getattr(profile, 'meb', None) for profile in spec.backupProfiles) and spec.tlsUseSelfSigned:
-        secrets.append(meb_cert.prepare_meb_tls_secret(spec))
+    if _uses_self_signed_meb_tls(spec):
+        secrets.append(_prepare_meb_tls_secret(spec))
 
     return secrets
+
+
+def ensure_meb_tls_secret_is_current(cluster, logger: Logger) -> bool:
+    spec = cluster.parsed_spec
+    if not _uses_self_signed_meb_tls(spec):
+        return False
+
+    secret_name = f"{spec.name}-meb-tls"
+    secret = cluster.get_secret(secret_name)
+    if not secret:
+        secret = _prepare_meb_tls_secret(spec, logger)
+        kopf.adopt(secret, owner=cluster.obj)
+        api_core.create_namespaced_secret(namespace=spec.namespace, body=secret)
+        return True
+
+    current_data = secret.data or {}
+    required_keys = set(meb_cert.MEB_TLS_SECRET_KEYS)
+    if required_keys.issubset(current_data.keys()):
+        new_data = {
+            key: current_data[key]
+            for key in meb_cert.MEB_TLS_SECRET_KEYS
+        }
+    elif {"ca.pem", "ca.key", "client.pem", "client.key"}.issubset(
+            current_data.keys()):
+        new_data = {
+            key: current_data[key]
+            for key in ("ca.pem", "client.pem", "client.key")
+        }
+        new_data.update(meb_cert.prepare_meb_server_tls_data(
+            spec,
+            utils.b64decode(current_data["ca.pem"]),
+            utils.b64decode(current_data["ca.key"]),
+            k8s_cluster_domain(logger),
+            fqdn.idc_service_fqdn_template(spec)))
+    else:
+        new_data = _prepare_meb_tls_secret(spec, logger)["data"]
+
+    if current_data == new_data:
+        return False
+
+    logger.info(
+        "Updating MEB TLS Secret %s/%s with verifiable server certificate",
+        spec.namespace, secret_name)
+    secret.data = new_data
+    api_core.replace_namespaced_secret(secret_name, spec.namespace, body=secret)
+    return True
 
 def prepare_backup_job(jobname: str, spec: MySQLBackupSpec) -> dict:
     cluster_domain = k8s_cluster_domain(None)

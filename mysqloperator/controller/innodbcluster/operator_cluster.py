@@ -397,6 +397,81 @@ def ensure_backup_schedules_use_current_image(clusters: List[InnoDBCluster], log
             logger.warn(f"Error while ensuring {cluster.namespace}/{cluster.name} uses current operator version for scheduled backups: {exc}")
 
 
+def _meb_container_tls_command_patch(sts: api_client.V1StatefulSet) -> Optional[dict]:
+    containers = sts.spec.template.spec.containers or []
+    for container in containers:
+        if container.name != "meb":
+            continue
+
+        command = list(container.command or [])
+
+        def set_arg(flag: str, value: str) -> bool:
+            try:
+                index = command.index(flag)
+            except ValueError:
+                command.extend([flag, value])
+                return True
+
+            value_index = index + 1
+            if value_index >= len(command):
+                command.append(value)
+                return True
+            if command[value_index] == value:
+                return False
+            command[value_index] = value
+            return True
+
+        changed = set_arg("--ssl-cert", "/tls/server.pem")
+        changed = set_arg("--ssl-key", "/tls/server.key") or changed
+        if not changed:
+            return None
+
+        return {
+            "spec": {
+                "template": {
+                    "spec": {
+                        "containers": [{
+                            "name": "meb",
+                            "command": command,
+                        }],
+                    },
+                },
+            },
+        }
+
+    return None
+
+
+def ensure_meb_self_signed_tls_uptodate(clusters: List[InnoDBCluster], logger: Logger) -> None:
+    for cluster in clusters:
+        if cluster.deleting:
+            continue
+
+        try:
+            spec = cluster.parsed_spec
+            if not spec.tlsUseSelfSigned or all(
+                    not getattr(profile, 'meb', None)
+                    for profile in spec.backupProfiles):
+                continue
+
+            backup_objects.ensure_meb_tls_secret_is_current(cluster, logger)
+            sts = cluster.get_stateful_set()
+            if not sts:
+                continue
+
+            patch = _meb_container_tls_command_patch(sts)
+            if patch:
+                logger.info(
+                    "Patching MEB container TLS paths for %s/%s",
+                    cluster.namespace, cluster.name)
+                api_apps.patch_namespaced_stateful_set(
+                    sts.metadata.name, sts.metadata.namespace, body=patch)
+        except Exception as exc:
+            logger.warning(
+                "Error while ensuring %s/%s uses verifiable self-signed "
+                "MEB TLS: %s", cluster.namespace, cluster.name, exc)
+
+
 def ensure_router_accounts_are_uptodate(clusters: List[InnoDBCluster], logger: Logger) -> None:
     for cluster in clusters:
         router_objects.update_router_account(cluster,

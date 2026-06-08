@@ -31,6 +31,8 @@ common_gr_options = {
     "exitStateAction": "ABORT_SERVER"
 }
 
+READ_REPLICA_ROLE = "READ_REPLICA"
+
 def select_pod_with_most_gtids(gtids: Dict[int, str]) -> int:
     pod_indexes = list(gtids.keys())
     pod_indexes.sort(key = lambda a: mysqlutils.count_gtids(gtids[a]))
@@ -123,7 +125,10 @@ class ClusterController:
 
     def probe_member_status(self, pod: MySQLPod, session: 'ClassicSession', joined: bool, logger: Logger) -> None:
         # TODO use diagnose?
-        minfo = shellutils.query_membership_info(session)
+        if pod.instance_type == "read-replica":
+            minfo = self.probe_read_replica_status(pod, session, logger)
+        else:
+            minfo = shellutils.query_membership_info(session)
         member_id, role, status, view_id, version, mcount, rmcount = minfo
         logger.debug(
             f"instance probe: role={role} status={status} view_id={view_id} version={version} members={mcount} reachable_members={rmcount}")
@@ -136,6 +141,38 @@ class ClusterController:
             pod.update_member_readiness_gate("ready", False)
 
         return minfo
+
+    def probe_read_replica_status(self, pod: MySQLPod, session: 'ClassicSession', logger: Logger) -> tuple:
+        row = session.run_sql("SELECT @@server_uuid, @@version").fetch_one()
+        member_id = row[0] or ""
+        version = row[1] or ""
+        status = "OFFLINE"
+
+        if not self.dba_cluster:
+            self.connect_to_cluster(logger)
+        assert self.dba_cluster
+
+        try:
+            instance_info = diagnose.get_topology_instance_info(
+                self.dba_cluster.status({"extended": 1}), pod)
+        except RuntimeError as e:
+            e_str = str(e)
+            if "bad_alloc" in e_str or "std::bad_alloc" in e_str:
+                logger.warning(f"cluster.status() hit std::bad_alloc while probing read replica {pod.endpoint}: error={e}")
+            else:
+                logger.info(f"probe_read_replica_status: RuntimeError from status(): {e}")
+            raise
+        except mysqlsh.Error as e:
+            if shellutils.check_fatal(
+                    e, pod.endpoint_url_safe, "status()", logger):
+                raise
+            logger.info(f"cluster.status() failed while probing read replica {pod.endpoint}: error={e}")
+            raise
+
+        if instance_info:
+            status = instance_info.get("status") or "OFFLINE"
+
+        return member_id, READ_REPLICA_ROLE, status, "", version, None, None
 
     def connect_to_primary(self, primary_pod: MySQLPod, logger: Logger) -> 'Cluster':
         if primary_pod:

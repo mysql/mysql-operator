@@ -290,6 +290,20 @@ class CandidateStatus:
     bad_gtid_set: Optional[str] = None
 
 
+def get_topology_instance_info(cluster_status: dict, pod: MySQLPod) -> Optional[dict]:
+    topology = cluster_status["defaultReplicaSet"]["topology"]
+    if pod.instance_type == "group-member":
+        return topology.get(pod.endpoint)
+    elif pod.instance_type == "read-replica":
+        for info in topology.values():
+            for rr_member, rr_info in info.get("readReplicas", {}).items():
+                if rr_member == pod.endpoint:
+                    return rr_info
+        return None
+    else:
+        raise Exception(f"Unknown instance type for {pod.name}: {pod.instance_type}")
+
+
 def check_errant_gtids(primary_session: 'ClassicSession', pod: MySQLPod, pod_dba: 'Dba', logger) -> Optional[str]:
     try:
         gtid_set = pod_dba.session.run_sql(
@@ -353,8 +367,8 @@ def diagnose_cluster_candidate(primary_session: 'ClassicSession', cluster: 'Clus
         # TODO disable queryMembers
         is_member = False
         try:
-            topology = cluster.status()["defaultReplicaSet"]["topology"]
-            is_member = pod.endpoint in topology.keys()
+            is_member = get_topology_instance_info(
+                cluster.status({"extended": 1}), pod) is not None
         except RuntimeError as e:
             e_str = str(e)
             if "bad_alloc" in e_str or "std::bad_alloc" in e_str:

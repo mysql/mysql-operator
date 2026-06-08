@@ -38,13 +38,13 @@ def _clear_stubbed_modules():
         sys.modules.pop(module_name, None)
 
 
-def _install_common_stubs():
+def _ensure_repo_on_path():
     repo_root = pathlib.Path(__file__).resolve().parents[2]
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
 
-    _clear_stubbed_modules()
 
+def _install_mysqlsh_stub():
     class FakeMysqlshError(Exception):
         def __init__(self, code=0, msg=""):
             super().__init__(msg)
@@ -72,7 +72,10 @@ def _install_common_stubs():
         shell=types.SimpleNamespace(parse_uri=lambda uri: {}, unparse_uri=lambda uri: "")
     )
     sys.modules["mysqlsh"] = mysqlsh_stub
+    return mysqlsh_stub
 
+
+def _install_kopf_stub():
     class TemporaryError(Exception):
         def __init__(self, msg="", delay=None):
             super().__init__(msg)
@@ -92,6 +95,8 @@ def _install_common_stubs():
     bodies_stub.Body = dict
     sys.modules["kopf._cogs.structs.bodies"] = bodies_stub
 
+
+def _install_kubernetes_stub():
     class ApiException(Exception):
         def __init__(self, status=None):
             super().__init__(f"status={status}")
@@ -103,6 +108,8 @@ def _install_common_stubs():
     kubernetes_rest_stub.ApiException = ApiException
     sys.modules["kubernetes.client.rest"] = kubernetes_rest_stub
 
+
+def _install_cluster_api_stub():
     cluster_api_stub = types.ModuleType(
         "mysqloperator.controller.innodbcluster.cluster_api"
     )
@@ -111,6 +118,8 @@ def _install_common_stubs():
     cluster_api_stub.client = types.SimpleNamespace()
     sys.modules["mysqloperator.controller.innodbcluster.cluster_api"] = cluster_api_stub
 
+
+def _install_controller_dependency_stubs():
     shellutils_stub = types.ModuleType("mysqloperator.controller.shellutils")
     shellutils_stub.check_fatal = lambda *args, **kwargs: False
     shellutils_stub.check_fatal_connect = lambda *args, **kwargs: False
@@ -136,6 +145,15 @@ def _install_common_stubs():
     ]:
         sys.modules[module_name] = types.ModuleType(module_name)
 
+
+def _install_common_stubs():
+    _ensure_repo_on_path()
+    _clear_stubbed_modules()
+    mysqlsh_stub = _install_mysqlsh_stub()
+    _install_kopf_stub()
+    _install_kubernetes_stub()
+    _install_cluster_api_stub()
+    _install_controller_dependency_stubs()
     return mysqlsh_stub
 
 

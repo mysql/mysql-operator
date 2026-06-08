@@ -31,6 +31,7 @@ common_gr_options = {
     "exitStateAction": "ABORT_SERVER"
 }
 
+# Synthetic role used for pod labels/annotations; async read replicas are not GR members.
 READ_REPLICA_ROLE = "READ_REPLICA"
 
 def select_pod_with_most_gtids(gtids: Dict[int, str]) -> int:

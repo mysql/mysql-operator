@@ -1,0 +1,142 @@
+#!/bin/bash
+# Copyright (c) 2026, Oracle and/or its affiliates.
+#
+# Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
+#
+
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+basedir="$(cd "$script_dir/.." && pwd)"
+python="${PYTHON:-python3}"
+case "$python" in
+    */*)
+        python="$(cd "$(dirname "$python")" && pwd)/$(basename "$python")"
+        ;;
+esac
+export PYTHON="$python"
+
+if [ -z "${DOCKER_HOST:-}" ] && [ -n "${HOME:-}" ] && [ -S "$HOME/.rd/docker.sock" ]; then
+    export DOCKER_HOST="unix://$HOME/.rd/docker.sock"
+fi
+
+clusters="${TEST_CLUSTERS:-${OPERATOR_CLUSTERS_COUNT:-4}}"
+defer="${TEST_WORKERS_DEFER:-${WORKERS_DEFER:-45}}"
+node_memory="${TEST_NODE_MEMORY:-${OPERATOR_NODE_MEMORY:-20000}}"
+tag="${TEST_TAG:-ote-mysql-k3d-$(date +%Y%m%d-%H%M%S)}"
+work_dir=""
+helm_path="${OPERATOR_TEST_HELM_PATH:-$basedir/helm}"
+deploy_path="${OPERATOR_TEST_DEPLOY_PATH:-$basedir/deploy}"
+deploy_historic_path="${OPERATOR_TEST_DEPLOY_HISTORIC_PATH:-}"
+cfg_path="${TEST_K3D_REGISTRIES_PATH:-${OPERATOR_TEST_K3D_REGISTRIES_PATH:-$script_dir/k3d-registries.yaml}}"
+
+has_historic_deploy_path() {
+    local candidate="$1"
+    local release
+
+    [ -d "$candidate" ] || return 1
+
+    for release in "$candidate"/*; do
+        [ -d "$release" ] || continue
+        case "$(basename "$release")" in
+            *.*.*-*.*.*)
+                ;;
+            *)
+                continue
+                ;;
+        esac
+        if [ -f "$release/deploy-operator.yaml" ] || [ -f "$release/deploy/deploy-operator.yaml" ]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+for arg in "$@"; do
+    case "$arg" in
+        --clusters=*)
+            clusters="${arg#*=}"
+            ;;
+        --defer=*)
+            defer="${arg#*=}"
+            ;;
+        --node-memory=*)
+            node_memory="${arg#*=}"
+            ;;
+        --tag=*)
+            tag="${arg#*=}"
+            ;;
+        --work-dir=*|--workdir=*)
+            work_dir="${arg#*=}"
+            ;;
+        --cfg-path=*)
+            cfg_path="${arg#*=}"
+            ;;
+    esac
+done
+
+if [ ! -f "$cfg_path" ]; then
+    echo "Missing k3d registry config: $cfg_path" >&2
+    echo "Create it locally or pass --cfg-path=/path/to/k3d-registries.yaml." >&2
+    exit 1
+fi
+
+work_dir="${work_dir:-${TEST_WORK_DIR:-/tmp/$tag}}"
+
+mkdir -p "$work_dir"
+work_dir="$(cd "$work_dir" && pwd)"
+
+if [ -z "$deploy_historic_path" ]; then
+    for candidate in \
+        "$basedir/deploy-historic" \
+        "$basedir/historic-deploy" \
+        "$(dirname "$helm_path")/deploy-historic" \
+        "$(dirname "$helm_path")/historic-deploy" \
+        "$(dirname "$helm_path")"; do
+        if has_historic_deploy_path "$candidate"; then
+            deploy_historic_path="$candidate"
+            break
+        fi
+    done
+fi
+
+export OPERATOR_TEST_HELM_PATH="$helm_path"
+export OPERATOR_TEST_DEPLOY_PATH="$deploy_path"
+if [ -n "$deploy_historic_path" ]; then
+    export OPERATOR_TEST_DEPLOY_HISTORIC_PATH="$deploy_historic_path"
+fi
+
+path_args=(
+    --helm-path="$helm_path"
+    --deploy-path="$deploy_path"
+)
+if [ -n "$deploy_historic_path" ]; then
+    path_args+=(--deploy-historic-path="$deploy_historic_path")
+fi
+
+if [ -z "${KUBECONFIG:-}" ]; then
+    export KUBECONFIG="$work_dir/kubeconfig"
+fi
+
+set -- \
+    --env=k3d \
+    --clusters="$clusters" \
+    --defer="$defer" \
+    --tag="$tag" \
+    --work-dir="$work_dir" \
+    --expected-failures="$script_dir/ci/expected-failures.txt" \
+    --xml \
+    --node-memory="$node_memory" \
+    --cfg-path="$cfg_path" \
+    --registry=container-registry.oracle.com \
+    --repository=mysql \
+    --mount-operator \
+    "${path_args[@]}" \
+    --skip-enterprise \
+    --skip-oci \
+    --skip-s3 \
+    --skip-azure \
+    -vv \
+    --dkube \
+    "$@"
+
+exec "$python" "$script_dir/dist_run_e2e_tests.py" "$@"

@@ -1,4 +1,4 @@
-# Copyright (c) 2023, Oracle and/or its affiliates.
+# Copyright (c) 2023, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -7,10 +7,10 @@ import pytest
 from typing import Dict, Callable, List, Any
 from logging import getLogger, Logger
 import copy
-from .controller.innodbcluster.logs.logs_types_api import GeneralLogSpec, ErrorLogSpec, SlowQueryLogSpec
-from .controller.innodbcluster.logs.logs_api import LogsSpec, LogCollectorSpec, ServerLogType
-from .controller.innodbcluster.logs.logs_collector_fluentd_api import FluentdSpec, FluentdMysqlLogSpec, FluentdRecordAugmentationSpec
-from .controller.api_utils import ApiSpecError
+from mysqloperator.controller.innodbcluster.logs.logs_types_api import GeneralLogSpec, ErrorLogSpec, SlowQueryLogSpec
+from mysqloperator.controller.innodbcluster.logs.logs_api import LogsSpec, LogCollectorSpec, ServerLogType
+from mysqloperator.controller.innodbcluster.logs.logs_collector_fluentd_api import FluentdSpec, FluentdMysqlLogSpec, FluentdRecordAugmentationSpec
+from mysqloperator.controller.api_utils import ApiSpecError
 
 
 @pytest.fixture
@@ -75,10 +75,10 @@ def test_general_log_spec(general_log_factory: Callable[[], GeneralLogSpec],
 general_log=1
 general_log_file={test_obj.fileName}"""
     }
-    sts = {"spec": {"template": {"spec" : { "containers": []}}}}
+    sts = {"spec": {"template": {"spec" : { "containers": [], "volumes": []}}}}
     container_name = "mysql"
     cm_name = "ourcluster-logs-config"
-    test_obj.add_to_sts_spec(sts, container_name, cm_name, logger)
+    test_obj.add_to_sts_spec(sts, None, container_name, cm_name, True, logger)
     assert sts == { "spec":{ "template":{ "spec": {
         "containers":[
                 {
@@ -123,10 +123,10 @@ general_log_file={test_obj.fileName}"""
 [mysqld]
 general_log=0"""
     }
-    sts = {"spec": {"template": {"spec" : { "containers": []}}}}
+    sts = {"spec": {"template": {"spec" : { "containers": [], "volumes": []}}}}
     container_name = "mysql"
     cm_name = "ourcluster-logs-config"
-    test_obj.add_to_sts_spec(sts, container_name, cm_name, logger)
+    test_obj.add_to_sts_spec(sts, None, container_name, cm_name, True, logger)
     assert sts == {"spec": { "template": { "spec": {
             "containers":[
                {
@@ -171,10 +171,10 @@ general_log=0"""
 general_log=1
 general_log_file={test_obj.fileName}"""
     }
-    sts = {"spec": {"template": {"spec" : { "containers": []}}}}
+    sts = {"spec": {"template": {"spec" : { "containers": [], "volumes": []}}}}
     container_name = "mysql"
     cm_name = "ourcluster-logs-config"
-    test_obj.add_to_sts_spec(sts, container_name, cm_name, logger)
+    test_obj.add_to_sts_spec(sts, None, container_name, cm_name, True, logger)
     assert sts == {"spec": { "template": { "spec": {
             "containers":[
                {
@@ -274,10 +274,10 @@ slow_query_log=1
 slow_query_log_file='{test_obj.fileName}'
 log_slow_admin_statements=1"""
     }
-    sts = {"spec": {"template": {"spec" : { "containers": []}}}}
+    sts = {"spec": {"template": {"spec" : { "containers": [], "volumes": []}}}}
     container_name = "mysql"
     cm_name = "ourcluster-logs-config"
-    test_obj.add_to_sts_spec(sts, container_name, cm_name, logger)
+    test_obj.add_to_sts_spec(sts, None, container_name, cm_name, True, logger)
     assert sts == {"spec": { "template": { "spec": {
             "containers":[
                {
@@ -321,10 +321,10 @@ log_slow_admin_statements=1"""
 [mysqld]
 slow_query_log=0"""
     }
-    sts = {"spec": {"template": {"spec" : { "containers": []}}}}
+    sts = {"spec": {"template": {"spec" : { "containers": [], "volumes": []}}}}
     container_name = "mysql"
     cm_name = "ourcluster-logs-config"
-    test_obj.add_to_sts_spec(sts, container_name, cm_name, logger)
+    test_obj.add_to_sts_spec(sts, None, container_name, cm_name, True, logger)
     assert sts == {"spec": { "template": { "spec": {
             "containers":[
                {
@@ -372,10 +372,10 @@ slow_query_log_file='{test_obj.fileName}'
 log_slow_admin_statements=1
 long_query_time=2.5"""
     }
-    sts = {"spec": {"template": {"spec" : { "containers": []}}}}
+    sts = {"spec": {"template": {"spec" : { "containers": [], "volumes": []}}}}
     container_name = "mysql"
     cm_name = "ourcluster-logs-config"
-    test_obj.add_to_sts_spec(sts, container_name, cm_name, logger)
+    test_obj.add_to_sts_spec(sts, None, container_name, cm_name, True, logger)
     assert sts == {"spec": { "template": { "spec": {
             "containers":[
                {
@@ -454,10 +454,10 @@ log_error_verbosity=3
 log_error='{(test_obj.error_log_name)}'
 log_error_services='log_sink_json'"""
     }
-    sts = {"spec": {"template": {"spec" : { "containers": []}}}}
+    sts = {"spec": {"template": {"spec" : { "containers": [], "volumes": []}}}}
     container_name = "mysql"
     cm_name = "ourcluster-logs-config"
-    test_obj.add_to_sts_spec(sts, container_name, cm_name, logger)
+    test_obj.add_to_sts_spec(sts, None, container_name, cm_name, True, logger)
     assert sts == {"spec": { "template": { "spec": {
             "containers":[
                {
@@ -493,10 +493,10 @@ log_error_services='log_sink_json'"""
     test_obj.parse(fixture, prefix, logger)
     assert test_obj.collect == fixture["collect"]
     test_obj.validate()
-    sts = {"spec": {"template": {"spec" : { "containers": []}}}}
+    sts = {"spec": {"template": {"spec" : { "containers": [], "volumes": []}}}}
     container_name = "mysql"
     cm_name = "ourcluster-logs-config"
-    test_obj.add_to_sts_spec(sts, container_name, cm_name, logger)
+    test_obj.add_to_sts_spec(sts, None, container_name, cm_name, True, logger)
     assert sts == {"spec": { "template": { "spec": {
             "containers":[
                {
@@ -744,11 +744,11 @@ def test_logs_spec(logs_spec_factory: Callable[[], LogsSpec],
     assert isinstance(test_obj.collector, LogCollectorSpec)
     get_configmaps_cb = test_obj.get_configmaps_cb()
     cm_prefix = '42'
-    cm = get_configmaps_cb(cm_prefix, logger)
-    sts = {"spec": {"template" : { "spec": {}}}}
+    cm = [configmap for _, configmap in get_configmaps_cb(cm_prefix, logger)]
+    sts = {"spec": {"template" : { "spec": { "containers": [], "volumes": []}}}}
     add_to_sts = test_obj.get_add_to_sts_cb()
     with pytest.raises(ApiSpecError, match=f"No collector configured") as e_info:
-        add_to_sts(sts, logger)
+        add_to_sts(sts, None, logger)
 
     fixture = logs_spec2
     test_obj = logs_spec_factory()
@@ -770,7 +770,7 @@ def test_logs_spec(logs_spec_factory: Callable[[], LogsSpec],
     assert isinstance(test_obj.collector.collector, FluentdSpec)
     get_configmaps_cb = test_obj.get_configmaps_cb()
     cm_prefix = '42'
-    cm = get_configmaps_cb(cm_prefix, logger)
+    cm = [configmap for _, configmap in get_configmaps_cb(cm_prefix, logger)]
     print(cm)
     assert cm == [
         {
@@ -896,9 +896,9 @@ def test_logs_spec(logs_spec_factory: Callable[[], LogsSpec],
             }
         }
     ]
-    sts = {"spec": {"template" : { "spec": {}}}}
+    sts = {"spec": {"template" : { "spec": { "containers": [], "volumes": []}}}}
     add_to_sts = test_obj.get_add_to_sts_cb()
-    add_to_sts(sts, logger)
+    add_to_sts(sts, None, logger)
     assert sts == {
         "spec":{
             "template":{
@@ -1005,7 +1005,7 @@ def test_logs_spec(logs_spec_factory: Callable[[], LogsSpec],
     }
     get_configmaps = test_obj.get_configmaps_cb()
     cm_prefix = ''
-    configmaps = get_configmaps(cm_prefix, logger)
+    configmaps = [configmap for _, configmap in get_configmaps(cm_prefix, logger)]
     assert configmaps == logs_spec4_configmaps
 
     fixture = logs_spec4

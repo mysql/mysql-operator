@@ -1,17 +1,17 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
 import pytest
 import copy
-from .controller import consts, utils, config, shellutils
-from .controller.storage_api import StorageSpec, OCIOSStorageSpec, PVCStorageSpec
-from .controller.api_utils import ApiSpecError
-from .controller.backup.backup_api import Snapshot, DumpInstance
-from .controller.backup import backup_objects
+from mysqloperator.controller import consts, utils, config, shellutils
+from mysqloperator.controller.storage_api import StorageSpec, OCIOSStorageSpec, PVCStorageSpec
+from mysqloperator.controller.api_utils import ApiSpecError
+from mysqloperator.controller.backup.backup_api import Snapshot, DumpInstance
+from mysqloperator.controller.backup import backup_objects
 
-#from .controller.innodbcluster.cluster_api import InnoDBCluster
+#from mysqloperator.controller.innodbcluster.cluster_api import InnoDBCluster
 #import logging
 
 @pytest.fixture

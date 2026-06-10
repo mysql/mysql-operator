@@ -1,15 +1,15 @@
-# Copyright (c) 2023, Oracle and/or its affiliates.
+# Copyright (c) 2023, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
 import pytest
 import copy
-from .controller import consts, utils, config, shellutils
-from .controller.storage_api import StorageSpec, OCIOSStorageSpec, PVCStorageSpec
-from .controller.api_utils import ApiSpecError
-from .controller.backup.backup_api import MySQLBackupSpec, BackupProfile
-from .controller.backup import backup_objects
+from mysqloperator.controller import consts, utils, config, shellutils
+from mysqloperator.controller.storage_api import StorageSpec, OCIOSStorageSpec, PVCStorageSpec
+from mysqloperator.controller.api_utils import ApiSpecError
+from mysqloperator.controller.backup.backup_api import MySQLBackupSpec, BackupProfile
+from mysqloperator.controller.backup import backup_objects
 
 
 @pytest.fixture
@@ -37,4 +37,3 @@ def test_mysql_backup_spec_correct(mysql_backup_spec_correct) -> None:
 
     assert test_obj.cluster == "mycluster"
     assert isinstance(test_obj.backupProfile, BackupProfile)
-

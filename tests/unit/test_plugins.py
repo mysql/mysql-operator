@@ -47,14 +47,13 @@ def _load_plugins_module():
     return module, FakeMySQLShError
 
 
-def test_udf_install_statements_omit_if_not_exists():
+def test_udf_install_statements_are_idempotent():
     plugins, _ = _load_plugins_module()
 
     udf_statements = plugins.SQL_INSTALL_MASKING_UDF[1:] + plugins.SQL_INSTALL_KEYRING_UDF[1:]
 
     assert udf_statements
-    assert all(stmt.startswith("CREATE FUNCTION ") for stmt in udf_statements)
-    assert all("IF NOT EXISTS" not in stmt for stmt in udf_statements)
+    assert all(stmt.startswith("CREATE FUNCTION IF NOT EXISTS ") for stmt in udf_statements)
 
 
 def test_run_plugin_sql_ignores_existing_udf_errors():

@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -486,7 +486,7 @@ class OperatorTest(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         try:
-            kutil.delete_pvc(cls.ns, None)
+            kutil.delete_pvc(cls.ns, None, wait=False)
 
             leftovers = kutil.ls_all_raw(cls.ns)
             if leftovers:

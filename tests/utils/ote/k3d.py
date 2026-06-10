@@ -8,6 +8,7 @@ import os
 from string import Template
 import subprocess
 from tempfile import mkstemp
+import time
 from setup.config import g_ts_cfg
 
 
@@ -71,16 +72,48 @@ class K3dEnvironment(BaseEnvironment):
         args += self.add_proxy_env("NO_PROXY")
 
         print(f"starting cluster: {args}")
-        subprocess.check_call(args)
+        self.create_cluster(args, nodes or 1)
 
         # connect network of the cluster to the local image registry
         if g_ts_cfg.image_registry:
             subprocess.call(["docker", "network", "connect", g_ts_cfg.k8s_context, g_ts_cfg.image_registry_host])
 
+    def wait_for_nodes_ready(self, expected_nodes, timeout=300):
+        deadline = time.monotonic() + timeout
+        cmd = [g_ts_cfg.kubectl_path, f"--context={g_ts_cfg.k8s_context}", "get", "nodes", "--no-headers"]
+        last_output = ""
+
+        while time.monotonic() < deadline:
+            result = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            last_output = result.stdout.strip()
+            if result.returncode == 0:
+                nodes = [line.split() for line in last_output.splitlines() if line.strip()]
+                ready_nodes = [node for node in nodes if len(node) > 1 and node[1] == "Ready"]
+                if len(ready_nodes) >= expected_nodes:
+                    return
+            time.sleep(2)
+
+        raise TimeoutError(
+            f"timed out waiting for {expected_nodes} k3d node(s) to become Ready; last output: {last_output}"
+        )
+
     def add_proxy_env(self, envar):
         if envar in os.environ:
             return ["--env", f'{envar}={os.getenv(envar)}@', "--env", f'{envar.lower()}={os.getenv(envar)}@']
         return []
+
+    def create_cluster(self, args, expected_nodes, attempts=3):
+        for attempt in range(1, attempts + 1):
+            try:
+                subprocess.check_call(args)
+                self.wait_for_nodes_ready(expected_nodes)
+                return
+            except (subprocess.CalledProcessError, TimeoutError):
+                if attempt == attempts:
+                    raise
+                print(f"k3d cluster create failed; retrying ({attempt}/{attempts})")
+                subprocess.call([g_ts_cfg.env_binary_path, "cluster", "delete", g_ts_cfg.k8s_cluster])
+                time.sleep(10)
 
     def stop_cluster(self):
         args = [g_ts_cfg.env_binary_path, "cluster", "stop", g_ts_cfg.k8s_cluster]

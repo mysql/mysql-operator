@@ -1,0 +1,23 @@
+#!/bin/bash
+# Copyright (c) 2026, Oracle and/or its affiliates.
+#
+# Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
+#
+
+export TESTPOD_NAME=testpod
+
+export NAMESPACE=mysql-operator
+
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+basedir="$(cd "$script_dir/.." && pwd)"
+tests_dir="$basedir/tests"
+python="${PYTHON:-python3}"
+
+export OPERATOR_TEST_HELM_PATH="${OPERATOR_TEST_HELM_PATH:-$script_dir/helm}"
+export OPERATOR_TEST_DEPLOY_PATH="${OPERATOR_TEST_DEPLOY_PATH:-$script_dir/deploy}"
+export PYTHONPATH="$basedir:$tests_dir${PYTHONPATH:+:$PYTHONPATH}"
+
+"$python" "$tests_dir/run_e2e_tests.py" run --enterprise-operator=true "$@"
+rc=$?
+echo "Tests finished. rc=$rc"
+exit "$rc"

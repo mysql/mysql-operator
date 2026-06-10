@@ -2,3 +2,4 @@
 __pycache__
 .vscode
 /Dockerfile
+tests/k3d-registries.yaml

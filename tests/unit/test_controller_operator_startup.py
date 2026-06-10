@@ -22,6 +22,7 @@ def cleanup_controller_operator_modules():
         "mysqloperator.controller.utils",
         "mysqloperator.controller.consts",
         "mysqloperator.controller.group_monitor",
+        "mysqloperator.controller.kubeutils",
         "mysqloperator.controller.watched_namespaces",
         "mysqloperator.controller.backup",
         "mysqloperator.controller.backup.operator_backup",
@@ -43,6 +44,7 @@ def _load_controller_operator_module():
         "mysqloperator.controller.utils",
         "mysqloperator.controller.consts",
         "mysqloperator.controller.group_monitor",
+        "mysqloperator.controller.kubeutils",
         "mysqloperator.controller.watched_namespaces",
         "mysqloperator.controller.backup",
         "mysqloperator.controller.backup.operator_backup",
@@ -86,6 +88,21 @@ def _load_controller_operator_module():
         _thread_started=False,
     )
     sys.modules["mysqloperator.controller.group_monitor"] = group_monitor_stub
+
+    kubeutils_stub = types.ModuleType("mysqloperator.controller.kubeutils")
+
+    class ApiException(Exception):
+        def __init__(self, status=None, body=""):
+            super().__init__(f"status={status}")
+            self.status = status
+            self.body = body
+
+    kubeutils_stub.ApiException = ApiException
+    kubeutils_stub.is_ignorable_event_post_error = lambda exc: (
+        exc.status == 404
+        or (exc.status == 403 and "NamespaceTerminating" in (exc.body or ""))
+    )
+    sys.modules["mysqloperator.controller.kubeutils"] = kubeutils_stub
 
     watched_namespaces_stub = types.ModuleType(
         "mysqloperator.controller.watched_namespaces"
@@ -131,6 +148,12 @@ def _load_controller_operator_module():
     operator_cluster_stub.ensure_backup_schedules_use_current_image = (
         lambda clusters, logger: None
     )
+    operator_cluster_stub.ensure_backup_auth_secrets_are_uptodate = (
+        lambda clusters, logger: None
+    )
+    operator_cluster_stub.ensure_sidecar_rbac_uptodate = (
+        lambda clusters, logger: None
+    )
     operator_cluster_stub.ensure_switchover_rbac_uptodate = (
         lambda clusters, logger: None
     )
@@ -148,17 +171,23 @@ def _load_controller_operator_module():
         operator_cluster_stub
     )
 
-    return importlib.import_module("mysqloperator.controller.operator")
+    module = importlib.import_module("mysqloperator.controller.operator")
+    module.utils.log_banner = lambda *args, **kwargs: None
+    module.config.log_config_banner = lambda logger: None
+    return module
 
 
 class _FakeCluster:
-    def __init__(self, namespace: str, name: str):
+    def __init__(self, namespace: str, name: str, info_exception=None):
         self.namespace = namespace
         self.name = name
+        self.info_exception = info_exception
         self.info_calls = []
 
     def info(self, **kwargs):
         self.info_calls.append(kwargs)
+        if self.info_exception:
+            raise self.info_exception
 
 
 class _FakeLogger:
@@ -185,6 +214,16 @@ def test_on_startup_blocks_follow_up_steps_when_switchover_rbac_repair_fails(
         operator_module.operator_cluster,
         "ensure_backup_schedules_use_current_image",
         lambda clusters, logger: call_order.append("backup"),
+    )
+    monkeypatch.setattr(
+        operator_module.operator_cluster,
+        "ensure_backup_auth_secrets_are_uptodate",
+        lambda clusters, logger: call_order.append("backup_auth"),
+    )
+    monkeypatch.setattr(
+        operator_module.operator_cluster,
+        "ensure_sidecar_rbac_uptodate",
+        lambda clusters, logger: call_order.append("sidecar"),
     )
 
     def fail_switchover(clusters, logger):
@@ -230,7 +269,7 @@ def test_on_startup_blocks_follow_up_steps_when_switchover_rbac_repair_fails(
     with pytest.raises(RuntimeError, match="startup switchover failed"):
         operator_module.on_startup(settings, logger)
 
-    assert call_order == ["backup", "switchover"]
+    assert call_order == ["backup", "backup_auth", "sidecar", "switchover"]
     assert group_monitor_starts == []
     assert ready_file.exists() is False
     assert clusters[0].info_calls == []
@@ -257,6 +296,16 @@ def test_on_startup_emits_operator_restarted_only_after_success(
         operator_module.operator_cluster,
         "ensure_backup_schedules_use_current_image",
         lambda clusters, logger: call_order.append("backup"),
+    )
+    monkeypatch.setattr(
+        operator_module.operator_cluster,
+        "ensure_backup_auth_secrets_are_uptodate",
+        lambda clusters, logger: call_order.append("backup_auth"),
+    )
+    monkeypatch.setattr(
+        operator_module.operator_cluster,
+        "ensure_sidecar_rbac_uptodate",
+        lambda clusters, logger: call_order.append("sidecar"),
     )
     monkeypatch.setattr(
         operator_module.operator_cluster,
@@ -298,6 +347,8 @@ def test_on_startup_emits_operator_restarted_only_after_success(
 
     assert call_order == [
         "backup",
+        "backup_auth",
+        "sidecar",
         "switchover",
         "meb",
         "monitor",
@@ -320,3 +371,98 @@ def test_on_startup_emits_operator_restarted_only_after_success(
                 ),
             }
         ]
+
+
+def test_on_startup_ignores_operator_restarted_event_for_terminating_namespace(
+    monkeypatch,
+    tmp_path,
+):
+    operator_module = _load_controller_operator_module()
+    terminating_event_error = operator_module.ApiException(
+        status=403,
+        body=(
+            '{"reason":"Forbidden","details":{"causes":[{"reason":'
+            '"NamespaceTerminating"}]}}'
+        ),
+    )
+    clusters = [
+        _FakeCluster("terminating-ns", "cluster-a", terminating_event_error),
+        _FakeCluster("live-ns", "cluster-b"),
+    ]
+    call_order = []
+    group_monitor_starts = []
+    warnings = []
+    ready_file = tmp_path / "mysql-operator-ready"
+
+    monkeypatch.setattr(operator_module, "READY_FILE", ready_file)
+    monkeypatch.setattr(operator_module, "get_startup_clusters", lambda: clusters)
+    monkeypatch.setattr(
+        operator_module.operator_cluster,
+        "ensure_backup_schedules_use_current_image",
+        lambda clusters, logger: call_order.append("backup"),
+    )
+    monkeypatch.setattr(
+        operator_module.operator_cluster,
+        "ensure_backup_auth_secrets_are_uptodate",
+        lambda clusters, logger: call_order.append("backup_auth"),
+    )
+    monkeypatch.setattr(
+        operator_module.operator_cluster,
+        "ensure_sidecar_rbac_uptodate",
+        lambda clusters, logger: call_order.append("sidecar"),
+    )
+    monkeypatch.setattr(
+        operator_module.operator_cluster,
+        "ensure_switchover_rbac_uptodate",
+        lambda clusters, logger: call_order.append("switchover"),
+    )
+    monkeypatch.setattr(
+        operator_module.operator_cluster,
+        "ensure_meb_self_signed_tls_uptodate",
+        lambda clusters, logger: call_order.append("meb"),
+    )
+    monkeypatch.setattr(
+        operator_module.operator_cluster,
+        "monitor_existing_clusters",
+        lambda clusters, logger: call_order.append("monitor"),
+    )
+    monkeypatch.setattr(
+        operator_module.operator_cluster,
+        "refresh_existing_cluster_status",
+        lambda clusters, logger: call_order.append("refresh"),
+    )
+    monkeypatch.setattr(
+        operator_module.operator_cluster,
+        "ensure_router_accounts_are_uptodate",
+        lambda clusters, logger: call_order.append("router"),
+    )
+    monkeypatch.setattr(
+        operator_module.g_group_monitor,
+        "start",
+        lambda: group_monitor_starts.append("started"),
+    )
+
+    settings = types.SimpleNamespace(
+        posting=types.SimpleNamespace(level=None, enabled=None)
+    )
+    logger = _FakeLogger()
+    logger.warning = lambda *args, **kwargs: warnings.append(args)
+
+    operator_module.on_startup(settings, logger)
+
+    assert call_order == [
+        "backup",
+        "backup_auth",
+        "sidecar",
+        "switchover",
+        "meb",
+        "monitor",
+        "refresh",
+        "router",
+    ]
+    assert group_monitor_starts == ["started"]
+    assert ready_file.exists() is True
+    assert len(warnings) == 1
+    assert "Skipping operator restart event" in warnings[0][0]
+    assert len(clusters[0].info_calls) == 1
+    assert len(clusters[1].info_calls) == 1

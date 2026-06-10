@@ -22,6 +22,8 @@ from .backup import operator_backup
 # def on_login(**kwargs):
 #     return kopf.login_via_client(**kwargs)
 
+from .kubeutils import ApiException, is_ignorable_event_post_error
+
 
 READY_FILE = Path("/tmp/mysql-operator-ready")
 
@@ -47,6 +49,8 @@ def on_startup(settings: kopf.OperatorSettings, logger: Logger, *args, **_):
     logger.info(f"CLUSTERS={[f'{cluster.namespace}/{cluster.name}' for cluster in clusters]}")
 
     operator_cluster.ensure_backup_schedules_use_current_image(clusters, logger)
+    operator_cluster.ensure_backup_auth_secrets_are_uptodate(clusters, logger)
+    operator_cluster.ensure_sidecar_rbac_uptodate(clusters, logger)
     operator_cluster.ensure_switchover_rbac_uptodate(clusters, logger)
     operator_cluster.ensure_meb_self_signed_tls_uptodate(clusters, logger)
     operator_cluster.monitor_existing_clusters(clusters, logger)
@@ -54,11 +58,21 @@ def on_startup(settings: kopf.OperatorSettings, logger: Logger, *args, **_):
     operator_cluster.ensure_router_accounts_are_uptodate(clusters, logger)
 
     for cluster in clusters:
-        cluster.info(
-            action="HandlingOperatorRestart",
-            reason="OperatorRestarted",
-            message=f"Handling operator restarted for cluster {cluster.namespace}/{cluster.name}",
-        )
+        try:
+            cluster.info(
+                action="HandlingOperatorRestart",
+                reason="OperatorRestarted",
+                message=f"Handling operator restarted for cluster {cluster.namespace}/{cluster.name}",
+            )
+        except ApiException as exc:
+            if not is_ignorable_event_post_error(exc):
+                raise
+            logger.warning(
+                "Skipping operator restart event for %s/%s: %s",
+                cluster.namespace,
+                cluster.name,
+                exc,
+            )
 
     g_group_monitor.start()
 

@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -129,7 +129,7 @@ class BaseEnvironment:
         sc_name = "local-path-shared"
         scs = kutil.ls_sc()
         print(f"Installed storage classes: {[sc['NAME'] for sc in scs]}")
-        scs = kutil.ls_sc(f"{sc_name}\s*.*")
+        scs = kutil.ls_sc(f"{sc_name}\\s*.*")
         if len(scs) > 1:
             raise Exception(f"Multiple StorageClass instances of {sc_name}?\n{scs}")
         return False if len(scs) == 0 else (scs[0]["NAME"].find("(default)") != -1)

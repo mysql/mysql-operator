@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -47,6 +47,12 @@ def setup_logging(verbose: bool):
     logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO,
                         stream=sys.stdout,
                         format="\033[1;34m%(asctime)s  %(name)-10s  [%(levelname)-8s]\033[0m   %(message)s")
+
+
+def get_test_result_exit_code(result) -> int:
+    if result is None:
+        return 0
+    return 0 if result.wasSuccessful() else 1
 
 
 def parse_filter(f: str) -> Tuple[list, list]:
@@ -240,7 +246,7 @@ if __name__ == '__main__':
     opt_verbose = False
     opt_debug = False
     opt_verbosity = 2
-    opt_nodes = None
+    opt_cluster_node_count = None
     opt_node_memory = None
     opt_kube_version = None
     opt_setup = True
@@ -273,7 +279,7 @@ if __name__ == '__main__':
         elif arg.startswith("--kubectl-path="):
             g_ts_cfg.kubectl_path = arg.partition("=")[-1]
         elif arg.startswith("--nodes="):
-            opt_nodes = int(arg.split("=")[-1])
+            opt_cluster_node_count = int(arg.split("=")[-1])
         elif arg.startswith("--node-memory="):
             opt_node_memory = int(arg.split("=")[-1])
         elif arg.startswith("--ip-family="):
@@ -448,7 +454,32 @@ if __name__ == '__main__':
             opt_include += inc
             opt_exclude += exc
 
+    env_cluster_node_count = os.getenv("OPERATOR_TEST_CLUSTER_NODE_COUNT")
+    if env_cluster_node_count and opt_cluster_node_count is None:
+        try:
+            opt_cluster_node_count = int(env_cluster_node_count)
+        except ValueError:
+            raise SystemExit(
+                "OPERATOR_TEST_CLUSTER_NODE_COUNT must be an integer"
+            )
+
     g_ts_cfg.commit()
+
+    if cmd == "clean":
+        setup_logging(opt_verbose)
+        print(g_ts_cfg)
+        print(
+            f"Using environment {g_ts_cfg.env} with kubernetes version {opt_kube_version or 'latest'}...")
+
+        with get_driver(g_ts_cfg.env) as driver:
+            if not g_ts_cfg.k8s_context:
+                g_ts_cfg.k8s_context = driver.resolve_context(g_ts_cfg.k8s_cluster)
+            try:
+                driver.destroy()
+            finally:
+                driver._setup = False
+        sys.exit(0)
+
     validate_helm_tests()
     print_deploy_mount_trees(basedir)
 
@@ -471,6 +502,10 @@ if __name__ == '__main__':
         print("No tests matched")
         sys.exit(0)
 
+    if cmd == "run" and opt_cluster_node_count is None and testsuite.suite_requires_multi_node_cluster(suites):
+        opt_cluster_node_count = 3
+        print("Selected suite includes multi-node tests; provisioning a 3-node cluster")
+
     if cmd == "list":
         print("Listing tests and exiting...")
         print(f"Count={suites.countTestCases()}")
@@ -488,12 +523,17 @@ if __name__ == '__main__':
         print(f"Overriding mysqloperator code with local copy at {opt_mount_operator_path}")
 
     with get_driver(g_ts_cfg.env) as driver:
+        if cmd == "test":
+            if not g_ts_cfg.k8s_context:
+                g_ts_cfg.k8s_context = driver.resolve_context(g_ts_cfg.k8s_cluster)
+            driver._setup = False
+
         if cmd in ("run", "setup"):
             if opt_mount_operator_path:
                 driver.mount_operator_path(opt_mount_operator_path)
 
             driver.setup_cluster(
-                nodes=opt_nodes, node_memory=opt_node_memory, version=opt_kube_version, cfg_path=opt_cfg_path,
+                nodes=opt_cluster_node_count, node_memory=opt_node_memory, version=opt_kube_version, cfg_path=opt_cfg_path,
                 perform_setup=opt_setup, mounts=opt_mounts, custom_dns=opt_custom_dns, cleanup=opt_cleanup, ip_family=opt_ip_family)
 
             if opt_load_images:
@@ -512,6 +552,7 @@ if __name__ == '__main__':
             tutil.tracer.install()
 
             try:
+                test_result = None
                 if opt_debug:
                     suites.debug()
                 else:
@@ -520,7 +561,7 @@ if __name__ == '__main__':
                         from xmlrunner.extra.xunit_plugin import transform
                         xml_report_output = io.BytesIO()
                         runner = xmlrunner.XMLTestRunner(stream=sys.stdout,output=xml_report_output)
-                        runner.run(suites)
+                        test_result = runner.run(suites)
                         with open(opt_xml_report_path, 'wb') as xml_report:
                            xml_report.write(transform(xml_report_output.getvalue()))
                     else:
@@ -532,6 +573,7 @@ if __name__ == '__main__':
                             except ImportError:
                                 pass
                         runner = runnerClass(stream=sys.stdout,verbosity=opt_verbosity)
-                        runner.run(suites)
+                        test_result = runner.run(suites)
             finally:
                 tutil.g_full_log.shutdown()
+            sys.exit(get_test_result_exit_code(test_result))

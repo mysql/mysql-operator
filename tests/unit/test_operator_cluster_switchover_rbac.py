@@ -58,8 +58,12 @@ def operator_cluster_module(monkeypatch):
         def __init__(self, grace_period_seconds=None):
             self.grace_period_seconds = grace_period_seconds
 
+    class V1StatefulSet:
+        pass
+
     kubernetes_rest_stub.ApiException = ApiException
     kubernetes_client_stub.V1DeleteOptions = V1DeleteOptions
+    kubernetes_client_stub.V1StatefulSet = V1StatefulSet
     kubernetes_client_stub.rest = kubernetes_rest_stub
     kubernetes_stub.client = kubernetes_client_stub
     monkeypatch.setitem(sys.modules, "kubernetes", kubernetes_stub)

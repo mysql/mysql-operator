@@ -1,0 +1,34 @@
+#!/bin/bash
+# Copyright (c) 2021, 2026, Oracle and/or its affiliates.
+#
+# Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
+#
+
+export TESTPOD_NAME=testpod
+
+export NAMESPACE=mysql-operator
+
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+basedir="$(cd "$script_dir/.." && pwd)"
+python="${PYTHON:-python3}"
+
+export PYTHONPATH="$basedir:$basedir/tests${PYTHONPATH:+:$PYTHONPATH}"
+
+cd "$basedir" || exit 1
+
+if [ "$#" -eq 0 ]; then
+    set -- tests/unit
+fi
+
+"$python" -m pytest --version >/dev/null 2>&1
+if [ "$?" -ne 0 ]; then
+    echo "Could not run pytest with $python"
+    echo "Install test dependencies, e.g.:"
+    echo "  $python -m pip install pytest -r tests/requirements.txt"
+    exit 1
+fi
+
+"$python" -m pytest "$@"
+rc=$?
+echo "Tests finished. rc=$rc"
+exit "$rc"

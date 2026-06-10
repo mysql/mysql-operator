@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -265,7 +265,7 @@ class Config:
 
     def get_image(self, image: Image) -> str:
         image_name = self.image_to_name(image)
-        return f"{self.image_registry}{'/' if self.image_registry else ''}{image_name}"
+        return image_name or ""
 
     def get_custom_operator_ns_labels(self) -> Dict[str, str]:
         return self.custom_operator_ns_labels

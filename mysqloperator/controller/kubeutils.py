@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -64,6 +64,13 @@ api_rbac: client.RbacAuthorizationV1Api = client.RbacAuthorizationV1Api(api_clie
 api_apis: client.ApisApi = client.ApisApi(api_client)
 
 T = TypeVar("T")
+
+
+def is_ignorable_event_post_error(exc: ApiException) -> bool:
+    body = getattr(exc, "body", "") or ""
+    return exc.status == 404 or (
+        exc.status == 403 and "NamespaceTerminating" in body
+    )
 
 
 def catch_404(f: Callable[..., T]) -> Optional[T]:

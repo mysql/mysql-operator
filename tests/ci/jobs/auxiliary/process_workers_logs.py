@@ -1,4 +1,4 @@
-# Copyright (c) 2022, Oracle and/or its affiliates.
+# Copyright (c) 2022, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -27,31 +27,32 @@ class LogParser:
 	# Ran 4 tests in 205.962s
 	# Ran 9 tests in 288.074s
 	# Ran 1 test in 210.129s
-	execution_summary_matcher = re.compile('^Ran (\d+) tests? in (\d+\.\d+)(\w)$')
+	execution_summary_matcher = re.compile(r'^Ran (\d+) tests? in (\d+\.\d+)(\w)$')
 
 	# FAILED (failures=3)
 	# FAILED (errors=1)
 	# FAILED (failures=2, errors=2)
 	# FAILED (failures=8, errors=4, skipped=1)
-	failed_summary_matcher = re.compile('^FAILED \(([a-z=0-9, ]*)\)$')
+	failed_summary_matcher = re.compile(r'^FAILED \(([a-z=0-9, ]*)\)$')
 
 	# 'failures=3'
 	# 'errors=1'
 	# 'skipped=2'
-	failure_stat_matcher = re.compile('^\s*(\w+)=(\d+)\s*$')
+	failure_stat_matcher = re.compile(r'^\s*(\w+)=(\d+)\s*$')
 
 	# OK
 	success_summary_matcher = re.compile('^OK$')
 
 	# OK (skipped=4)
-	success_skipped_summary_matcher = re.compile('^OK \(([a-z=0-9, ]*)\)$')
+	success_skipped_summary_matcher = re.compile(r'^OK \(([a-z=0-9, ]*)\)$')
 
 	# regex to match issues (errors and failures), e.g.:
 	# FAIL: test_4_recover_restart_3_of_3 (e2e.mysqloperator.cluster.cluster_t.Cluster3Defaults)
 	# ERROR: tearDownClass (e2e.mysqloperator.cluster.cluster_t.Cluster3Defaults)
 	# FAIL [42.676s]: test_2_modify_ssl_certs (e2e.mysqloperator.cluster.cluster_ssl_t.ClusterSSL)
 	# ERROR [54.306s]: test_1_create_cluster_missing_ssl_recover (e2e.mysqloperator.cluster.cluster_ssl_t.ClusterNoSSL)
-	issue_matcher = re.compile('^(FAIL|ERROR)( \[[\w\d.]+\])?: \w+ \([^)]*\)$')
+	# FAIL: test_x (__main__.T.test_x) (pod='mypod')
+	issue_matcher = re.compile(r'^(FAIL|ERROR)( \[[\w\d.]+\])?: \w+ \([^)]*\)( .+)?$')
 
 	def __init__(self):
 		self.result = LogResult()
@@ -204,11 +205,8 @@ class ResultAggregator:
 		self.total_summary.unexpected_failures.sort()
 		self.total_summary.skipped.sort()
 
-		# report the build as failed only in case of broken worker(s), but not test cases which
-		# ran with some errors
-		# junit xml reporter will count failed tests and report the build as unstable
-		# if self.total_summary.unexpected_failures:
-		# 	self.total_summary.success = False
+		if self.total_summary.unexpected_failures:
+			self.total_summary.success = False
 
 	def run(self, expected_failures_path, log_paths, execution_time):
 		self.read_expected_failures(expected_failures_path)
@@ -247,12 +245,15 @@ class ResultPrinter:
 			summary = worker_result.runtime_error_msg
 		return summary
 
-	def print_worker_summary(self, index, worker_result):
+	def print_worker_summary(self, index, worker_result, label=None):
 		summary = self.prepare_worker_summary(worker_result)
-		print(f"worker {index}: {summary}")
+		if label is None:
+			label = f"worker {index}"
+		print(f"{label}: {summary}")
 
-	def print_worker_results(self, worker_results, summary):
-		print("------------------------------ workers -----------------------------")
+	def print_worker_results(self, worker_results, summary, result_labels=None):
+		title = "results" if result_labels else "workers"
+		print(f"------------------------------ {title} -----------------------------")
 		print(f"all      : {summary.workers_finished + summary.workers_broken}")
 		print(f"completed: {summary.workers_finished}")
 		print(f"broken   : {summary.workers_broken}")
@@ -260,7 +261,10 @@ class ResultPrinter:
 
 		index = 0
 		for worker_result in worker_results:
-			self.print_worker_summary(index, worker_result)
+			label = None
+			if result_labels and index < len(result_labels):
+				label = result_labels[index]
+			self.print_worker_summary(index, worker_result, label)
 			index += 1
 
 	def print_summary(self, summary):
@@ -275,18 +279,18 @@ class ResultPrinter:
 		print(f"success : {summary.success}")
 
 
-	def run(self, worker_results, total_summary):
+	def run(self, worker_results, total_summary, result_labels=None):
 		self.print_failures(total_summary)
-		self.print_worker_results(worker_results, total_summary)
+		self.print_worker_results(worker_results, total_summary, result_labels)
 		self.print_summary(total_summary)
 
 # =============================================================================
 
-def run(expected_failures_path, log_paths, execution_time):
+def run(expected_failures_path, log_paths, execution_time, result_labels=None):
 	aggregator = ResultAggregator()
 	aggregator.run(expected_failures_path, log_paths, execution_time)
 
 	printer = ResultPrinter()
-	printer.run(aggregator.results, aggregator.total_summary)
+	printer.run(aggregator.results, aggregator.total_summary, result_labels)
 
 	return aggregator.total_summary.success

@@ -64,6 +64,7 @@ def api_modules(monkeypatch):
     kubeutils_stub.api_batch = types.SimpleNamespace()
     kubeutils_stub.api_cron_job = types.SimpleNamespace()
     kubeutils_stub.client = _ClientStub()
+    kubeutils_stub.is_ignorable_event_post_error = lambda exc: False
     kubeutils_stub.k8s_cluster_domain = lambda logger: "cluster.local"
     kubeutils_stub.k8s_version = lambda: "1.30"
     monkeypatch.setitem(

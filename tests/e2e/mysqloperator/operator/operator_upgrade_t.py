@@ -1,4 +1,4 @@
-# Copyright (c) 2022, 2025 Oracle and/or its affiliates.
+# Copyright (c) 2022, 2026 Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -14,6 +14,7 @@ import yaml
 
 from utils import tutil
 from utils import kutil
+from utils import testsuite
 from utils.optesting import COMMON_OPERATOR_ERRORS
 from setup.config import g_ts_cfg
 
@@ -683,6 +684,7 @@ class OperatorAndClusterMultiUpgradeTestSelfSignedScenario2(OperatorAndClusterMu
 
 
 @unittest.skipUnless(g_ts_cfg.operator_upgrade_run_all_tests, "Extensive operator upgrade testing not enabled")
+@testsuite.requires_multi_node_cluster
 class OperatorAndClusterMultiUpgradeTestSelfSignedScenario3(OperatorAndClusterMultiUpgradeTestSelfSignedBase):
     upgrade_scenarios = [
         {
@@ -704,6 +706,7 @@ class OperatorAndClusterMultiUpgradeTestSelfSignedScenario3(OperatorAndClusterMu
 
 
 @unittest.skipUnless(g_ts_cfg.operator_upgrade_run_all_tests, "Extensive operator upgrade testing not enabled")
+@testsuite.requires_multi_node_cluster
 class OperatorAndClusterMultiUpgradeTestSelfSignedScenario4(OperatorAndClusterMultiUpgradeTestSelfSignedBase):
     upgrade_scenarios = [
         {
@@ -758,6 +761,7 @@ class OperatorAndClusterMultiUpgradeTestSelfSignedScenario5(OperatorAndClusterMu
 
 
 @unittest.skipUnless(g_ts_cfg.operator_upgrade_run_all_tests, "Extensive operator upgrade testing not enabled")
+@testsuite.requires_multi_node_cluster
 class OperatorAndClusterMultiUpgradeTestSelfSignedScenario6(OperatorAndClusterMultiUpgradeTestSelfSignedBase):
     upgrade_scenarios = [
         {
@@ -981,6 +985,7 @@ class OperatorAndClusterMultiUpgradeTestTLSSeparateSecretsScenario0(OperatorAndC
         self.runit()
 
 
+@testsuite.requires_multi_node_cluster
 class OperatorAndClusterMultiUpgradeTestTLSSeparateSecretsScenario1(OperatorAndClusterMultiUpgradeTestTLSSeparateSecretsBase):
     upgrade_scenarios = [
         {
@@ -1000,6 +1005,7 @@ class OperatorAndClusterMultiUpgradeTestTLSSeparateSecretsScenario1(OperatorAndC
 
 
 @unittest.skipUnless(g_ts_cfg.operator_upgrade_run_all_tests, "Extensive operator upgrade testing not enabled")
+@testsuite.requires_multi_node_cluster
 class OperatorAndClusterMultiUpgradeTestTLSSeparateSecretsScenario2(OperatorAndClusterMultiUpgradeTestTLSSeparateSecretsBase):
     upgrade_scenarios = [
         {
@@ -1243,6 +1249,7 @@ class OperatorAndClusterMultiUpgradeTestTLSCombinedSecretsScenario0(OperatorAndC
         self.runit()
 
 
+@testsuite.requires_multi_node_cluster
 class OperatorAndClusterMultiUpgradeTestTLSCombinedSecretsScenario1(OperatorAndClusterMultiUpgradeTestTLSCombinedSecretsBase):
     upgrade_scenarios = [
         {

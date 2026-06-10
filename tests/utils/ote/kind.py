@@ -1,4 +1,4 @@
-# Copyright (c) 2023, Oracle and/or its affiliates.
+# Copyright (c) 2023, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -144,5 +144,6 @@ apiVersion: kind.x-k8s.io/v1alpha4
     def generate_nodes(self, nodes, node_memory, version, ip_family):
         self.writeln("nodes:")
         self.generate_node("control-plane", version, "InitConfiguration", node_memory)
-        for _ in range(nodes if nodes else 1):
+        worker_count = 1 if nodes is None else max(nodes - 1, 0)
+        for _ in range(worker_count):
             self.generate_node("worker", version, "JoinConfiguration", node_memory)

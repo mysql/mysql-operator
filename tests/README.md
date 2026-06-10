@@ -466,6 +466,14 @@ The filtered companion log is intended for low-noise streaming. It keeps only li
 ## Run tests simultaneously
 
 The test suite may also run in parallel on many k3d or minikube instances with [dist_run_e2e_tests.py](dist_run_e2e_tests.py) script.
+If `--nodes` is not specified, the first provisioned worker cluster is created with 3 Kubernetes nodes; tests annotated as requiring a multi-node cluster are reserved for that worker.
+
+When using k3d with multiple clusters, make sure the host has enough Linux inotify capacity for several k3s/kubelet instances. Low defaults such as `fs.inotify.max_user_instances=128` can make later workers fail during cluster startup with errors like `inotify_init: too many open files`, `error creating fsnotify watcher: too many open files`, or k3d timing out while waiting for `k3s is up and running` / `cluster dns configmap`. For example:
+
+```sh
+sudo sysctl -w fs.inotify.max_user_instances=1024
+sudo sysctl -w fs.inotify.max_user_watches=524288
+```
 
 It supports the following command-line options:
 * --env\

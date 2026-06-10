@@ -1,14 +1,16 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 
 from typing import Optional
 
 import datetime
-from .kubeutils import api_core
+import logging
+from .kubeutils import api_core, ApiException, is_ignorable_event_post_error
 
 g_component = None
 g_host = None
+logger = logging.getLogger(__name__)
 
 
 def post_event(namespace: str, object_ref: dict, type: str, action: str,
@@ -44,7 +46,12 @@ def post_event(namespace: str, object_ref: dict, type: str, action: str,
 
         'type': type
     }
-    api_core.create_namespaced_event(namespace, body)
+    try:
+        api_core.create_namespaced_event(namespace, body)
+    except ApiException as exc:
+        if not is_ignorable_event_post_error(exc):
+            raise
+        logger.warning("Skipping event post for %s: %s", namespace, exc)
 
 
 class K8sInterfaceObject:

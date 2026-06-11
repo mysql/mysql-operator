@@ -1432,6 +1432,70 @@ def test_raw_deploy_dir_for_release_reports_missing_manifests(
         operator_t_module.get_raw_deploy_dir_for_release("9.6.0-2.2.7")
 
 
+def test_missing_raw_deploy_manifest_release_details_reports_unconfigured_historic_release(
+    monkeypatch,
+    tmp_path,
+    operator_t_module,
+):
+    current_deploy_path = tmp_path / "deploy"
+    _write_raw_deploy_manifests(current_deploy_path)
+
+    monkeypatch.setattr(
+        operator_t_module.g_ts_cfg,
+        "deploy_path",
+        str(current_deploy_path),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        operator_t_module.g_ts_cfg,
+        "deploy_historic_path",
+        "",
+        raising=False,
+    )
+
+    missing = operator_t_module.get_missing_raw_deploy_manifest_release_details(
+        [
+            "9.6.0-2.2.7",
+            operator_t_module.g_ts_cfg.operator_version_tag,
+        ]
+    )
+
+    assert len(missing) == 1
+    assert missing[0].startswith("9.6.0-2.2.7:")
+    assert "Raw deploy manifest paths are not configured" in missing[0]
+
+
+def test_require_raw_deploy_manifest_releases_skips_when_artifacts_missing(
+    monkeypatch,
+    tmp_path,
+    operator_t_module,
+):
+    current_deploy_path = tmp_path / "deploy"
+    _write_raw_deploy_manifests(current_deploy_path)
+
+    monkeypatch.setattr(
+        operator_t_module.g_ts_cfg,
+        "deploy_path",
+        str(current_deploy_path),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        operator_t_module.g_ts_cfg,
+        "deploy_historic_path",
+        "",
+        raising=False,
+    )
+
+    class DummyTest(operator_t_module.OperatorSingleAndMultipleBaseTest):
+        def runTest(self):
+            pass
+
+    with pytest.raises(unittest.SkipTest, match="Required raw deploy manifest"):
+        DummyTest()._require_raw_deploy_manifest_releases_or_skip(
+            ["9.6.0-2.2.7"]
+        )
+
+
 def test_raw_manifest_upgrade_release_chain_bridges_lts_to_current(
     monkeypatch,
     operator_t_module,
@@ -1628,6 +1692,23 @@ def test_get_patched_artifacts_uses_fresh_install_selector_helpers(
     assert envs["OPERATOR_DEPLOYMENT_NAME"] == "custom-op"
     assert envs["OPERATOR_NAMESPACES"] == "operator-ns"
     assert envs["OPERATOR_STANDALONE"] == "true"
+
+
+def test_get_patched_artifacts_sets_recreate_strategy_for_standalone(
+    operator_t_module,
+):
+    patched = operator_t_module.get_patched_artifacts(
+        copy.deepcopy(_make_selector_test_artifacts()),
+        "release-a",
+        "operator-ns",
+        "custom-op",
+        watch_namespaces="operator-ns",
+        standalone=True,
+    )
+
+    assert patched["deployment"]["spec"]["strategy"] == {
+        "type": "Recreate",
+    }
 
 
 def test_get_patched_artifacts_canonicalizes_topology_env_namespace_sets(

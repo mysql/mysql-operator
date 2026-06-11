@@ -301,6 +301,36 @@ def test_operator_deploy_manifest_path_accepts_nested_historic_deploy_dir(
     )
 
 
+def test_sync_clusterroles_skips_old_version_when_historic_path_unset(
+    operator_upgrade_module,
+    monkeypatch,
+    caplog,
+):
+    load_calls = []
+    apply_calls = []
+
+    monkeypatch.setattr(
+        operator_upgrade_module,
+        "_load_default_operator_clusterrole_rules",
+        lambda manifest_path=None: load_calls.append(manifest_path) or {},
+    )
+    monkeypatch.setattr(
+        operator_upgrade_module.kutil,
+        "apply",
+        lambda *args, **kwargs: apply_calls.append((args, kwargs)),
+        raising=False,
+    )
+
+    with caplog.at_level("WARNING"):
+        operator_upgrade_module._sync_default_operator_clusterroles_from_manifest(
+            "8.0.31-2.0.7"
+        )
+
+    assert load_calls == []
+    assert apply_calls == []
+    assert "historic deploy manifests are not configured" in caplog.text
+
+
 def test_change_operator_version_syncs_clusterroles_from_target_manifest(
     operator_upgrade_module,
     monkeypatch,

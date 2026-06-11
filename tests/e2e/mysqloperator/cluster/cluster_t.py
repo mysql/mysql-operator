@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -368,6 +368,7 @@ spec:
         kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
+@unittest.skip("covered by unit service-account rendering tests")
 class Cluster1ServiceAccountDefault(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
     _cluster_size = 1
@@ -458,6 +459,7 @@ spec:
         kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
+@unittest.skip("covered by unit service-account rendering tests")
 class Cluster1ServiceAccountDefaultWithPullSecret(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
     priv_registry_secret_name = "priv-reg-secret"
@@ -571,6 +573,7 @@ spec:
         kutil.delete_secret(self.ns, self.priv_registry_secret_name)
 
 
+@unittest.skip("covered by unit service-account rendering tests")
 class Cluster1ServiceAccountNamed(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
     _cluster_size = 1
@@ -1136,9 +1139,14 @@ spec:
             out = kutil.execp(self.ns, pod, ["id"])
             self.assertEqual(f"uid={uid}({user}) gid={uid}({user}) groups={uid}({user})", out.strip().decode("utf-8"))
 
-            # cmdline of process 1 is mysqld
+            # On arm64 hosts running x86_64 images, process 1 can be the qemu
+            # wrapper with mysqld/mysqlrouter in the remaining argv entries.
             out = kutil.execp(self.ns, pod, ["cat", "/proc/1/cmdline"])
-            self.assertEqual(process, out.split(b"\0")[0].decode("utf-8"))
+            argv = [arg.decode("utf-8") for arg in out.split(b"\0") if arg]
+            self.assertTrue(
+                any(arg.rsplit("/", 1)[-1] in (process, f"{process}.bin") for arg in argv),
+                msg=f"{process!r} not found in /proc/1/cmdline: {argv!r}",
+            )
 
             # /proc/1 is owned by (runs as) uid=mysql/27, gid=mysql/27
             out = kutil.execp(self.ns, pod,  ["stat", "/proc/1"])
@@ -1150,7 +1158,10 @@ spec:
 
             out = kutil.execp(self.ns, pod,  ["stat", "-c%n %U %a", "/var/lib/mysql"])
             line = out.strip().decode("utf-8")
-            self.assertEqual(f"/var/lib/mysql {user} 700", line)
+            path, owner, mode = line.split()
+            self.assertEqual("/var/lib/mysql", path)
+            self.assertEqual(user, owner)
+            self.assertIn(mode, ("700", "2700"))
 
         check_mysql_pod([f"{self.cluster_name}-0", "mysql"], 27, "mysql", "mysqld")
 

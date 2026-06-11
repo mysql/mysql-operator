@@ -717,6 +717,60 @@ def test_get_helm_chart_path_rejects_missing_requested_versioned_chart(
         )
 
 
+def test_get_missing_helm_chart_release_paths_reports_missing_historical_charts(
+    tmp_path,
+    helmutil_module,
+):
+    current_version = "9.7.0-2.2.8"
+    historical_version = "8.4.7-2.1.9"
+    helmutil_module.g_ts_cfg.operator_version_tag = current_version
+    _write_chart(
+        tmp_path,
+        "mysql-operator",
+        "mysql-operator",
+        app_version=current_version,
+    )
+    _write_chart(
+        tmp_path,
+        "mysql-innodbcluster",
+        "mysql-innodbcluster",
+        app_version="9.7.0",
+        version="2.2.8",
+    )
+
+    assert helmutil_module.get_missing_helm_chart_release_paths(
+        ("mysql-operator", "mysql-innodbcluster"),
+        (current_version, historical_version),
+        source_path=str(tmp_path),
+    ) == [
+        str(tmp_path / historical_version / "mysql-operator"),
+        str(tmp_path / historical_version / "mysql-innodbcluster"),
+    ]
+
+
+def test_get_missing_helm_chart_release_paths_rejects_invalid_historical_chart(
+    tmp_path,
+    helmutil_module,
+):
+    historical_version = "8.4.7-2.1.9"
+    helmutil_module.g_ts_cfg.operator_version_tag = "9.7.0-2.2.8"
+    historical_root = tmp_path / historical_version
+    historical_root.mkdir()
+    _write_chart(
+        historical_root,
+        "mysql-operator",
+        "mysql-operator",
+        app_version="8.4.8-2.1.9",
+    )
+
+    with pytest.raises(FileNotFoundError, match="appVersion 8.4.8-2.1.9"):
+        helmutil_module.get_missing_helm_chart_release_paths(
+            ("mysql-operator",),
+            (historical_version,),
+            source_path=str(tmp_path),
+        )
+
+
 def test_get_helm_chart_path_rejects_split_metadata_release_mismatch(
     tmp_path,
     helmutil_module,
@@ -1305,6 +1359,7 @@ def test_install_with_helm_passes_exact_operator_image_and_pull_policies(
     assert "--values" in argv
     assert "--set" not in argv
     assert "--set-string" not in argv
+    assert "--skip-crds" in argv
     assert "--wait" in argv
     assert "--timeout" in argv
     assert "42s" in argv
@@ -2050,6 +2105,7 @@ def test_upgrade_with_helm_uses_strict_upgrade_and_tracks_release_manifest(
     assert recorded["argv"][:2] == ["helm", "upgrade"]
     assert "--values" in recorded["argv"]
     assert "--install" not in recorded["argv"]
+    assert "--skip-crds" not in recorded["argv"]
     assert recorded["get_manifest_argv"] == [
         "helm",
         "get",

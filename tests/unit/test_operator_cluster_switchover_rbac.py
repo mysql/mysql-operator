@@ -272,6 +272,402 @@ def test_failover_create_handler_is_registered_for_community_operator(
     assert callable(operator_cluster_module.on_failover_create)
 
 
+def test_stage_cluster_status_patch_preserves_kopf_status(operator_cluster_module):
+    patch = {"status": {"kopf": {"progress": {"handler": {}}}}}
+    cluster_status = {
+        "status": "PENDING",
+        "onlineInstances": 0,
+        "lastProbeTime": "2026-01-01T00:00:00Z",
+    }
+
+    operator_cluster_module._stage_cluster_status_patch(patch, cluster_status)
+
+    assert patch == {
+        "status": {
+            "kopf": {"progress": {"handler": {}}},
+            "cluster": cluster_status,
+        }
+    }
+
+
+def test_read_replica_field_handler_routes_removed_created_and_changed_replicas(
+    operator_cluster_module,
+    monkeypatch,
+):
+    calls = []
+
+    class ClusterMutex:
+        def __init__(self, cluster):
+            calls.append(("lock", cluster.name))
+
+        def __enter__(self):
+            calls.append(("enter",))
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            calls.append(("exit",))
+            return False
+
+    class ParsedSpec:
+        def get_read_replica(self, name):
+            return f"spec:{name}"
+
+    class InnoDBCluster:
+        namespace = "test-ns"
+        name = "cluster-a"
+        parsed_spec = ParsedSpec()
+
+        def __init__(self, body):
+            calls.append(("cluster", body["metadata"]["name"]))
+
+        def get_create_time(self):
+            return "2026-01-01T00:00:00Z"
+
+        def validate_spec(self, logger):
+            calls.append(("validate",))
+
+    monkeypatch.setattr(operator_cluster_module, "ClusterMutex", ClusterMutex)
+    monkeypatch.setattr(operator_cluster_module, "InnoDBCluster", InnoDBCluster)
+    monkeypatch.setattr(
+        operator_cluster_module.cluster_objects,
+        "remove_read_replica",
+        lambda cluster, rr: calls.append(("remove", rr["name"])),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        operator_cluster_module,
+        "do_reconcile_read_replica",
+        lambda cluster, rr, logger: calls.append(("reconcile", rr)),
+    )
+    monkeypatch.setattr(
+        operator_cluster_module,
+        "do_create_read_replica",
+        lambda cluster, rr, set_zero, indent, logger:
+            calls.append(("create", rr, set_zero, indent)),
+    )
+
+    logger = types.SimpleNamespace(info=lambda *args, **kwargs: None)
+    old = [
+        {"name": "removed", "instances": 1, "baseServerId": 500},
+        {"name": "changed", "instances": 1, "baseServerId": 510},
+    ]
+    new = [
+        {"name": "changed", "instances": 2, "baseServerId": 510},
+        {"name": "created", "instances": 1, "baseServerId": 520},
+    ]
+    body = {"metadata": {"name": "cluster-a"}}
+
+    operator_cluster_module.on_innodbcluster_read_replicas_changed(
+        old, new, body, logger)
+
+    assert calls == [
+        ("cluster", "cluster-a"),
+        ("validate",),
+        ("lock", "cluster-a"),
+        ("enter",),
+        ("remove", "removed"),
+        ("reconcile", "spec:changed"),
+        ("create", "spec:created", False, ""),
+        ("exit",),
+    ]
+
+
+class _Logger:
+    def __init__(self):
+        self.infos = []
+        self.errors = []
+        self.warnings = []
+
+    def info(self, message):
+        self.infos.append(message)
+
+    def error(self, message):
+        self.errors.append(message)
+
+    def warning(self, message):
+        self.warnings.append(message)
+
+    def debug(self, message):
+        pass
+
+
+def test_remove_member_finalizer_ignores_already_deleted_pod(
+    operator_cluster_module,
+):
+    class Pod:
+        namespace = "ns"
+        name = "cluster-0"
+
+        def remove_member_finalizer(self, body):
+            raise operator_cluster_module.ApiException(status=404)
+
+    logger = _Logger()
+
+    operator_cluster_module._remove_member_finalizer_if_present(
+        Pod(),
+        {"metadata": {"finalizers": []}},
+        logger,
+    )
+
+    assert logger.infos == ["on_pod_delete: Pod ns/cluster-0 is already gone"]
+
+
+def test_on_pod_delete_removes_finalizer_for_deleting_non_running_pod(
+    operator_cluster_module,
+    monkeypatch,
+):
+    body = {"metadata": {"finalizers": ["mysql.oracle.com/membership"]}}
+    removed = []
+    cluster_finalizers_removed = []
+
+    class Cluster:
+        namespace = "ns"
+        name = "cluster"
+        deleting = True
+
+        def remove_cluster_finalizer(self):
+            cluster_finalizers_removed.append(self.name)
+
+    class Pod:
+        namespace = "ns"
+        name = "cluster-0"
+        deleting = True
+        phase = "Pending"
+        index = 0
+
+        def get_cluster(self):
+            return Cluster()
+
+        def remove_member_finalizer(self, pod_body):
+            removed.append(pod_body)
+            pod_body["metadata"]["finalizers"].remove("mysql.oracle.com/membership")
+
+    pod = Pod()
+
+    class MySQLPod:
+        @staticmethod
+        def from_json(pod_body):
+            return pod
+
+    def fail_if_used(*args, **kwargs):
+        raise AssertionError("cluster probe should not run")
+
+    monkeypatch.setattr(operator_cluster_module, "MySQLPod", MySQLPod)
+    monkeypatch.setattr(operator_cluster_module, "ClusterController", fail_if_used)
+    monkeypatch.setattr(operator_cluster_module, "ClusterMutex", fail_if_used)
+    monkeypatch.setattr(
+        operator_cluster_module.cluster_objects,
+        "on_last_cluster_pod_removed",
+        lambda cluster, logger: cluster.remove_cluster_finalizer(),
+        raising=False,
+    )
+
+    operator_cluster_module.on_pod_delete(body, _Logger())
+
+    assert removed == [body]
+    assert cluster_finalizers_removed == ["cluster"]
+    assert body["metadata"]["finalizers"] == []
+
+
+def test_on_router_pod_delete_retries_when_cluster_mutex_is_busy(
+    operator_cluster_module,
+    monkeypatch,
+):
+    class TemporaryError(Exception):
+        pass
+
+    class Cluster:
+        name = "cluster"
+
+    body = {
+        "metadata": {
+            "name": "cluster-router-abc",
+            "labels": {"mysql.oracle.com/cluster": "cluster"},
+        }
+    }
+    mutex_entries = []
+    controller_calls = []
+    sleeps = []
+
+    class ClusterMutex:
+        def __init__(self, cluster, context="n/a"):
+            self.cluster = cluster
+            self.context = context
+
+        def __enter__(self):
+            mutex_entries.append((self.cluster.name, self.context))
+            if len(mutex_entries) == 1:
+                raise TemporaryError("cluster busy")
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class ClusterController:
+        def __init__(self, cluster):
+            self.cluster = cluster
+
+        def on_router_pod_delete(self, router_name, logger):
+            controller_calls.append((self.cluster.name, router_name))
+
+    monkeypatch.setattr(operator_cluster_module.kopf, "TemporaryError", TemporaryError)
+    monkeypatch.setattr(operator_cluster_module, "ClusterMutex", ClusterMutex)
+    monkeypatch.setattr(operator_cluster_module, "ClusterController", ClusterController)
+    monkeypatch.setattr(operator_cluster_module.time, "sleep", lambda seconds: sleeps.append(seconds))
+    monkeypatch.setattr(
+        operator_cluster_module.cluster_api.InnoDBCluster,
+        "read",
+        staticmethod(lambda namespace, name: Cluster()),
+        raising=False,
+    )
+
+    operator_cluster_module.on_router_pod_delete(body, _Logger(), namespace="ns")
+
+    assert mutex_entries == [
+        ("cluster", "on_router_pod_delete"),
+        ("cluster", "on_router_pod_delete"),
+    ]
+    assert controller_calls == [("cluster", ["cluster-router-abc"])]
+    assert sleeps == [operator_cluster_module._ROUTER_METADATA_REMOVAL_RETRY_DELAY_SECONDS]
+
+
+def test_on_innodbcluster_delete_retries_router_metadata_removal(
+    operator_cluster_module,
+    monkeypatch,
+):
+    class TemporaryError(Exception):
+        pass
+
+    class Cluster:
+        namespace = "ns"
+        name = "cluster"
+
+        def get_routers(self):
+            return ["cluster-router-abc"]
+
+        def get_stateful_set(self):
+            return None
+
+    cluster = Cluster()
+    mutex_entries = []
+    controller_calls = []
+    sleeps = []
+    router_scale_updates = []
+
+    class ClusterMutex:
+        def __init__(self, cluster, context="n/a"):
+            self.cluster = cluster
+            self.context = context
+
+        def __enter__(self):
+            mutex_entries.append((self.cluster.name, self.context))
+            if len(mutex_entries) == 1:
+                raise TemporaryError("cluster busy")
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class ClusterController:
+        def __init__(self, cluster):
+            self.cluster = cluster
+
+        def on_router_pod_delete(self, router_name, logger):
+            controller_calls.append((self.cluster.name, router_name))
+
+    monkeypatch.setattr(operator_cluster_module.kopf, "TemporaryError", TemporaryError)
+    monkeypatch.setattr(operator_cluster_module, "InnoDBCluster", lambda body: cluster)
+    monkeypatch.setattr(operator_cluster_module, "ClusterMutex", ClusterMutex)
+    monkeypatch.setattr(operator_cluster_module, "ClusterController", ClusterController)
+    monkeypatch.setattr(operator_cluster_module.time, "sleep", lambda seconds: sleeps.append(seconds))
+    monkeypatch.setattr(
+        operator_cluster_module.g_group_monitor,
+        "remove_cluster",
+        lambda cluster: None,
+    )
+    monkeypatch.setattr(
+        operator_cluster_module.router_objects,
+        "update_size",
+        lambda cluster, size, patch, logger: router_scale_updates.append(
+            (cluster.name, size, patch)
+        ),
+        raising=False,
+    )
+
+    operator_cluster_module.on_innodbcluster_delete(
+        "cluster", "ns", {"metadata": {"name": "cluster"}}, _Logger()
+    )
+
+    assert mutex_entries == [
+        ("cluster", "on_innodbcluster_delete"),
+        ("cluster", "on_innodbcluster_delete"),
+    ]
+    assert controller_calls == [("cluster", ["cluster-router-abc"])]
+    assert sleeps == [operator_cluster_module._ROUTER_METADATA_REMOVAL_RETRY_DELAY_SECONDS]
+    assert router_scale_updates == [("cluster", 0, False)]
+
+
+def test_on_router_pod_delete_ignores_nonretryable_metadata_failure(
+    operator_cluster_module,
+    monkeypatch,
+):
+    class TemporaryError(Exception):
+        pass
+
+    class Cluster:
+        name = "cluster"
+
+    body = {
+        "metadata": {
+            "name": "cluster-router-abc",
+            "labels": {"mysql.oracle.com/cluster": "cluster"},
+        }
+    }
+    controller_calls = []
+    logger = _Logger()
+
+    class ClusterMutex:
+        def __init__(self, cluster, context="n/a"):
+            self.cluster = cluster
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class ClusterController:
+        def __init__(self, cluster):
+            self.cluster = cluster
+
+        def on_router_pod_delete(self, router_name, logger):
+            controller_calls.append((self.cluster.name, router_name))
+            raise RuntimeError("router metadata already absent")
+
+    def fail_sleep(seconds):
+        raise AssertionError("non-retryable failures should not sleep")
+
+    monkeypatch.setattr(operator_cluster_module.kopf, "TemporaryError", TemporaryError)
+    monkeypatch.setattr(operator_cluster_module, "ClusterMutex", ClusterMutex)
+    monkeypatch.setattr(operator_cluster_module, "ClusterController", ClusterController)
+    monkeypatch.setattr(operator_cluster_module.time, "sleep", fail_sleep)
+    monkeypatch.setattr(
+        operator_cluster_module.cluster_api.InnoDBCluster,
+        "read",
+        staticmethod(lambda namespace, name: Cluster()),
+        raising=False,
+    )
+
+    operator_cluster_module.on_router_pod_delete(body, logger, namespace="ns")
+
+    assert controller_calls == [("cluster", ["cluster-router-abc"])]
+    assert logger.warnings == [
+        "on_router_pod_delete: Failed to remove metadata for "
+        "cluster-router-abc: router metadata already absent",
+        "on_router_pod_delete: Exception ignored, there might be stale metadata left",
+    ]
+
+
 def _owner_reference(
     *,
     api_version: str,

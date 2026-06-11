@@ -141,7 +141,23 @@ def _sync_default_operator_clusterroles_from_manifest(version: str | None = None
     if version is None:
         rules_by_name = _load_default_operator_clusterrole_rules()
     else:
-        manifest_path = get_operator_deploy_manifest_path(version)
+        try:
+            manifest_path = get_operator_deploy_manifest_path(version)
+        except FileNotFoundError:
+            configured_historic_path = getattr(
+                g_ts_cfg,
+                "get_deploy_historic_path",
+                lambda: "",
+            )()
+            if configured_historic_path:
+                raise
+
+            logging.getLogger(__name__).warning(
+                "Skipping ClusterRole sync for historical operator version %s "
+                "because historic deploy manifests are not configured",
+                version,
+            )
+            return
         rules_by_name = _load_default_operator_clusterrole_rules(manifest_path)
 
     for name, rules in rules_by_name.items():

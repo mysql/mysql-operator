@@ -56,6 +56,11 @@ def api_modules(monkeypatch):
         status = None
 
     kubeutils_stub.ApiException = ApiException
+    kubeutils_stub.is_ignorable_event_post_error = lambda exc: (
+        getattr(exc, "status", None) == 404
+        or (getattr(exc, "status", None) == 403
+            and "NamespaceTerminating" in (getattr(exc, "body", "") or ""))
+    )
     kubeutils_stub.api_core = types.SimpleNamespace()
     kubeutils_stub.api_apps = types.SimpleNamespace()
     kubeutils_stub.api_customobj = types.SimpleNamespace()

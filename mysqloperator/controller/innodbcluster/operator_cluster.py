@@ -35,6 +35,20 @@ import threading
 _SWITCHOVER_RBAC_EVENT_ACTION = "ReconcileSwitchoverRbac"
 
 
+def _stage_cluster_status_patch(patch: Patch, cluster_status: dict[str, Any]) -> None:
+    patch.setdefault("status", {})["cluster"] = cluster_status
+
+
+def _remove_member_finalizer_if_present(pod: MySQLPod, body: Body, logger: Logger) -> None:
+    try:
+        pod.remove_member_finalizer(body)
+    except ApiException as e:
+        if e.status == 404:
+            logger.info(f"on_pod_delete: Pod {pod.namespace}/{pod.name} is already gone")
+            return
+        raise
+
+
 def _get_field(obj: Any, attr_name: str, dict_key: Optional[str] = None) -> Any:
     if isinstance(obj, dict):
         return obj.get(dict_key or attr_name)
@@ -635,12 +649,11 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body, pat
         cluster.parse_spec()
         cluster.validate_spec(logger)
     except ApiSpecError as e:
-        cluster.set_status({
-            "cluster": {
-                "status":  diagnose.ClusterDiagStatus.INVALID.value,
-                "onlineInstances": 0,
-                "lastProbeTime": utils.isotime()
-            }})
+        _stage_cluster_status_patch(patch, {
+            "status":  diagnose.ClusterDiagStatus.INVALID.value,
+            "onlineInstances": 0,
+            "lastProbeTime": utils.isotime()
+        })
         cluster.error(action="CreateCluster",
                       reason="InvalidArgument", message=str(e))
         raise kopf.TemporaryError(f"Error in InnoDBCluster spec: {e}")
@@ -811,13 +824,12 @@ def on_innodbcluster_create(name: str, namespace: Optional[str], body: Body, pat
         cluster.set_operator_version(DEFAULT_OPERATOR_VERSION_TAG)
         cluster.info(action="CreateCluster", reason="ResourcesCreated",
                      message="Dependency resources created, switching status to PENDING")
-        cluster.set_status({
-            "cluster": {
-                "status":  diagnose.ClusterDiagStatus.PENDING.value,
-                "onlineInstances": 0,
-                "type": diagnose.ClusterInClusterSetType.PRIMARY.value if (not icspec.initDB or not icspec.initDB.cluster_set) else diagnose.ClusterInClusterSetType.REPLICA_CANDIDATE.value,
-                "lastProbeTime": utils.isotime()
-            }})
+        _stage_cluster_status_patch(patch, {
+            "status":  diagnose.ClusterDiagStatus.PENDING.value,
+            "onlineInstances": 0,
+            "type": diagnose.ClusterInClusterSetType.PRIMARY.value if (not icspec.initDB or not icspec.initDB.cluster_set) else diagnose.ClusterInClusterSetType.REPLICA_CANDIDATE.value,
+            "lastProbeTime": utils.isotime()
+        })
 
         specified_version = body.get('spec', {}).get('version', None)
         if specified_version is None:
@@ -845,9 +857,9 @@ def on_innodbcluster_delete(name: str, namespace: str, body: Body,
     routers = cluster.get_routers()
     if routers:
         logger.info(f"Time to notify router(s) {routers} for IC deletion")
-        controller = ClusterController(cluster)
         try:
-            controller.on_router_pod_delete(routers, logger)
+            _remove_router_metadata_with_retries(
+                cluster, routers, logger, context="on_innodbcluster_delete")
         except Exception as exc:
             # Ignore errors, there isn't much we could do
             # and there is no point in retrying forever
@@ -947,6 +959,52 @@ def on_innodbcluster_delete(name: str, namespace: str, body: Body,
 
 
 # TODO add a busy state and prevent changes while on it
+
+_ROUTER_METADATA_REMOVAL_RETRY_ATTEMPTS = 6
+_ROUTER_METADATA_REMOVAL_RETRY_DELAY_SECONDS = 5
+_ROUTER_METADATA_REMOVAL_RETRYABLE_ERRORS = (
+    "Could not connect to any member",
+    "Lost connection to MySQL server",
+    "PRIMARY instance isn't available",
+    "get_int(2): index out of bounds",
+)
+
+
+def _is_retryable_router_metadata_removal_error(exc: Exception) -> bool:
+    if isinstance(exc, kopf.TemporaryError):
+        return True
+
+    msg = str(exc)
+    return any(fragment in msg for fragment in _ROUTER_METADATA_REMOVAL_RETRYABLE_ERRORS)
+
+
+def _remove_router_metadata_with_retries(
+    cluster: InnoDBCluster,
+    router_names: list[str],
+    logger: Logger,
+    *,
+    context: str,
+) -> None:
+    for attempt in range(1, _ROUTER_METADATA_REMOVAL_RETRY_ATTEMPTS + 1):
+        try:
+            with ClusterMutex(cluster, context=context):
+                controller = ClusterController(cluster)
+                controller.on_router_pod_delete(router_names, logger)
+            return
+        except Exception as exc:
+            if (
+                attempt == _ROUTER_METADATA_REMOVAL_RETRY_ATTEMPTS
+                or not _is_retryable_router_metadata_removal_error(exc)
+            ):
+                raise
+
+            logger.warning(
+                f"{context}: Failed to remove metadata for "
+                f"{router_names} on attempt "
+                f"{attempt}/{_ROUTER_METADATA_REMOVAL_RETRY_ATTEMPTS}: {exc}. "
+                f"Retrying in {_ROUTER_METADATA_REMOVAL_RETRY_DELAY_SECONDS}s"
+            )
+            time.sleep(_ROUTER_METADATA_REMOVAL_RETRY_DELAY_SECONDS)
 
 
 def on_innodbcluster_field_instances(old, new, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
@@ -1370,6 +1428,14 @@ def on_pod_delete(body: Body, logger: Logger, **kwargs):
 
     if cluster:
         logger.info(f"on_pod_delete: cluster {cluster.namespace}/{cluster.name} {cluster.deleting=}")
+        if cluster.deleting and pod.phase != "Running":
+            logger.info("on_pod_delete: Removing member finalizer from non-running pod")
+            _remove_member_finalizer_if_present(pod, body, logger)
+            if pod.index == 0:
+                logger.info("on_pod_delete: Last cluster pod removed being removed!")
+                cluster_objects.on_last_cluster_pod_removed(cluster, logger)
+            return
+
         with ClusterMutex(cluster, pod):
             logger.info("on_pod_delete: mutex acquired")
             cluster_ctl = ClusterController(cluster)
@@ -1381,7 +1447,7 @@ def on_pod_delete(body: Body, logger: Logger, **kwargs):
                 cluster_objects.on_last_cluster_pod_removed(cluster, logger)
     else:
         logger.info("on_pod_delete: Removing member finalizer")
-        pod.remove_member_finalizer(body)
+        _remove_member_finalizer_if_present(pod, body, logger)
 
         logger.error(f"on_pod_delete: Owner cluster for {pod.name} does not exist anymore")
 
@@ -1688,8 +1754,8 @@ def on_router_pod_delete(body: Body, logger: Logger, namespace: str, **kwargs):
         cluster_name = body["metadata"]["labels"]["mysql.oracle.com/cluster"]
 
         cluster = cluster_api.InnoDBCluster.read(namespace, cluster_name)
-        controller = ClusterController(cluster)
-        controller.on_router_pod_delete(router_name, logger)
+        _remove_router_metadata_with_retries(
+            cluster, [router_name], logger, context="on_router_pod_delete")
     except Exception as exc:
         # Ignore errors, there isn't much we could do
         # and there is no point in retrying forever

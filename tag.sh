@@ -1,9 +1,9 @@
 #!/bin/bash
-# Copyright (c) 2021, 2025 Oracle and/or its affiliates.
+# Copyright (c) 2021, 2026 Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
 SUFFIX=''; [ -n "$1" ] && SUFFIX=${1}
 
-echo "9.7.0-2.2.8$SUFFIX"
+echo "26.7.0-2.3.0$SUFFIX"

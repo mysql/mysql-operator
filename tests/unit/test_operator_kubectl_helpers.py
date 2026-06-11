@@ -147,8 +147,8 @@ def _make_selector_test_artifacts():
     ]
     deployment = artifacts["deployment"]
     deployment["metadata"]["labels"] = {
-        "version": "2.2.8",
-        "app.kubernetes.io/version": "9.7.0",
+        "version": "2.3.0",
+        "app.kubernetes.io/version": "26.7.0",
     }
     deployment["metadata"]["annotations"] = {
         "meta.helm.sh/release-name": "bootstrap",
@@ -166,8 +166,8 @@ def _make_selector_test_artifacts():
                 "app.kubernetes.io/name": "mysql-operator",
                 "app.kubernetes.io/instance": "mysql-operator",
                 "app.kubernetes.io/component": "controller",
-                "version": "2.2.8",
-                "app.kubernetes.io/version": "9.7.0",
+                "version": "2.3.0",
+                "app.kubernetes.io/version": "26.7.0",
             },
         },
         "spec": {
@@ -982,7 +982,7 @@ def test_get_helm_cluster_operator_release_uses_cluster_annotation(
         lambda namespace, name: {
             "metadata": {
                 "annotations": {
-                    "mysql.oracle.com/mysql-operator-version": "9.7.0-2.2.8",
+                    "mysql.oracle.com/mysql-operator-version": "26.7.0-2.3.0",
                 },
             },
         },
@@ -993,7 +993,7 @@ def test_get_helm_cluster_operator_release_uses_cluster_annotation(
         namespace="cluster-ns",
         cluster_name="cluster",
         fallback_release="9.6.0-2.2.7",
-    ) == "9.7.0-2.2.8"
+    ) == "26.7.0-2.3.0"
 
 
 def test_get_helm_cluster_operator_release_falls_back_without_annotation(
@@ -1509,14 +1509,14 @@ def test_raw_manifest_upgrade_release_chain_bridges_lts_to_current(
     monkeypatch.setattr(
         operator_t_module.g_ts_cfg,
         "operator_version_tag",
-        "9.7.0-2.2.8",
+        "26.7.0-2.3.0",
         raising=False,
     )
 
     assert operator_t_module.get_raw_manifest_upgrade_release_chain() == [
         "8.4.7-2.1.9",
         "9.6.0-2.2.7",
-        "9.7.0-2.2.8",
+        "26.7.0-2.3.0",
     ]
 
 

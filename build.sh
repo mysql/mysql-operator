@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) 2021, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2021, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -19,7 +19,8 @@ EOF
 #Default values
 ARCH='amd64'
 IMG_TAG=$(./tag.sh)
-MAJOR_VERSION=${IMG_TAG:0:3}
+MYSQL_VERSION=${IMG_TAG%%-*}
+MAJOR_VERSION=${MYSQL_VERSION%.*}
 DOCKERFILE="Dockerfile"
 
 while getopts "a:f:t:h" opt; do

@@ -19,7 +19,7 @@ tls:
 #  serverCertAndPKsecretName:
 #  routerCertAndPKsecretName: # our use router.certAndPKsecretName
 
-#serverVersion: 9.7.0
+#serverVersion: 26.7.0
 serverInstances: 3
 routerInstances: 1 # or use router.instances
 baseServerId: 1000

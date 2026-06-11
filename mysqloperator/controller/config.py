@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -25,10 +25,10 @@ else:
     OPERATOR_EDITION = Edition.community
 
 # Constants
-OPERATOR_VERSION = "2.2.8"
+OPERATOR_VERSION = "2.3.0"
 OPERATOR_EDITION_NAME_TO_ENUM = { edition.value : edition.name for edition in Edition }
 
-DEFAULT_VERSION_TAG = "9.7.0"
+DEFAULT_VERSION_TAG = "26.7.0"
 
 MIN_BASE_SERVER_ID = 1
 MAX_BASE_SERVER_ID = 4000000000

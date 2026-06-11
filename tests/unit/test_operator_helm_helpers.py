@@ -160,7 +160,7 @@ def _make_install_options(
 def _make_cluster_install_options(
     operator_helm_module,
     *,
-    app_version="9.7.0-2.2.8",
+    app_version="26.7.0-2.3.0",
     cluster_values=None,
 ):
     return operator_helm_module.HelmClusterInstallOptions(
@@ -236,7 +236,7 @@ def test_resolve_install_with_helm_options_preserves_source_image_and_pull_polic
                             "name": "mysql-operator",
                             "image": (
                                 "registry.example.com/team/custom-operator:"
-                                "9.7.0-2.2.8@sha256:deadbeef"
+                                "26.7.0-2.3.0@sha256:deadbeef"
                             ),
                             "imagePullPolicy": "Never",
                             "env": [
@@ -286,7 +286,7 @@ def test_resolve_install_with_helm_options_preserves_source_image_and_pull_polic
     assert options.operator_registry == "registry.example.com"
     assert options.operator_repository == "team"
     assert options.operator_image_name == "custom-operator"
-    assert options.operator_image_tag == "9.7.0-2.2.8"
+    assert options.operator_image_tag == "26.7.0-2.3.0"
     assert options.operator_image_digest == "sha256:deadbeef"
     assert options.operator_image_pull_policy == "Never"
     assert options.managed_images_pull_policy == "Always"
@@ -298,7 +298,7 @@ def test_resolve_install_with_helm_options_preserves_source_image_and_pull_polic
     assert options.standalone is True
     assert options.debug_operator == 2
     assert options.namespace_labels == {"purpose": "tests"}
-    assert options.app_version == "9.7.0-2.2.8"
+    assert options.app_version == "26.7.0-2.3.0"
 
 
 def test_resolve_install_with_helm_options_uses_resident_image_source_without_source_env(
@@ -315,7 +315,7 @@ def test_resolve_install_with_helm_options_uses_resident_image_source_without_so
                     "containers": [
                         {
                             "name": "mysql-operator",
-                            "image": "registry.example.com/team/custom-operator:9.7.0-2.2.8",
+                            "image": "registry.example.com/team/custom-operator:26.7.0-2.3.0",
                             "imagePullPolicy": "IfNotPresent",
                             "env": [],
                         }
@@ -337,7 +337,7 @@ def test_resolve_install_with_helm_options_uses_resident_image_source_without_so
     assert options.operator_repository == "team"
     assert options.default_registry == "registry.example.com"
     assert options.default_repository == "team"
-    assert options.app_version == "9.7.0-2.2.8"
+    assert options.app_version == "26.7.0-2.3.0"
 
 
 def test_resolve_install_with_helm_options_prefers_resident_image_source_over_source_env(
@@ -354,7 +354,7 @@ def test_resolve_install_with_helm_options_prefers_resident_image_source_over_so
                     "containers": [
                         {
                             "name": "mysql-operator",
-                            "image": "registry.example.com/team/custom-operator:9.7.0-2.2.8",
+                            "image": "registry.example.com/team/custom-operator:26.7.0-2.3.0",
                             "imagePullPolicy": "IfNotPresent",
                             "env": [
                                 {
@@ -381,7 +381,7 @@ def test_resolve_install_with_helm_options_prefers_resident_image_source_over_so
     assert options.operator_repository == "team"
     assert options.default_registry == "registry.example.com"
     assert options.default_repository == "team"
-    assert options.app_version == "9.7.0-2.2.8"
+    assert options.app_version == "26.7.0-2.3.0"
 
 
 def test_helm_operator_install_options_factory_returns_mutable_defaults(
@@ -398,7 +398,7 @@ def test_helm_operator_install_options_factory_returns_mutable_defaults(
                     "containers": [
                         {
                             "name": "mysql-operator",
-                            "image": "registry.example.com/team/custom-operator:9.7.0-2.2.8",
+                            "image": "registry.example.com/team/custom-operator:26.7.0-2.3.0",
                             "imagePullPolicy": "IfNotPresent",
                             "env": [],
                         }
@@ -425,7 +425,7 @@ def test_helm_operator_install_options_factory_returns_mutable_defaults(
     assert options.operator_values["image"]["name"] == "custom-operator"
     assert options.operator_values["image"]["pullPolicy"] == "IfNotPresent"
     assert "pullSecrets" not in options.operator_values["image"]
-    assert options.operator_values["image"]["tag"] == "9.7.0-2.2.8"
+    assert options.operator_values["image"]["tag"] == "26.7.0-2.3.0"
     assert options.operator_values["envs"]["imagesPullPolicy"] == "IfNotPresent"
     assert options.operator_values["envs"]["imagesDefaultRegistry"] == "registry.example.com"
     assert options.operator_values["envs"]["imagesDefaultRepository"] == "team"
@@ -436,7 +436,7 @@ def test_helm_operator_install_options_factory_returns_mutable_defaults(
     assert options.operator_values["deployment"]["namespaces"] == []
     assert options.operator_values["operatorDebug"] == 0
     assert options.helm_package == "mysql-operator"
-    assert options.app_version == "9.7.0-2.2.8"
+    assert options.app_version == "26.7.0-2.3.0"
 
     options.operator_values["debugger"] = {"enabled": True}
 
@@ -448,13 +448,13 @@ def test_get_helm_chart_path_accepts_direct_chart_root(tmp_path, helmutil_module
         tmp_path,
         "mounted-chart",
         "mysql-operator",
-        app_version="9.7.0-2.2.8",
+        app_version="26.7.0-2.3.0",
     )
 
     assert helmutil_module.get_helm_chart_path(
         "mysql-operator",
         source_path=str(chart_dir),
-        app_version="9.7.0-2.2.8",
+        app_version="26.7.0-2.3.0",
     ) == str(chart_dir)
 
 
@@ -497,24 +497,24 @@ def test_get_helm_chart_path_prefers_direct_chart_when_app_version_matches(
     tmp_path,
     helmutil_module,
 ):
-    helmutil_module.g_ts_cfg.operator_version_tag = "9.7.0-2.2.8"
+    helmutil_module.g_ts_cfg.operator_version_tag = "26.7.0-2.3.0"
     _write_chart(
         tmp_path,
         "mysql-operator",
         "mysql-operator",
-        app_version="9.7.0-2.2.8",
+        app_version="26.7.0-2.3.0",
     )
     _write_chart(
-        tmp_path / "9.7.0-2.2.8",
+        tmp_path / "26.7.0-2.3.0",
         "mysql-operator",
         "mysql-operator",
-        app_version="9.7.0-2.2.8",
+        app_version="26.7.0-2.3.0",
     )
 
     assert helmutil_module.get_helm_chart_path(
         "mysql-operator",
         source_path=str(tmp_path),
-        app_version="9.7.0-2.2.8",
+        app_version="26.7.0-2.3.0",
     ) == str(tmp_path / "mysql-operator")
 
 
@@ -522,20 +522,20 @@ def test_get_helm_chart_path_uses_versioned_chart_when_current_shortcut_is_missi
     tmp_path,
     helmutil_module,
 ):
-    helmutil_module.g_ts_cfg.operator_version_tag = "9.7.0-2.2.8"
-    version_root = tmp_path / "9.7.0-2.2.8"
+    helmutil_module.g_ts_cfg.operator_version_tag = "26.7.0-2.3.0"
+    version_root = tmp_path / "26.7.0-2.3.0"
     version_root.mkdir()
     _write_chart(
         version_root,
         "mysql-operator",
         "mysql-operator",
-        app_version="9.7.0-2.2.8",
+        app_version="26.7.0-2.3.0",
     )
 
     assert helmutil_module.get_helm_chart_path(
         "mysql-operator",
         source_path=str(tmp_path),
-        app_version="9.7.0-2.2.8",
+        app_version="26.7.0-2.3.0",
     ) == str(version_root / "mysql-operator")
 
 
@@ -543,32 +543,32 @@ def test_get_helm_chart_path_uses_versioned_chart_when_current_shortcut_chart_ha
     tmp_path,
     helmutil_module,
 ):
-    helmutil_module.g_ts_cfg.operator_version_tag = "9.7.0-2.2.8"
+    helmutil_module.g_ts_cfg.operator_version_tag = "26.7.0-2.3.0"
     current_chart = _write_chart(
         tmp_path,
         "mysql-operator",
         "mysql-operator",
-        app_version="9.7.0-2.2.8",
+        app_version="26.7.0-2.3.0",
     )
     _add_broken_symlink(
         current_chart,
         "mysql-operator",
-        "9.7.0-2.2.8/mysql-operator",
+        "26.7.0-2.3.0/mysql-operator",
     )
 
-    version_root = tmp_path / "9.7.0-2.2.8"
+    version_root = tmp_path / "26.7.0-2.3.0"
     version_root.mkdir()
     _write_chart(
         version_root,
         "mysql-operator",
         "mysql-operator",
-        app_version="9.7.0-2.2.8",
+        app_version="26.7.0-2.3.0",
     )
 
     assert helmutil_module.get_helm_chart_path(
         "mysql-operator",
         source_path=str(tmp_path),
-        app_version="9.7.0-2.2.8",
+        app_version="26.7.0-2.3.0",
     ) == str(version_root / "mysql-operator")
 
 
@@ -576,27 +576,27 @@ def test_get_helm_chart_path_rejects_current_chart_when_versioned_chart_has_brok
     tmp_path,
     helmutil_module,
 ):
-    helmutil_module.g_ts_cfg.operator_version_tag = "9.7.0-2.2.8"
-    version_root = tmp_path / "9.7.0-2.2.8"
+    helmutil_module.g_ts_cfg.operator_version_tag = "26.7.0-2.3.0"
+    version_root = tmp_path / "26.7.0-2.3.0"
     version_root.mkdir()
     versioned_chart = _write_chart(
         version_root,
         "mysql-operator",
         "mysql-operator",
-        app_version="9.7.0-2.2.8",
+        app_version="26.7.0-2.3.0",
     )
     _add_broken_symlink(
         versioned_chart,
         "mysql-operator",
-        "9.7.0-2.2.8/mysql-operator",
+        "26.7.0-2.3.0/mysql-operator",
     )
-    _link_chart(tmp_path, "mysql-operator", "9.7.0-2.2.8/mysql-operator")
+    _link_chart(tmp_path, "mysql-operator", "26.7.0-2.3.0/mysql-operator")
 
     with pytest.raises(FileNotFoundError, match="broken symlink"):
         helmutil_module.get_helm_chart_path(
             "mysql-operator",
             source_path=str(tmp_path),
-            app_version="9.7.0-2.2.8",
+            app_version="26.7.0-2.3.0",
         )
 
 
@@ -604,14 +604,14 @@ def test_get_helm_chart_path_raises_when_direct_and_versioned_app_versions_misma
     tmp_path,
     helmutil_module,
 ):
-    helmutil_module.g_ts_cfg.operator_version_tag = "9.7.0-2.2.8"
+    helmutil_module.g_ts_cfg.operator_version_tag = "26.7.0-2.3.0"
     _write_chart(
         tmp_path,
         "mysql-operator",
         "mysql-operator",
         app_version="9.8.0-2.2.9",
     )
-    version_root = tmp_path / "9.7.0-2.2.8"
+    version_root = tmp_path / "26.7.0-2.3.0"
     version_root.mkdir()
     _write_chart(
         version_root,
@@ -624,7 +624,7 @@ def test_get_helm_chart_path_raises_when_direct_and_versioned_app_versions_misma
         helmutil_module.get_helm_chart_path(
             "mysql-operator",
             source_path=str(tmp_path),
-            app_version="9.7.0-2.2.8",
+            app_version="26.7.0-2.3.0",
         )
 
 
@@ -632,19 +632,19 @@ def test_get_helm_chart_path_accepts_split_app_and_chart_versions(
     tmp_path,
     helmutil_module,
 ):
-    helmutil_module.g_ts_cfg.operator_version_tag = "9.7.0-2.2.8"
+    helmutil_module.g_ts_cfg.operator_version_tag = "26.7.0-2.3.0"
     _write_chart(
         tmp_path,
         "mysql-innodbcluster",
         "mysql-innodbcluster",
-        app_version="9.7.0",
-        version="2.2.8",
+        app_version="26.7.0",
+        version="2.3.0",
     )
 
     assert helmutil_module.get_helm_chart_path(
         "mysql-innodbcluster",
         source_path=str(tmp_path),
-        app_version="9.7.0-2.2.8",
+        app_version="26.7.0-2.3.0",
     ) == str(tmp_path / "mysql-innodbcluster")
 
 
@@ -652,12 +652,12 @@ def test_get_helm_chart_path_uses_only_requested_version_for_non_current_release
     tmp_path,
     helmutil_module,
 ):
-    helmutil_module.g_ts_cfg.operator_version_tag = "9.7.0-2.2.8"
+    helmutil_module.g_ts_cfg.operator_version_tag = "26.7.0-2.3.0"
     _write_chart(
         tmp_path,
         "mysql-operator",
         "mysql-operator",
-        app_version="9.7.0-2.2.8",
+        app_version="26.7.0-2.3.0",
     )
     version_root = tmp_path / "8.4.7-2.1.9"
     version_root.mkdir()
@@ -679,7 +679,7 @@ def test_get_helm_chart_path_uses_split_metadata_for_non_current_versioned_chart
     tmp_path,
     helmutil_module,
 ):
-    helmutil_module.g_ts_cfg.operator_version_tag = "9.7.0-2.2.8"
+    helmutil_module.g_ts_cfg.operator_version_tag = "26.7.0-2.3.0"
     version_root = tmp_path / "8.4.7-2.1.9"
     version_root.mkdir()
     _write_chart(
@@ -701,12 +701,12 @@ def test_get_helm_chart_path_rejects_missing_requested_versioned_chart(
     tmp_path,
     helmutil_module,
 ):
-    helmutil_module.g_ts_cfg.operator_version_tag = "9.7.0-2.2.8"
+    helmutil_module.g_ts_cfg.operator_version_tag = "26.7.0-2.3.0"
     _write_chart(
         tmp_path,
         "mysql-operator",
         "mysql-operator",
-        app_version="9.7.0-2.2.8",
+        app_version="26.7.0-2.3.0",
     )
 
     with pytest.raises(FileNotFoundError, match="8.4.7-2.1.9"):
@@ -721,7 +721,7 @@ def test_get_missing_helm_chart_release_paths_reports_missing_historical_charts(
     tmp_path,
     helmutil_module,
 ):
-    current_version = "9.7.0-2.2.8"
+    current_version = "26.7.0-2.3.0"
     historical_version = "8.4.7-2.1.9"
     helmutil_module.g_ts_cfg.operator_version_tag = current_version
     _write_chart(
@@ -734,8 +734,8 @@ def test_get_missing_helm_chart_release_paths_reports_missing_historical_charts(
         tmp_path,
         "mysql-innodbcluster",
         "mysql-innodbcluster",
-        app_version="9.7.0",
-        version="2.2.8",
+        app_version="26.7.0",
+        version="2.3.0",
     )
 
     assert helmutil_module.get_missing_helm_chart_release_paths(
@@ -753,7 +753,7 @@ def test_get_missing_helm_chart_release_paths_rejects_invalid_historical_chart(
     helmutil_module,
 ):
     historical_version = "8.4.7-2.1.9"
-    helmutil_module.g_ts_cfg.operator_version_tag = "9.7.0-2.2.8"
+    helmutil_module.g_ts_cfg.operator_version_tag = "26.7.0-2.3.0"
     historical_root = tmp_path / historical_version
     historical_root.mkdir()
     _write_chart(
@@ -775,12 +775,12 @@ def test_get_helm_chart_path_rejects_split_metadata_release_mismatch(
     tmp_path,
     helmutil_module,
 ):
-    helmutil_module.g_ts_cfg.operator_version_tag = "9.7.0-2.2.8"
+    helmutil_module.g_ts_cfg.operator_version_tag = "26.7.0-2.3.0"
     _write_chart(
         tmp_path,
         "mysql-innodbcluster",
         "mysql-innodbcluster",
-        app_version="9.7.0",
+        app_version="26.7.0",
         version="2.2.7",
     )
 
@@ -788,7 +788,7 @@ def test_get_helm_chart_path_rejects_split_metadata_release_mismatch(
         helmutil_module.get_helm_chart_path(
             "mysql-innodbcluster",
             source_path=str(tmp_path),
-            app_version="9.7.0-2.2.8",
+            app_version="26.7.0-2.3.0",
         )
 
 
@@ -796,9 +796,9 @@ def test_get_previous_operator_chart_release_picks_prior_chart_patch(
     tmp_path,
     helmutil_module,
 ):
-    helmutil_module.g_ts_cfg.operator_version_tag = "9.7.0-2.2.8"
+    helmutil_module.g_ts_cfg.operator_version_tag = "26.7.0-2.3.0"
 
-    for release_name in ("9.7.0-2.2.8", "9.6.0-2.2.7", "8.4.9-2.1.11"):
+    for release_name in ("26.7.0-2.3.0", "9.6.0-2.2.7", "8.4.9-2.1.11"):
         version_root = tmp_path / release_name
         version_root.mkdir()
         _write_chart(
@@ -859,18 +859,18 @@ def test_get_previous_operator_chart_release_raises_when_no_prior_release_exists
     tmp_path,
     helmutil_module,
 ):
-    helmutil_module.g_ts_cfg.operator_version_tag = "9.7.0-2.2.8"
+    helmutil_module.g_ts_cfg.operator_version_tag = "26.7.0-2.3.0"
 
-    version_root = tmp_path / "9.7.0-2.2.8"
+    version_root = tmp_path / "26.7.0-2.3.0"
     version_root.mkdir()
     _write_chart(
         version_root,
         "mysql-operator",
         "mysql-operator",
-        app_version="9.7.0-2.2.8",
+        app_version="26.7.0-2.3.0",
     )
 
-    with pytest.raises(FileNotFoundError, match="9.7.0-2.2.8"):
+    with pytest.raises(FileNotFoundError, match="26.7.0-2.3.0"):
         helmutil_module.get_previous_operator_chart_release(
             source_path=str(tmp_path),
         )
@@ -881,7 +881,7 @@ def test_validate_helm_test_environment_accepts_current_shortcut_paths(
     helmutil_module,
     monkeypatch,
 ):
-    current_version = "9.7.0-2.2.8"
+    current_version = "26.7.0-2.3.0"
     monkeypatch.setattr(helmutil_module, "helm_binary_available", lambda: True)
     monkeypatch.setattr(
         helmutil_module.g_ts_cfg,
@@ -901,8 +901,8 @@ def test_validate_helm_test_environment_accepts_current_shortcut_paths(
         version_root,
         "mysql-innodbcluster",
         "mysql-innodbcluster",
-        app_version="9.7.0",
-        version="2.2.8",
+        app_version="26.7.0",
+        version="2.3.0",
     )
     _link_chart(tmp_path, "mysql-operator", f"{current_version}/mysql-operator")
     _link_chart(
@@ -919,7 +919,7 @@ def test_validate_helm_test_environment_accepts_current_version_directory_only(
     helmutil_module,
     monkeypatch,
 ):
-    current_version = "9.7.0-2.2.8"
+    current_version = "26.7.0-2.3.0"
     monkeypatch.setattr(helmutil_module, "helm_binary_available", lambda: True)
     monkeypatch.setattr(
         helmutil_module.g_ts_cfg,
@@ -939,8 +939,8 @@ def test_validate_helm_test_environment_accepts_current_version_directory_only(
         version_root,
         "mysql-innodbcluster",
         "mysql-innodbcluster",
-        app_version="9.7.0",
-        version="2.2.8",
+        app_version="26.7.0",
+        version="2.3.0",
     )
 
     helmutil_module.validate_helm_test_environment(str(tmp_path))
@@ -951,7 +951,7 @@ def test_validate_helm_test_environment_rejects_missing_required_chart(
     helmutil_module,
     monkeypatch,
 ):
-    current_version = "9.7.0-2.2.8"
+    current_version = "26.7.0-2.3.0"
     monkeypatch.setattr(helmutil_module, "helm_binary_available", lambda: True)
     monkeypatch.setattr(
         helmutil_module.g_ts_cfg,
@@ -977,7 +977,7 @@ def test_validate_helm_test_environment_formats_current_layout_errors_per_line(
     helmutil_module,
     monkeypatch,
 ):
-    current_version = "9.7.0-2.2.8"
+    current_version = "26.7.0-2.3.0"
     monkeypatch.setattr(helmutil_module, "helm_binary_available", lambda: True)
     monkeypatch.setattr(
         helmutil_module.g_ts_cfg,
@@ -1015,7 +1015,7 @@ def test_validate_helm_test_environment_rejects_split_metadata_release_mismatch(
     helmutil_module,
     monkeypatch,
 ):
-    current_version = "9.7.0-2.2.8"
+    current_version = "26.7.0-2.3.0"
     monkeypatch.setattr(helmutil_module, "helm_binary_available", lambda: True)
     monkeypatch.setattr(
         helmutil_module.g_ts_cfg,
@@ -1035,11 +1035,11 @@ def test_validate_helm_test_environment_rejects_split_metadata_release_mismatch(
         version_root,
         "mysql-innodbcluster",
         "mysql-innodbcluster",
-        app_version="9.7.0",
+        app_version="26.7.0",
         version="2.2.7",
     )
 
-    with pytest.raises(FileNotFoundError, match="Accepted releases from metadata: 9.7.0, 9.7.0-2.2.7"):
+    with pytest.raises(FileNotFoundError, match="Accepted releases from metadata: 26.7.0, 26.7.0-2.2.7"):
         helmutil_module.validate_helm_test_environment(str(tmp_path))
 
 
@@ -1048,7 +1048,7 @@ def test_validate_helm_test_environment_formats_historical_layout_errors_per_lin
     helmutil_module,
     monkeypatch,
 ):
-    current_version = "9.7.0-2.2.8"
+    current_version = "26.7.0-2.3.0"
     monkeypatch.setattr(helmutil_module, "helm_binary_available", lambda: True)
     monkeypatch.setattr(
         helmutil_module.g_ts_cfg,
@@ -1068,8 +1068,8 @@ def test_validate_helm_test_environment_formats_historical_layout_errors_per_lin
         current_root,
         "mysql-innodbcluster",
         "mysql-innodbcluster",
-        app_version="9.7.0",
-        version="2.2.8",
+        app_version="26.7.0",
+        version="2.3.0",
     )
 
     historical_root = tmp_path / "9.6.0-2.2.7"
@@ -1107,7 +1107,7 @@ def test_validate_helm_test_environment_rejects_broken_symlink_in_historical_ope
     helmutil_module,
     monkeypatch,
 ):
-    current_version = "9.7.0-2.2.8"
+    current_version = "26.7.0-2.3.0"
     monkeypatch.setattr(helmutil_module, "helm_binary_available", lambda: True)
     monkeypatch.setattr(
         helmutil_module.g_ts_cfg,
@@ -1127,8 +1127,8 @@ def test_validate_helm_test_environment_rejects_broken_symlink_in_historical_ope
         current_root,
         "mysql-innodbcluster",
         "mysql-innodbcluster",
-        app_version="9.7.0",
-        version="2.2.8",
+        app_version="26.7.0",
+        version="2.3.0",
     )
 
     historical_root = tmp_path / "9.6.0-2.2.7"
@@ -1161,7 +1161,7 @@ def test_validate_helm_test_environment_rejects_broken_symlink_in_historical_inn
     helmutil_module,
     monkeypatch,
 ):
-    current_version = "9.7.0-2.2.8"
+    current_version = "26.7.0-2.3.0"
     monkeypatch.setattr(helmutil_module, "helm_binary_available", lambda: True)
     monkeypatch.setattr(
         helmutil_module.g_ts_cfg,
@@ -1181,8 +1181,8 @@ def test_validate_helm_test_environment_rejects_broken_symlink_in_historical_inn
         current_root,
         "mysql-innodbcluster",
         "mysql-innodbcluster",
-        app_version="9.7.0",
-        version="2.2.8",
+        app_version="26.7.0",
+        version="2.3.0",
     )
 
     historical_root = tmp_path / "9.6.0-2.2.7"
@@ -1213,7 +1213,7 @@ def test_validate_helm_test_environment_rejects_broken_symlink_in_historical_inn
 def test_parse_image_reference_requires_registry_host(operator_helm_module):
     with pytest.raises(ValueError, match="explicit registry host"):
         operator_helm_module._parse_image_reference(
-            "mysql/community-operator:9.7.0-2.2.8"
+            "mysql/community-operator:26.7.0-2.3.0"
         )
 
 
@@ -1269,7 +1269,7 @@ def test_install_with_helm_passes_exact_operator_image_and_pull_policies(
                         "containers": [
                             {
                                 "name": "mysql-operator",
-                                "image": "registry.example.com/team/custom-operator:9.7.0-2.2.8",
+                                "image": "registry.example.com/team/custom-operator:26.7.0-2.3.0",
                                 "imagePullPolicy": "Never",
                             }
                         ]
@@ -1325,7 +1325,7 @@ def test_install_with_helm_passes_exact_operator_image_and_pull_policies(
                 "registry": "registry.example.com",
                 "repository": "team",
                 "name": "custom-operator",
-                "tag": "9.7.0-2.2.8",
+                "tag": "26.7.0-2.3.0",
                 "digest": "sha256:deadbeef",
                 "pullPolicy": "Never",
                 "pullSecrets": {"secretName": "repo-secret"},
@@ -1369,7 +1369,7 @@ def test_install_with_helm_passes_exact_operator_image_and_pull_policies(
     }
     assert argv[-1] == "/charts/mysql-operator"
     assert values["image"]["name"] == "custom-operator"
-    assert values["image"]["tag"] == "9.7.0-2.2.8"
+    assert values["image"]["tag"] == "26.7.0-2.3.0"
     assert values["image"]["pullPolicy"] == "Never"
     assert values["envs"]["imagesPullPolicy"] == "Always"
     assert values["deployment"]["strategy"] == {
@@ -1383,7 +1383,7 @@ def test_install_with_helm_passes_exact_operator_image_and_pull_policies(
     assert "digest" not in values["image"]
     assert install_result.options is options
     assert patched["payload"]["spec"]["template"]["spec"]["containers"][0]["image"] == (
-        "registry.example.com/team/custom-operator:9.7.0-2.2.8@sha256:deadbeef"
+        "registry.example.com/team/custom-operator:26.7.0-2.3.0@sha256:deadbeef"
     )
     assert "Generated Helm values file" in capsys.readouterr().out
 
@@ -1651,7 +1651,7 @@ def test_install_cluster_with_helm_uses_cluster_chart_without_helm_wait(
     assert "--timeout" not in argv
     assert recorded["chart_query"] == {
         "chart_name": "mysql-innodbcluster",
-        "app_version": "9.7.0-2.2.8",
+        "app_version": "26.7.0-2.3.0",
     }
     assert values["serverInstances"] == 3
     assert values["router"]["instances"] == 1
@@ -2489,7 +2489,7 @@ def test_install_with_helm_omits_managed_image_source_flags_when_defaults_are_un
                         "containers": [
                             {
                                 "name": "mysql-operator",
-                                "image": "registry.example.com/team/custom-operator:9.7.0-2.2.8",
+                                "image": "registry.example.com/team/custom-operator:26.7.0-2.3.0",
                                 "imagePullPolicy": "IfNotPresent",
                             }
                         ]
@@ -2533,7 +2533,7 @@ def test_install_with_helm_omits_managed_image_source_flags_when_defaults_are_un
                 "registry": "registry.example.com",
                 "repository": "team",
                 "name": "custom-operator",
-                "tag": "9.7.0-2.2.8",
+                "tag": "26.7.0-2.3.0",
                 "pullPolicy": "IfNotPresent",
             },
             "envs": {
@@ -2603,7 +2603,7 @@ def test_install_with_helm_merges_generated_values_into_existing_values_dict(
                         "containers": [
                             {
                                 "name": "mysql-operator",
-                                "image": "registry.example.com/team/custom-operator:9.7.0-2.2.8",
+                                "image": "registry.example.com/team/custom-operator:26.7.0-2.3.0",
                                 "imagePullPolicy": "IfNotPresent",
                             }
                         ]
@@ -2649,7 +2649,7 @@ def test_install_with_helm_merges_generated_values_into_existing_values_dict(
                     "registry": "registry.example.com",
                     "repository": "team",
                     "name": "custom-operator",
-                    "tag": "9.7.0-2.2.8",
+                    "tag": "26.7.0-2.3.0",
                     "pullPolicy": "Always",
                     "pullSecrets": {"secretName": "repo-secret"},
                 },

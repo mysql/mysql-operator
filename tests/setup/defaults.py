@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -6,10 +6,10 @@
 import os
 
 # version
-VERSION_TAG = "9.7.0"
+VERSION_TAG = "26.7.0"
 
 MIN_SUPPORTED_VERSION = "8.0.28"
-MAX_SUPPORTED_VERSION = "9.7.0"
+MAX_SUPPORTED_VERSION = "26.7.0"
 
 # Some tests won't work if jumping from MIN_SUPPORTED_VERSION to MAX_SUPPORTED_VERSION
 # The result will be
@@ -32,7 +32,7 @@ OPERATOR_EE_IMAGE_NAME = os.getenv(
     "OPERATOR_TEST_EE_IMAGE_NAME", default="enterprise-operator")
 
 OPERATOR_VERSION_TAG = os.getenv(
-    "OPERATOR_TEST_VERSION_TAG", default="9.7.0-2.2.8")
+    "OPERATOR_TEST_VERSION_TAG", default="26.7.0-2.3.0")
 
 OPERATOR_CURRENT_LTS_VERSION_TAG = os.getenv(
     "OPERATOR_CURRENT_LTS_VERSION_TAG", default="8.4.7-2.1.9")

@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -24,6 +24,7 @@ import kopf
 import mysqlsh
 import json
 import logging
+import random
 from logging import Logger
 import time
 import traceback
@@ -47,6 +48,18 @@ def _remove_member_finalizer_if_present(pod: MySQLPod, body: Body, logger: Logge
             logger.info(f"on_pod_delete: Pod {pod.namespace}/{pod.name} is already gone")
             return
         raise
+def _ensure_group_member_reconciled(pod: MySQLPod) -> None:
+    if pod.instance_type != "group-member" or pod.get_membership_info():
+        return
+
+    pod.reload()
+    if pod.get_membership_info():
+        return
+
+    raise kopf.TemporaryError(
+        f"Pod {pod.namespace}/{pod.name} has no membership info after reconciliation",
+        delay=10,
+    )
 
 
 def _get_field(obj: Any, attr_name: str, dict_key: Optional[str] = None) -> Any:
@@ -369,6 +382,52 @@ def _reconcile_switchover_role_binding(
         )
 
 
+def reconcile_sidecar_rbac(
+    cluster: InnoDBCluster,
+    spec: cluster_api.AbstractServerSetSpec,
+    logger: Logger,
+) -> None:
+    existing_sa = ignore_404(lambda: cluster.get_service_account_sidecar(spec))
+    logger.debug("Existing sidecar ServiceAccount %s: %s", spec.serviceAccountName, existing_sa)
+    if not existing_sa:
+        sa = cluster_objects.prepare_service_account_sidecar(spec)
+        logger.info(
+            "Creating sidecar ServiceAccount %s/%s for cluster %s/%s",
+            cluster.namespace,
+            spec.serviceAccountName,
+            cluster.namespace,
+            cluster.name,
+        )
+        kopf.adopt(sa)
+        api_core.create_namespaced_service_account(namespace=cluster.namespace, body=sa)
+    elif spec.imagePullSecrets:
+        patch = cluster_objects.prepare_service_account_patch_for_image_pull_secrets(spec)
+        logger.info(
+            "Patching sidecar ServiceAccount %s/%s for cluster %s/%s",
+            cluster.namespace,
+            existing_sa.metadata.name,
+            cluster.namespace,
+            cluster.name,
+        )
+        api_core.patch_namespaced_service_account(
+            name=existing_sa.metadata.name,
+            namespace=cluster.namespace,
+            body=patch,
+        )
+
+    if not ignore_404(lambda: cluster.get_role_binding_sidecar(spec)):
+        rb = cluster_objects.prepare_role_binding_sidecar(spec)
+        logger.info(
+            "Creating sidecar RoleBinding %s/%s for cluster %s/%s",
+            cluster.namespace,
+            rb["metadata"]["name"],
+            cluster.namespace,
+            cluster.name,
+        )
+        kopf.adopt(rb)
+        api_rbac.create_namespaced_role_binding(namespace=cluster.namespace, body=rb)
+
+
 
 
 def on_group_view_change(cluster: InnoDBCluster, members: list[tuple], view_id_changed: bool) -> None:
@@ -409,6 +468,28 @@ def ensure_backup_schedules_use_current_image(clusters: List[InnoDBCluster], log
         except Exception as exc:
             # In case of any error we report but continue
             logger.warn(f"Error while ensuring {cluster.namespace}/{cluster.name} uses current operator version for scheduled backups: {exc}")
+
+
+def ensure_sidecar_rbac_uptodate(clusters: List[InnoDBCluster], logger: Logger) -> None:
+    failed_clusters: list[str] = []
+
+    for cluster in clusters:
+        if cluster.deleting:
+            continue
+
+        try:
+            spec = cluster.parsed_spec
+            reconcile_sidecar_rbac(cluster, spec, logger)
+            for read_replica_spec in spec.readReplicas:
+                reconcile_sidecar_rbac(cluster, read_replica_spec, logger)
+        except Exception as exc:
+            failed_clusters.append(f"{cluster.namespace}/{cluster.name}: {exc}")
+
+    if failed_clusters:
+        raise RuntimeError(
+            "Failed to reconcile sidecar RBAC during startup for clusters: "
+            + "; ".join(failed_clusters)
+        )
 
 
 def _meb_container_tls_command_patch(sts: api_client.V1StatefulSet) -> Optional[dict]:
@@ -1005,6 +1086,16 @@ def _remove_router_metadata_with_retries(
                 f"Retrying in {_ROUTER_METADATA_REMOVAL_RETRY_DELAY_SECONDS}s"
             )
             time.sleep(_ROUTER_METADATA_REMOVAL_RETRY_DELAY_SECONDS)
+_POD_CREATE_RETRY_INITIAL_DELAY = 30
+_POD_CREATE_RETRY_MAX_DELAY = 300
+
+
+def _pod_create_retry_delay(retry: int) -> float:
+    delay = min(
+        _POD_CREATE_RETRY_INITIAL_DELAY * (2 ** min(retry, 4)),
+        _POD_CREATE_RETRY_MAX_DELAY,
+    )
+    return random.uniform(delay * 0.9, delay * 1.1)
 
 
 def on_innodbcluster_field_instances(old, new, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
@@ -1331,7 +1422,10 @@ def on_pod_create(body: Body, logger: Logger, **kwargs):
     if not configured:
         # TODO add extra diagnostics about why the pod is not ready yet, for
         # example, unbound volume claims, initconf not finished etc
-        raise kopf.TemporaryError(f"Sidecar of {pod.name} is not yet configured", delay=30)
+        raise kopf.TemporaryError(
+            f"Sidecar of {pod.name} is not yet configured",
+            delay=_pod_create_retry_delay(kwargs.get("retry", 0)),
+        )
 
     # If we are here all containers have started. This means, that if we are initializing
     # the database from a donor (cloning) the sidecar has already started a seed instance
@@ -1353,6 +1447,7 @@ def on_pod_create(body: Body, logger: Logger, **kwargs):
         cluster_ctl = ClusterController(cluster)
 
         cluster_ctl.on_pod_created(pod, logger)
+        _ensure_group_member_reconciled(pod)
 
         # Remember how many restarts happened as of now
         g_ephemeral_pod_state.set(pod, "mysql-restarts", pod.get_container_restarts("mysql"), context="on_pod_create")
@@ -1372,11 +1467,43 @@ def on_pod_event(body: Body, logger: Logger, **kwargs):
     member_info = pod.get_membership_info()
     ready = pod.check_containers_ready()
     logger.debug(f"pod event: pod={pod.name} containers_ready={ready} deleting={pod.deleting} phase={pod.phase} member_info={member_info}")
-    if pod.phase != "Running" or pod.deleting or not member_info:
+    if pod.phase != "Running" or pod.deleting:
         logger.info(f"ignored pod event")
         return
 
     mysql_restarts = pod.get_container_restarts("mysql")
+
+    if not member_info:
+        if (
+            pod.instance_type != "group-member"
+            or not pod.get_member_readiness_gate("configured")
+        ):
+            logger.info(f"ignored pod event")
+            return
+
+        cluster = pod.get_cluster()
+        if not cluster:
+            return
+        # Initial pod bootstrap has first-pod setup that only runs from
+        # on_pod_create(); this fallback is only for recreated pods.
+        if not cluster.get_create_time():
+            logger.info(f"ignored pod event")
+            return
+
+        logger.info(
+            f"pod event: {pod.name} has no membership info; reconciling pod"
+        )
+        with ClusterMutex(cluster, pod):
+            cluster_ctl = ClusterController(cluster)
+            cluster_ctl.on_pod_created(pod, logger)
+            _ensure_group_member_reconciled(pod)
+            g_ephemeral_pod_state.set(
+                pod,
+                "mysql-restarts",
+                mysql_restarts,
+                context="on_pod_event",
+            )
+        return
 
     event = ""
     if utils.ephemeral_value_changed(pod, "mysql-restarts", mysql_restarts, context="on_pod_event"):

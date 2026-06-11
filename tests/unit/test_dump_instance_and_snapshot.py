@@ -5,6 +5,7 @@
 
 import pytest
 import copy
+import types
 from mysqloperator.controller import consts, utils, config, shellutils
 from mysqloperator.controller.storage_api import StorageSpec, OCIOSStorageSpec, PVCStorageSpec
 from mysqloperator.controller.api_utils import ApiSpecError
@@ -13,6 +14,17 @@ from mysqloperator.controller.backup import backup_objects
 
 #from mysqloperator.controller.innodbcluster.cluster_api import InnoDBCluster
 #import logging
+
+
+def test_prepare_backup_auth_secret_uses_backup_username(monkeypatch):
+    monkeypatch.setattr(backup_objects.utils, "generate_password", lambda: "generated-password")
+
+    secret = backup_objects._prepare_backup_auth_secret(
+        types.SimpleNamespace(name="mycluster"))
+
+    assert utils.b64decode(secret["data"]["backupUsername"]) == config.BACKUP_USER_NAME
+    assert utils.b64decode(secret["data"]["backupPassword"]) == "generated-password"
+
 
 @pytest.fixture
 def oci_os_correct() -> dict:

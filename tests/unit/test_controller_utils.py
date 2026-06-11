@@ -185,6 +185,36 @@ def test_get_cpu_limits_returns_cpu_count_when_both_cgroup_reads_fail(monkeypatc
     assert utils_module.get_cpu_limits() == 7
 
 
+def test_generate_password_uses_cryptographic_choice(monkeypatch, utils_module):
+    choices = []
+
+    def fake_choice(characters):
+        choices.append(characters)
+        return characters[0]
+
+    monkeypatch.setattr(utils_module.secrets, "choice", fake_choice)
+
+    password = utils_module.generate_password()
+
+    assert password == "aaaaa-aaaaa-aaaaa-aaaaa-aaaaa"
+    assert len(choices) == 25
+
+
+def test_generate_alphanum_string_uses_cryptographic_choice(monkeypatch, utils_module):
+    choices = []
+
+    def fake_choice(characters):
+        choices.append(characters)
+        return characters[-1]
+
+    monkeypatch.setattr(utils_module.secrets, "choice", fake_choice)
+
+    value = utils_module.generate_alphanum_string(10)
+
+    assert value == "9999999999"
+    assert len(choices) == 10
+
+
 def test_ephemeral_value_changed_primes_first_observation(utils_module, monkeypatch):
     monkeypatch.setattr(utils_module, "g_ephemeral_pod_state", utils_module.EphemeralState())
     pod = types.SimpleNamespace(namespace="test-ns", name="test-pod")

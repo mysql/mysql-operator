@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -942,7 +942,10 @@ def secret_belongs_to_the_cluster_checker(namespace:str, name, **_) -> bool:
     # that it will listen to all namespaces and then this won't hold true all the time
     if namespace == g_pod_namespace:
         ic = InnoDBCluster.read(namespace, g_cluster_name)
-        return name in (ic.parsed_spec.tlsCASecretName, ic.parsed_spec.tlsSecretName, ic.parsed_spec.router.tlsSecretName)
+        return name in (
+            ic.parsed_spec.tlsCASecretName,
+            ic.parsed_spec.tlsSecretName,
+            ic.parsed_spec.router.tlsSecretName)
     return False
 
 
@@ -1016,7 +1019,6 @@ def on_secret_create_or_update(name: str, namespace: str, spec, new, logger: Log
                 router_deployment = ic.get_router_deployment() if g_pod_index == 0 else None
         finally:
             g_ca_tls_change_underway_lock.release()
-
     if handler:
         try:
             handler(new, ic.parsed_spec.tlsUseSelfSigned, router_deployment , logger)

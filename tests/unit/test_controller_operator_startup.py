@@ -148,9 +148,6 @@ def _load_controller_operator_module():
     operator_cluster_stub.ensure_backup_schedules_use_current_image = (
         lambda clusters, logger: None
     )
-    operator_cluster_stub.ensure_backup_auth_secrets_are_uptodate = (
-        lambda clusters, logger: None
-    )
     operator_cluster_stub.ensure_sidecar_rbac_uptodate = (
         lambda clusters, logger: None
     )
@@ -217,11 +214,6 @@ def test_on_startup_blocks_follow_up_steps_when_switchover_rbac_repair_fails(
     )
     monkeypatch.setattr(
         operator_module.operator_cluster,
-        "ensure_backup_auth_secrets_are_uptodate",
-        lambda clusters, logger: call_order.append("backup_auth"),
-    )
-    monkeypatch.setattr(
-        operator_module.operator_cluster,
         "ensure_sidecar_rbac_uptodate",
         lambda clusters, logger: call_order.append("sidecar"),
     )
@@ -269,7 +261,7 @@ def test_on_startup_blocks_follow_up_steps_when_switchover_rbac_repair_fails(
     with pytest.raises(RuntimeError, match="startup switchover failed"):
         operator_module.on_startup(settings, logger)
 
-    assert call_order == ["backup", "backup_auth", "sidecar", "switchover"]
+    assert call_order == ["backup", "sidecar", "switchover"]
     assert group_monitor_starts == []
     assert ready_file.exists() is False
     assert clusters[0].info_calls == []
@@ -296,11 +288,6 @@ def test_on_startup_emits_operator_restarted_only_after_success(
         operator_module.operator_cluster,
         "ensure_backup_schedules_use_current_image",
         lambda clusters, logger: call_order.append("backup"),
-    )
-    monkeypatch.setattr(
-        operator_module.operator_cluster,
-        "ensure_backup_auth_secrets_are_uptodate",
-        lambda clusters, logger: call_order.append("backup_auth"),
     )
     monkeypatch.setattr(
         operator_module.operator_cluster,
@@ -347,7 +334,6 @@ def test_on_startup_emits_operator_restarted_only_after_success(
 
     assert call_order == [
         "backup",
-        "backup_auth",
         "sidecar",
         "switchover",
         "meb",
@@ -403,11 +389,6 @@ def test_on_startup_ignores_operator_restarted_event_for_terminating_namespace(
     )
     monkeypatch.setattr(
         operator_module.operator_cluster,
-        "ensure_backup_auth_secrets_are_uptodate",
-        lambda clusters, logger: call_order.append("backup_auth"),
-    )
-    monkeypatch.setattr(
-        operator_module.operator_cluster,
         "ensure_sidecar_rbac_uptodate",
         lambda clusters, logger: call_order.append("sidecar"),
     )
@@ -452,7 +433,6 @@ def test_on_startup_ignores_operator_restarted_event_for_terminating_namespace(
 
     assert call_order == [
         "backup",
-        "backup_auth",
         "sidecar",
         "switchover",
         "meb",

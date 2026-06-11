@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -8,9 +8,8 @@ import threading
 import platform
 import socket
 import datetime
-import time
 import string
-import random
+import secrets
 import base64
 import json
 import hashlib
@@ -179,8 +178,13 @@ def merge_patch_object(base: dict, patch: dict, prefix: str = "", key: str = "",
 
 
 def generate_password() -> str:
-    random.seed(int(str(time.time()).split(".")[-1]))
-    return "-".join("".join(random.choice(string.ascii_letters+string.digits+"_.=+-~") for i in range(5)) for ii in range(5))
+    characters = string.ascii_letters + string.digits + "_.=+-~"
+    return "-".join("".join(secrets.choice(characters) for i in range(5)) for ii in range(5))
+
+
+def generate_alphanum_string(length: int) -> str:
+    characters = string.ascii_letters + string.digits
+    return "".join(secrets.choice(characters) for _ in range(length))
 
 
 def version_to_int(version: str) -> int:

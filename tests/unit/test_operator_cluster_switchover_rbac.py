@@ -70,8 +70,11 @@ def operator_cluster_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "kubernetes.client", kubernetes_client_stub)
     monkeypatch.setitem(sys.modules, "kubernetes.client.rest", kubernetes_rest_stub)
 
+    registered_create_handlers = []
+
     def _decorator(*args, **kwargs):
         def _wrap(func):
+            registered_create_handlers.append((args, kwargs, func))
             return func
 
         return _wrap
@@ -115,7 +118,7 @@ def operator_cluster_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "mysqloperator.controller.consts", consts_stub)
 
     config_stub = types.ModuleType("mysqloperator.controller.config")
-    config_stub.DEFAULT_OPERATOR_VERSION_TAG = "9.7.0-2.2.8"
+    config_stub.DEFAULT_OPERATOR_VERSION_TAG = "26.7.0-2.3.0"
 
     class Edition:
         enterprise = "enterprise"
@@ -262,6 +265,7 @@ def operator_cluster_module(monkeypatch):
     module = importlib.import_module(
         "mysqloperator.controller.innodbcluster.operator_cluster"
     )
+    module.registered_create_handlers = registered_create_handlers
     yield module
     sys.modules.pop("mysqloperator.controller.innodbcluster.operator_cluster", None)
 
@@ -270,6 +274,33 @@ def test_failover_create_handler_is_registered_for_community_operator(
     operator_cluster_module,
 ):
     assert callable(operator_cluster_module.on_failover_create)
+
+
+def test_pod_create_handler_retries_without_a_cap(operator_cluster_module):
+    pod_create_handler = next(
+        handler
+        for handler in operator_cluster_module.registered_create_handlers
+        if handler[0] == ("", "v1", "pods")
+    )
+
+    assert "retries" not in pod_create_handler[1]
+
+
+def test_pod_create_retry_delay_uses_capped_exponential_backoff(
+    operator_cluster_module,
+    monkeypatch,
+):
+    assert hasattr(operator_cluster_module, "_pod_create_retry_delay")
+
+    monkeypatch.setattr(
+        operator_cluster_module.random,
+        "uniform",
+        lambda minimum, maximum: maximum,
+    )
+
+    assert operator_cluster_module._pod_create_retry_delay(0) == 33
+    assert operator_cluster_module._pod_create_retry_delay(1) == 66
+    assert operator_cluster_module._pod_create_retry_delay(10) == 330
 
 
 def test_stage_cluster_status_patch_preserves_kopf_status(operator_cluster_module):
@@ -410,6 +441,214 @@ def test_remove_member_finalizer_ignores_already_deleted_pod(
     )
 
     assert logger.infos == ["on_pod_delete: Pod ns/cluster-0 is already gone"]
+
+
+def test_on_pod_event_reconciles_configured_pod_without_membership(
+    operator_cluster_module,
+    monkeypatch,
+):
+    class Cluster:
+        name = "cluster"
+
+        def get_create_time(self):
+            return "2026-01-01T00:00:00Z"
+
+    cluster = Cluster()
+    reconciled = []
+    mutex_entries = []
+    restart_counter_updates = []
+
+    class Pod:
+        name = "cluster-2"
+        namespace = "ns"
+        instance_type = "group-member"
+        phase = "Running"
+        deleting = False
+
+        def get_membership_info(self):
+            return self.membership_info
+
+        def reload(self):
+            pass
+
+        def check_containers_ready(self):
+            return True
+
+        def get_container_restarts(self, container_name):
+            return 0
+
+        def get_member_readiness_gate(self, gate):
+            return True if gate == "configured" else None
+
+        def get_cluster(self):
+            return cluster
+
+    pod = Pod()
+    pod.membership_info = None
+
+    class MySQLPod:
+        @staticmethod
+        def from_json(pod_body):
+            return pod
+
+    class ClusterMutex:
+        def __init__(self, locked_cluster, locked_pod):
+            self.locked_cluster = locked_cluster
+            self.locked_pod = locked_pod
+
+        def __enter__(self):
+            mutex_entries.append((self.locked_cluster, self.locked_pod))
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class ClusterController:
+        def __init__(self, controlled_cluster):
+            self.controlled_cluster = controlled_cluster
+
+        def on_pod_created(self, created_pod, logger):
+            reconciled.append((self.controlled_cluster, created_pod))
+            created_pod.membership_info = {"status": "ONLINE"}
+
+        def probe_status_if_needed(self, changed_pod, logger):
+            raise AssertionError("pod should be reconciled and return early")
+
+    def fail_if_restart_path_is_used(*args, **kwargs):
+        raise AssertionError("restart path should not run")
+
+    monkeypatch.setattr(operator_cluster_module, "MySQLPod", MySQLPod)
+    monkeypatch.setattr(operator_cluster_module, "ClusterMutex", ClusterMutex)
+    monkeypatch.setattr(operator_cluster_module, "ClusterController", ClusterController)
+    monkeypatch.setattr(
+        operator_cluster_module.utils,
+        "ephemeral_value_changed",
+        fail_if_restart_path_is_used,
+    )
+    monkeypatch.setattr(
+        operator_cluster_module,
+        "g_ephemeral_pod_state",
+        types.SimpleNamespace(
+            set=lambda *args, **kwargs: restart_counter_updates.append(
+                (args, kwargs)
+            )
+        ),
+    )
+
+    operator_cluster_module.on_pod_event({}, _Logger())
+
+    assert mutex_entries == [(cluster, pod)]
+    assert reconciled == [(cluster, pod)]
+    assert restart_counter_updates == [
+        ((pod, "mysql-restarts", 0), {"context": "on_pod_event"})
+    ]
+
+
+def test_on_pod_event_ignores_uncreated_cluster_pod_without_membership(
+    operator_cluster_module,
+    monkeypatch,
+):
+    class Cluster:
+        name = "cluster"
+
+        def get_create_time(self):
+            return None
+
+    cluster = Cluster()
+    calls = []
+
+    class Pod:
+        name = "cluster-0"
+        namespace = "ns"
+        instance_type = "group-member"
+        phase = "Running"
+        deleting = False
+
+        def get_membership_info(self):
+            return None
+
+        def check_containers_ready(self):
+            return True
+
+        def get_container_restarts(self, container_name):
+            return 0
+
+        def get_member_readiness_gate(self, gate):
+            return True if gate == "configured" else None
+
+        def get_cluster(self):
+            return cluster
+
+    pod = Pod()
+
+    class MySQLPod:
+        @staticmethod
+        def from_json(pod_body):
+            return pod
+
+    class ClusterController:
+        def __init__(self, controlled_cluster):
+            calls.append(("controller", controlled_cluster))
+
+        def on_pod_created(self, created_pod, logger):
+            calls.append(("created", created_pod))
+
+    monkeypatch.setattr(operator_cluster_module, "MySQLPod", MySQLPod)
+    monkeypatch.setattr(operator_cluster_module, "ClusterController", ClusterController)
+    monkeypatch.setattr(
+        operator_cluster_module.utils,
+        "ephemeral_value_changed",
+        lambda *args, **kwargs: calls.append(("restart-path",)),
+    )
+    monkeypatch.setattr(
+        operator_cluster_module,
+        "g_ephemeral_pod_state",
+        types.SimpleNamespace(
+            set=lambda *args, **kwargs: calls.append(("restart-counter",))
+        ),
+    )
+
+    logger = _Logger()
+
+    operator_cluster_module.on_pod_event({}, logger)
+
+    assert calls == []
+    assert logger.infos == ["ignored pod event"]
+
+
+def test_group_member_reconcile_without_membership_retries(
+    operator_cluster_module,
+    monkeypatch,
+):
+    class TemporaryError(Exception):
+        def __init__(self, message, delay=None):
+            super().__init__(message)
+            self.delay = delay
+
+    class Pod:
+        name = "cluster-2"
+        namespace = "ns"
+        instance_type = "group-member"
+
+        def __init__(self):
+            self.reloads = 0
+
+        def get_membership_info(self):
+            return None
+
+        def reload(self):
+            self.reloads += 1
+
+    pod = Pod()
+
+    monkeypatch.setattr(operator_cluster_module.kopf, "TemporaryError", TemporaryError)
+
+    with pytest.raises(TemporaryError) as exc_info:
+        operator_cluster_module._ensure_group_member_reconciled(pod)
+
+    assert "no membership info after reconciliation" in str(exc_info.value)
+    assert exc_info.value.delay == 10
+    assert pod.reloads == 1
 
 
 def test_on_pod_delete_removes_finalizer_for_deleting_non_running_pod(

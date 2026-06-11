@@ -88,6 +88,7 @@ def router_objects_module(monkeypatch):
     utils_stub = types.ModuleType("mysqloperator.controller.utils")
     utils_stub.b64encode = lambda value: value
     utils_stub.generate_password = lambda: "generated-password"
+    utils_stub.generate_alphanum_string = lambda length: "generated"
     utils_stub.sha256 = lambda value: f"sha256:{value}"
     utils_stub.isotime = lambda: "2026-01-01T00:00:00Z"
     utils_stub.merge_patch_object = lambda target, patch: target.update(patch)

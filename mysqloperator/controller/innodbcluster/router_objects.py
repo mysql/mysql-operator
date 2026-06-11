@@ -1,10 +1,8 @@
-# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
-import string
-import random
 import threading
 
 from shlex import quote
@@ -83,8 +81,7 @@ spec:
 def prepare_router_secrets(spec: InnoDBClusterSpec) -> dict:
     # TODO: should we share the suffix with router&backup and stor in IC?
     # miught make it simpler to diagnose and remove
-    characters = string.ascii_letters + string.digits
-    suffix = ''.join(random.choice(characters) for _ in range(10))
+    suffix = utils.generate_alphanum_string(10)
 
     router_user = utils.b64encode(config.ROUTER_METADATA_USER_NAME + '-' + suffix)
     router_pwd = utils.b64encode(utils.generate_password())

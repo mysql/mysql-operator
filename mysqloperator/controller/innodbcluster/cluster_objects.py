@@ -3,8 +3,6 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
-import random
-import string
 from logging import Logger, getLogger
 import kopf
 from typing import List, Dict, Optional, cast
@@ -96,8 +94,7 @@ def prepare_secrets(spec: InnoDBClusterSpec) -> dict:
 
     # TODO: should we share the suffix with router&backup and stor in IC?
     # miught make it simpler to diagnose and remove
-    characters = string.ascii_letters + string.digits
-    suffix = ''.join(random.choice(characters) for _ in range(10))
+    suffix = utils.generate_alphanum_string(10)
 
     admin_user = encode(config.CLUSTER_ADMIN_USER_NAME + '-' + suffix)
     admin_pwd = encode(utils.generate_password())

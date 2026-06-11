@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -91,12 +91,13 @@ def clone_server(donor_co, donor_session, recip_session, logger):
 
 
 def setup_backup_account(session, user, password):
-    session.run_sql(f"DROP USER IF EXISTS {user}")
-    session.run_sql(f"CREATE USER {user} IDENTIFIED BY ?", [password])
+    host = "%"
+    session.run_sql("DROP USER IF EXISTS ?@?", [user, host])
+    session.run_sql("CREATE USER ?@? IDENTIFIED BY ?", [user, host, password])
     session.run_sql(
-        f"GRANT select, show databases, show view, lock tables, reload ON *.* TO {user}")
+        "GRANT select, show databases, show view, lock tables, reload ON *.* TO ?@?", [user, host])
     session.run_sql(
-        f"GRANT backup_admin /*!80020 , show_routine */ ON *.* TO {user}")
+        "GRANT backup_admin /*!80020 , show_routine */ ON *.* TO ?@?", [user, host])
 
 
 def setup_metrics_user(session: 'mysqlsh.ClassicSession', user: str,
@@ -131,5 +132,3 @@ def count_gtids(gtid_set: str) -> int:
         for r in g.split(":")[1:]:
             n += count_range(r)
     return n
-
-

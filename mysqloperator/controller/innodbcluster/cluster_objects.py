@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -932,7 +932,7 @@ def prepare_initconf(cluster: InnoDBCluster, spec: AbstractServerSetSpec, logger
         router_entrypoint = "".join(entryfile.readlines())
 
     liveness_probe = """#!/bin/bash
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 
 # Insert 1 success every this amount of failures
 # (assumes successThreshold is > 1)
@@ -975,7 +975,7 @@ fi
 """
 
     readiness_probe = """#!/bin/bash
-# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 
 # Once the container is ready, it's always ready.
 if [ -f /tmp/mysql-ready ]; then
@@ -1484,22 +1484,26 @@ def update_objects_for_keyring(cluster: InnoDBCluster, patcher: 'InnoDBClusterOb
     update_objects_for_subsystem(subsystem, cluster, patcher, logger)
 
 
-def remove_read_replica(cluster: InnoDBCluster, rr: ReadReplicaSpec):
-    name = rr['name']
-    try:
-        api_core.delete_namespaced_config_map(f"{cluster.name}-{name}-initconf", cluster.namespace)
-    except Exception as exc:
-        print(f"ConfigMap for ReadReplica {name} was not removed. This is usually ok. Reason: {exc}")
+def remove_read_replica(cluster: InnoDBCluster, rr: ReadReplicaSpec | dict):
+    if isinstance(rr, dict):
+        object_name = f"{cluster.name}-{rr['name']}"
+    else:
+        object_name = rr.name
 
     try:
-        api_core.delete_namespaced_service(rr.headless_service_name, cluster.namespace)
+        api_core.delete_namespaced_config_map(f"{object_name}-initconf", cluster.namespace)
     except Exception as exc:
-        print(f"Service for ReadReplica {name} was not removed. This is usually ok. Reason: {exc}")
+        print(f"ConfigMap for ReadReplica {object_name} was not removed. This is usually ok. Reason: {exc}")
 
     try:
-        api_apps.delete_namespaced_stateful_set(f"{cluster.name}-{name}", cluster.namespace)
+        api_core.delete_namespaced_service(f"{object_name}-instances", cluster.namespace)
     except Exception as exc:
-        print(f"StatefulSet for ReadReplica  {name} was not removed. This is usually ok. Reason: {exc}")
+        print(f"Service for ReadReplica {object_name} was not removed. This is usually ok. Reason: {exc}")
+
+    try:
+        api_apps.delete_namespaced_stateful_set(object_name, cluster.namespace)
+    except Exception as exc:
+        print(f"StatefulSet for ReadReplica  {object_name} was not removed. This is usually ok. Reason: {exc}")
 
 
 def on_first_cluster_pod_created(cluster: InnoDBCluster, logger: Logger) -> None:

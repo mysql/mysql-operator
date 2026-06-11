@@ -1,4 +1,4 @@
-# Copyright (c) 2021, 2025 Oracle and/or its affiliates.
+# Copyright (c) 2021, 2026 Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -363,6 +363,8 @@ spec:
         self.wait_routers_gone(f"{self.cluster_name}-router-*")
         self.wait_ic_gone(self.cluster_name)
         kutil.delete_pvc(self.ns, None)
+        kutil.delete_secret(self.ns, f"{self.cluster_name}-ca")
+        kutil.delete_secret(self.ns, f"{self.cluster_name}-tls")
         kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
@@ -456,6 +458,8 @@ spec:
         self.wait_ic_gone(self.cluster_name)
         kutil.delete_pvc(self.ns, None)
 
+        kutil.delete_secret(self.ns, f"{self.cluster_name}-ca")
+        kutil.delete_secret(self.ns, f"{self.cluster_name}-tls")
         kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
@@ -573,6 +577,8 @@ spec:
         self.wait_ic_gone(self.cluster_name)
 
         kutil.delete_pvc(self.ns, None)
+        kutil.delete_secret(self.ns, f"{self.cluster_name}-ca")
+        kutil.delete_secret(self.ns, f"{self.cluster_name}-tls")
         kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
@@ -673,5 +679,7 @@ spec:
         self.wait_ic_gone(self.cluster_name)
 
         kutil.delete_pvc(self.ns, None)
+        kutil.delete_secret(self.ns, "ca")
+        kutil.delete_secret(self.ns, "server-ssl")
+        kutil.delete_secret(self.ns, "router-ssl")
         kutil.delete_secret(self.ns, self.cluster_secret_name)
-

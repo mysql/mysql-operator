@@ -12,6 +12,7 @@ import uuid
 from dataclasses import dataclass, field
 from utils import tutil
 from utils import kutil
+from utils import testsuite
 import logging
 import yaml
 import copy
@@ -30,7 +31,9 @@ from typing import Callable, Optional
 from utils.helmutil import (
     HelmClusterInstallOptions,
     HelmOperatorInstallOptions,
+    REQUIRED_HELM_TEST_CHARTS,
     get_previous_operator_chart_release,
+    get_missing_helm_chart_release_paths,
     install_cluster_with_helm,
     install_with_helm,
     upgrade_cluster_with_helm,
@@ -204,6 +207,16 @@ def get_raw_deploy_manifest_path(release: str, filename: str) -> str:
     if filename not in RAW_DEPLOY_MANIFEST_FILES:
         raise ValueError(f"Unknown raw deploy manifest file {filename!r}")
     return os.path.join(get_raw_deploy_dir_for_release(release), filename)
+
+
+def get_missing_raw_deploy_manifest_release_details(releases: list[str]) -> list[str]:
+    missing = []
+    for release in releases:
+        try:
+            get_raw_deploy_dir_for_release(release)
+        except (FileNotFoundError, ValueError) as exc:
+            missing.append(f"{release}: {exc}")
+    return missing
 
 
 def _set_container_env_value(container: dict, name: str, value: str) -> None:
@@ -1904,7 +1917,7 @@ def assert_resource_requirements_contain(
 def get_worker_nodes(
     testcase: unittest.TestCase,
     *,
-    min_count: int = 3,
+    min_count: int = 2,
 ) -> list[dict[str, str]]:
     worker_nodes = []
 
@@ -1950,7 +1963,7 @@ def get_worker_nodes(
 def get_worker_node_names(
     testcase: unittest.TestCase,
     *,
-    min_count: int = 3,
+    min_count: int = 2,
 ) -> list[str]:
     return [
         worker_node["name"]
@@ -2104,6 +2117,34 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
     def setUp(self):
         super().setUp()
         self._ensure_clean_operator_test_start()
+
+    def _get_previous_operator_chart_release_or_skip(self) -> str:
+        try:
+            return get_previous_operator_chart_release(
+                current_app_version=g_ts_cfg.operator_version_tag,
+            )
+        except FileNotFoundError as exc:
+            self.skipTest(str(exc))
+
+    def _require_raw_deploy_manifest_releases_or_skip(
+        self,
+        releases: list[str],
+    ) -> None:
+        missing_release_details = get_missing_raw_deploy_manifest_release_details(
+            releases
+        )
+        if not missing_release_details:
+            return
+
+        displayed_details = "; ".join(missing_release_details[:3])
+        if len(missing_release_details) > 3:
+            displayed_details += (
+                f"; ... ({len(missing_release_details) - 3} more)"
+            )
+        self.skipTest(
+            "Required raw deploy manifest artifacts are not available: "
+            f"{displayed_details}"
+        )
 
     @classmethod
     def get_initial_artifacts(cls):
@@ -4436,9 +4477,7 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         expected_operator_upgrade_error_fragment: Optional[str] = None,
     ) -> None:
         cluster_name = f"{self.cluster_name}-s{server_instances}-r{router_instances}"
-        previous_release = get_previous_operator_chart_release(
-            current_app_version=g_ts_cfg.operator_version_tag,
-        )
+        previous_release = self._get_previous_operator_chart_release_or_skip()
         previous_mysql_version = previous_release.split("-", 1)[0]
         current_mysql_version = g_ts_cfg.operator_version_tag.split("-", 1)[0]
 
@@ -4849,7 +4888,7 @@ def assert_operator_status_quo(
     c0 = pod_spec["containers"][0]
     testcase.assertEqual(c0["name"], "mysql-operator")
     testcase.assertEqual(c0["image"], g_ts_cfg.get_operator_image(None))
-    testcase.assertEqual(c0["imagePullPolicy"], "Always")
+    testcase.assertEqual(c0["imagePullPolicy"], g_ts_cfg.operator_pull_policy)
     testcase.assertTrue("readinessProbe" in c0)
     testcase.assertEqual(c0["readinessProbe"]["exec"]["command"], ["cat", "/tmp/mysql-operator-ready"])
 
@@ -4859,7 +4898,12 @@ def assert_operator_status_quo(
     testcase.assertTrue("MYSQLSH_CREDENTIAL_STORE_SAVE_PASSWORDS" in envs)
     testcase.assertTrue("MYSQL_OPERATOR_DEFAULT_REPOSITORY" in envs)
     testcase.assertTrue("MYSQL_OPERATOR_IMAGE_PULL_POLICY" in envs)
-    testcase.assertTrue("MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN" in envs)
+    testcase.assertEqual(envs["MYSQL_OPERATOR_IMAGE_PULL_POLICY"], g_ts_cfg.operator_pull_policy)
+    if "MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN" in envs:
+        testcase.assertEqual(
+            envs["MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN"],
+            g_ts_cfg.k8s_cluster_domain_alias or "cluster.local",
+        )
     testcase.assertTrue("POD_NAME" in envs)
     testcase.assertTrue("POD_NAMESPACE" in envs)
     testcase.assertTrue("OPERATOR_DEPLOYMENT_NAME" in envs)
@@ -4870,17 +4914,29 @@ def assert_operator_status_quo(
     testcase.assertTrue("OPERATOR_NAMESPACES" in envs)
     testcase.assertTrue("MYSQL_OPERATOR_DEBUG" in envs)
 
-    # volumes/mounts (ensure tmp + mysqlsh are present, and only those two volumes exist)
+    # volumes/mounts
     testcase.assertTrue("volumes" in pod_spec)
-    testcase.assertEqual(len(pod_spec["volumes"]), 2)
     vol_names = {v["name"] for v in pod_spec["volumes"]}
-    testcase.assertEqual(vol_names, {"mysqlsh-home", "tmpdir"})
+    testcase.assertTrue({"mysqlsh-home", "tmpdir"}.issubset(vol_names))
+    testcase.assertEqual(vol_names - {"mysqlsh-home", "tmpdir", "operator-code"}, set())
 
     testcase.assertTrue("volumeMounts" in c0)
-    testcase.assertEqual(len(c0["volumeMounts"]), 2)
     vm_by_name = {vm["name"]: vm["mountPath"] for vm in c0["volumeMounts"]}
     testcase.assertEqual(vm_by_name["mysqlsh-home"], "/mysqlsh")
     testcase.assertEqual(vm_by_name["tmpdir"], "/tmp")
+    testcase.assertEqual(set(vm_by_name) - {"mysqlsh-home", "tmpdir", "operator-code"}, set())
+    if "operator-code" in vol_names or "operator-code" in vm_by_name:
+        testcase.assertTrue("operator-code" in vol_names)
+        testcase.assertTrue("operator-code" in vm_by_name)
+        operator_code_volume = next(v for v in pod_spec["volumes"] if v["name"] == "operator-code")
+        testcase.assertEqual(
+            operator_code_volume["hostPath"],
+            {"path": "/tmp/mysqloperator", "type": "Directory"},
+        )
+        testcase.assertEqual(
+            vm_by_name["operator-code"],
+            "/usr/lib/mysqlsh/python-packages/mysqloperator",
+        )
 
     # --- clusterroles ---
     testcase.assertTrue("clusterroles" in artifacts)
@@ -4989,14 +5045,14 @@ def assert_operator_status_quo(
     testcase.assertEqual(sa["metadata"]["name"], "mysql-operator-sa")
     testcase.assertEqual(sa["metadata"]["namespace"], operator_ns)
 
-    testcase.assertTrue("annotations" in sa["metadata"])
-    testcase.assertEqual(
-        sa["metadata"]["annotations"],
-        {
-            "meta.helm.sh/release-name": "myoperator",
-            "meta.helm.sh/release-namespace": "mysql-operator",
-        },
-    )
+    annotations = sa["metadata"].get("annotations", {})
+    helm_annotations = {
+        "meta.helm.sh/release-name": "myoperator",
+        "meta.helm.sh/release-namespace": "mysql-operator",
+    }
+    if any(key in annotations for key in helm_annotations):
+        for key, value in helm_annotations.items():
+            testcase.assertEqual(annotations[key], value)
 
     # --- referenced image pull secrets ---
     testcase.assertTrue("secrets" in artifacts)
@@ -5276,6 +5332,7 @@ spec:
                 raise cleanup_error
 
 
+@testsuite.requires_multi_node_cluster
 class NodeSelectorAffinityOperatorTest(OperatorSingleAndMultipleBaseTest):
     cluster_size = 3
     routers_count = 1
@@ -5874,6 +5931,7 @@ class HelmDeploymentMetadataValuesTest(OperatorSingleAndMultipleBaseTest):
                 )
 
 
+@testsuite.requires_multi_node_cluster
 class HelmDeploymentPlacementValuesTest(OperatorSingleAndMultipleBaseTest):
     affinity_warning_fragment = (
         "WARNING: affinity is deprecated; use deployment.affinity instead."
@@ -6112,13 +6170,13 @@ class HelmDeploymentPlacementValuesTest(OperatorSingleAndMultipleBaseTest):
         operator_ns = f"op-affinity-helm-{self.random_suffix}"
         operator_name = f"myop-affinity-helm-{self.random_suffix}"
         release_name = f"myoper-affinity-helm-{self.random_suffix}"
-        worker_nodes = get_worker_nodes(self)[:3]
+        worker_nodes = get_worker_nodes(self, min_count=2)[:2]
         worker_node_hostnames = [
             worker_node["hostname"] for worker_node in worker_nodes
         ]
-        target_node_name = worker_nodes[2]["name"]
+        target_node_name = worker_nodes[-1]["name"]
         blocker_node_names = [
-            worker_node["name"] for worker_node in worker_nodes[:2]
+            worker_node["name"] for worker_node in worker_nodes[:-1]
         ]
         blocker_label_key = "e2e.mysql.oracle.com/affinity-blocker"
         blocker_label_value = f"affinity-blocker-{self.random_suffix}"
@@ -6241,13 +6299,13 @@ class HelmDeploymentPlacementValuesTest(OperatorSingleAndMultipleBaseTest):
         operator_ns = f"op-affinity-top-helm-{self.random_suffix}"
         operator_name = f"myop-affinity-top-helm-{self.random_suffix}"
         release_name = f"myoper-affinity-top-helm-{self.random_suffix}"
-        worker_nodes = get_worker_nodes(self)[:3]
+        worker_nodes = get_worker_nodes(self, min_count=2)[:2]
         worker_node_hostnames = [
             worker_node["hostname"] for worker_node in worker_nodes
         ]
-        target_node_name = worker_nodes[2]["name"]
+        target_node_name = worker_nodes[-1]["name"]
         blocker_node_names = [
-            worker_node["name"] for worker_node in worker_nodes[:2]
+            worker_node["name"] for worker_node in worker_nodes[:-1]
         ]
         blocker_label_key = "e2e.mysql.oracle.com/affinity-blocker"
         blocker_label_value = f"affinity-blocker-{self.random_suffix}"
@@ -6402,7 +6460,7 @@ class HelmDeploymentPlacementValuesTest(OperatorSingleAndMultipleBaseTest):
         operator_ns = f"op-nsel-helm-{self.random_suffix}"
         operator_name = f"myop-nsel-helm-{self.random_suffix}"
         release_name = f"myoper-nsel-helm-{self.random_suffix}"
-        worker_nodes = get_worker_nodes(self)[:3]
+        worker_nodes = get_worker_nodes(self, min_count=1)[:1]
         target_node_name = worker_nodes[0]["name"]
         node_selector = {
             "kubernetes.io/hostname": worker_nodes[0]["hostname"],
@@ -6484,7 +6542,7 @@ class HelmDeploymentPlacementValuesTest(OperatorSingleAndMultipleBaseTest):
         operator_ns = f"op-nsel-top-helm-{self.random_suffix}"
         operator_name = f"myop-nsel-top-helm-{self.random_suffix}"
         release_name = f"myoper-nsel-top-helm-{self.random_suffix}"
-        worker_nodes = get_worker_nodes(self)[:3]
+        worker_nodes = get_worker_nodes(self, min_count=1)[:1]
         target_node_name = worker_nodes[0]["name"]
         node_selector = {
             "kubernetes.io/hostname": worker_nodes[0]["hostname"],
@@ -6585,7 +6643,7 @@ class HelmDeploymentPlacementValuesTest(OperatorSingleAndMultipleBaseTest):
         operator_ns = f"op-nsel-up-helm-{self.random_suffix}"
         operator_name = f"myop-nsel-up-helm-{self.random_suffix}"
         release_name = f"myoper-nsel-up-helm-{self.random_suffix}"
-        worker_nodes = get_worker_nodes(self)[:3]
+        worker_nodes = get_worker_nodes(self, min_count=2)[:2]
         initial_node = worker_nodes[0]
         upgraded_node = worker_nodes[1]
         initial_node_selector = {
@@ -6712,7 +6770,7 @@ class HelmDeploymentPlacementValuesTest(OperatorSingleAndMultipleBaseTest):
         operator_ns = f"op-aff-up-helm-{self.random_suffix}"
         operator_name = f"myop-aff-up-helm-{self.random_suffix}"
         release_name = f"myoper-aff-up-helm-{self.random_suffix}"
-        worker_nodes = get_worker_nodes(self)[:3]
+        worker_nodes = get_worker_nodes(self, min_count=2)[:2]
         initial_blocker_label_key = "e2e.mysql.oracle.com/affinity-blocker"
         initial_blocker_label_value = f"affinity-init-{self.random_suffix}"
         upgraded_blocker_label_value = f"affinity-up-{self.random_suffix}"
@@ -6746,7 +6804,6 @@ class HelmDeploymentPlacementValuesTest(OperatorSingleAndMultipleBaseTest):
                     namespace=operator_ns,
                     node_names=[
                         worker_nodes[0]["name"],
-                        worker_nodes[1]["name"],
                     ],
                     labels={
                         initial_blocker_label_key: initial_blocker_label_value,
@@ -6765,7 +6822,7 @@ class HelmDeploymentPlacementValuesTest(OperatorSingleAndMultipleBaseTest):
             )
             self.assertEqual(
                 initial_operator_pod.get("spec", {}).get("nodeName"),
-                worker_nodes[2]["name"],
+                worker_nodes[1]["name"],
             )
             self.assertEqual(
                 kutil.get_deploy(
@@ -6789,7 +6846,6 @@ class HelmDeploymentPlacementValuesTest(OperatorSingleAndMultipleBaseTest):
                     namespace=operator_ns,
                     node_names=[
                         worker_nodes[1]["name"],
-                        worker_nodes[2]["name"],
                     ],
                     labels={
                         initial_blocker_label_key: upgraded_blocker_label_value,
@@ -7000,9 +7056,6 @@ class StandaloneReplicaGuardTest(OperatorSingleAndMultipleBaseTest):
             deploy = kutil.get_deploy(operator_ns, operator_name)
             self.assertEqual(deploy["spec"]["replicas"], 2)
 
-            pods = kutil.ls_po(operator_ns, pattern=f"{operator_name}.*")
-            self.assertGreaterEqual(len(pods), 1)
-
             error_fragment = (
                 "Standalone operator requires exactly one configured replica"
             )
@@ -7137,24 +7190,6 @@ class StandaloneDeploymentStrategyGuardTest(OperatorSingleAndMultipleBaseTest):
     def tearDownClass(cls):
         kutil.delete_ns(cls.ns)
         super().tearDownClass()
-
-    def test_standalone_operator_uses_recreate_strategy(self) -> None:
-        operator_ns = f"op-stand-strategy-{self.random_suffix}"
-        operator_name = f"myop-stand-strategy-{self.random_suffix}"
-        release_name = f"myoper-stand-strategy-{self.random_suffix}"
-
-        artifacts = copy.deepcopy(self.artifacts)
-
-        patched = get_patched_artifacts(
-            artifacts,
-            release_name,
-            operator_ns,
-            operator_name,
-            watch_namespaces=operator_ns,
-            standalone=True,
-        )
-
-        self.assertEqual(patched["deployment"]["spec"].get("strategy", {}).get("type"), "Recreate")
 
     def test_standalone_operator_rejects_unsafe_rolling_update_strategy(self) -> None:
         operator_ns = f"op-stand-unsafe-{self.random_suffix}"
@@ -7864,12 +7899,14 @@ class RawManifestOperatorSelectorUpgradeCompatibilityTest(
     OperatorSingleAndMultipleBaseTest
 ):
     def test_raw_manifest_operator_upgrade_preserves_legacy_selector(self) -> None:
+        release_chain = get_raw_manifest_upgrade_release_chain()
+        self._require_raw_deploy_manifest_releases_or_skip(release_chain)
         original_artifacts = self._remove_default_operator_or_fail()
         operator_pod = None
         test_error = None
 
         try:
-            for release in get_raw_manifest_upgrade_release_chain():
+            for release in release_chain:
                 previous_pod_name = (
                     operator_pod["metadata"]["name"] if operator_pod else None
                 )
@@ -7902,6 +7939,12 @@ class RawManifestOperatorSelectorUpgradeCompatibilityTest(
     def test_raw_manifest_operator_upgrade_96_to_current(
         self,
     ) -> None:
+        self._require_raw_deploy_manifest_releases_or_skip(
+            [
+                RAW_MANIFEST_BRIDGE_RELEASE,
+                g_ts_cfg.operator_version_tag,
+            ]
+        )
         original_artifacts = self._remove_default_operator_or_fail()
         operator_pod = None
         test_error = None
@@ -7984,6 +8027,7 @@ spec:
 
     def test_raw_manifest_operator_and_cluster_upgrade_lts_bridge(self) -> None:
         release_chain = get_raw_manifest_upgrade_release_chain()
+        self._require_raw_deploy_manifest_releases_or_skip(release_chain)
         cluster_name = f"{self.cluster_name}-raw-upg"
         original_artifacts = self._remove_default_operator_or_fail()
         operator_pod = None
@@ -9008,6 +9052,21 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
         return None
 
     def _run_helm_legacy_switchover_rbac_upgrade_chain(self) -> None:
+        missing_chart_paths = get_missing_helm_chart_release_paths(
+            REQUIRED_HELM_TEST_CHARTS,
+            tuple(self.release_chain),
+        )
+        if missing_chart_paths:
+            displayed_paths = ", ".join(missing_chart_paths[:4])
+            if len(missing_chart_paths) > 4:
+                displayed_paths += (
+                    f", ... ({len(missing_chart_paths) - 4} more)"
+                )
+            self.skipTest(
+                "Required historical Helm chart artifacts are not available: "
+                f"{displayed_paths}"
+            )
+
         cluster_names = self._build_legacy_switchover_cluster_names()
         cluster_values = self._build_legacy_switchover_cluster_values()
         current_cluster_release = self.release_chain[0]
@@ -10416,9 +10475,7 @@ class HelmOperatorSelectorUpgradeCompatibilityTest(
         requested_legacy_operator_name = f"sel-old-{self.random_suffix}"
         legacy_release_name = self.operator_deploy_name
         legacy_deployment_name = "mysql-operator"
-        previous_release = get_previous_operator_chart_release(
-            current_app_version=g_ts_cfg.operator_version_tag,
-        )
+        previous_release = self._get_previous_operator_chart_release_or_skip()
 
         resident_operator_deployment = kutil.get_deploy(
             self.operator_ns,

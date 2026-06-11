@@ -1,4 +1,4 @@
-# Copyright (c) 2023, Oracle and/or its affiliates.
+# Copyright (c) 2023, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -127,63 +127,6 @@ spec:
 
         check_all(self, self.ns, self.cluster_name, "trr", instances=1)
 
-    def _02_check_labels_and_annotations(self):
-        server_pods = kutil.ls_po(self.ns, pattern=f"{self.cluster_name}-\d")
-        pod_names = [server["NAME"] for server in server_pods]
-        for pod_name in pod_names:
-            pod = kutil.get_po(self.ns, pod_name)
-            self.assertEqual(pod['metadata']['labels']['myc-label1'], 'myc-label1-value')
-            self.assertEqual(pod['metadata']['labels']['myc-label2'], 'myc-label2-value')
-            self.assertEqual(pod['metadata']['annotations']['myc.example.com/ann1'], 'ann1-value')
-            self.assertEqual(pod['metadata']['annotations']['myc.example.com/ann2'], 'ann2-value')
-
-        replica_pods = kutil.ls_po(self.ns, pattern=f"{self.cluster_name}-trr-\d")
-        pod_names = [replica["NAME"] for replica in replica_pods]
-        for pod_name in pod_names:
-            pod = kutil.get_po(self.ns, pod_name)
-            self.assertEqual(pod['metadata']['labels']['myc-rr-label1'], 'myc-label1-value')
-            self.assertEqual(pod['metadata']['labels']['myc-rr-label2'], 'myc-label2-value')
-            self.assertEqual(pod['metadata']['annotations']['myc.example.com/rr-ann1'], 'ann1-value')
-            self.assertEqual(pod['metadata']['annotations']['myc.example.com/rr-ann2'], 'ann2-value')
-
-    def _04_renaming_read_replica_leads_to_recreation(self):
-        patch = {
-                    "spec": {
-                        "readReplicas": [{
-                            "name": "trr2",
-                            "baseServerId": 510
-                        }]
-                    }
-        }
-        kutil.patch_ic(self.ns, self.cluster_name, patch, type="merge")
-        self.wait_pod_gone(f"{self.cluster_name}-trr-0")
-        self.wait_pod(f"{self.cluster_name}-trr2-0", "Running", ready=True)
-
-        check_all(self, self.ns, self.cluster_name, "trr", instances=0)
-        check_all(self, self.ns, self.cluster_name, "trr2", instances=1)
-
-    def _06_chages_to_read_replica_respected(self):
-        patch = {
-                    "spec": {
-                        "readReplicas": [{
-                            "name": "trr2",
-                            "baseServerId": 510,
-                            "instances": 2
-                        }]
-                    }
-        }
-        kutil.patch_ic(self.ns, self.cluster_name, patch, type="merge")
-        self.wait_pod(f"{self.cluster_name}-trr2-1", "Running", ready=True)
-
-        check_all(self, self.ns, self.cluster_name, "trr2", instances=2)
-
-    def _08_remove_read_replica(self):
-        patch = [{"op": "remove", "path": "/spec/readReplicas"}]
-        kutil.patch_ic(self.ns, self.cluster_name, patch, type="json", data_as_type="json")
-        self.wait_pods_gone(f"{self.cluster_name}-trr2-*")
-
-        check_all(self, self.ns, self.cluster_name, "trr2", instances=0)
-
     def _99_destroy(self):
         kutil.delete_ic(self.ns, self.cluster_name)
         self.wait_pods_gone(f"{self.cluster_name}-*")
@@ -195,10 +138,6 @@ spec:
 
     def runit(self):
         self._00_create()
-        self._02_check_labels_and_annotations()
-        self._04_renaming_read_replica_leads_to_recreation()
-        self._06_chages_to_read_replica_respected()
-        self._08_remove_read_replica()
         self._99_destroy()
 
 

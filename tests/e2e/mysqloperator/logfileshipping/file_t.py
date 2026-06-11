@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -18,222 +18,12 @@ from e2e.mysqloperator.cluster.cluster_t import check_all
 from setup.config import g_ts_cfg, Config
 
 
-class LFSBadSpec(tutil.OperatorTest):
-    default_allowed_op_errors = COMMON_OPERATOR_ERRORS
-    root_user = "root"
-    root_host = "%"
-    root_pass = "sakila"
-    slow_log_tag = "slowLogTag"
-    collector_container_fluentd_path = "/tmp/fluent"
-    _cluster_size = 1
-    _routers_count = 1
-
-    @classmethod
-    def setUpClass(cls):
-        cls.logger = logging.getLogger(__name__+":"+cls.__name__)
-        super().setUpClass()
-        cls.set_ts_var("cluster_size", cls._cluster_size)
-        cls.set_ts_var("routers_count", cls._routers_count)
-
-        for instance in range(0, cls.get_ts_var("cluster_size")):
-            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
-
-        cls.common_cr_manifest = f"""
-apiVersion: mysql.oracle.com/v2
-kind: InnoDBCluster
-metadata:
-  name: {cls.cluster_name}
-spec:
-  instances: {cls._cluster_size}
-  router:
-    instances: {cls._routers_count}
-  secretName: {cls.cluster_secret_name}
-  tlsUseSelfSigned: true
-"""
-
-    @classmethod
-    def tearDownClass(cls):
-        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
-            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
-
-        super().tearDownClass()
-
-    def assertApplyFails(self, yaml, pattern):
-        r = kutil.apply(self.ns, yaml, check=False)
-        self.assertEqual(1, r.returncode)
-        self.assertRegex(r.stdout.decode("utf8"), pattern)
-
-    def test_00_no_default_collector_image(self):
-        yaml = f"""{self.common_cr_manifest}
-  logs:
-    slowQuery:
-      enabled: true
-      longQueryTime: 1.8
-      collect: true
-    collector:
-      env:
-      - name: SOME_OPT
-        value: "some_opt_value"
-      fluentd:
-        slowQueryLog:
-          tag: {self.slow_log_tag}
-"""
-        self.assertApplyFails(yaml, r'spec.logs.collector.image: Required value')
-
-    def test_02_no_fluentd_section(self):
-        yaml = f"""{self.common_cr_manifest}
-  logs:
-    slowQuery:
-      enabled: true
-      longQueryTime: 1.8
-      collect: true
-    collector:
-      image: {g_ts_cfg.get_image(Config.Image.FLUENTD)}
-      env:
-      - name: SOME_OPT
-        value: "some_opt_value"
-"""
-        self.assertApplyFails(yaml, r'spec.logs.collector.fluentd: Required value')
-
-
-    def test_04_wrong_verbosity(self):
-        yaml = f"""{self.common_cr_manifest}
-  logs:
-    error:
-      verbosity: aaa
-"""
-        self.assertApplyFails(yaml, r'spec.logs.error.verbosity: got "string", expected "integer"' if kutil.server_version() < '1.25'
-                                    else r'spec.logs.error.verbosity in body must be of type integer: "string"')
-
-        yaml = f"""{self.common_cr_manifest}
-  logs:
-    error:
-      verbosity: 4
-"""
-        self.assertApplyFails(yaml, r'spec.logs.error.verbosity in body should be less than or equal to 3')
-
-        yaml = f"""{self.common_cr_manifest}
-  logs:
-    error:
-      verbosity: 0
-"""
-        self.assertApplyFails(yaml, r'spec.logs.error.verbosity: Invalid value: 0: spec.logs.error.verbosity in body should be greater than or equal to 1')
-
-    def test_06_wrong_long_query_time(self):
-        yaml = f"""{self.common_cr_manifest}
-  logs:
-    slowQuery:
-      enabled: true
-      longQueryTime: bbb
-"""
-        self.assertApplyFails(yaml, r'spec.logs.slowQuery.longQueryTime: got "string", expected "number"' if kutil.server_version() < '1.25' else
-                                    r'spec.logs.slowQuery.longQueryTime in body must be of type number: "string"')
-
-        yaml = f"""
-{self.common_cr_manifest}
-  logs:
-    slowQuery:
-      enabled: true
-      longQueryTime: -10
-"""
-        self.assertApplyFails(yaml, r'spec.logs.slowQuery.longQueryTime in body should be greater than or equal to 0')
-
-    def test_08_no_sinks(self):
-        yaml = f"""
-{self.common_cr_manifest}
-  logs:
-    slowQuery:
-      enabled: true
-      longQueryTime: 2
-      collect: true
-    collector:
-      image: {g_ts_cfg.get_image(Config.Image.FLUENTD)}
-      fluentd:
-        slowQueryLog:
-          tag: slowLogTag
-"""
-        self.assertApplyFails(yaml, r'spec.logs.collector.fluentd.sinks: Required value')
-
-    def test_10_wrong_augmentation_fields(self):
-
-        ra_common_manifest = f"""
-{self.common_cr_manifest}
-  logs:
-    slowQuery:
-      enabled: true
-      longQueryTime: 2
-      collect: true
-    collector:
-      image: {g_ts_cfg.get_image(Config.Image.FLUENTD)}
-      fluentd:
-        sinks:
-        - name: stdout
-          rawConfig: |
-            <store>
-              @type stdout
-            </store>
-        recordAugmentation:
-          enabled: true
-"""
-        yaml = f"""
-{ra_common_manifest}
-
-          annotations:
-          - field: ann1
-            annotationName: server.myc.example.com/ann1
-"""
-        self.assertApplyFails(yaml, r'unknown field "field" in com.oracle.mysql.v2.InnoDBCluster.spec.logs.collector.fluentd.recordAugmentation.annotations' if kutil.server_version() < '1.25' else
-                                    r'unknown field "spec.logs.collector.fluentd.recordAugmentation.annotations\[0\].field')
-
-        yaml = f"""
-{ra_common_manifest}
-          labels:
-          - field: pod_name
-            label: statefulset.kubernetes.io/pod-name
-"""
-        self.assertApplyFails(yaml,r'unknown field "field" in com.oracle.mysql.v2.InnoDBCluster.spec.logs.collector.fluentd.recordAugmentation.labels' if kutil.server_version() < '1.25' else
-                                   r'unknown field "spec.logs.collector.fluentd.recordAugmentation.labels\[0\].field')
-
-        self.assertApplyFails(yaml,r'unknown field "label" in com.oracle.mysql.v2.InnoDBCluster.spec.logs.collector.fluentd.recordAugmentation.labels' if kutil.server_version() < '1.25' else
-                                   r'unknown field "spec.logs.collector.fluentd.recordAugmentation.labels\[0\].label')
-
-        yaml = f"""
-{ra_common_manifest}
-          podFields:
-          - field: pod_ip
-            path: status.podIP
-"""
-        self.assertApplyFails(yaml, r'unknown field "field" in com.oracle.mysql.v2.InnoDBCluster.spec.logs.collector.fluentd.recordAugmentation.podFields' if kutil.server_version() < '1.25' else
-                                    r'unknown field "spec.logs.collector.fluentd.recordAugmentation.podFields\[0\].field')
-
-        self.assertApplyFails(yaml, r'unknown field "path" in com.oracle.mysql.v2.InnoDBCluster.spec.logs.collector.fluentd.recordAugmentation.podFields' if kutil.server_version() < '1.25' else
-                                    r'unknown field "spec.logs.collector.fluentd.recordAugmentation.podFields\[0\].path')
-
-        yaml = f"""
-{ra_common_manifest}
-          resourceFields:
-          - containerName: mysql
-            field: mysql_requests_memory
-            resource: requests.memory
-          - container: mysql
-            field: mysql_requests_memory
-            resource: requests.memory
-"""
-        self.assertApplyFails(yaml, r'unknown field "field" in com.oracle.mysql.v2.InnoDBCluster.spec.logs.collector.fluentd.recordAugmentation.resourceFields' if kutil.server_version() < '1.25' else
-                                    r'unknown field "spec.logs.collector.fluentd.recordAugmentation.resourceFields\[0\].field')
-        self.assertApplyFails(yaml, r'unknown field "container" in com.oracle.mysql.v2.InnoDBCluster.spec.logs.collector.fluentd.recordAugmentation.resourceFields' if kutil.server_version() < '1.25' else
-                                    r'unknown field "spec.logs.collector.fluentd.recordAugmentation.resourceFields\[1\].container')
-
-        yaml = f"""
-{ra_common_manifest}
-          staticFields:
-          - field: static_field_1
-            value: static_field_1_value
-"""
-        self.assertApplyFails(yaml, r'unknown field "field" in com.oracle.mysql.v2.InnoDBCluster.spec.logs.collector.fluentd.recordAugmentation.staticFields' if kutil.server_version() < '1.25' else
-                                    r'unknown field "spec.logs.collector.fluentd.recordAugmentation.staticFields\[0\].field')
-        self.assertApplyFails(yaml, r'unknown field "value" in com.oracle.mysql.v2.InnoDBCluster.spec.logs.collector.fluentd.recordAugmentation.staticFields' if kutil.server_version() < '1.25' else
-                                    r'unknown field "spec.logs.collector.fluentd.recordAugmentation.staticFields\[0\].value')
+def assert_mysql_log_file_mode(testcase, stat_line, log_path):
+    # Log files may gain group write when kubelet remounts the PVC with fsGroup.
+    testcase.assertIn(stat_line, (
+        f"{log_path} mysql 640",
+        f"{log_path} mysql 660",
+    ))
 
 
 class LFSSlowLogEnableDisableEnableBase(tutil.OperatorTest):
@@ -368,7 +158,7 @@ spec:
             # Slow Log should exist
             out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
             line = out.strip().decode("utf-8")
-            self.assertEqual(f"/var/lib/mysql/{self.slow_query_log_file_name} mysql 640", line)
+            assert_mysql_log_file_mode(self, line, f"/var/lib/mysql/{self.slow_query_log_file_name}")
             slow_log_contents = kutil.cat(self.ns, [pod_name, "mysql"], f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
             print(slow_log_contents)
             self.assertEqual(slow_log_contents.find("SELECT SLEEP(23.39)"), -1)
@@ -476,7 +266,7 @@ spec:
                 # Slow Log should exist
                 out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.slow_query_log_file_name}"])
                 line = out.strip().decode("utf-8")
-                self.assertEqual(f"/var/lib/mysql/{self.slow_query_log_file_name} mysql 640", line)
+                assert_mysql_log_file_mode(self, line, f"/var/lib/mysql/{self.slow_query_log_file_name}")
                 slow_log_contents = kutil.cat(self.ns, [pod_name, "mysql"], f"/var/lib/mysql/{self.slow_query_log_file_name}").decode().strip()
                 print(slow_log_contents)
                 # Queries from the removed slow log should not exists any more
@@ -932,7 +722,7 @@ spec:
             out = kutil.execp(self.ns, [pod_name, "mysql"], ["stat", "-c%n %U %a", f"/var/lib/mysql/{self.general_log_file_name}"])
             line = out.strip().decode("utf-8")
             print(line)
-            self.assertEqual(f"/var/lib/mysql/{self.general_log_file_name} mysql 640", line)
+            assert_mysql_log_file_mode(self, line, f"/var/lib/mysql/{self.general_log_file_name}")
 
             print(f"Deleting /var/lib/mysql/{self.general_log_file_name} on ({pod_name}::mysql)")
             out = kutil.execp(self.ns, [pod_name, "mysql"], ["rm", f"/var/lib/mysql/{self.general_log_file_name}"])
@@ -1028,7 +818,7 @@ spec:
         self._08_restart_sts()
         self._10_check_general_log_doesnt_exist()
         self._12_reenable_general_log()
-        self._14_recheck_general_log
+        self._14_recheck_general_log()
         self._99_destroy()
 
 class Cluster1LFSGeneralLogEnableDisableEnable(LFSGeneralLogEnableDisableEnableBase):

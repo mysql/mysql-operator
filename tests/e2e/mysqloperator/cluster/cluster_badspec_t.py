@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2021, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -432,7 +432,7 @@ spec:
                         return pod_status in ("Init:ErrImageNeverPull", "Init:ErrImagePull", "Init:ImagePullBackOff")
 
                     for instance in range(0, cluster_size):
-                        self.wait(pod_error, args=(instance,), delay=10)
+                        self.wait(pod_error, args=(instance,), timeout=180, delay=10)
 
                     kutil.delete_ic(self.ns, self.cluster_name)
                     self.wait_pods_gone(f"{self.cluster_name}-\d")
@@ -490,7 +490,7 @@ spec:
                         return pod_status in ("Init:ErrImageNeverPull", "Init:ErrImagePull", "Init:ImagePullBackOff")
 
                     for instance in range(0, self.cluster_size):
-                        self.wait(pod_error, args=(instance,), delay=10)
+                        self.wait(pod_error, args=(instance,), timeout=180, delay=10)
 
                     # the only way out when ic fails during creation is deleting and retrying
                     kutil.delete_ic(self.ns, self.cluster_name)
@@ -567,8 +567,8 @@ spec:
         """
         Change spec with invalid version, it should be ignored but notified in events.
         """
-        prev_ic_evs = kutil.get_ic_ev(self.ns, self.cluster_name)
-        ic_ev_num = len(prev_ic_evs)
+        prev_ic_evs = kutil.get_ic_ev(self.ns, self.cluster_name) or []
+        prev_ic_ev_names = {ev["metadata"]["name"] for ev in prev_ic_evs}
         invalid_upgrade_version = "100.8.8"
         kutil.patch_ic(self.ns, self.cluster_name, {"spec": {
             "version": invalid_upgrade_version
@@ -580,18 +580,27 @@ spec:
 
         self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
-        self.wait(kutil.get_ic_ev, (self.ns, self.cluster_name),
-                  lambda evs: len(evs) > ic_ev_num)
-
         # there should be events for the cluster resource indicating the update problem
-        self.assertGotClusterEvent(
-            self.cluster_name, type="Normal", reason="SpecChanged", msg=r"Field spec.version modified")
-        self.assertGotClusterEvent(
-            self.cluster_name, type="Normal", reason="SpecChanged", msg=r"CR changed")
-        self.assertGotClusterEvent(
-            self.cluster_name, type="Normal", reason="VersionChangeAttempt", msg=rf"Attempting version change from \d+\.\d+\.\d+ to {invalid_upgrade_version}")
-        self.assertGotClusterEvent(
-            self.cluster_name, type="Warning", reason="SpecChanged", msg=rf"Permanent error: version {invalid_upgrade_version} must be between .*")
+        expected_events = [
+            ("Normal", "SpecChanged", re.compile(r"^Field spec.version modified$")),
+            ("Normal", "SpecChanged", re.compile(r"^CR changed$")),
+            ("Normal", "VersionChangeAttempt", re.compile(
+                rf"^Attempting version change from \d+\.\d+\.\d+ to {invalid_upgrade_version}$")),
+            ("Warning", "SpecChanged", re.compile(
+                rf"^Permanent error: version {invalid_upgrade_version} must be between .*$")),
+        ]
+
+        def has_expected_upgrade_events():
+            events = kutil.get_ic_ev(self.ns, self.cluster_name) or []
+            new_events = [ev for ev in events if ev["metadata"]["name"] not in prev_ic_ev_names]
+            return all(any(
+                ev["type"] == ev_type and
+                ev["reason"] == reason and
+                msgpat.match(ev["message"])
+                for ev in new_events)
+                for ev_type, reason, msgpat in expected_events)
+
+        self.wait(has_expected_upgrade_events, timeout=90, delay=2)
 
     def test_9_destroy(self):
         kutil.delete_ic(self.ns, self.cluster_name)

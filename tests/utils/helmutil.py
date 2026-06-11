@@ -479,6 +479,39 @@ def get_helm_chart_path(
     raise FileNotFoundError(versioned_chart_error)
 
 
+def get_missing_helm_chart_release_paths(
+    chart_names: tuple[str, ...],
+    app_versions: tuple[str, ...],
+    *,
+    source_path: Optional[str] = None,
+) -> list[str]:
+    source_path = _get_helm_source_path(source_path)
+    missing_paths = []
+
+    for app_version in app_versions:
+        for chart_name in chart_names:
+            try:
+                get_helm_chart_path(
+                    chart_name,
+                    source_path=source_path,
+                    app_version=app_version,
+                )
+            except FileNotFoundError as exc:
+                versioned_chart_path = _get_versioned_chart_path(
+                    source_path,
+                    chart_name,
+                    app_version,
+                )
+                if str(exc) == (
+                    f"Helm chart directory does not exist: {versioned_chart_path}"
+                ):
+                    missing_paths.append(versioned_chart_path)
+                    continue
+                raise
+
+    return missing_paths
+
+
 def get_previous_operator_chart_release(
     source_path: Optional[str] = None,
     current_app_version: Optional[str] = None,
@@ -1637,6 +1670,7 @@ def _build_helm_apply_command(
     helm_cmd = ["helm", "upgrade"]
     if install_if_missing:
         helm_cmd.append("--install")
+        helm_cmd.append("--skip-crds")
     helm_cmd.append(options.release_name)
     helm_cmd.extend(["--namespace", options.namespace])
     if options.version:

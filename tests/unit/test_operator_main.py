@@ -206,6 +206,103 @@ def _reject_deployment_patch(name, namespace, body):
     pytest.fail("operator topology must not be patched into Deployment metadata")
 
 
+def _make_standalone_safety_deployment(
+    *,
+    replicas=1,
+    strategy_type="Recreate",
+    max_surge=None,
+    max_unavailable=None,
+):
+    rolling_update = None
+    if max_surge is not None or max_unavailable is not None:
+        rolling_update = types.SimpleNamespace(
+            max_surge=max_surge,
+            max_unavailable=max_unavailable,
+        )
+
+    return types.SimpleNamespace(
+        spec=types.SimpleNamespace(
+            replicas=replicas,
+            strategy=types.SimpleNamespace(
+                type=strategy_type,
+                rolling_update=rolling_update,
+            ),
+        ),
+    )
+
+
+def test_ensure_standalone_safe_deployment_rejects_multiple_replicas():
+    operator_main = _load_operator_main_module()
+    deployment = _make_standalone_safety_deployment(
+        replicas=2,
+        strategy_type="Recreate",
+    )
+    operator_main.get_operator_deployment = lambda namespace, name: deployment
+
+    with pytest.raises(
+        RuntimeError,
+        match=r"requires exactly one configured replica.*replicas=2",
+    ):
+        operator_main.ensure_standalone_safe_deployment(
+            True,
+            "operator-ns",
+            "mysql-operator",
+        )
+
+
+def test_ensure_standalone_safe_deployment_accepts_recreate_strategy():
+    operator_main = _load_operator_main_module()
+    deployment = _make_standalone_safety_deployment(
+        replicas=1,
+        strategy_type="Recreate",
+    )
+    operator_main.get_operator_deployment = lambda namespace, name: deployment
+
+    operator_main.ensure_standalone_safe_deployment(
+        True,
+        "operator-ns",
+        "mysql-operator",
+    )
+
+
+def test_ensure_standalone_safe_deployment_accepts_safe_rolling_update():
+    operator_main = _load_operator_main_module()
+    deployment = _make_standalone_safety_deployment(
+        replicas=None,
+        strategy_type="RollingUpdate",
+        max_surge=0,
+        max_unavailable=1,
+    )
+    operator_main.get_operator_deployment = lambda namespace, name: deployment
+
+    operator_main.ensure_standalone_safe_deployment(
+        True,
+        "operator-ns",
+        "mysql-operator",
+    )
+
+
+def test_ensure_standalone_safe_deployment_rejects_unsafe_rolling_update():
+    operator_main = _load_operator_main_module()
+    deployment = _make_standalone_safety_deployment(
+        replicas=1,
+        strategy_type="RollingUpdate",
+        max_surge=1,
+        max_unavailable=0,
+    )
+    operator_main.get_operator_deployment = lambda namespace, name: deployment
+
+    with pytest.raises(
+        RuntimeError,
+        match=r"requires a safe Deployment strategy",
+    ):
+        operator_main.ensure_standalone_safe_deployment(
+            True,
+            "operator-ns",
+            "mysql-operator",
+        )
+
+
 def test_main_resolves_global_env_topology_before_startup(monkeypatch):
     operator_main = _load_operator_main_module()
     fake_loop = _FakeLoop()

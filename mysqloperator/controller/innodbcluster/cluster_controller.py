@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -23,6 +23,7 @@ import kopf
 import datetime
 import time
 import threading
+import functools
 
 common_gr_options = {
     # Abort the server if member is kicked out of the group, which would trigger
@@ -30,6 +31,20 @@ common_gr_options = {
     # This also makes autoRejoinTries irrelevant.
     "exitStateAction": "ABORT_SERVER"
 }
+
+_adminapi_lock = threading.RLock()
+
+
+F = typing.TypeVar("F", bound=Callable[..., typing.Any])
+
+
+def _serialized_adminapi_call(func: F) -> F:
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        with _adminapi_lock:
+            return func(*args, **kwargs)
+
+    return cast(F, wrapper)
 
 def select_pod_with_most_gtids(gtids: Dict[int, str]) -> int:
     pod_indexes = list(gtids.keys())
@@ -98,6 +113,7 @@ class ClusterController:
         }
         self.cluster.set_cluster_status(cluster_status)
 
+    @_serialized_adminapi_call
     def probe_status(self, logger: Logger) -> diagnose.ClusterStatus:
         diag = diagnose.diagnose_cluster(self.cluster, logger)
         if not self.cluster.deleting:
@@ -105,6 +121,7 @@ class ClusterController:
         logger.info(f"cluster probe: status={diag.status} online={diag.online_members}")
         return diag
 
+    @_serialized_adminapi_call
     def probe_status_if_needed(self, changed_pod: MySQLPod, logger: Logger) -> diagnose.ClusterDiagStatus:
         cluster_probe_time = self.cluster.get_cluster_status("lastProbeTime")
         member_transition_time = changed_pod.get_membership_info("lastTransitionTime")
@@ -301,6 +318,7 @@ class ClusterController:
         logger.info(
             f"server_id={server_id} server_uuid={server_uuid}  report_host={report_host}  gtid_executed={gtid_executed}  gtid_purged={gtid_purged}")
 
+    @_serialized_adminapi_call
     def create_cluster(self, seed_pod: MySQLPod, logger: Logger) -> None:
         logger.info("Creating cluster at %s" % seed_pod.name)
 
@@ -608,6 +626,7 @@ class ClusterController:
 
         last_pod.remove_member_finalizer()
 
+    @_serialized_adminapi_call
     def reconcile_pod(self, primary_pod: MySQLPod, pod: MySQLPod, logger: Logger) -> None:
         with DbaWrap(shellutils.connect_dba(pod.endpoint_co, logger)) as pod_dba_session:
             cluster = self.connect_to_primary(primary_pod, logger)

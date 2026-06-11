@@ -6,7 +6,7 @@
 import time
 from setup import defaults
 from utils import kutil
-from utils.tutil import get_pod_container
+from utils.tutil import get_pod_container, _is_active_pod_row
 from setup.config import g_ts_cfg
 
 def check_pod_labels(test, pod, cluster, role):
@@ -105,7 +105,10 @@ def check_cluster_spec_compliant(test, icobj):
         name+"-") and router_infix not in p["NAME"]]
     test.assertEqual(len(server_pods), spec["instances"])
 
-    router_pods = [p for p in pods if p["NAME"].startswith(name+router_infix)]
+    router_pods = [
+        p for p in pods
+        if p["NAME"].startswith(name+router_infix) and _is_active_pod_row(p)
+    ]
     test.assertEqual(len(router_pods), spec.get(
         "router", {}).get("instances", 0))
 

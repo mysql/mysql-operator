@@ -1,10 +1,11 @@
-# Copyright (c) 2022, Oracle and/or its affiliates.
+# Copyright (c) 2022, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
 import json
 import logging
+import re
 from e2e.mysqloperator.cluster import check_apiobjects
 from e2e.mysqloperator.cluster.cluster_t import check_all
 from utils.auxutil import isotime
@@ -74,7 +75,7 @@ spec:
         self.wait_routers_gone("mycluster-router-*")
         self.wait_ic_gone("mycluster")
 
-        kutil.delete_default_secret(self.ns)
+        kutil.delete_default_secret(self.ns, name=self.cluster_secret_name)
 
     # --------------------
 
@@ -118,21 +119,22 @@ spec:
 
     def verify_update_rejected(self, update_time, from_version, to_version):
         # e.g.
-        # 16m  Normal  Logging   innodbcluster/mycluster  Propagating spec.version=8.0.29 for namespace/mycluster (was 8.0.28)
-        # 16m  Error   Logging   innodbcluster/mycluster  Handler 'on_innodbcluster_field_version/spec.version' failed permanently: Support for MySQL 8.0.29 is disabled. Please see http://....
-        # 16m  Normal  Logging   innodbcluster/mycluster  Updating is processed: 0 succeeded; 1 failed.
+        # 16m  Normal   VersionChangeAttempt  innodbcluster/mycluster  Attempting version change from 8.0.28 to 8.0.29
+        # 16m  Normal   SpecChanged           innodbcluster/mycluster  Field spec.version modified
+        # 16m  Warning  SpecChanged           innodbcluster/mycluster  Permanent error: Support for MySQL 8.0.29 is disabled. Please see http://....
         self.wait_got_cluster_event(
             "mycluster", after=update_time, type="Normal",
-            reason="Logging",
-            msg=rf"Propagating spec.version={to_version} for {self.ns}/mycluster \(was {from_version}\)")
-        self.wait_got_cluster_event(
-            "mycluster", after=update_time, type="Error",
-            reason="Logging",
-            msg=rf"Handler 'on_innodbcluster_field_version/spec.version' failed permanently\: Support for MySQL {to_version} is disabled. Please see https\://dev.mysql.com/doc/relnotes/mysql-operator/en/news-8-0-29.html")
+            reason="VersionChangeAttempt",
+            msg=re.escape(f"Attempting version change from {from_version} to {to_version}"))
         self.wait_got_cluster_event(
             "mycluster", after=update_time, type="Normal",
-            reason="Logging",
-            msg=r"Updating is processed\: 0 succeeded; 1 failed.")
+            reason="SpecChanged",
+            msg=re.escape("Field spec.version modified"))
+        self.wait_got_cluster_event(
+            "mycluster", after=update_time, type="Warning",
+            reason="SpecChanged",
+            msg=re.escape(f"Permanent error: Support for MySQL {to_version} is disabled. "
+                          "Please see https://dev.mysql.com/doc/relnotes/mysql-operator/en/news-8-0-29.html"))
 
     # --------------------
 

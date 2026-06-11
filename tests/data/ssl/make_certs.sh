@@ -1,14 +1,24 @@
 
+function ensure_rsa_key() {
+  key_path=$1
+
+  if [ ! -f $key_path ]; then
+    openssl genrsa 2048 > $key_path
+  fi
+}
+
 function make_ca() {
   ca_prefix=$1
   cn=$2
   days=$3
 
-  openssl req -newkey rsa:2048 -days $days -nodes -keyout $ca_prefix-key.pem -subj /CN=$cn -out /tmp/ca-req.pem
+  ensure_rsa_key $ca_prefix-key.pem
 
-  openssl rsa -in $ca_prefix-key.pem -out $ca_prefix-key.pem
-
-  openssl req -new -x509 -nodes -days $days -key $ca_prefix-key.pem -subj /CN=$cn -out $ca_prefix.pem
+  openssl req -new -x509 -nodes -days $days -key $ca_prefix-key.pem -subj /CN=$cn -out $ca_prefix.pem \
+          -addext "subjectKeyIdentifier = hash" \
+          -addext "authorityKeyIdentifier = keyid:always,issuer" \
+          -addext "basicConstraints = critical, CA:true" \
+          -addext "keyUsage = critical, keyCertSign, cRLSign"
 }
 
 function make_cert() {
@@ -20,11 +30,11 @@ function make_cert() {
 
   echo "Generating $out_prefix"
 
-  openssl req -newkey rsa:2048 -days $days \
-          -nodes -keyout out/$out_prefix-key.pem -out out/$out_prefix-req.pem\
-          -config $req_conf -extensions 'v3_req'
+  ensure_rsa_key out/$out_prefix-key.pem
 
-  openssl rsa -in out/$out_prefix-key.pem -out out/$out_prefix-key.pem
+  openssl req -new \
+          -key out/$out_prefix-key.pem -out out/$out_prefix-req.pem\
+          -config $req_conf
 
   openssl x509 -req -in out/$out_prefix-req.pem -days $days \
          -CA $ca_prefix.pem -CAkey $ca_prefix-key.pem -set_serial $serial -out out/$out_prefix-cert.pem\
@@ -73,4 +83,3 @@ cat out/serverb-rev-cert.pem  > out/crl.pem
 
 # delete unneeded files
 rm out/*req.pem
-

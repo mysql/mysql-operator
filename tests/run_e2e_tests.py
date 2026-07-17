@@ -536,6 +536,8 @@ if __name__ == '__main__':
                 nodes=opt_cluster_node_count, node_memory=opt_node_memory, version=opt_kube_version, cfg_path=opt_cfg_path,
                 perform_setup=opt_setup, mounts=opt_mounts, custom_dns=opt_custom_dns, cleanup=opt_cleanup, ip_family=opt_ip_family)
 
+            driver.import_local_operator_images_if_present()
+
             if opt_load_images:
                 driver.cache_images(image_dir, images)
 

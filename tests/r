@@ -27,6 +27,11 @@ helm_path="${OPERATOR_TEST_HELM_PATH:-$basedir/helm}"
 deploy_path="${OPERATOR_TEST_DEPLOY_PATH:-$basedir/deploy}"
 deploy_historic_path="${OPERATOR_TEST_DEPLOY_HISTORIC_PATH:-}"
 cfg_path="${TEST_K3D_REGISTRIES_PATH:-${OPERATOR_TEST_K3D_REGISTRIES_PATH:-$script_dir/k3d-registries.yaml}}"
+build_operator=0
+build_arch="${OPERATOR_BUILD_ARCH:-amd64}"
+#REGISTRY=container-registry.oracle.com
+registry="${OPERATOR_TEST_REGISTRY:-iad.ocir.io/mysql2/re/qa}"
+repository="${OPERATOR_TEST_REPOSITORY:-mysql}"
 
 has_historic_deploy_path() {
     local candidate="$1"
@@ -51,28 +56,53 @@ has_historic_deploy_path() {
     return 1
 }
 
+runner_args=()
 for arg in "$@"; do
     case "$arg" in
+        --build)
+            build_operator=1
+            ;;
+        --build-arch=*)
+            build_arch="${arg#*=}"
+            ;;
         --clusters=*)
             clusters="${arg#*=}"
+            runner_args+=("$arg")
             ;;
         --defer=*)
             defer="${arg#*=}"
+            runner_args+=("$arg")
             ;;
         --node-memory=*)
             node_memory="${arg#*=}"
+            runner_args+=("$arg")
             ;;
         --tag=*)
             tag="${arg#*=}"
+            runner_args+=("$arg")
             ;;
         --work-dir=*|--workdir=*)
             work_dir="${arg#*=}"
+            runner_args+=("$arg")
             ;;
         --cfg-path=*)
             cfg_path="${arg#*=}"
+            runner_args+=("$arg")
+            ;;
+        --registry=*)
+            registry="${arg#*=}"
+            runner_args+=("$arg")
+            ;;
+        --repository=*)
+            repository="${arg#*=}"
+            runner_args+=("$arg")
+            ;;
+        *)
+            runner_args+=("$arg")
             ;;
     esac
 done
+set -- "${runner_args[@]}"
 
 if [ ! -f "$cfg_path" ]; then
     echo "Missing k3d registry config: $cfg_path" >&2
@@ -117,6 +147,38 @@ if [ -z "${KUBECONFIG:-}" ]; then
     export KUBECONFIG="$work_dir/kubeconfig"
 fi
 
+if [ "$build_operator" -eq 1 ]; then
+    case "$build_arch" in
+        amd64|arm64)
+            ;;
+        *)
+            echo "Invalid --build-arch value: $build_arch. Expected amd64 or arm64." >&2
+            exit 1
+            ;;
+    esac
+
+    operator_image_name="${OPERATOR_TEST_IMAGE_NAME:-community-operator}"
+    operator_version_tag="${OPERATOR_TEST_VERSION_TAG:-$("$basedir/tag.sh")}"
+    operator_image="$registry/$repository/$operator_image_name:$operator_version_tag"
+    operator_python_deps_image="${OPERATOR_PYTHON_DEPS_IMAGE:-$registry/mysql-operator-python-deps}"
+
+    echo "Building operator image: $operator_image"
+    if ! (
+        cd "$basedir"
+        ./gen_dockerfile.sh "" "$operator_python_deps_image" "" "" "" "" "$build_arch"
+        docker build \
+            --build-arg "http_proxy=${http_proxy:-}" \
+            --build-arg "https_proxy=${https_proxy:-}" \
+            --build-arg "no_proxy=${no_proxy:-}" \
+            -f Dockerfile \
+            -t "$operator_image" \
+            .
+    ); then
+        echo "Failed to build operator image: $operator_image" >&2
+        exit 1
+    fi
+fi
+
 set -- \
     --env=k3d \
     --clusters="$clusters" \
@@ -127,8 +189,8 @@ set -- \
     --xml \
     --node-memory="$node_memory" \
     --cfg-path="$cfg_path" \
-    --registry=container-registry.oracle.com \
-    --repository=mysql \
+    --registry="$registry" \
+    --repository="$repository" \
     --mount-operator \
     "${path_args[@]}" \
     --skip-enterprise \

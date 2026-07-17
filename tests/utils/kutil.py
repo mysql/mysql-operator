@@ -295,6 +295,24 @@ def server_version() -> str:
     return f"{sv['major']}.{sv['minor']}"
 
 
+def version_tuple(version: str) -> tuple[int, ...]:
+    parsed = []
+    for part in str(version).split("."):
+        match = re.match(r"\d+", part)
+        if not match:
+            raise ValueError(f"Invalid numeric version component: {version}")
+        parsed.append(int(match.group(0)))
+    return tuple(parsed)
+
+
+def server_version_less_than(version: str) -> bool:
+    return version_tuple(server_version()) < version_tuple(version)
+
+
+def server_version_at_least(version: str) -> bool:
+    return version_tuple(server_version()) >= version_tuple(version)
+
+
 def client_version() -> str:
     output = kubectl("version", args=["-o", "json"])
     cv = json.loads(output.stdout.decode("utf8"))['clientVersion']

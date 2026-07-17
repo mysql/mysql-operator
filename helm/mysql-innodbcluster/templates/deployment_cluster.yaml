@@ -13,7 +13,7 @@
   {{- end }}
 {{- end }}
 {{- $routerInstances := coalesce ((.Values).routerInstances) (((.Values).router).instances) }}
-{{- if lt $serverVersion $minimalVersion }}
+{{- if semverCompare (printf "<%s" $minimalVersion) $serverVersion }}
   {{- $err := printf "It is not possible to use MySQL version %s . Please, use %s or above" $serverVersion $minimalVersion }}
   {{- fail $err }}
 {{- end }}

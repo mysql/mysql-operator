@@ -174,7 +174,7 @@ spec:
 
         spec = cj["spec"]
         self.assertEqual(spec["schedule"], "*/1 0-23 * * *")
-        if kutil.server_version() >= '1.27':
+        if kutil.server_version_at_least("1.27"):
             # TimeZone support was added with Kubernetes 1.27 older versions
             # ignore it
             self.assertEqual(spec["timeZone"], "Antarctica/Davis")

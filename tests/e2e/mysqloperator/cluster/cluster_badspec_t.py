@@ -75,7 +75,7 @@ spec:
   bogus: 1234
 """
         self.assertApplyFails(
-            yaml, r'ValidationError\(InnoDBCluster.spec\): unknown field "bogus" in com.oracle.mysql.v2.InnoDBCluster.spec' if kutil.server_version() < '1.25' else
+            yaml, r'ValidationError\(InnoDBCluster.spec\): unknown field "bogus" in com.oracle.mysql.v2.InnoDBCluster.spec' if kutil.server_version_less_than("1.25") else
                   r'InnoDBCluster in version "v2" cannot be handled as a InnoDBCluster: strict decoding error: unknown field "spec.bogus"')
 
     def test_1_name_too_long(self):
@@ -92,9 +92,9 @@ spec:
   secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
 """
-        if kutil.server_version() < '1.24':
+        if kutil.server_version_less_than("1.24"):
             too_long_message =  r'metadata.name in body should be at most 40 chars long'
-        elif kutil.server_version() < '1.31':
+        elif kutil.server_version_less_than("1.31"):
             too_long_message = 'The InnoDBCluster "veryveryveryveryveryveryveryverylongnamex" is invalid: metadata.name: Too long: may not be longer than 40'
         else:
             too_long_message = 'The InnoDBCluster "veryveryveryveryveryveryveryverylongnamex" is invalid: metadata.name: Too long: may not be more than 40 bytes'
@@ -128,7 +128,7 @@ metadata:
   name: {self.cluster_name}
 """
         self.assertApplyFails(
-            yaml, r'ValidationError\(InnoDBCluster\): missing required field "spec" in com.oracle.mysql.v2.InnoDBCluster' if kutil.server_version() < '1.25' else
+            yaml, r'ValidationError\(InnoDBCluster\): missing required field "spec" in com.oracle.mysql.v2.InnoDBCluster' if kutil.server_version_less_than("1.25") else
                   rf'The InnoDBCluster "{self.cluster_name}" is invalid: spec: Required value')
 
         yaml = f"""
@@ -141,7 +141,7 @@ spec:
   instances: 1
 """
         self.assertApplyFails(
-            yaml, r'error validating data: ValidationError\(InnoDBCluster.spec\): missing required field "secretName"' if kutil.server_version() < '1.25' else
+            yaml, r'error validating data: ValidationError\(InnoDBCluster.spec\): missing required field "secretName"' if kutil.server_version_less_than("1.25") else
                   rf'The InnoDBCluster "{self.cluster_name}" is invalid: spec.secretName: Required value')
 
     def test_1_instances(self):
@@ -187,7 +187,7 @@ spec:
   instances: "bla"
 """
         self.assertApplyFails(
-            yaml, r'ValidationError\(InnoDBCluster.spec.instances\): invalid type for com.oracle.mysql.v2.InnoDBCluster.spec.instances: got "string", expected "integer"' if kutil.server_version() < '1.25' else
+            yaml, r'ValidationError\(InnoDBCluster.spec.instances\): invalid type for com.oracle.mysql.v2.InnoDBCluster.spec.instances: got "string", expected "integer"' if kutil.server_version_less_than("1.25") else
                   rf'The InnoDBCluster "{self.cluster_name}" is invalid: spec.instances: Invalid value: "string": spec.instances in body must be of type integer: "string"')
 
         yaml = f"""

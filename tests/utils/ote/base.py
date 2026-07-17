@@ -10,6 +10,7 @@ import yaml
 import time
 import requests
 import json
+import re
 from utils import auxutil
 from utils import kutil
 from setup.config import g_ts_cfg, Config
@@ -17,6 +18,13 @@ from setup.image_digests import IMAGE_DIGESTS
 
 
 # Operator Test Environment
+
+def image_tag_sort_key(tag):
+    return tuple(
+        int(part) if part.isdigit() else part
+        for part in re.split(r"(\d+)", tag)
+    )
+
 
 def wait_pod(ns, pattern, pod_pretty_name):
     def check_ready():
@@ -240,7 +248,7 @@ class BaseEnvironment:
         # find latest version of each image
         for img in images:
             repo, _, ver = img.rpartition(":")
-            if versions.get(repo, "0") < ver:
+            if image_tag_sort_key(versions.get(repo, "0")) < image_tag_sort_key(ver):
                 versions[repo] = ver
                 latest[repo] = img
 

@@ -30,6 +30,10 @@ DEFAULT_OPERATOR_DEPLOY_MANIFEST = (
 HELM_FIELD_MANAGER = "helm"
 
 
+def parse_mysql_version(version: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in str(version).split("."))
+
+
 def get_default_operator_deploy_manifest_path() -> pathlib.Path:
     configured_deploy_path = getattr(g_ts_cfg, "get_deploy_path", lambda: "")()
     if configured_deploy_path:
@@ -535,7 +539,7 @@ spec:
                         time.sleep(15)
 
                         for upgrade_version in upgrade_versions:
-                            if upgrade_version <= old_cluster_version:
+                            if parse_mysql_version(upgrade_version) <= parse_mysql_version(old_cluster_version):
                                 self.logger.info(f"Skipping upgrade from {old_cluster_version} to {upgrade_version} ")
                                 continue
                             with self.subTest(upgrade_version=upgrade_version):

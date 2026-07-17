@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2023, 2026, Oracle and/or its affiliates. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,7 +20,7 @@ MANIFEST_VERSIONS=("${@:2}")
 
 if [ -z $MANIFEST_VERSIONS ]; then
     VER=$(./tag.sh)
-    MAJ_VER=${VER:0:3}
+    MAJ_VER=$(echo "${VER}" | cut -d. -f1,2)
     MANIFEST_VERSIONS=($VER $MAJ_VER)
 fi
 

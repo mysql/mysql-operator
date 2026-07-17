@@ -4,6 +4,7 @@
 #
 
 import os
+import shutil
 import subprocess
 import yaml
 import time
@@ -12,6 +13,7 @@ import json
 from utils import auxutil
 from utils import kutil
 from setup.config import g_ts_cfg, Config
+from setup.image_digests import IMAGE_DIGESTS
 
 
 # Operator Test Environment
@@ -261,9 +263,87 @@ class BaseEnvironment:
     def load_images(self, image_list):
         pass
 
+    def local_image_exists(self, image):
+        result = subprocess.run(
+            ["docker", "image", "inspect", image],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return result.returncode == 0
+
+    def tag_local_image(self, source, target):
+        if source == target or self.local_image_exists(target):
+            return True
+        if not self.local_image_exists(source):
+            return False
+        print(f"Tagging local image {source} as {target}")
+        subprocess.check_call(["docker", "tag", source, target])
+        return True
+
+    def import_image(self, image):
+        print(f"Skipping local image import for {image}: {self.name} does not support it")
+
+    def import_local_images_if_present(self, images):
+        for image in images:
+            if self.local_image_exists(image):
+                self.import_image(image)
+            else:
+                print(f"Local image not found, leaving cluster to pull normally: {image}")
+
+    def get_local_operator_images(self):
+        current_image = g_ts_cfg.get_operator_image()
+        known_versions = IMAGE_DIGESTS.get(g_ts_cfg.operator_image_name, {})
+        versions = [
+            g_ts_cfg.operator_version_tag,
+            g_ts_cfg.operator_current_lts_version_tag,
+            g_ts_cfg.operator_old_version_tag,
+            g_ts_cfg.get_current_lts_version(),
+            g_ts_cfg.get_old_version_tag(),
+            "8.4.5",
+            "9.0.0",
+            "9.3.0",
+            "9.4.0",
+            "9.5.0",
+        ]
+        versions.extend(known_versions.keys())
+        images = []
+        seen = set()
+        for version in versions:
+            image = g_ts_cfg.get_operator_image(version)
+            if image in seen:
+                continue
+            seen.add(image)
+            if image == current_image or self.tag_local_image(current_image, image):
+                images.append(image)
+        return images
+
+    def import_local_operator_images_if_present(self):
+        self.import_local_images_if_present(self.get_local_operator_images())
+
+    def prepare_operator_mount_path(self, path):
+        work_dir = g_ts_cfg.work_dir or "/tmp"
+        staged_parent = os.path.join(work_dir, "operator-mount")
+        staged_path = os.path.join(staged_parent, os.path.basename(path))
+        if os.path.exists(staged_path):
+            shutil.rmtree(staged_path)
+        shutil.copytree(
+            path,
+            staged_path,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".mypy_cache", ".pytest_cache"),
+        )
+        for root, dirs, files in os.walk(staged_path):
+            os.chmod(root, 0o755)
+            for dirname in dirs:
+                os.chmod(os.path.join(root, dirname), 0o755)
+            for filename in files:
+                file_path = os.path.join(root, filename)
+                mode = 0o755 if os.access(file_path, os.X_OK) else 0o644
+                os.chmod(file_path, mode)
+        return staged_path
+
     def mount_operator_path(self, path):
         self.operator_host_path = os.path.join("/tmp", os.path.basename(path))
-        self.operator_mount_path = path
+        self.operator_mount_path = self.prepare_operator_mount_path(path)
 
     def resolve_context(self, cluster_name):
         return cluster_name

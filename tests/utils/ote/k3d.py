@@ -34,11 +34,37 @@ class K3dEnvironment(BaseEnvironment):
         cmd = [g_ts_cfg.env_binary_path, "image", "import", repo_tag, "-c", g_ts_cfg.k8s_cluster]
         subprocess.check_call(cmd, shell=True)
 
+    def import_image(self, image):
+        print(f"Importing image {image} into k3d cluster {g_ts_cfg.k8s_cluster}")
+        cmd = [g_ts_cfg.env_binary_path, "image", "import", image, "-c", g_ts_cfg.k8s_cluster]
+        subprocess.check_call(cmd)
+
+    def import_local_images_if_present(self, images):
+        local_images = [image for image in images if self.local_image_exists(image)]
+        missing_images = [image for image in images if image not in local_images]
+        for image in missing_images:
+            print(f"Local image not found, leaving cluster to pull normally: {image}")
+        if not local_images:
+            return
+        print(f"Importing {len(local_images)} local image tag(s) into k3d cluster {g_ts_cfg.k8s_cluster}")
+        cmd = [g_ts_cfg.env_binary_path, "image", "import", *local_images, "-c", g_ts_cfg.k8s_cluster]
+        subprocess.check_call(cmd)
+
     def resolve_context(self, cluster_name):
         return f"k3d-{cluster_name}"
 
     def start_cluster(self, nodes, node_memory, version, cfg_path, ip_family):
-        args = [g_ts_cfg.env_binary_path, "cluster", "create", g_ts_cfg.k8s_cluster, "--timeout", "5m", "--no-lb"]
+        args = [
+            g_ts_cfg.env_binary_path,
+            "cluster",
+            "create",
+            g_ts_cfg.k8s_cluster,
+            "--timeout",
+            "5m",
+            "--no-lb",
+            "--runtime-ulimit",
+            "nofile=1048576:1048576",
+        ]
 
         if nodes and nodes > 1:
             # agents are additional nodes, by default there is single server node (see also k3d option

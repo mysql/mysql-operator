@@ -22,6 +22,11 @@ class KindEnvironment(BaseEnvironment):
     def resolve_context(self, cluster_name):
         return f"{self.name}-{cluster_name}"
 
+    def import_image(self, image):
+        print(f"Importing image {image} into kind cluster {g_ts_cfg.k8s_cluster}")
+        args = [g_ts_cfg.env_binary_path, "load", "docker-image", image, "--name", g_ts_cfg.k8s_cluster]
+        subprocess.check_call(args)
+
     def start_cluster(self, nodes, node_memory, version, cfg_path, ip_family):
         if cfg_path:
             self.cluster_config_path = cfg_path

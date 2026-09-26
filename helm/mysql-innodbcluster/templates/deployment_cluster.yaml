@@ -39,6 +39,9 @@ spec:
   tlsUseSelfSigned: {{ $use_self_signed }}
   router:
     instances: {{ required "router.instances is required" $routerInstances | toString | atoi  }}
+{{- if (((.Values).router).version) }} 
+    version: {{ ((.Values).router).version | quote }}
+{{- end }}
 {{- if (((.Values).router).podSpec) }}
     podSpec:  {{ toYaml (((.Values).router).podSpec) | nindent 6 }}
 {{- end }}

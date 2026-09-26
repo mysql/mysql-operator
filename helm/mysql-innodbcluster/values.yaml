@@ -26,6 +26,7 @@ baseServerId: 1000
 
 #router:
 #  instances: 1
+#  version: "8.4.12"
 #  options:
 #  - option1: value1
 #  - option2: value2

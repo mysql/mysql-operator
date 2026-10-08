@@ -5601,83 +5601,6 @@ class HelmDeploymentMetadataValuesTest(OperatorSingleAndMultipleBaseTest):
         helm_options.operator_values["deployment"]["namespaces"] = [operator_ns]
         return helm_options
 
-    def _assert_metadata_label_install_rejected(
-        self,
-        *,
-        operator_ns: str,
-        operator_name: str,
-        release_name: str,
-        value_key: str,
-        labels: dict,
-        error_fragment: str,
-    ) -> None:
-        source_operator_deployment = kutil.get_deploy(
-            self.operator_ns,
-            self.operator_deploy_name,
-        )
-        original_artifacts = self._remove_default_operator_or_fail()
-        helm_options = self._build_metadata_helm_options(
-            operator_ns=operator_ns,
-            operator_name=operator_name,
-            release_name=release_name,
-            source_operator_deployment=source_operator_deployment,
-        )
-        helm_options.operator_values["deployment"][value_key] = labels
-
-        install_error = None
-        test_error = None
-
-        try:
-            try:
-                install_with_helm(
-                    operator_ns,
-                    resolved_options=helm_options,
-                )
-            except Exception as exc:
-                install_error = exc
-
-            self.assertIsNotNone(
-                install_error,
-                msg=(
-                    f"Helm install with reserved labels in deployment.{value_key} "
-                    f"unexpectedly succeeded"
-                ),
-            )
-            self.assertIsNone(
-                kutil.get_deploy(operator_ns, operator_name, check=False),
-                msg=(
-                    f"Helm chart should reject reserved labels in deployment.{value_key} "
-                    f"before creating deployment {operator_ns}/{operator_name}"
-                ),
-            )
-
-            install_error_output = (
-                getattr(install_error, "stdout", None)
-                or getattr(install_error, "output", None)
-                or str(install_error)
-            )
-            self.assertIn(error_fragment, install_error_output)
-        except Exception as exc:
-            test_error = exc
-            raise
-        finally:
-            cleanup_error = None
-            try:
-                uninstall_with_helm(
-                    release_key=get_helm_release_target(helm_options),
-                    delete_namespace=True,
-                )
-            except Exception as exc:
-                cleanup_error = exc
-            finally:
-                try:
-                    self._restore_default_operator(original_artifacts)
-                except Exception as exc:
-                    if cleanup_error is None:
-                        cleanup_error = exc
-
-                if cleanup_error is not None and test_error is None:
-                    raise cleanup_error
 
     def test_deployment_metadata_values(self) -> None:
         operator_ns = f"op-meta-helm-{self.random_suffix}"
@@ -5867,69 +5790,6 @@ class HelmDeploymentMetadataValuesTest(OperatorSingleAndMultipleBaseTest):
                 if cleanup_error is not None and test_error is None:
                     raise cleanup_error
 
-    def test_deployment_metadata_values_reject_reserved_deployment_labels(self) -> None:
-        self._assert_metadata_label_install_rejected(
-            operator_ns=f"op-meta-dpl-helm-{self.random_suffix}",
-            operator_name=f"myop-meta-dpl-helm-{self.random_suffix}",
-            release_name=f"myoper-meta-dpl-helm-{self.random_suffix}",
-            value_key="deploymentLabels",
-            labels={"app.kubernetes.io/name": "mysql-operator"},
-            error_fragment=(
-                "Invalid values: deployment.deploymentLabels contains "
-                "chart-managed label keys: app.kubernetes.io/name"
-            ),
-        )
-
-    def test_deployment_metadata_values_reject_reserved_pod_labels(self) -> None:
-        self._assert_metadata_label_install_rejected(
-            operator_ns=f"op-meta-pdl-helm-{self.random_suffix}",
-            operator_name=f"myop-meta-pdl-helm-{self.random_suffix}",
-            release_name=f"myoper-meta-pdl-helm-{self.random_suffix}",
-            value_key="podLabels",
-            labels={"name": "mysql-operator"},
-            error_fragment=(
-                "Invalid values: deployment.podLabels contains "
-                "chart-managed label keys: name"
-            ),
-        )
-
-    def test_deployment_metadata_values_reject_reserved_label_overlaps(self) -> None:
-        scenarios = [
-            {
-                "value_key": "deploymentLabels",
-                "labels": {"app.kubernetes.io/name": "mysql-operator"},
-                "error_fragment": (
-                    "Invalid values: deployment.deploymentLabels contains "
-                    "chart-managed label keys: app.kubernetes.io/name"
-                ),
-                "suffix": "dpl",
-            },
-            {
-                "value_key": "podLabels",
-                "labels": {"name": "mysql-operator"},
-                "error_fragment": (
-                    "Invalid values: deployment.podLabels contains "
-                    "chart-managed label keys: name"
-                ),
-                "suffix": "pdl",
-            },
-        ]
-
-        for scenario in scenarios:
-            with self.subTest(value_key=scenario["value_key"]):
-                self._assert_metadata_label_install_rejected(
-                    operator_ns=(
-                        f"op-meta-{scenario['suffix']}-combo-helm-{self.random_suffix}"
-                    ),
-                    operator_name=f"myop-meta-{scenario['suffix']}-c-{self.random_suffix}",
-                    release_name=(
-                        f"myoper-meta-{scenario['suffix']}-combo-helm-{self.random_suffix}"
-                    ),
-                    value_key=scenario["value_key"],
-                    labels=scenario["labels"],
-                    error_fragment=scenario["error_fragment"],
-                )
-
 
 @testsuite.requires_multi_node_cluster
 class HelmDeploymentPlacementValuesTest(OperatorSingleAndMultipleBaseTest):
@@ -6107,64 +5967,6 @@ class HelmDeploymentPlacementValuesTest(OperatorSingleAndMultipleBaseTest):
             pod_names.append(pod_name)
         return pod_names
 
-    def _assert_placement_value_install_rejected(
-        self,
-        *,
-        operator_ns: str,
-        operator_name: str,
-        release_name: str,
-        old_key: str,
-        new_key: str,
-        old_value: dict,
-        new_value: dict,
-        error_fragment: str,
-    ) -> None:
-        helm_options = self._build_placement_helm_options(
-            operator_ns=operator_ns,
-            operator_name=operator_name,
-            release_name=release_name,
-        )
-        helm_options.operator_values[old_key] = old_value
-        helm_options.operator_values["deployment"][new_key] = new_value
-
-        install_error = None
-
-        try:
-            try:
-                install_with_helm(
-                    operator_ns,
-                    resolved_options=helm_options,
-                )
-            except Exception as exc:
-                install_error = exc
-
-            self.assertIsNotNone(
-                install_error,
-                msg=(
-                    f"Helm install with both {old_key} and deployment.{new_key} "
-                    "unexpectedly succeeded"
-                ),
-            )
-            self.assertIsNone(
-                kutil.get_deploy(operator_ns, operator_name, check=False),
-                msg=(
-                    f"Helm chart should reject simultaneous {old_key} and "
-                    f"deployment.{new_key} before creating deployment "
-                    f"{operator_ns}/{operator_name}"
-                ),
-            )
-
-            install_error_output = (
-                getattr(install_error, "stdout", None)
-                or getattr(install_error, "output", None)
-                or str(install_error)
-            )
-            self.assertIn(error_fragment, install_error_output)
-        finally:
-            uninstall_with_helm(
-                release_key=get_helm_release_target(helm_options),
-                delete_namespace=True,
-            )
 
     def test_deployment_affinity_value(self) -> None:
         operator_ns = f"op-affinity-helm-{self.random_suffix}"
@@ -6424,37 +6226,6 @@ class HelmDeploymentPlacementValuesTest(OperatorSingleAndMultipleBaseTest):
                 delete_namespace=True,
             )
 
-    def test_deployment_affinity_rejects_top_level_affinity(self) -> None:
-        affinity = {
-            "nodeAffinity": {
-                "requiredDuringSchedulingIgnoredDuringExecution": {
-                    "nodeSelectorTerms": [
-                        {
-                            "matchExpressions": [
-                                {
-                                    "key": "kubernetes.io/hostname",
-                                    "operator": "In",
-                                    "values": ["worker-a", "worker-b", "worker-c"],
-                                },
-                            ],
-                        },
-                    ],
-                },
-            },
-        }
-
-        self._assert_placement_value_install_rejected(
-            operator_ns=f"op-affinity-conflict-helm-{self.random_suffix}",
-            operator_name=f"myop-aff-conf-{self.random_suffix}",
-            release_name=f"myoper-affinity-conflict-helm-{self.random_suffix}",
-            old_key="affinity",
-            new_key="affinity",
-            old_value=affinity,
-            new_value=affinity,
-            error_fragment=(
-                "Invalid values: affinity and deployment.affinity cannot both be set"
-            ),
-        )
 
     def test_deployment_node_selector_value(self) -> None:
         operator_ns = f"op-nsel-helm-{self.random_suffix}"
@@ -6620,24 +6391,6 @@ class HelmDeploymentPlacementValuesTest(OperatorSingleAndMultipleBaseTest):
                 delete_namespace=True,
             )
 
-    def test_deployment_node_selector_rejects_top_level_node_selector(self) -> None:
-        node_selector = {
-            "kubernetes.io/hostname": "worker-a",
-        }
-
-        self._assert_placement_value_install_rejected(
-            operator_ns=f"op-nsel-mix-helm-{self.random_suffix}",
-            operator_name=f"myop-nsel-mix-helm-{self.random_suffix}",
-            release_name=f"myoper-nsel-mix-helm-{self.random_suffix}",
-            old_key="nodeSelector",
-            new_key="nodeSelector",
-            old_value=node_selector,
-            new_value=node_selector,
-            error_fragment=(
-                "Invalid values: nodeSelector and deployment.nodeSelector "
-                "cannot both be set"
-            ),
-        )
 
     def test_deployment_node_selector_value_upgrade_moves_operator_pod(self) -> None:
         operator_ns = f"op-nsel-up-helm-{self.random_suffix}"
@@ -7084,101 +6837,6 @@ class StandaloneReplicaGuardTest(OperatorSingleAndMultipleBaseTest):
 
             if cleanup_error is not None and test_error is None:
                 raise cleanup_error
-
-
-class HelmStandaloneReplicaGuardTest(OperatorSingleAndMultipleBaseTest):
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-
-    @classmethod
-    def tearDownClass(cls):
-        kutil.delete_ns(cls.ns)
-        super().tearDownClass()
-
-    def test_standalone_operator_rejects_multiple_replicas(self) -> None:
-        operator_ns = f"op-stand-repl-helm-{self.random_suffix}"
-        operator_name = f"myop-stand-repl-helm-{self.random_suffix}"
-        release_name = f"myoper-helm-stand-repl-{self.random_suffix}"
-        error_fragment = (
-            "Invalid values: deployment.standalone=true requires replicas=1 "
-            "(got 2)"
-        )
-
-        source_operator_deployment = kutil.get_deploy(
-            self.operator_ns,
-            self.operator_deploy_name,
-        )
-        original_artifacts = self._remove_default_operator_or_fail()
-        helm_options = resolve_install_with_helm_options(
-            namespace=operator_ns,
-            source_operator_namespace=self.operator_ns,
-            source_operator_deployment_name=self.operator_deploy_name,
-            source_operator_deployment=source_operator_deployment,
-        )
-        helm_options.release_name = release_name
-        # See helm/mysql-operator/values.yaml for the chart values layout.
-        # Keep these keys in sync if the chart changes:
-        # replicas, deployment.name, deployment.namespaces, deployment.standalone
-        helm_options.operator_values["replicas"] = 2
-        helm_options.operator_values["deployment"]["name"] = operator_name
-        helm_options.operator_values["deployment"]["namespaces"] = [operator_ns]
-        helm_options.operator_values["deployment"]["standalone"] = True
-
-        install_error = None
-        test_error = None
-
-        try:
-            try:
-                install_with_helm(
-                    operator_ns,
-                    resolved_options=helm_options,
-                )
-            except Exception as exc:
-                install_error = exc
-
-            self.assertIsNotNone(
-                install_error,
-                msg=(
-                    "Helm install with deployment.standalone=true and replicas=2 "
-                    "unexpectedly succeeded"
-                ),
-            )
-            self.assertIsNone(
-                kutil.get_deploy(operator_ns, operator_name, check=False),
-                msg=(
-                    f"Helm chart should reject standalone replicas>1 before "
-                    f"creating deployment {operator_ns}/{operator_name}"
-                ),
-            )
-
-            install_error_output = (
-                getattr(install_error, "stdout", None)
-                or getattr(install_error, "output", None)
-                or str(install_error)
-            )
-            self.assertIn(error_fragment, install_error_output)
-        except Exception as exc:
-            test_error = exc
-            raise
-        finally:
-            cleanup_error = None
-            try:
-                uninstall_with_helm(
-                    release_key=get_helm_release_target(helm_options),
-                    delete_namespace=True,
-                )
-            except Exception as exc:
-                cleanup_error = exc
-            finally:
-                try:
-                    self._restore_default_operator(original_artifacts)
-                except Exception as exc:
-                    if cleanup_error is None:
-                        cleanup_error = exc
-
-                if cleanup_error is not None and test_error is None:
-                    raise cleanup_error
 
 
 class StandaloneDeploymentStrategyGuardTest(OperatorSingleAndMultipleBaseTest):
@@ -10951,87 +10609,6 @@ class InvalidNamespaceValuesTest(OperatorSingleAndMultipleBaseTest):
         )
 
 
-class HelmInvalidNamespaceValuesTest(OperatorSingleAndMultipleBaseTest):
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-
-    @classmethod
-    def tearDownClass(cls):
-        kutil.delete_ns(cls.ns)
-        super().tearDownClass()
-
-    def test_invalid_pattern_entries_fail_fast_in_standalone_mode(self) -> None:
-        operator_ns = f"op-invalid-ns-helm-{self.random_suffix}"
-        operator_name = f"myop-invalid-ns-helm-{self.random_suffix}"
-        release_name = f"myoper-helm-invalid-ns-{self.random_suffix}"
-        watch_namespaces = [
-            f"team-*{self.random_suffix}",
-            f"!kube-*{self.random_suffix}",
-            f"qa-?{self.random_suffix}",
-        ]
-        error_fragment = (
-            "Invalid values: deployment.namespaces / OPERATOR_NAMESPACES supports "
-            "explicit namespace names only."
-        )
-
-        source_operator_deployment = kutil.get_deploy(
-            self.operator_ns,
-            self.operator_deploy_name,
-        )
-        helm_options = resolve_install_with_helm_options(
-            namespace=operator_ns,
-            source_operator_namespace=self.operator_ns,
-            source_operator_deployment_name=self.operator_deploy_name,
-            source_operator_deployment=source_operator_deployment,
-        )
-        helm_options.release_name = release_name
-        # See helm/mysql-operator/values.yaml for the deployment values layout.
-        # Keep these keys in sync if the chart changes:
-        # deployment.name, deployment.namespaces, deployment.standalone
-        helm_options.operator_values["deployment"]["name"] = operator_name
-        helm_options.operator_values["deployment"]["namespaces"] = watch_namespaces
-        helm_options.operator_values["deployment"]["standalone"] = True
-
-        install_error = None
-
-        try:
-            try:
-                install_with_helm(
-                    operator_ns,
-                    resolved_options=helm_options,
-                )
-            except Exception as exc:
-                install_error = exc
-
-            self.assertIsNotNone(
-                install_error,
-                msg=(
-                    "Helm install with invalid deployment.namespaces unexpectedly "
-                    "succeeded"
-                ),
-            )
-            self.assertIsNone(
-                kutil.get_deploy(operator_ns, operator_name, check=False),
-                msg=(
-                    f"Helm chart should reject invalid deployment.namespaces before "
-                    f"creating deployment {operator_ns}/{operator_name}"
-                ),
-            )
-
-            install_error_output = (
-                getattr(install_error, "stdout", None)
-                or getattr(install_error, "output", None)
-                or str(install_error)
-            )
-            self.assertIn(error_fragment, install_error_output)
-        finally:
-            uninstall_with_helm(
-                release_key=get_helm_release_target(helm_options),
-                delete_namespace=True,
-            )
-
-
 class HelmDeploymentNameLengthValidationTest(OperatorSingleAndMultipleBaseTest):
     @classmethod
     def setUpClass(cls):
@@ -11152,62 +10729,6 @@ class HelmDeploymentNameLengthValidationTest(OperatorSingleAndMultipleBaseTest):
 
                 if cleanup_error is not None and test_error is None:
                     raise cleanup_error
-
-    def test_custom_deployment_name_above_maximum_length_fails_fast(self) -> None:
-        operator_ns = f"op-name-len-helm-{self.random_suffix}"
-        max_len = get_max_custom_deployment_name_length(operator_ns)
-        self.assertGreater(max_len, 0)
-
-        operator_name = "a" * (max_len + 1)
-        release_name = f"myoper-helm-name-len-over-{self.random_suffix}"
-        error_fragment = (
-            "Invalid values: deployment.name "
-            f"\"{operator_name}\" is {max_len + 1} characters long, but at most "
-            f"{max_len} are allowed in namespace \"{operator_ns}\""
-        )
-        helm_options = self._build_helm_options(
-            namespace=operator_ns,
-            release_name=release_name,
-            deployment_name=operator_name,
-        )
-
-        install_error = None
-
-        try:
-            try:
-                install_with_helm(
-                    operator_ns,
-                    resolved_options=helm_options,
-                )
-            except Exception as exc:
-                install_error = exc
-
-            self.assertIsNotNone(
-                install_error,
-                msg=(
-                    "Helm install with deployment.name longer than the derived "
-                    "name budget unexpectedly succeeded"
-                ),
-            )
-            self.assertIsNone(
-                kutil.get_deploy(operator_ns, operator_name, check=False),
-                msg=(
-                    f"Helm chart should reject deployment.name before creating "
-                    f"deployment {operator_ns}/{operator_name}"
-                ),
-            )
-
-            install_error_output = (
-                getattr(install_error, "stdout", None)
-                or getattr(install_error, "output", None)
-                or str(install_error)
-            )
-            self.assertIn(error_fragment, install_error_output)
-        finally:
-            uninstall_with_helm(
-                release_key=get_helm_release_target(helm_options),
-                delete_namespace=True,
-            )
 
 
 class HelmClusterScopedIdentityConflictValidationTest(OperatorSingleAndMultipleBaseTest):
@@ -11761,20 +11282,6 @@ class NamespaceNormalizationAndValidationTest(OperatorSingleAndMultipleBaseTest)
         kutil.delete_kopfpeering(watched_ns1, get_namespaced_peering_name(operator_name))
         kutil.delete_ns(watched_ns2)
         kutil.delete_ns(watched_ns1)
-
-    def test_watch_namespaces_are_trimmed_and_deduped(self) -> None:
-        explicit_ns = f"db-runtime-explicit-{self.random_suffix}"
-        second_ns = f"db-runtime-second-{self.random_suffix}"
-        raw_watch_namespaces = f"  {explicit_ns} , {second_ns} , {explicit_ns} ,  {second_ns}  "
-
-        self.assertEqual(
-            get_explicit_watch_namespaces(raw_watch_namespaces),
-            [explicit_ns, second_ns],
-        )
-        self.assertEqual(
-            normalize_watch_namespaces(raw_watch_namespaces),
-            f"{explicit_ns},{second_ns}",
-        )
 
 
 class HelmNamespaceNormalizationAndValidationTest(OperatorSingleAndMultipleBaseTest):

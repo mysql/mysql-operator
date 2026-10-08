@@ -368,6 +368,9 @@ def operator_t_module(monkeypatch):
     tutil_module.OperatorTest = OperatorTest
     tutil_module.g_full_log = False
     sys.modules["utils.tutil"] = tutil_module
+    monkeypatch.setattr(
+        importlib.import_module("utils"), "tutil", tutil_module, raising=False
+    )
 
     module = importlib.import_module("e2e.mysqloperator.operator.operator_t")
     module._KUBECTL_OPERATOR_INSTALLS.clear()
@@ -483,9 +486,6 @@ def test_setup_cleans_unexpected_operators_and_restores_default(
     operator_t_module,
     capsys,
 ):
-    monkeypatch.setattr(
-        operator_t_module.tutil.kutil, "get_event_snapshot", lambda namespace: {}
-    )
     artifact_calls = []
     removed = []
     restored = []

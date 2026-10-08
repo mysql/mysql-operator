@@ -205,17 +205,116 @@ spec:
         # TODO bad imagePullPolicy
 
 
+class ClusterValidationErrorSurfacing(tutil.OperatorTest):
+    """Prove operator validation reaches users and a corrected spec recovers.
+
+    These integration tests exercise the real validator, reconciliation, and
+    Kubernetes status/events. Individual version rules and error messages are
+    covered by unit tests; this group does not test Server upgrade lineage.
+    """
+    default_allowed_op_errors = COMMON_OPERATOR_ERRORS
+
+    @classmethod
+    def setUpClass(cls):
+        cls.logger = logging.getLogger(__name__ + ":" + cls.__name__)
+        super().setUpClass()
+        cls.set_ts_var("cluster_size", 1)
+        cls.set_ts_var("routers_count", 0)
+        g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-0")
+
+    @classmethod
+    def tearDownClass(cls):
+        g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-0")
+        super().tearDownClass()
+
+    def _create_cluster(self, version):
+        kutil.create_user_secrets(self.ns, self.cluster_secret_name,
+                                  root_user="root", root_host="%", root_pass="sakila")
+        kutil.apply(self.ns, f"""
+apiVersion: mysql.oracle.com/v2
+kind: InnoDBCluster
+metadata:
+  name: {self.cluster_name}
+spec:
+  instances: 1
+  router:
+    instances: 0
+  secretName: {self.cluster_secret_name}
+  tlsUseSelfSigned: true
+  version: "{version}"
+  podSpec:
+    terminationGracePeriodSeconds: 5
+""")
+
+    def _wait_healthy(self):
+        self.wait_pod(f"{self.cluster_name}-0", "Running")
+        self.wait_ic(self.cluster_name, "ONLINE", num_online=1)
+
+    def _delete_cluster(self):
+        kutil.delete_ic(self.ns, self.cluster_name)
+        self.wait_pods_gone(f"{self.cluster_name}-*")
+        self.wait_ic_gone(self.cluster_name)
+        kutil.delete_pvc(self.ns, None)
+        kutil.delete_secret(self.ns, self.cluster_secret_name)
+
+    def test_creation_validation_error_reaches_status_and_event_then_recovers(self):
+        """Expose creation errors; allow deletion or recovery after correcting the spec."""
+        invalid_version = "100.8.8"
+        for recover in (False, True):
+            with self.subTest(recover=recover):
+                since = kutil.get_event_snapshot(self.ns)
+                try:
+                    self._create_cluster(invalid_version)
+                    self.wait_ic(self.cluster_name, "INVALID", num_online=0)
+                    self.wait_got_cluster_event(
+                        self.cluster_name, since=since, type="Error", reason="InvalidArgument",
+                        msg=rf".*version {re.escape(invalid_version)}.*",
+                    )
+                    self.assertEqual([], kutil.ls_sts(self.ns))
+                    self.assertEqual([], kutil.ls_po(self.ns))
+
+                    if recover:
+                        kutil.patch_ic(self.ns, self.cluster_name,
+                                       {"spec": {"version": g_ts_cfg.version_tag}}, type="merge")
+                        self._wait_healthy()
+                finally:
+                    self._delete_cluster()
+
+
+    def test_update_validation_error_reaches_event_and_preserves_healthy_deployment(self):
+        """Expose a rejected update without replacing the working Server pod."""
+        try:
+            self._create_cluster(g_ts_cfg.version_tag)
+            self._wait_healthy()
+            before = kutil.get_po(self.ns, f"{self.cluster_name}-0")
+            since = kutil.get_event_snapshot(self.ns)
+            invalid_version = "100.8.8"
+            kutil.patch_ic(self.ns, self.cluster_name,
+                           {"spec": {"version": invalid_version}}, type="merge")
+            self.wait_got_cluster_event(
+                self.cluster_name, since=since, type="Warning", reason="SpecChanged",
+                msg=rf"Permanent error: .*version {re.escape(invalid_version)}.*",
+            )
+            self._wait_healthy()
+            after = kutil.get_po(self.ns, f"{self.cluster_name}-0")
+            self.assertEqual(before["metadata"]["uid"], after["metadata"]["uid"])
+            for key in ("initContainers", "containers"):
+                self.assertEqual(
+                    {c["name"]: c["image"] for c in before["spec"][key]},
+                    {c["name"]: c["image"] for c in after["spec"][key]},
+                )
+            kutil.patch_ic(self.ns, self.cluster_name,
+                           {"spec": {"version": g_ts_cfg.version_tag}}, type="merge")
+            self._wait_healthy()
+        finally:
+            self._delete_cluster()
+
+
 class ClusterSpecRuntimeChecksCreation(tutil.OperatorTest):
     """
-    spec errors checked by the operator, once the ic object was accepted
-    by the admission controllers.
-    In all cases:
-    - the status of the ic should become ERROR
-    - an event describing the error should be posted
-
-    Also:
-    - fixing the error should recover from error
-    - deleting cluster with error should be possible
+    Exercise Kubernetes secret-mount and image-pull failures, and cleanup of
+    clusters whose pods cannot start. Operator validation surfacing is covered
+    separately by ClusterValidationErrorSurfacing.
     """
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
     _cluster_size = 5
@@ -292,98 +391,6 @@ spec:
     def test_1_bad_secret_recover(self):
         pass
 
-    def test_1_unsupported_version_delete(self):
-        """
-        Checks that setting an unsupported version is detected before any pods
-        are created and that the cluster can be deleted in that state.
-        """
-
-        # create cluster with mostly default configs, but a specific server version
-        self.cluster_size = 1
-        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="admin", root_host="%", root_pass="secret")
-        yaml = f"""
-apiVersion: mysql.oracle.com/v2
-kind: InnoDBCluster
-metadata:
-  name: {self.cluster_name}
-spec:
-  instances: {self.cluster_size}
-  secretName: {self.cluster_secret_name}
-  tlsUseSelfSigned: true
-  podSpec:
-    terminationGracePeriodSeconds: 5
-  version: "5.7.30"
-"""
-        kutil.apply(self.ns, yaml)
-
-        self.wait(kutil.get_ic_ev, (self.ns, self.cluster_name),
-                  lambda evs: len(evs) > 0)
-
-        # version is invalid/not supported, runtime check should prevent the
-        # sts from being created
-        self.assertFalse(kutil.ls_po(self.ns))
-        self.assertFalse(kutil.ls_sts(self.ns))
-
-        # there should be an event for the cluster resource indicating the
-        # problem
-        self.assertGotClusterEvent(
-            self.cluster_name, type="Error", reason="InvalidArgument", msg="version 5.7.30 must be between .*")
-
-        # deleting the ic should work despite the error
-        kutil.delete_ic(self.ns, self.cluster_name)
-
-        self.wait_pods_gone(f"{self.cluster_name}-\d")
-        self.wait_routers_gone(f"{self.cluster_name}-router-*")
-        self.wait_ic_gone(self.cluster_name)
-        kutil.delete_secret(self.ns, self.cluster_secret_name)
-        kutil.delete_pvc(self.ns, None)
-
-    def test_1_unsupported_version_recover(self):
-        """
-        Checks that setting an unsupported version is detected before any pods
-        are created and that the cluster can be recovered by fixing the version.
-        """
-
-        # create cluster with mostly default configs, but a specific server version
-        self.cluster_size = 1
-        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="admin", root_host="%", root_pass="secret")
-        yaml = f"""
-apiVersion: mysql.oracle.com/v2
-kind: InnoDBCluster
-metadata:
-  name: {self.cluster_name}
-spec:
-  instances: {self.cluster_size}
-  secretName: {self.cluster_secret_name}
-  tlsUseSelfSigned: true
-  version: "5.7.30"
-  podSpec:
-    terminationGracePeriodSeconds: 5
-"""
-        kutil.apply(self.ns, yaml)
-
-        # the ic object will error out before sts is created
-        self.wait(kutil.get_ic_ev, (self.ns, self.cluster_name),
-                  lambda evs: len(evs) > 0)
-
-        # fixing the version should let the cluster resume creation
-        kutil.patch_ic(self.ns, self.cluster_name, {"spec": {
-            "version": g_ts_cfg.version_tag
-        }}, type="merge")
-
-        # check cluster ok now
-        for instance in range(0, self.cluster_size):
-            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
-        self.wait_ic(self.cluster_name, "ONLINE")
-
-        # cleanup
-        kutil.delete_ic(self.ns, self.cluster_name)
-
-        self.wait_pods_gone(f"{self.cluster_name}-\d")
-        self.wait_routers_gone(f"{self.cluster_name}-router-*")
-        self.wait_ic_gone(self.cluster_name)
-        kutil.delete_secret(self.ns, self.cluster_secret_name)
-        kutil.delete_pvc(self.ns, None)
 
     def test_2_bad_pod_delete(self):
         """
@@ -505,110 +512,6 @@ spec:
         self.wait_ic_gone(self.cluster_name)
         kutil.delete_secret(self.ns, self.cluster_secret_name)
         kutil.delete_pvc(self.ns, None)
-
-
-class ClusterSpecRuntimeChecksModification(tutil.OperatorTest):
-    """
-    Same as ClusterSpecRuntimeChecksCreation, but for clusters that already
-    exist and have invalid spec changes made.
-    """
-    default_allowed_op_errors = COMMON_OPERATOR_ERRORS
-    _cluster_size = 3
-    _routers_count = 0
-
-    @classmethod
-    def setUpClass(cls):
-        cls.logger = logging.getLogger(__name__+":"+cls.__name__)
-        super().setUpClass()
-        cls.set_ts_var("cluster_size", cls._cluster_size)
-        cls.set_ts_var("routers_count", cls._routers_count)
-
-        for instance in range(0, cls.get_ts_var("cluster_size")):
-            g_full_log.watch_mysql_pod(cls.ns, f"{cls.cluster_name}-{instance}")
-
-    @classmethod
-    def tearDownClass(cls):
-        for instance in reversed(range(0, cls.get_ts_var("cluster_size"))):
-            g_full_log.stop_watch(cls.ns, f"{cls.cluster_name}-{instance}")
-
-        super().tearDownClass()
-
-    def test_0_prepare(self):
-        kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
-
-        # create cluster with mostly default configs
-        yaml = f"""
-apiVersion: mysql.oracle.com/v2
-kind: InnoDBCluster
-metadata:
-  name: {self.cluster_name}
-spec:
-  instances: {self.cluster_size}
-  secretName: {self.cluster_secret_name}
-  tlsUseSelfSigned: true
-  podSpec:
-    terminationGracePeriodSeconds: 5
-"""
-
-        kutil.apply(self.ns, yaml)
-
-        self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
-
-        for instance in range(0, self.cluster_size):
-            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
-
-        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
-
-        if self.routers_count:
-            self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
-
-    def test_1_bad_upgrade(self):
-        """
-        Change spec with invalid version, it should be ignored but notified in events.
-        """
-        prev_ic_evs = kutil.get_ic_ev(self.ns, self.cluster_name) or []
-        prev_ic_ev_names = {ev["metadata"]["name"] for ev in prev_ic_evs}
-        invalid_upgrade_version = "100.8.8"
-        kutil.patch_ic(self.ns, self.cluster_name, {"spec": {
-            "version": invalid_upgrade_version
-        }}, type="merge")
-
-        # ensure cluster is still healthy
-        for instance in range(0, self.cluster_size):
-            self.wait_pod(f"{self.cluster_name}-{instance}", "Running")
-
-        self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
-
-        # there should be events for the cluster resource indicating the update problem
-        expected_events = [
-            ("Normal", "SpecChanged", re.compile(r"^Field spec.version modified$")),
-            ("Normal", "SpecChanged", re.compile(r"^CR changed$")),
-            ("Normal", "VersionChangeAttempt", re.compile(
-                rf"^Attempting version change from \d+\.\d+\.\d+ to {invalid_upgrade_version}$")),
-            ("Warning", "SpecChanged", re.compile(
-                rf"^Permanent error: version {invalid_upgrade_version} must be between .*$")),
-        ]
-
-        def has_expected_upgrade_events():
-            events = kutil.get_ic_ev(self.ns, self.cluster_name) or []
-            new_events = [ev for ev in events if ev["metadata"]["name"] not in prev_ic_ev_names]
-            return all(any(
-                ev["type"] == ev_type and
-                ev["reason"] == reason and
-                msgpat.match(ev["message"])
-                for ev in new_events)
-                for ev_type, reason, msgpat in expected_events)
-
-        self.wait(has_expected_upgrade_events, timeout=90, delay=2)
-
-    def test_9_destroy(self):
-        kutil.delete_ic(self.ns, self.cluster_name)
-        self.wait_pods_gone(f"{self.cluster_name}-*")
-        self.wait_routers_gone(f"{self.cluster_name}-router-*")
-        self.wait_ic_gone(self.cluster_name)
-        kutil.delete_pvc(self.ns, None)
-
-        kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
 # test only 1 or 2 bad syntax spec values and do the rest as unit-tests

@@ -310,7 +310,7 @@ customized according to a local environment:
 ```text
 <suite.txt>
 e2e.mysqloperator.cluster.cluster_t.TwoClustersOneNamespace
-e2e.mysqloperator.cluster.cluster_badspec_t.ClusterSpecRuntimeChecksModification
+e2e.mysqloperator.cluster.cluster_badspec_t.ClusterValidationErrorSurfacing
 </suite.txt>
 ```
 

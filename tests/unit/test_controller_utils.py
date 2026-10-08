@@ -236,3 +236,31 @@ def test_ephemeral_value_changed_primes_first_observation(utils_module, monkeypa
     assert utils_module.ephemeral_value_changed(
         pod, "mysql-restarts", 1, context="on_pod_event"
     ) is False
+
+
+@pytest.mark.parametrize("version,valid", [
+    ("5.7.30", False),
+    ("8.0.27", False),
+    ("8.0.28", True),
+    ("8.0.30", True),
+    ("8.4.7", True),
+    ("9.7.2", True),
+    ("26.10.0", True),
+    ("26.10.1", False),
+    ("100.8.8", False),
+])
+def test_version_range_validates_boundaries_and_reports_error(utils_module, version, valid):
+    result = utils_module.version_in_range(version, minimum="8.0.28", maximum="26.10.0")
+    expected_error = None if valid else f"version {version} must be between 8.0.28 and 26.10.0"
+    assert result == [valid, expected_error]
+
+
+def test_disabled_version_reports_configured_reason(utils_module):
+    version = "8.0.29"
+    assert utils_module.version_in_range(version) == [
+        False, utils_module.config.DISABLED_MYSQL_VERSION[version]
+    ]
+
+
+def test_disabled_version_can_be_checked_without_disabled_policy(utils_module):
+    assert utils_module.version_in_range("8.0.29", check_disabled=False) == [True, None]

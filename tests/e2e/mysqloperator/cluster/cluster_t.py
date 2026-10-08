@@ -115,6 +115,7 @@ def cross_sync_gtids(ns, pods, user, password):
 
 
 class Cluster1FinalizerRemoval(tutil.OperatorTest):
+    """Verify cluster deletion completes when it overlaps a rolling pod restart."""
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
     _cluster_size = 1
     _routers_count = 0
@@ -154,7 +155,7 @@ spec:
     instances: {self.routers_count}
   secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
-  imagePullPolicy: Always
+  imagePullPolicy: IfNotPresent
 """
 
         event_snapshot = kutil.get_event_snapshot(self.ns)
@@ -182,19 +183,25 @@ spec:
             self.cluster_name, since=event_snapshot, type="Normal",
             reason=r"StatusChange", msg=f"Cluster status changed to ONLINE. {self.cluster_size} member\(s\) ONLINE")
 
-    def test_01_check_labels_and_annotations(self):
-        # We need to restart the pod so we can after that delete the IC and check for a race
-        # in cluster finalizer removal / hanging finalizer
-        patch = {
-                    "spec": {
-                        "imagePullPolicy": "IfNotPresent"
-                    }
-                }
-        waiter = tutil.get_sts_rollover_update_waiter(self, self.cluster_name, timeout=self.cluster_size*300, delay=50)
-        kutil.patch_ic(self.ns, self.cluster_name, patch, type="merge")
-        waiter()
+    def test_01_delete_cluster_during_pod_restart_removes_finalizer(self):
+        """Delete the cluster while its original pod is terminating (Bug #35200413)."""
+        pod_name = f"{self.cluster_name}-0"
+        original_uid = kutil.get_po(self.ns, pod_name)["metadata"]["uid"]
+        kutil.patch_ic(self.ns, self.cluster_name, {
+            "spec": {"podAnnotations": {"finalizer-test-restart": "1"}}
+        }, type="merge")
 
-        kutil.delete_ic(self.ns, self.cluster_name)
+        def original_pod_is_terminating():
+            pod = kutil.get_po(self.ns, pod_name, check=False)
+            if not pod:
+                return False
+            self.assertEqual(original_uid, pod["metadata"]["uid"],
+                             "Original pod was replaced before cluster deletion")
+            return pod["metadata"].get("deletionTimestamp")
+
+        self.wait(original_pod_is_terminating, timeout=self.cluster_size*300, delay=1)
+
+        kutil.delete_ic(self.ns, self.cluster_name, wait=False)
         self.wait_pods_gone(f"{self.cluster_name}-*")
         self.wait_routers_gone(f"{self.cluster_name}-router-*")
         self.wait_ic_gone(self.cluster_name)

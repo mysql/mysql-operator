@@ -531,6 +531,9 @@ spec:
 
 
     def test_2_add_tls(self):
+        """Switch to supplied TLS certificates after Server and Router rollouts settle."""
+        wait_for_router_rollout = tutil.get_router_deploy_rollover_update_waiter(
+            self, self.cluster_name, timeout=300, delay=2)
         for instance in range(0, self.cluster_size):
             with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-{instance}", "root", "sakila") as s:
                 before = s.query_sql("show status like 'Ssl_server_not_after'").fetch_one()[1]
@@ -559,6 +562,8 @@ spec:
         with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s:
             self.wait_tls_changed(s, before)
 
+        wait_for_router_rollout()
+        self.wait_routers(f"{self.cluster_name}-router-.*", num_online=self.routers_count)
         check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
         for instance in range(0, self.cluster_size):

@@ -6,4 +6,4 @@
 
 SUFFIX=''; [ -n "$1" ] && SUFFIX=${1}
 
-echo "26.10.0-2.3.0$SUFFIX"
+echo "26.10.0-2.3.1$SUFFIX"

@@ -56,7 +56,7 @@ def operator_upgrade_module(monkeypatch):
         operator_old_version_tag="8.0.31-2.0.7",
         operator_current_lts_version_tag="8.4.5-2.1.7",
         current_lts_version="8.4.5",
-        operator_version_tag="26.10.0-2.3.0",
+        operator_version_tag="26.10.0-2.3.1",
         version_tag="26.10.0",
         operator_upgrade_run_all_tests=False,
     )
@@ -248,7 +248,7 @@ def test_operator_deploy_manifest_path_uses_configured_deploy_path(
 
     assert operator_upgrade_module.get_operator_deploy_manifest_path() == manifest_path
     assert (
-        operator_upgrade_module.get_operator_deploy_manifest_path("26.10.0-2.3.0")
+        operator_upgrade_module.get_operator_deploy_manifest_path("26.10.0-2.3.1")
         == manifest_path
     )
 

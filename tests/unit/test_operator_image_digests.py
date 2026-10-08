@@ -169,7 +169,7 @@ def test_current_dev_tags_are_skipped_from_digest_lookup(
     monkeypatch.setattr(
         operator_t_module.g_ts_cfg,
         "operator_version_tag",
-        "26.10.0-2.3.0",
+        "26.10.0-2.3.1",
     )
     monkeypatch.setattr(
         operator_t_module.g_ts_cfg,
@@ -181,7 +181,7 @@ def test_current_dev_tags_are_skipped_from_digest_lookup(
         operator_t_module.OperatorSingleAndMultipleBaseTest
         ._expected_historical_image_digest_for_tag(
             "community-operator",
-            "26.10.0-2.3.0",
+            "26.10.0-2.3.1",
         )
         is None
     )
@@ -238,7 +238,7 @@ def test_raw_manifest_operator_sidecar_tag_check_uses_9_5_cutoff(
     monkeypatch.setattr(
         operator_t_module.g_ts_cfg,
         "operator_version_tag",
-        "26.10.0-2.3.0",
+        "26.10.0-2.3.1",
     )
     helper = (
         operator_t_module.OperatorSingleAndMultipleBaseTest
@@ -247,7 +247,7 @@ def test_raw_manifest_operator_sidecar_tag_check_uses_9_5_cutoff(
 
     assert helper("9.5.0-2.2.6")
     assert not helper("9.6.0-2.2.7")
-    assert helper("26.10.0-2.3.0")
+    assert helper("26.10.0-2.3.1")
 
 
 def test_image_identity_can_skip_tag_check_for_local_historic_operator_image(
@@ -262,7 +262,7 @@ def test_image_identity_can_skip_tag_check_for_local_historic_operator_image(
             "initContainers": [
                 {
                     "name": "fixdatadir",
-                    "image": "registry.example.com/mysql/community-operator:26.10.0-2.3.0",
+                    "image": "registry.example.com/mysql/community-operator:26.10.0-2.3.1",
                 }
             ],
         },
@@ -302,7 +302,7 @@ def test_image_identity_waits_for_runtime_image_id(
             "containers": [
                 {
                     "name": "sidecar",
-                    "image": "registry.example.com/mysql/community-operator:26.10.0-2.3.0",
+                    "image": "registry.example.com/mysql/community-operator:26.10.0-2.3.1",
                 }
             ],
         },
@@ -338,7 +338,7 @@ def test_image_identity_waits_for_runtime_image_id(
     monkeypatch.setattr(
         operator_t_module.g_ts_cfg,
         "operator_version_tag",
-        "26.10.0-2.3.0",
+        "26.10.0-2.3.1",
     )
 
     testcase._assert_pod_container_image_identity(
@@ -346,7 +346,7 @@ def test_image_identity_waits_for_runtime_image_id(
         container_name="sidecar",
         spec_container_key="containers",
         status_container_key="containerStatuses",
-        expected_tag="26.10.0-2.3.0",
+        expected_tag="26.10.0-2.3.1",
         expected_image_name_keys=operator_t_module.OPERATOR_IMAGE_DIGEST_KEYS,
     )
 
@@ -372,7 +372,7 @@ def test_helm_cluster_runtime_image_identities_allow_operator_image_roll_forward
     cluster_name = "cluster"
     namespace = "cluster-ns"
     cluster_release = "9.6.0-2.2.7"
-    operator_release = "26.10.0-2.3.0"
+    operator_release = "26.10.0-2.3.1"
     mysql_version = "9.6.0"
     runtime_image_id = "containerd://sha256:" + ("1" * 64)
 

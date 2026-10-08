@@ -32,7 +32,7 @@ OPERATOR_EE_IMAGE_NAME = os.getenv(
     "OPERATOR_TEST_EE_IMAGE_NAME", default="enterprise-operator")
 
 OPERATOR_VERSION_TAG = os.getenv(
-    "OPERATOR_TEST_VERSION_TAG", default="26.10.0-2.3.0")
+    "OPERATOR_TEST_VERSION_TAG", default="26.10.0-2.3.1")
 
 OPERATOR_CURRENT_LTS_VERSION_TAG = os.getenv(
     "OPERATOR_CURRENT_LTS_VERSION_TAG", default="8.4.7-2.1.9")

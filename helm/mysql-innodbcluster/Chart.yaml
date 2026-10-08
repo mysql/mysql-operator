@@ -3,5 +3,5 @@ appVersion: "26.10.0"
 name: mysql-innodbcluster
 description: MySQL InnoDB Cluster Helm Chart for deploying MySQL InnoDB Cluster in Kubernetes
 type: application
-version: "2.3.0"
+version: "2.3.1"
 icon: https://www.mysql.com/common/logos/logo-mysql-170x115.png

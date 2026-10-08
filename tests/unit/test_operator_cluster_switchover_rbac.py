@@ -118,7 +118,7 @@ def operator_cluster_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "mysqloperator.controller.consts", consts_stub)
 
     config_stub = types.ModuleType("mysqloperator.controller.config")
-    config_stub.DEFAULT_OPERATOR_VERSION_TAG = "26.10.0-2.3.0"
+    config_stub.DEFAULT_OPERATOR_VERSION_TAG = "26.10.0-2.3.1"
 
     class Edition:
         enterprise = "enterprise"

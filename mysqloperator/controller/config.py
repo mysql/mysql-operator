@@ -25,7 +25,7 @@ else:
     OPERATOR_EDITION = Edition.community
 
 # Constants
-OPERATOR_VERSION = "2.3.0"
+OPERATOR_VERSION = "2.3.1"
 OPERATOR_EDITION_NAME_TO_ENUM = { edition.value : edition.name for edition in Edition }
 
 DEFAULT_VERSION_TAG = "26.10.0"

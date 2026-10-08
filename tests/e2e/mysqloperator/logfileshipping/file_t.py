@@ -5,7 +5,6 @@
 
 from time import sleep, time
 from asyncio import subprocess
-from utils.auxutil import isotime
 from utils import tutil
 from utils import kutil
 from utils import mutil
@@ -80,7 +79,7 @@ spec:
         """
         kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user=self.root_user, root_host=self.root_host, root_pass=self.root_pass)
 
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
         kutil.apply(self.ns, self.cluster_definition())
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
@@ -94,11 +93,11 @@ spec:
             self.wait_routers(f"{self.cluster_name}-router-*", num_online=self.routers_count, timeout=self.cluster_size*120)
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="ResourcesCreated",
             msg="Dependency resources created, switching status to PENDING")
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason=r"StatusChange", msg=r"Cluster status changed to ONLINE. \d member\(s\) ONLINE")
 
     def _02_check_slow_log_exists(self):
@@ -464,7 +463,7 @@ spec:
         """
         kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user=self.root_user, root_host=self.root_host, root_pass=self.root_pass)
 
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
         kutil.apply(self.ns, self.cluster_definition())
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
@@ -477,11 +476,11 @@ spec:
             self.wait_routers(f"{self.cluster_name}-router-*", num_online=self.routers_count, timeout=self.cluster_size*120)
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="ResourcesCreated",
             msg="Dependency resources created, switching status to PENDING")
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason=r"StatusChange", msg=r"Cluster status changed to ONLINE. \d member\(s\) ONLINE")
 
     def _02_check_slow_log(self):
@@ -654,7 +653,7 @@ spec:
         """
         kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user=self.root_user, root_host=self.root_host, root_pass=self.root_pass)
 
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
         kutil.apply(self.ns, self.cluster_definition())
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
@@ -667,11 +666,11 @@ spec:
             self.wait_routers(f"{self.cluster_name}-router-*", num_online=self.routers_count, timeout=self.cluster_size*120)
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="ResourcesCreated",
             msg="Dependency resources created, switching status to PENDING")
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason=r"StatusChange", msg=r"Cluster status changed to ONLINE. \d member\(s\) ONLINE")
 
     def _02_check_general_log_exists(self):
@@ -964,7 +963,7 @@ spec:
         """
         kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user=self.root_user, root_host=self.root_host, root_pass=self.root_pass)
 
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
         kutil.apply(self.ns, self.cluster_definition())
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
@@ -977,11 +976,11 @@ spec:
             self.wait_routers(f"{self.cluster_name}-router-*", num_online=self.routers_count, timeout=self.cluster_size*120)
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="ResourcesCreated",
             msg="Dependency resources created, switching status to PENDING")
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason=r"StatusChange", msg=r"Cluster status changed to ONLINE. \d member\(s\) ONLINE")
 
     def _02_check_general_log_exists(self):
@@ -1211,7 +1210,7 @@ spec:
         """
         kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user=self.root_user, root_host=self.root_host, root_pass=self.root_pass)
 
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
         kutil.apply(self.ns, self.cluster_definition())
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
@@ -1224,11 +1223,11 @@ spec:
             self.wait_routers(f"{self.cluster_name}-router-*", num_online=self.routers_count, timeout=self.cluster_size*120)
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="ResourcesCreated",
             msg="Dependency resources created, switching status to PENDING")
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason=r"StatusChange", msg=r"Cluster status changed to ONLINE. \d member\(s\) ONLINE")
 
     def _02_check_error_log_exists(self):
@@ -1505,7 +1504,7 @@ spec:
         """
         kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user=self.root_user, root_host=self.root_host, root_pass=self.root_pass)
 
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
         kutil.apply(self.ns, self.cluster_definition())
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
@@ -1518,11 +1517,11 @@ spec:
             self.wait_routers(f"{self.cluster_name}-router-*", num_online=self.routers_count, timeout=self.cluster_size*120)
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="ResourcesCreated",
             msg="Dependency resources created, switching status to PENDING")
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason=r"StatusChange", msg=r"Cluster status changed to ONLINE. \d member\(s\) ONLINE")
 
     def _02_check_slow_log(self):

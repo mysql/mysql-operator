@@ -1,10 +1,9 @@
-# Copyright (c) 2020, 2022, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
 import unittest
-from utils.auxutil import isotime
 from utils import tutil
 from utils import kutil
 from utils import mutil
@@ -61,7 +60,7 @@ spec:
   edition: enterprise
 """
 
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
         kutil.apply(self.ns, yaml)
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
@@ -77,14 +76,14 @@ spec:
         check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="ResourcesCreated",
             msg="Dependency resources created, switching status to PENDING")
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="StatusChange", msg=r"Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="StatusChange", msg=r"Cluster status changed to ONLINE. \d member\(s\) ONLINE")
 
     def test_1_check_accounts(self):

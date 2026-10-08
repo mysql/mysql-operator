@@ -8,7 +8,6 @@ import logging
 import re
 from e2e.mysqloperator.cluster import check_apiobjects
 from e2e.mysqloperator.cluster.cluster_t import check_all
-from utils.auxutil import isotime
 from utils import kutil
 from utils import tutil
 from utils.optesting import COMMON_OPERATOR_ERRORS
@@ -59,13 +58,13 @@ spec:
 
 
     def change_cluster_version(self, version_tag):
-        update_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
 
         kutil.patch_ic(self.ns, "mycluster", {"spec": {
             "version": version_tag
         }}, type="merge")
 
-        return update_time
+        return event_snapshot
 
 
     def destroy_cluster(self):
@@ -117,21 +116,21 @@ spec:
             self.verify_router_image(router["NAME"], version_tag)
 
 
-    def verify_update_rejected(self, update_time, from_version, to_version):
+    def verify_update_rejected(self, event_snapshot, from_version, to_version):
         # e.g.
         # 16m  Normal   VersionChangeAttempt  innodbcluster/mycluster  Attempting version change from 8.0.28 to 8.0.29
         # 16m  Normal   SpecChanged           innodbcluster/mycluster  Field spec.version modified
         # 16m  Warning  SpecChanged           innodbcluster/mycluster  Permanent error: Support for MySQL 8.0.29 is disabled. Please see http://....
         self.wait_got_cluster_event(
-            "mycluster", after=update_time, type="Normal",
+            "mycluster", since=event_snapshot, type="Normal",
             reason="VersionChangeAttempt",
             msg=re.escape(f"Attempting version change from {from_version} to {to_version}"))
         self.wait_got_cluster_event(
-            "mycluster", after=update_time, type="Normal",
+            "mycluster", since=event_snapshot, type="Normal",
             reason="SpecChanged",
             msg=re.escape("Field spec.version modified"))
         self.wait_got_cluster_event(
-            "mycluster", after=update_time, type="Warning",
+            "mycluster", since=event_snapshot, type="Warning",
             reason="SpecChanged",
             msg=re.escape(f"Permanent error: Support for MySQL {to_version} is disabled. "
                           "Please see https://dev.mysql.com/doc/relnotes/mysql-operator/en/news-8-0-29.html"))

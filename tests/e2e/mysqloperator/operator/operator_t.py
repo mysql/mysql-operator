@@ -10021,7 +10021,7 @@ class SwitchoverRbacStartupRetryOnRestartTest(OperatorSingleAndMultipleBaseTest)
         *,
         namespace: str,
         cluster_name: str,
-        after: datetime,
+        since: dict[str, str],
         action: str,
         reason: str,
         message_fragment: str,
@@ -10032,7 +10032,7 @@ class SwitchoverRbacStartupRetryOnRestartTest(OperatorSingleAndMultipleBaseTest)
             events = kutil.get_ic_ev(
                 namespace,
                 cluster_name,
-                after=after,
+                since=since,
                 fields=["message", "reason", "type", "action"],
             ) or []
             matching_events = [
@@ -10207,7 +10207,7 @@ spec:
                 w_ns=False,
             )
 
-            restart_after = datetime.now(timezone.utc).replace(microsecond=0)
+            restart_snapshot = kutil.get_event_snapshot(cluster_ns)
             self._restart_operator_and_wait_for_replacement_pod(
                 operator_ns=operator_ns,
                 operator_name=operator_name,
@@ -10220,7 +10220,7 @@ spec:
             repair_failed_events = self._wait_for_cluster_event(
                 namespace=cluster_ns,
                 cluster_name=self.cluster_name,
-                after=restart_after,
+                since=restart_snapshot,
                 action="ReconcileSwitchoverRbac",
                 reason="RepairFailed",
                 message_fragment=(
@@ -10241,7 +10241,7 @@ spec:
                     kutil.get_ic_ev(
                         cluster_ns,
                         self.cluster_name,
-                        after=restart_after,
+                        since=restart_snapshot,
                         fields=["message", "reason", "type", "action"],
                     )
                     or []
@@ -10258,7 +10258,7 @@ spec:
                 ),
             )
 
-            restore_after = datetime.now(timezone.utc).replace(microsecond=0)
+            restore_snapshot = kutil.get_event_snapshot(cluster_ns)
             kutil.patch(
                 None,
                 "clusterrole",
@@ -10289,7 +10289,7 @@ spec:
             restarted_events_after_restore = self._wait_for_cluster_event(
                 namespace=cluster_ns,
                 cluster_name=self.cluster_name,
-                after=restore_after,
+                since=restore_snapshot,
                 action="HandlingOperatorRestart",
                 reason="OperatorRestarted",
                 message_fragment=(
@@ -13434,7 +13434,7 @@ spec:
                     self.wait_routers(f"{cluster_name}-router.*", self.routers_count, timeout=self.cluster_size*120, wait=10, ns=ns)
                 self.wait_ic(cluster_name, "ONLINE", num_online=self.cluster_size, ns=ns)
 
-            restart_after = datetime.now(timezone.utc).replace(microsecond=0)
+            restart_snapshots = {ns: kutil.get_event_snapshot(ns) for ns, _ in clusters}
             waiter = tutil.get_deploy_rollover_update_waiter(self, operator_ns, deploy_name=operator_name, timeout=300, delay=5)
             patch_payload = {
                 "spec": {
@@ -13452,7 +13452,7 @@ spec:
             time.sleep(self.post_restart_reconcile_wait)
 
             for ns, cluster_name in clusters:
-                events = kutil.get_ic_ev(ns, cluster_name, after=restart_after, fields=["message", "reason", "type", "action"])
+                events = kutil.get_ic_ev(ns, cluster_name, since=restart_snapshots[ns], fields=["message", "reason", "type", "action"])
                 matching_events = [
                     event for event in events
                     if event.get("reason") == "OperatorRestarted"

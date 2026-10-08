@@ -1,11 +1,10 @@
-# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
 
 from time import sleep
 from asyncio import subprocess
-from utils.auxutil import isotime
 from utils import tutil
 from utils import kutil
 from utils import mutil
@@ -164,7 +163,7 @@ spec:
 
     def _create_cluster(self, cluster_name, cluster_manifest):
 
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
         kutil.apply(self.ns, cluster_manifest)
 
         self.wait_ic(cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
@@ -177,11 +176,11 @@ spec:
         self.wait_ic(cluster_name, "ONLINE", num_online=self.cluster_size)
 
         self.assertGotClusterEvent(
-            cluster_name, after=apply_time, type="Normal",
+            cluster_name, since=event_snapshot, type="Normal",
             reason="ResourcesCreated",
             msg="Dependency resources created, switching status to PENDING")
         self.assertGotClusterEvent(
-            cluster_name, after=apply_time, type="Normal",
+            cluster_name, since=event_snapshot, type="Normal",
             reason=r"StatusChange", msg=r"Cluster status changed to ONLINE. \d member\(s\) ONLINE")
 
 
@@ -294,11 +293,11 @@ spec:
   clusterName: {target_cluster_name}
   force: false
 """
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
         kutil.apply(self.ns, switchover_manifest)
         self.wait_got_cluster_event(
             target_cluster_name,
-            after=apply_time,
+            since=event_snapshot,
             type="Normal",
             reason="FailOverObjectCreated",
             msg=f"Switching over to {self.ns}/{target_cluster_name} from .+",

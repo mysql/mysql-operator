@@ -5,7 +5,6 @@
 
 from time import sleep
 from asyncio import subprocess
-from utils.auxutil import isotime
 from utils import tutil
 from utils import kutil
 from utils import mutil
@@ -158,7 +157,7 @@ spec:
   imagePullPolicy: Always
 """
 
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
         kutil.apply(self.ns, yaml)
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
@@ -172,15 +171,15 @@ spec:
         self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="ResourcesCreated",
             msg="Dependency resources created, switching status to PENDING")
         # TODO - this event not getting posted, check if normal
         #self.assertGotClusterEvent(
-        #    self.cluster_name, after=apply_time, type="Normal",
+        #    self.cluster_name, since=event_snapshot, type="Normal",
         #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason=r"StatusChange", msg=f"Cluster status changed to ONLINE. {self.cluster_size} member\(s\) ONLINE")
 
     def test_01_check_labels_and_annotations(self):
@@ -247,7 +246,7 @@ spec:
         """
         kutil.create_user_secrets(self.ns, self.cluster_secret_name, root_user="root", root_host="%", root_pass="sakila")
 
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
         kutil.apply(self.ns, yaml)
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
@@ -261,15 +260,15 @@ spec:
         self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="ResourcesCreated",
             msg="Dependency resources created, switching status to PENDING")
         # TODO - this event not getting posted, check if normal
         #self.assertGotClusterEvent(
-        #    self.cluster_name, after=apply_time, type="Normal",
+        #    self.cluster_name, since=event_snapshot, type="Normal",
         #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason=r"StatusChange", msg=f"Cluster status changed to ONLINE. {self.cluster_size} member\(s\) ONLINE")
 
     def do_checks(self, container_expected: bool, fsgroup_change_policy_extected: str):
@@ -417,7 +416,7 @@ spec:
     terminationGracePeriodSeconds: 1
 """
 
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
         kutil.apply(self.ns, yaml)
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
@@ -431,15 +430,15 @@ spec:
         self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="ResourcesCreated",
             msg="Dependency resources created, switching status to PENDING")
         # TODO - this event not getting posted, check if normal
         #self.assertGotClusterEvent(
-        #    self.cluster_name, after=apply_time, type="Normal",
+        #    self.cluster_name, since=event_snapshot, type="Normal",
         #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason=r"StatusChange", msg=f"Cluster status changed to ONLINE. {self.cluster_size} member\(s\) ONLINE")
 
     def test_01_check_labels_and_annotations(self):
@@ -521,7 +520,7 @@ spec:
   podSpec:
     terminationGracePeriodSeconds: 1
 """
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
         kutil.apply(self.ns, yaml)
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
@@ -535,15 +534,15 @@ spec:
         self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="ResourcesCreated",
             msg="Dependency resources created, switching status to PENDING")
         # TODO - this event not getting posted, check if normal
         #self.assertGotClusterEvent(
-        #    self.cluster_name, after=apply_time, type="Normal",
+        #    self.cluster_name, since=event_snapshot, type="Normal",
         #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
 
     def test_01_check_labels_and_annotations(self):
@@ -622,7 +621,7 @@ spec:
     terminationGracePeriodSeconds: 1
 """
 
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
         kutil.apply(self.ns, yaml)
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
@@ -636,15 +635,15 @@ spec:
         self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="ResourcesCreated",
             msg="Dependency resources created, switching status to PENDING")
         # TODO - this event not getting posted, check if normal
         #self.assertGotClusterEvent(
-        #    self.cluster_name, after=apply_time, type="Normal",
+        #    self.cluster_name, since=event_snapshot, type="Normal",
         #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
 
     def test_01_check_labels_and_annotations(self):
@@ -726,7 +725,7 @@ spec:
   podSpec:
     terminationGracePeriodSeconds: 1
 """
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
         kutil.apply(self.ns, yaml)
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
@@ -740,15 +739,15 @@ spec:
         self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="ResourcesCreated",
             msg="Dependency resources created, switching status to PENDING")
         # TODO - this event not getting posted, check if normal
         #self.assertGotClusterEvent(
-        #    self.cluster_name, after=apply_time, type="Normal",
+        #    self.cluster_name, since=event_snapshot, type="Normal",
         #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
 
     def test_01_check_labels_and_annotations(self):
@@ -828,7 +827,7 @@ spec:
     terminationGracePeriodSeconds: 1
 """
 
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
         kutil.apply(self.ns, yaml)
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
@@ -842,15 +841,15 @@ spec:
         self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="ResourcesCreated",
             msg="Dependency resources created, switching status to PENDING")
         # TODO - this event not getting posted, check if normal
         #self.assertGotClusterEvent(
-        #    self.cluster_name, after=apply_time, type="Normal",
+        #    self.cluster_name, since=event_snapshot, type="Normal",
         #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
 
 
@@ -1018,7 +1017,7 @@ spec:
     myc.example.com/ann2: "ann2-value"
 """
 
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
         kutil.apply(self.ns, yaml)
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
@@ -1034,15 +1033,15 @@ spec:
         check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="ResourcesCreated",
             msg="Dependency resources created, switching status to PENDING")
         # TODO - this event not getting posted, check if normal
         #self.assertGotClusterEvent(
-        #    self.cluster_name, after=apply_time, type="Normal",
+        #    self.cluster_name, since=event_snapshot, type="Normal",
         #    reason=r"StatusChange", msg="Cluster status changed to INITIALIZING. 0 member\(s\) ONLINE")
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason=r"StatusChange", msg=f"Cluster status changed to ONLINE. {self.cluster_size} member\(s\) ONLINE")
 
     def test_01_check_labels_and_annotations(self):
@@ -1213,7 +1212,7 @@ spec:
         mysql_cont = check_apiobjects.get_pod_container(pod, "mysql")
         sidecar_cont = check_apiobjects.get_pod_container(pod, "sidecar")
 
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
 
         # kill mysqld (pid 1)
         kutil.kill(self.ns, (f"{self.cluster_name}-0", "mysql"), 11, 1)
@@ -1225,7 +1224,7 @@ spec:
         self.wait_ic(self.cluster_name, "ONLINE", num_online=self.cluster_size)
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="Rebooting", msg="Restoring OFFLINE cluster through pod 0")
 
         # ensure persisted config didn't change after recovery
@@ -1300,7 +1299,7 @@ spec:
         mysql_cont = check_apiobjects.get_pod_container(pod, "mysql")
         sidecar_cont = check_apiobjects.get_pod_container(pod, "sidecar")
 
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
 
         with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s:
             s.exec_sql("RESTART")
@@ -1321,7 +1320,7 @@ spec:
                          "restartCount"], sidecar_cont["restartCount"])
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="Rebooting", msg="Restoring OFFLINE cluster through pod 0")
 
         check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
@@ -1331,7 +1330,7 @@ spec:
         mysql_cont = check_apiobjects.get_pod_container(pod, "mysql")
         sidecar_cont = check_apiobjects.get_pod_container(pod, "sidecar")
 
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
 
         with mutil.MySQLPodSession(self.ns, f"{self.cluster_name}-0", "root", "sakila") as s:
             s.exec_sql("SHUTDOWN")
@@ -1352,7 +1351,7 @@ spec:
                          "restartCount"], sidecar_cont["restartCount"])
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="Rebooting", msg="Restoring OFFLINE cluster through pod 0")
 
         check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
@@ -1363,9 +1362,8 @@ spec:
     # complete data wipe/replacement
 
     def test_25_recover_delete_1(self):
+        event_snapshot = kutil.get_event_snapshot(self.ns)
         kutil.delete_po(self.ns, f"{self.cluster_name}-0", timeout=200)
-
-        apply_time = isotime()
 
         self.wait_ic(self.cluster_name, "OFFLINE", num_online=0)
 
@@ -1379,7 +1377,7 @@ spec:
         check_apiobjects.check_pod_container(self, pod1, "sidecar", 0, True)
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="Rebooting", msg="Restoring OFFLINE cluster through pod 0")
 
         check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=0)
@@ -1569,11 +1567,11 @@ spec:
                 pod = kutil.get_po(self.ns, f"{self.cluster_name}-{instance}")
                 image = container_spec(pod["spec"]["initContainers"], "initmysql")["image"]
 
-                init_containers_image_hashes = {c_status["name"]:c_status["imageID"].split("@")[1].split(':')[1] for c_status in pod["status"]["initContainerStatuses"] }
-                print(init_containers_image_hashes)
+                init_containers_image_ids = {c_status["name"]: c_status["imageID"] for c_status in pod["status"]["initContainerStatuses"]}
+                print(init_containers_image_ids)
 
-                containers_image_hashes = {c_status["name"]:c_status["imageID"].split("@")[1].split(':')[1] for c_status in pod["status"]["containerStatuses"] }
-                print(containers_image_hashes)
+                containers_image_ids = {c_status["name"]: c_status["imageID"] for c_status in pod["status"]["containerStatuses"]}
+                print(containers_image_ids)
 
                 self.assertIn(":"+g_ts_cfg.version_tag, image, "initmysql")
                 self.assertIn(g_ts_cfg.server_image_name+":", image, "initmysql")
@@ -1721,10 +1719,9 @@ spec:
         kutil.delete_ns("appns")
 
     def test_4_recover_crash_1_of_3(self):
+        event_snapshot = kutil.get_event_snapshot(self.ns)
         # kill mysqld (pid 1)
         kutil.kill(self.ns, (f"{self.cluster_name}-0", "mysql"), 11, 1)
-
-        apply_time = isotime()
 
         # wait for operator to notice it gone
         self.wait_ic(self.cluster_name, ["ONLINE_PARTIAL", "ONLINE_UNCERTAIN"], self.cluster_size - 1)
@@ -1737,10 +1734,10 @@ spec:
         self.wait_routers(f"{self.cluster_name}-router-*", num_online=self.routers_count)
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="StatusChange", msg=rf"Cluster status changed to ONLINE_PARTIAL. {self.cluster_size - 1} member\(s\) ONLINE")
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="StatusChange", msg=rf"Cluster status changed to ONLINE. {self.cluster_size} member\(s\) ONLINE")
 
         check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=None)
@@ -1748,7 +1745,7 @@ spec:
     def test_4_recover_crash_2_of_3(self):
         # TODO add a loadchecker
 
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
 
         # kill mysqld (pid 1)
         for instance in range(0, self.cluster_size - 1):
@@ -1765,24 +1762,24 @@ spec:
         self.wait_routers(f"{self.cluster_name}-router-*", num_online=self.routers_count)
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="StatusChange", msg=r"Cluster status changed to NO_QUORUM. 0 member\(s\) ONLINE")
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="RestoreQuorum", msg="Restoring quorum of cluster")
 
         # sometimes gets skipped
         # self.assertGotClusterEvent(
-        #     self.cluster_name, after=apply_time, type="Normal",
+        #     self.cluster_name, since=event_snapshot, type="Normal",
         #     reason="StatusChange", msg=r"Cluster status changed to ONLINE_PARTIAL.  member\(s\) ONLINE")
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="Rejoin", msg=rf"Rejoining {self.cluster_name}-\d to cluster")
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="StatusChange", msg=rf"Cluster status changed to ONLINE. {self.cluster_size} member\(s\) ONLINE")
 
         check_all(self, self.ns, self.cluster_name, instances=self.cluster_size, routers=self.routers_count, primary=self.cluster_size-1)
@@ -1890,7 +1887,7 @@ spec:
         p1ts = kutil.get_po(
             self.ns, f"{self.cluster_name}-1")["metadata"]["creationTimestamp"]
 
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
 
         # it may take longer than the default timeout (failures on jenkins)
         kutil.delete_po(self.ns, f"{self.cluster_name}-0", timeout=200)
@@ -1906,17 +1903,17 @@ spec:
         # the pods were deleted, which means they would cleanly shutdown and
         # removed from the cluster
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="Join", msg=f"Joining {self.cluster_name}-0 to cluster")
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="StatusChange",
             msg=rf"Cluster status changed to ONLINE_PARTIAL. {self.cluster_size - 1} member\(s\) ONLINE")
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="Join", msg=f"Joining {self.cluster_name}-1 to cluster")
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="StatusChange",
             msg=rf"Cluster status changed to ONLINE. {self.cluster_size} member\(s\) ONLINE")
 

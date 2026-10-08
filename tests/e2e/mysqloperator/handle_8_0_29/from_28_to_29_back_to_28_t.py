@@ -13,8 +13,8 @@ class From28To29BackTo28(handle_29_base.Handle29Base):
         self.verify_cluster_running()
         self.verify_cluster_version("8.0.28")
 
-        update_time = self.change_cluster_version("8.0.29")
-        self.verify_update_rejected(update_time, "8.0.28", "8.0.29")
+        event_snapshot = self.change_cluster_version("8.0.29")
+        self.verify_update_rejected(event_snapshot, "8.0.28", "8.0.29")
 
         self.verify_cluster_running()
         self.verify_cluster_version("8.0.28")

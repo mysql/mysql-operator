@@ -1,4 +1,4 @@
-# Copyright (c) 2023, 2024, Oracle and/or its affiliates.
+# Copyright (c) 2023, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -14,7 +14,6 @@ from utils import tutil, kutil, mutil
 from utils.optesting import COMMON_OPERATOR_ERRORS
 from utils.tutil import g_full_log
 from setup.config import g_ts_cfg, Config
-from utils.auxutil import isotime
 
 @unittest.skipIf(not g_ts_cfg.get_image(Config.Image.METRICS), "No image for metrics sidecar specified")
 class ClusterMetricsTest(tutil.OperatorTest):
@@ -72,7 +71,7 @@ spec:
     terminationGracePeriodSeconds: 30
 """
 
-        apply_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
         kutil.apply(self.ns, yaml)
 
         self.wait_ic(self.cluster_name, ["PENDING", "INITIALIZING", "ONLINE"])
@@ -86,17 +85,17 @@ spec:
             self.wait_routers(f"{self.cluster_name}-router-*", self.routers_count, timeout=self.cluster_size*120)
 
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason="ResourcesCreated",
             msg="Dependency resources created, switching status to PENDING")
         self.assertGotClusterEvent(
-            self.cluster_name, after=apply_time, type="Normal",
+            self.cluster_name, since=event_snapshot, type="Normal",
             reason=r"StatusChange", msg=f"Cluster status changed to ONLINE. \d member\(s\) ONLINE")
 
         for instance in range(1, self.cluster_size):
             expected_msg = f"Joining {self.cluster_name}-{instance} to cluster"
             with self.subTest(expected_msg):
-                self.assertGotClusterEvent(self.cluster_name, after=apply_time, type="Normal", reason=r"Join", msg=expected_msg)
+                self.assertGotClusterEvent(self.cluster_name, since=event_snapshot, type="Normal", reason=r"Join", msg=expected_msg)
 
     def test_02_check_metrics_reachable_via_service_and_connects_to_db(self):
         with kutil.PortForward(self.ns,f"{self.cluster_name}-instances", "metrics", "service") as port:

@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2026, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -553,16 +553,7 @@ def get_clusterrolebinding(name):
 def get_clusterkopfpeering(name):
     return get(None, "clusterkopfpeering", name)
 
-def _parse_k8s_timestamp(value):
-    if isinstance(value, datetime.datetime):
-        return value
-
-    if isinstance(value, str):
-        return datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
-
-    raise TypeError(f"Unsupported timestamp value: {value!r}")
-
-def get_ev(ns, selector, *, after=None, fields=None):
+def get_ev(ns, selector, *, since=None, fields=None):
     def lookup(obj, field):
         r = {}
         f, dot, rest = field.partition(".")
@@ -581,30 +572,37 @@ def get_ev(ns, selector, *, after=None, fields=None):
 
     if r.stdout:
         evs = yaml.safe_load(r.stdout.decode("utf8"))["items"]
-        if after or fields:
-            after_ts = _parse_k8s_timestamp(after) if after else None
+        if since is not None or fields:
             res = []
             for ev in evs:
-                event_ts = _parse_k8s_timestamp(ev["metadata"]["creationTimestamp"])
-                if not after_ts or event_ts >= after_ts:
+                metadata = ev["metadata"]
+                if since is not None and since.get(metadata["uid"]) == metadata["resourceVersion"]:
+                    continue
+                if fields:
                     nev = {}
-                    if fields:
-                        for f in fields:
-                            nev.update(lookup(ev, f))
-                    else:
-                        nev = ev
+                    for f in fields:
+                        nev.update(lookup(ev, f))
                     res.append(nev)
+                else:
+                    res.append(ev)
             evs = res
         return evs
     return None
 
 
-def get_ic_ev(ns, icname, *, after=None, fields=None):
-    return get_ev(ns, f"involvedObject.kind=InnoDBCluster,involvedObject.name={icname}", after=after, fields=fields)
+def get_event_snapshot(ns):
+    return {
+        ev["metadata"]["uid"]: ev["metadata"]["resourceVersion"]
+        for ev in (get_ev(ns, "") or [])
+    }
 
 
-def get_po_ev(ns, name, *, after=None, fields=None):
-    return get_ev(ns, f"involvedObject.kind=Pod,involvedObject.name={name}", after=after, fields=fields)
+def get_ic_ev(ns, icname, *, since=None, fields=None):
+    return get_ev(ns, f"involvedObject.kind=InnoDBCluster,involvedObject.name={icname}", since=since, fields=fields)
+
+
+def get_po_ev(ns, name, *, since=None, fields=None):
+    return get_ev(ns, f"involvedObject.kind=Pod,involvedObject.name={name}", since=since, fields=fields)
 
 #
 

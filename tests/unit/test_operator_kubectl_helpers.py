@@ -483,6 +483,9 @@ def test_setup_cleans_unexpected_operators_and_restores_default(
     operator_t_module,
     capsys,
 ):
+    monkeypatch.setattr(
+        operator_t_module.tutil.kutil, "get_event_snapshot", lambda namespace: {}
+    )
     artifact_calls = []
     removed = []
     restored = []

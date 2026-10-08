@@ -9,7 +9,6 @@ from utils import kutil
 from utils import mutil
 import logging
 from utils.tutil import g_full_log
-from utils.auxutil import isotime
 from utils.optesting import COMMON_OPERATOR_ERRORS
 from .cluster_t import check_all
 import os
@@ -411,7 +410,7 @@ spec:
     instances: {self.routers_count}
   secretName: {self.cluster_secret_name}
 """
-        start_time = isotime()
+        event_snapshot = kutil.get_event_snapshot(self.ns)
         kutil.apply(self.ns, yaml)
 
         self.wait_ic(self.cluster_name, "INVALID", 0)
@@ -419,15 +418,14 @@ spec:
         SECRET_TLS_NOT_FOUND=f'Secret "{self.cluster_name}-tls" NOT found'
         SECRET_CA_NOT_FOUND=f'Secret "{self.cluster_name}-ca" NOT found'
 
-        self.wait_got_cluster_event(self.cluster_name, after=start_time, timeout=120, delay=15,
+        self.wait_got_cluster_event(self.cluster_name, since=event_snapshot, timeout=120, delay=15,
                                     type="Error", reason="InvalidArgument", msg=SECRET_CA_NOT_FOUND)
 
+        update_snapshot = kutil.get_event_snapshot(self.ns)
         kutil.create_ssl_ca_secret(self.ns, f"{self.cluster_name}-ca",
             os.path.join(tutil.g_test_data_dir, "ssl/out/ca.pem"))
 
-        update_time = isotime()
-
-        self.wait_got_cluster_event(self.cluster_name, after=update_time, timeout=120, delay=15,
+        self.wait_got_cluster_event(self.cluster_name, since=update_snapshot, timeout=120, delay=15,
                                     type="Error", reason="InvalidArgument", msg=SECRET_TLS_NOT_FOUND)
 
         kutil.create_ssl_cert_secret(self.ns, f"{self.cluster_name}-tls",

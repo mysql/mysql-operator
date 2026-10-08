@@ -549,6 +549,7 @@ class OperatorTest(unittest.TestCase):
     def setUp(self):
         self.allowed_op_logged_errors = self.default_allowed_op_errors[:]
         self.start_time = isotime()
+        self.event_snapshot = kutil.get_event_snapshot(self.ns)
 
     def tearDown(self):
         self.check_operator_exceptions()
@@ -557,9 +558,9 @@ class OperatorTest(unittest.TestCase):
         self.op_fatal_errors = []
         self.op_logged_errors = []
 
-    def has_got_pod_event(self, pod, after=None, *, type, reason, msg):
-        if after is None:
-            after = self.start_time
+    def has_got_pod_event(self, pod, since=None, *, type, reason, msg):
+        if since is None:
+            since = self.event_snapshot
 
         if isinstance(msg, str):
             msgpat = re.compile(f"^{msg}$")
@@ -567,7 +568,7 @@ class OperatorTest(unittest.TestCase):
             msgpat = re.compile(msg)
 
         events = kutil.get_po_ev(
-            self.ns, pod, after=after, fields=["message", "reason", "type"])
+            self.ns, pod, since=since, fields=["message", "reason", "type"])
 
         events = [(ev['type'], ev['reason'], ev['message']) for ev in events]
 
@@ -578,9 +579,9 @@ class OperatorTest(unittest.TestCase):
             logger.info(f"Events for pod {pod}" + "\n".join([str(x) for x in events]))
             return False
 
-    def has_got_cluster_event(self, cluster, after=None, *, type, reason, msg):
-        if after is None:
-            after = self.start_time
+    def has_got_cluster_event(self, cluster, since=None, *, type, reason, msg):
+        if since is None:
+            since = self.event_snapshot
 
         if isinstance(msg, str):
             msgpat = re.compile(f"^{msg}$")
@@ -588,7 +589,7 @@ class OperatorTest(unittest.TestCase):
             msgpat = re.compile(msg)
 
         events = kutil.get_ic_ev(
-            self.ns, cluster, after=after, fields=["message", "reason", "type"])
+            self.ns, cluster, since=since, fields=["message", "reason", "type"])
 
         events = [(ev['type'], ev['reason'], ev['message']) for ev in events]
 
@@ -599,31 +600,31 @@ class OperatorTest(unittest.TestCase):
             logger.info(f"Events for cluster {cluster}" + "\n".join([str(x) for x in events]))
             return False
 
-    def assertGotClusterEvent(self, cluster, after=None, *, type, reason, msg):
-        if not self.has_got_cluster_event(cluster, after, type=type, reason=reason, msg=msg):
+    def assertGotClusterEvent(self, cluster, since=None, *, type, reason, msg):
+        if not self.has_got_cluster_event(cluster, since, type=type, reason=reason, msg=msg):
             self.fail(
                 f"Event ({type}, {reason}, {msg}) not found for {cluster}")
 
-    def wait_got_cluster_event(self, cluster, after=None, timeout=90, delay=2, *, type, reason, msg):
+    def wait_got_cluster_event(self, cluster, since=None, timeout=90, delay=2, *, type, reason, msg):
         def timeout_diagnostics():
             kutil.store_ic_diagnostics(self.ns, cluster)
 
         def check_has_got_cluster_event():
-            return self.has_got_cluster_event(cluster, after, type=type, reason=reason, msg=msg)
+            return self.has_got_cluster_event(cluster, since, type=type, reason=reason, msg=msg)
 
         self.wait(check_has_got_cluster_event, timeout=timeout, delay=delay, timeout_diagnostics=timeout_diagnostics)
 
-    def assertGotPodEvent(self, pod, after=None, *, type, reason, msg):
-        if not self.has_got_pod_event(pod, after, type=type, reason=reason, msg=msg):
+    def assertGotPodEvent(self, pod, since=None, *, type, reason, msg):
+        if not self.has_got_pod_event(pod, since, type=type, reason=reason, msg=msg):
             self.fail(
                 f"Event ({type}, {reason}, {msg}) not found for pod {pod}")
 
-    def wait_got_pod_event(self, pod, after=None, timeout=90, delay=2, *, type, reason, msg):
+    def wait_got_pod_event(self, pod, since=None, timeout=90, delay=2, *, type, reason, msg):
         def timeout_diagnostics():
             kutil.store_ic_diagnostics(self.ns, pod)
 
         def check_has_got_pod_event():
-            return self.has_got_pod_event(pod, after, type=type, reason=reason, msg=msg)
+            return self.has_got_pod_event(pod, since, type=type, reason=reason, msg=msg)
 
         self.wait(check_has_got_pod_event, timeout=timeout, delay=delay, timeout_diagnostics=timeout_diagnostics)
 

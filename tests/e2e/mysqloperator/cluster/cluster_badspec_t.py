@@ -4,7 +4,6 @@
 #
 
 import unittest
-from utils.auxutil import isotime
 from setup import defaults
 from utils import tutil
 from utils import kutil
@@ -267,7 +266,7 @@ spec:
   podSpec:
     terminationGracePeriodSeconds: 5
 """
-                start_time = isotime()
+                event_snapshot = kutil.get_event_snapshot(self.ns)
 
                 kutil.apply(self.ns, yaml)
 
@@ -278,7 +277,7 @@ spec:
 
                 for instance in range(0, self.cluster_size):
                   self.wait_got_pod_event(
-                      f"{self.cluster_name}-{instance}", after=start_time, type="Warning",
+                      f"{self.cluster_name}-{instance}", since=event_snapshot, type="Warning",
                       reason="FailedMount",
                       msg='MountVolume.SetUp failed for volume "rootcreds" : secret "badsecret" not found')
 

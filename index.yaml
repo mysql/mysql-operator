@@ -2,27 +2,27 @@ apiVersion: v1
 entries:
   mysql-innodbcluster:
   - apiVersion: v2
-    appVersion: 26.7.0
-    created: "2026-07-31T07:41:52.29045069+02:00"
+    appVersion: 26.10.0
+    created: "2026-10-22T18:19:59.698344136+02:00"
     description: MySQL InnoDB Cluster Helm Chart for deploying MySQL InnoDB Cluster
       in Kubernetes
-    digest: 686f2fec99ee8ae01e1a3443de44ff46db03447364b907e5ccd40e19a0c8cb57
+    digest: 78a44ccf84160932814cad17c45735ddbd1e674a12180f626e5ec18961e6f4c4
     icon: https://www.mysql.com/common/logos/logo-mysql-170x115.png
     name: mysql-innodbcluster
     type: application
     urls:
-    - mysql-innodbcluster-2.3.0.tgz
-    version: 2.3.0
+    - mysql-innodbcluster-2.3.1.tgz
+    version: 2.3.1
   mysql-operator:
   - apiVersion: v2
-    appVersion: 26.7.0-2.3.0
-    created: "2026-07-31T07:41:52.291351615+02:00"
+    appVersion: 26.10.0-2.3.1
+    created: "2026-10-22T18:19:59.699273383+02:00"
     description: MySQL Operator Helm Chart for deploying MySQL InnoDB Cluster in Kubernetes
-    digest: 709511cd712320aa9d55138dd7b27f4851694da179329f2078fb9edcac8bab9f
+    digest: 644906374a03c911332da5b48f23d8195cd05ec776a9e56a304e3b030f072a56
     icon: https://www.mysql.com/common/logos/logo-mysql-170x115.png
     name: mysql-operator
     type: application
     urls:
-    - mysql-operator-2.3.0.tgz
-    version: 2.3.0
-generated: "2026-07-31T07:41:52.289655627+02:00"
+    - mysql-operator-2.3.1.tgz
+    version: 2.3.1
+generated: "2026-10-22T18:19:59.697263079+02:00"

@@ -9,7 +9,7 @@ import os
 VERSION_TAG = "26.10.0"
 
 MIN_SUPPORTED_VERSION = "8.0.28"
-MAX_SUPPORTED_VERSION = "26.10.0"
+MAX_SUPPORTED_VERSION = "26.10.0.1"
 
 # Some tests won't work if jumping from MIN_SUPPORTED_VERSION to MAX_SUPPORTED_VERSION
 # The result will be
@@ -32,7 +32,7 @@ OPERATOR_EE_IMAGE_NAME = os.getenv(
     "OPERATOR_TEST_EE_IMAGE_NAME", default="enterprise-operator")
 
 OPERATOR_VERSION_TAG = os.getenv(
-    "OPERATOR_TEST_VERSION_TAG", default="26.10.0-2.3.1")
+    "OPERATOR_TEST_VERSION_TAG", default="26.10.0-2.3.2")
 
 OPERATOR_CURRENT_LTS_VERSION_TAG = os.getenv(
     "OPERATOR_CURRENT_LTS_VERSION_TAG", default="8.4.7-2.1.9")

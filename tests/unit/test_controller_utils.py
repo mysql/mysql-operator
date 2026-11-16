@@ -264,3 +264,23 @@ def test_disabled_version_reports_configured_reason(utils_module):
 
 def test_disabled_version_can_be_checked_without_disabled_policy(utils_module):
     assert utils_module.version_in_range("8.0.29", check_disabled=False) == [True, None]
+
+
+@pytest.mark.parametrize("older,newer", [
+    ("26.10.0", "26.10.0.1"),
+    ("26.10.0.1", "26.10.0.2"),
+    ("26.10.0.1", "26.10.1"),
+    ("26.10.0.20261102", "26.10.1"),
+    ("26.10.99.20261102", "26.11.0"),
+    ("26.99.99.20261102", "27.0.0"),
+])
+def test_version_comparison_orders_hotfix_after_patch(utils_module, older, newer):
+    assert utils_module.version_to_int(older) < utils_module.version_to_int(newer)
+
+
+def test_version_comparison_treats_missing_hotfix_as_zero(utils_module):
+    assert utils_module.version_to_int("26.10.0") == utils_module.version_to_int("26.10.0.0")
+
+
+def test_version_range_accepts_current_server_hotfix(utils_module):
+    assert utils_module.version_in_range("26.10.0.1") == [True, None]

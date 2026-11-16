@@ -196,11 +196,10 @@ def version_to_int(version: str) -> int:
 
     parts = [int(p) for p in parts]
 
-    # allow the last digit to be as long as a date value
-    if len(parts) > 3:
-        return parts[0] * 1000000000000 + parts[1] * 10000000000 + parts[2] + 100000000 + parts[3]
-    else:
-        return parts[0] * 1000000000000 + parts[1] * 10000000000 + parts[2] + 100000000
+    # Reserve eight digits for a hotfix number, which can be a date.
+    hotfix = parts[3] if len(parts) == 4 else 0
+    return (parts[0] * 1000000000000 + parts[1] * 10000000000
+            + parts[2] * 100000000 + hotfix)
 
 def version_in_range(version: str, minimum = None, maximum = None, check_disabled = True) -> list[bool, str]:
     if not minimum:

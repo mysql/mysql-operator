@@ -140,12 +140,12 @@ class Config:
 
     @property
     def operator_shell_version_num(self):
-        a,b,c = self.operator_version_tag.split("-")[0].split(".")
+        a,b,c = self.operator_version_tag.split("-")[0].split(".")[:3]
         return int(a)*10000 + int(b)*100 + int(c)
 
     @property
     def server_version_num(self):
-        a,b,c = self.server_version_tag.split("-")[0].split(".")
+        a,b,c = self.server_version_tag.split("-")[0].split(".")[:3]
         return int(a)*10000 + int(b)*100 + int(c)
 
     def set_custom_secret(self, custom_secret):

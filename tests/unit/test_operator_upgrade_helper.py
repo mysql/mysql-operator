@@ -56,7 +56,7 @@ def operator_upgrade_module(monkeypatch):
         operator_old_version_tag="8.0.31-2.0.7",
         operator_current_lts_version_tag="8.4.5-2.1.7",
         current_lts_version="8.4.5",
-        operator_version_tag="26.10.0-2.3.1",
+        operator_version_tag="26.10.0-2.3.2",
         version_tag="26.10.0",
         operator_upgrade_run_all_tests=False,
     )
@@ -248,7 +248,7 @@ def test_operator_deploy_manifest_path_uses_configured_deploy_path(
 
     assert operator_upgrade_module.get_operator_deploy_manifest_path() == manifest_path
     assert (
-        operator_upgrade_module.get_operator_deploy_manifest_path("26.10.0-2.3.1")
+        operator_upgrade_module.get_operator_deploy_manifest_path("26.10.0-2.3.2")
         == manifest_path
     )
 
@@ -453,3 +453,21 @@ def test_change_operator_version_repairs_clusterroles_even_when_image_is_current
     assert patch_dp_calls == []
     assert wait_pod_gone_calls == []
     assert wait_pod_calls == []
+
+
+@pytest.mark.parametrize("version,expected", [
+    ("8.0.29", 80029),
+    ("8.0.29.1", 80029),
+    ("26.10.0", 261000),
+    ("26.10.0.1", 261000),
+    ("26.10.0.20261102", 261000),
+])
+@pytest.mark.parametrize("attribute", ["operator_shell_version_num", "server_version_num"])
+def test_config_feature_versions_accept_hotfix_tags(monkeypatch, version, expected, attribute):
+    monkeypatch.syspath_prepend(str(TESTS_ROOT))
+    monkeypatch.delitem(sys.modules, "setup.config", raising=False)
+    config = importlib.import_module("setup.config").Config()
+    config.operator_version_tag = f"{version}-2.3.2"
+    config.server_version_tag = version
+
+    assert getattr(config, attribute) == expected

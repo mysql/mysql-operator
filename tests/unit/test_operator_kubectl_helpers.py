@@ -1731,3 +1731,68 @@ def test_get_patched_artifacts_canonicalizes_topology_env_namespace_sets(
 
     assert envs["OPERATOR_NAMESPACES"] == "ns-b,ns-a"
     assert envs["OPERATOR_STANDALONE"] == "false"
+
+
+def test_server_upgrade_uses_lts_with_existing_router(operator_t_module, monkeypatch):
+    test_case = operator_t_module.OperatorSingleAndMultipleBaseTest()
+    patches = []
+    monkeypatch.setattr(
+        operator_t_module.g_ts_cfg, "get_current_lts_version", lambda: "9.7.2",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        operator_t_module.tutil, "get_sts_rollover_update_waiter",
+        lambda *args, **kwargs: lambda: None, raising=False,
+    )
+    monkeypatch.setattr(
+        operator_t_module.kutil, "patch_ic",
+        lambda ns, name, patch, **kwargs: patches.append((ns, name, patch)),
+        raising=False,
+    )
+    monkeypatch.setattr(test_case, "_wait_for_helm_cluster_ready", lambda **kwargs: None)
+
+    intermediate = test_case._upgrade_mysql_through_lts(
+        namespace="test", cluster_names=["mycluster"], server_instances=3,
+        router_instances=1, previous_release="9.6.0-2.2.7",
+        target_release="26.10.0-2.3.2",
+    )
+
+    assert intermediate == "9.7.2"
+    assert patches == [(
+        "test", "mycluster",
+        {"spec": {"version": "9.7.2", "router": {"version": "9.6.0"}}},
+    )]
+
+
+def test_helm_server_upgrade_uses_lts_chart_values(operator_t_module, monkeypatch):
+    test_case = operator_t_module.OperatorSingleAndMultipleBaseTest()
+    upgrades = []
+    monkeypatch.setattr(
+        operator_t_module.g_ts_cfg, "get_current_lts_version", lambda: "9.7.2",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        operator_t_module.tutil, "get_sts_rollover_update_waiter",
+        lambda *args, **kwargs: lambda: None, raising=False,
+    )
+    monkeypatch.setattr(test_case, "_wait_for_helm_cluster_ready", lambda **kwargs: None)
+    monkeypatch.setattr(
+        test_case, "_build_helm_cluster_tracker",
+        lambda *args, **kwargs: types.SimpleNamespace(options=kwargs["cluster_values"]),
+    )
+    monkeypatch.setattr(
+        operator_t_module, "upgrade_cluster_with_helm",
+        lambda ns, resolved_options: upgrades.append((ns, resolved_options)),
+    )
+
+    intermediate = test_case._upgrade_mysql_through_lts(
+        namespace="test", cluster_names=["mycluster"], server_instances=3,
+        router_instances=1, previous_release="9.6.0-2.2.7",
+        target_release="26.10.0-2.3.2", helm_values={"tls": {"useSelfSigned": True}},
+    )
+
+    assert intermediate == "9.7.2"
+    assert upgrades == [("test", {
+        "tls": {"useSelfSigned": True},
+        "serverVersion": "9.7.2", "router": {"version": "9.6.0"},
+    })]

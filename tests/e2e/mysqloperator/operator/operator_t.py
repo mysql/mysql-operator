@@ -2146,6 +2146,44 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
             f"{displayed_details}"
         )
 
+    def _upgrade_mysql_through_lts(
+        self, *, namespace, cluster_names, server_instances, router_instances,
+        previous_release, target_release, helm_values=None,
+    ):
+        previous_version = self._mysql_version_from_release(previous_release)
+        target_version = self._mysql_version_from_release(target_release)
+        lts_version = g_ts_cfg.get_current_lts_version()
+        if not (self._parse_mysql_version(previous_version)
+                < self._parse_mysql_version(lts_version)
+                < self._parse_mysql_version(target_version)):
+            return None
+
+        for cluster_name in cluster_names:
+            waiter = tutil.get_sts_rollover_update_waiter(
+                self, cluster_name, timeout=900, delay=10,
+            )
+            spec = {"version": lts_version}
+            if router_instances:
+                spec["router"] = {"version": previous_version}
+            if helm_values is None:
+                kutil.patch_ic(namespace, cluster_name, {"spec": spec}, type="merge")
+            else:
+                bridge = self._build_helm_cluster_tracker(
+                    namespace, cluster_name, app_version=target_release,
+                    server_instances=server_instances, router_instances=router_instances,
+                    cluster_values=self._merge_helm_values(helm_values, {
+                        "serverVersion": lts_version,
+                        "router": {"version": previous_version},
+                    }),
+                )
+                upgrade_cluster_with_helm(namespace, resolved_options=bridge.options)
+            waiter()
+            self._wait_for_helm_cluster_ready(
+                namespace=namespace, cluster_name=cluster_name,
+                server_instances=server_instances, router_instances=router_instances,
+            )
+        return lts_version
+
     @classmethod
     def get_initial_artifacts(cls):
         cls.artifacts = get_operator_artifacts(operator_ns=cls.operator_ns,
@@ -3848,7 +3886,8 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
 
     @staticmethod
     def _parse_mysql_version(version_text: str) -> tuple[int, ...]:
-        return tuple(int(part) for part in str(version_text).split("."))
+        parts = tuple(int(part) for part in str(version_text).split("."))
+        return parts + (0,) * (4 - len(parts))
 
     @classmethod
     def _mysql_version_to_upgrade_digits(cls, version_text: str) -> str:
@@ -4480,6 +4519,7 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
         previous_release = self._get_previous_operator_chart_release_or_skip()
         previous_mysql_version = previous_release.split("-", 1)[0]
         current_mysql_version = g_ts_cfg.operator_version_tag.split("-", 1)[0]
+        mysql_version_changed = previous_mysql_version != current_mysql_version
 
         resident_operator_deployment = kutil.get_deploy(
             self.operator_ns,
@@ -4713,14 +4753,16 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                     expected_operator_release=active_cluster_operator_release,
                 )
 
-                server_rollover_waiter = tutil.get_sts_rollover_update_waiter(
-                    self,
-                    cluster_name,
-                    timeout=900,
-                    delay=50,
-                )
+                server_rollover_waiter = None
+                if mysql_version_changed:
+                    server_rollover_waiter = tutil.get_sts_rollover_update_waiter(
+                        self,
+                        cluster_name,
+                        timeout=900,
+                        delay=50,
+                    )
                 router_rollover_waiter = None
-                if router_instances:
+                if mysql_version_changed and router_instances:
                     router_rollover_waiter = (
                         tutil.get_router_deploy_rollover_update_waiter(
                             self,
@@ -4746,7 +4788,8 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                     self.ns,
                     resolved_options=active_cluster_install.options,
                 )
-                server_rollover_waiter()
+                if server_rollover_waiter is not None:
+                    server_rollover_waiter()
                 if router_rollover_waiter is not None:
                     router_rollover_waiter()
                 self._wait_for_helm_cluster_ready(
@@ -4761,6 +4804,11 @@ class OperatorSingleAndMultipleBaseTest(tutil.OperatorTest):
                     server_instances=server_instances,
                     router_instances=router_instances,
                     expected_release=g_ts_cfg.operator_version_tag,
+                    expected_operator_release=(
+                        g_ts_cfg.operator_version_tag
+                        if mysql_version_changed
+                        else active_cluster_operator_release
+                    ),
                 )
                 self._assert_helm_cluster_cr_version(
                     namespace=self.ns,
@@ -7749,6 +7797,13 @@ spec:
                     ),
                 )
 
+                intermediate_version = self._upgrade_mysql_through_lts(
+                    namespace=self.ns, cluster_names=[cluster_name],
+                    server_instances=self.cluster_size,
+                    router_instances=self.routers_count,
+                    previous_release=current_cluster_release,
+                    target_release=next_release,
+                )
                 server_rollover_waiter = tutil.get_sts_rollover_update_waiter(
                     self,
                     cluster_name,
@@ -7773,7 +7828,9 @@ spec:
                         "spec": {
                             "version": self._mysql_version_from_release(
                                 next_release
-                            )
+                            ),
+                            **({"router": {"version": None}}
+                               if intermediate_version else {})
                         }
                     },
                     type="merge",
@@ -8952,11 +9009,18 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
                     current_release=current_cluster_release,
                     next_release=next_release,
                 )
+                intermediate_version = self._upgrade_mysql_through_lts(
+                    namespace=self.ns, cluster_names=cluster_names,
+                    server_instances=server_instances, router_instances=router_instances,
+                    previous_release=current_cluster_release,
+                    target_release=next_release,
+                    helm_values=cluster_values,
+                )
                 self._activate_mysql_upgrade_abort_checks(
                     namespace=self.ns,
                     cluster_names=cluster_names,
                     server_instances=server_instances,
-                    previous_release=current_cluster_release,
+                    previous_release=intermediate_version or current_cluster_release,
                     target_release=next_release,
                 )
                 try:
@@ -9012,7 +9076,7 @@ class _HelmLegacySwitchoverRbacUpgradeBase(OperatorSingleAndMultipleBaseTest):
                         namespace=self.ns,
                         cluster_name=cluster_name,
                         server_instances=server_instances,
-                        previous_release=applied_cluster_releases[-2],
+                        previous_release=intermediate_version or applied_cluster_releases[-2],
                         target_release=current_cluster_release,
                     )
                 diagnostic_context = (
@@ -10133,7 +10197,7 @@ class HelmOperatorSelectorUpgradeCompatibilityTest(
         requested_legacy_operator_name = f"sel-old-{self.random_suffix}"
         legacy_release_name = self.operator_deploy_name
         legacy_deployment_name = "mysql-operator"
-        previous_release = self._get_previous_operator_chart_release_or_skip()
+        previous_release = RAW_MANIFEST_BRIDGE_RELEASE
 
         resident_operator_deployment = kutil.get_deploy(
             self.operator_ns,

@@ -63,3 +63,9 @@ For additional downloads and the source code, visit:
 Contributing to MySQL Operator for Kubernetes, see:
 
   * See [CONTRIBUTING](CONTRIBUTING.md)
+
+Server versions (`serverVersion`) and optional Router versions (`router.version`)
+accept three or four numeric components, for example `26.10.0.1`. If
+`router.version` is omitted, Router follows the Server version. Operator image
+tags may use a four-part MySQL prefix, for example `26.10.0.1-2.3.2`; the
+operator and chart package versions remain three-part.

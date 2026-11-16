@@ -284,3 +284,12 @@ def test_version_comparison_treats_missing_hotfix_as_zero(utils_module):
 
 def test_version_range_accepts_current_server_hotfix(utils_module):
     assert utils_module.version_in_range("26.10.0.1") == [True, None]
+
+
+@pytest.mark.parametrize("version", ["26.10.0.1", "9.7.4.1", "8.4.13.1"])
+def test_version_range_accepts_hotfix_releases(utils_module, version):
+    assert utils_module.version_in_range(version) == [True, None]
+
+
+def test_version_comparison_orders_multidigit_hotfix(utils_module):
+    assert utils_module.version_to_int("26.10.0.9") < utils_module.version_to_int("26.10.0.10")

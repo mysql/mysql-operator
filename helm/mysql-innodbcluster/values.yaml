@@ -25,6 +25,7 @@ routerInstances: 1 # or use router.instances
 baseServerId: 1000
 
 #router:
+#  version: 26.10.0.1 # Optional; defaults to the Server version.
 #  instances: 1
 #  options:
 #  - option1: value1

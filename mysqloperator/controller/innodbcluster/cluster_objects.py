@@ -1178,7 +1178,7 @@ def update_service(svc: api_client.V1Deployment, spec: InnoDBClusterSpec, logger
 def on_upgrade(cluster: InnoDBCluster, old, new, sts: api_client.V1StatefulSet, patcher: 'InnoDBClusterObjectModifier', logger: Logger):
     logger.info("cluster_objects::on_upgrade")
     update_objects_for_keyring(cluster, patcher, logger)
-    if old < "8.3.0":
+    if utils.version_to_int(old) < utils.version_to_int("8.3.0"):
         cluster.parsed_spec.keyring.upgrade_to_component(cluster, sts, patcher, logger)
 
 def update_mysql_image(sts: api_client.V1StatefulSet, cluster: InnoDBCluster,

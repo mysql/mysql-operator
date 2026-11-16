@@ -20,7 +20,8 @@ EOF
 ARCH='amd64'
 IMG_TAG=$(./tag.sh)
 MYSQL_VERSION=${IMG_TAG%%-*}
-MAJOR_VERSION=${MYSQL_VERSION%.*}
+IFS=. read -r MYSQL_MAJOR MYSQL_MINOR MYSQL_REST <<< "$MYSQL_VERSION"
+MAJOR_VERSION="${MYSQL_MAJOR}.${MYSQL_MINOR}"
 DOCKERFILE="Dockerfile"
 
 while getopts "a:f:t:h" opt; do

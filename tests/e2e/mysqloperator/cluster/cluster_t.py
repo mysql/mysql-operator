@@ -2335,6 +2335,7 @@ spec:
   instances: {self.cluster_size}
   router:
     instances: {self.routers_count}
+    version: "{g_ts_cfg.router_version_tag}"
   secretName: {self.cluster_secret_name}
   version: "{g_ts_cfg.get_current_lts_version()}"
   baseServerId: 3210
@@ -2389,13 +2390,13 @@ spec:
         self.assertEqual(cont["image"], g_ts_cfg.get_operator_image())
 
         # check version of router images
-        pods = kutil.ls_po(self.ns, pattern=self.cluster_name_valid+"-.*-router")
+        pods = kutil.ls_po(self.ns, pattern=self.cluster_name_valid+"-router-.*")
         for p in pods:
             pod = kutil.get_po(self.ns, p["NAME"])
             cont = check_apiobjects.check_pod_container(
-                self, pod, None, None, True)
+                self, pod, "router", None, True)
             self.assertEqual(
-                cont["image"], g_ts_cfg.get_old_router_image(), p["NAME"])
+                cont["image"], g_ts_cfg.get_router_image(g_ts_cfg.router_version_tag), p["NAME"])
 
     # TODO config change in spec (and decide what to do)
 
@@ -2404,7 +2405,7 @@ spec:
 
         self.wait_pods_gone(f"{self.cluster_name_valid}-*")
         self.wait_routers_gone(f"{self.cluster_name_valid}-router-*")
-        self.wait_ic_gone(self.cluster_name)
+        self.wait_ic_gone(self.cluster_name_valid)
         kutil.delete_secret(self.ns, self.cluster_secret_name)
 
 
@@ -2448,6 +2449,7 @@ spec:
   instances: {self.cluster_size}
   router:
     instances: {self.routers_count}
+    version: "{g_ts_cfg.router_version_tag}"
   version: "{g_ts_cfg.get_current_lts_version()}"
   secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
@@ -2493,7 +2495,7 @@ spec:
             cont = check_apiobjects.check_pod_container(self, pod, "router", None, True)
             self.assertEqual(
                 cont["image"],
-                g_ts_cfg.get_current_lts_version_router_image(), p["NAME"])
+                g_ts_cfg.get_router_image(g_ts_cfg.router_version_tag), p["NAME"])
 
     def test_9_destroy(self):
         kutil.delete_ic(self.ns, self.cluster_name)

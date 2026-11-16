@@ -4,9 +4,14 @@
 #
 
 import logging
+from types import SimpleNamespace
+from unittest.mock import Mock
+
+import pytest
 
 from mysqloperator.controller.innodbcluster.cluster_api import InnoDBClusterSpec
-from mysqloperator.controller.innodbcluster import cluster_objects, router_objects
+from mysqloperator.controller.innodbcluster import cluster_objects, router_objects, operator_cluster
+from mysqloperator.controller.backup import backup_objects
 
 
 def _make_spec(extra=None):
@@ -353,3 +358,91 @@ def test_router_deployment_renders_pod_metadata_and_pod_spec(monkeypatch):
             "memory": "128Mi",
         },
     }
+
+@pytest.mark.parametrize("edition", ["community", "enterprise"])
+def test_hotfix_images_preserve_all_version_components(edition, monkeypatch):
+    monkeypatch.setenv("MYSQL_OPERATOR_K8S_CLUSTER_DOMAIN", "cluster.local")
+    spec = _make_spec({"edition": edition, "version": "9.7.4.1",
+                       "router": {"version": "26.10.0.1"},
+                       "imageRepository": "local/mysql"})
+    spec.sidecarVersion = "26.10.0.1-2.3.2"
+    sts = cluster_objects.prepare_cluster_stateful_set(
+        _FakeCluster(spec), spec, logging.getLogger(__name__))
+    pod = sts["spec"]["template"]["spec"]
+    for container in pod["containers"] + pod["initContainers"]:
+        if container["name"] in ("mysql", "initmysql"):
+            assert container["image"] == f"local/mysql/{edition}-server:9.7.4.1"
+        elif container["name"] in ("sidecar", "initconf", "fixdatadir"):
+            assert container["image"] == f"local/mysql/{edition}-operator:26.10.0.1-2.3.2"
+    assert spec.router_image == f"local/mysql/{edition}-router:26.10.0.1"
+    monkeypatch.setattr(backup_objects, "k8s_cluster_domain", lambda logger: "cluster.local")
+    backup_spec = SimpleNamespace(
+        clusterName="cluster-a", namespace="test-ns", name="backup-a",
+        serviceAccountName="mysql-sidecar", operator_image=spec.operator_image,
+        operator_image_pull_policy="IfNotPresent",
+        backupProfile=SimpleNamespace(podAnnotations={}, podLabels={}),
+        add_to_pod_spec=lambda *args: None)
+    job = backup_objects.prepare_backup_job("hotfix-backup", backup_spec)
+    assert job["spec"]["template"]["spec"]["containers"][0]["image"] == (
+        f"local/mysql/{edition}-operator:26.10.0.1-2.3.2")
+
+@pytest.mark.parametrize("old,migrates", [("8.2.0", True), ("8.3.0", False),
+                                           ("8.4.13.1", False), ("26.10.0.1", False)])
+def test_keyring_upgrade_uses_numeric_release_threshold(monkeypatch, old, migrates):
+    cluster = Mock()
+    monkeypatch.setattr(cluster_objects, "update_objects_for_keyring", lambda *args: None)
+    cluster_objects.on_upgrade(cluster, old, "26.10.0.1", Mock(), Mock(), logging.getLogger(__name__))
+    assert cluster.parsed_spec.keyring.upgrade_to_component.call_count == int(migrates)
+
+
+@pytest.mark.parametrize("old,new,upgrades", [("26.10.0.9", "26.10.0.10", True),
+                                               ("26.10.0.10", "26.10.0.9", False),
+                                               ("26.10.0", "26.10.0.0", False)])
+def test_server_version_change_updates_router_account_for_numeric_upgrade(monkeypatch, old, new, upgrades):
+    cluster = Mock()
+    controller = Mock()
+    monkeypatch.setattr(operator_cluster, "ClusterController", lambda cluster: controller)
+    monkeypatch.setattr(operator_cluster.cluster_objects, "on_upgrade", lambda *args: None)
+    monkeypatch.setattr(operator_cluster.cluster_objects, "update_mysql_image", lambda *args: None)
+    cluster.get_router_deployment.return_value = None
+    operator_cluster.on_innodbcluster_field_version(old, new, {}, cluster, Mock(), logging.getLogger(__name__))
+    assert controller.on_router_upgrade.call_count == int(upgrades)
+    controller.on_server_version_change.assert_called_once_with(new)
+
+
+@pytest.mark.parametrize("server,old,new,expected,refresh_account", [
+    ("26.10.0", None, "26.10.0", "26.10.0", False),
+    ("26.10.0", None, "26.10.0.1", "26.10.0.1", True),
+    ("26.10.0", "26.10.0.1", None, "26.10.0", False),
+    ("26.10.0.1", "26.10.0", None, "26.10.0.1", True),
+    ("26.10.0", "26.10.0.9", "26.10.0.10", "26.10.0.10", True),
+    ("26.10.0", "26.10.0.10", "26.10.0.9", "26.10.0.9", False),
+    ("26.10.0", "26.10.0", "26.10.0.0", "26.10.0.0", False),
+    ("26.10.0", None, "26.10.0.1-custom", "26.10.0.1-custom", True),
+    ("26.10.0", "26.10.0.9-custom", "26.10.0.10-custom", "26.10.0.10-custom", True),
+])
+def test_router_version_change_resolves_defaults_and_patches_image(
+    monkeypatch, server, old, new, expected, refresh_account,
+):
+    spec = _make_spec({
+        "version": server,
+        "router": {"version": new} if new is not None else {},
+        "imageRepository": "local/mysql",
+    })
+    cluster = SimpleNamespace(
+        parsed_spec=spec,
+        validate_spec=lambda logger: None,
+        get_router_deployment=lambda: SimpleNamespace(),
+    )
+    controller = Mock()
+    monkeypatch.setattr(operator_cluster, "ClusterController", lambda cluster: controller)
+    patches = []
+    patcher = SimpleNamespace(patch_deploy=patches.append)
+
+    operator_cluster.on_innodbcluster_field_router_version(
+        old, new, {}, cluster, patcher, logging.getLogger(__name__))
+
+    assert patches == [{"spec": {"template": {"spec": {"containers": [
+        {"name": "router", "image": f"local/mysql/community-router:{expected}"},
+    ]}}}}]
+    assert controller.on_router_upgrade.call_count == int(refresh_account)

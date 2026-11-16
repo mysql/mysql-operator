@@ -1155,7 +1155,7 @@ def on_innodbcluster_field_version(old, new, body: Body,
                 new = config.DEFAULT_VERSION_TAG
 
             # Don't use elif
-            if old is not None and new > old:
+            if old is not None and utils.version_to_int(new) > utils.version_to_int(old):
                 cluster_ctl.on_router_upgrade(logger)
 
             cluster_ctl.on_server_version_change(new)
@@ -1242,9 +1242,12 @@ def on_innodbcluster_field_router_instances(old: Any, new: Any, body: Body, clus
 
 def on_innodbcluster_field_router_version(old: Any, new: Any, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
     cluster.validate_spec(logger)
+    default_version = cluster.parsed_spec.version or config.DEFAULT_ROUTER_VERSION_TAG
+    old_version = (old or default_version).split("-", 1)[0]
+    new_version = (new or default_version).split("-", 1)[0]
     try:
         cluster_ctl = ClusterController(cluster)
-        if new > old:
+        if utils.version_to_int(new_version) > utils.version_to_int(old_version):
             cluster_ctl.on_router_upgrade(logger)
     except:
         # revert version in the spec

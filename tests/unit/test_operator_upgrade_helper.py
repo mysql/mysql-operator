@@ -98,6 +98,25 @@ def test_default_operator_manifest_path_uses_configured_deploy_path(
     )
 
 
+def test_load_historical_clusterrole_rules(operator_upgrade_module, tmp_path):
+    manifest_path = tmp_path / "deploy-operator.yaml"
+    expected_rules = {
+        "mysql-operator": [{"resources": ["deployments"], "verbs": ["get"]}],
+        "mysql-sidecar": [{"resources": ["pods"], "verbs": ["get"]}],
+    }
+    manifest_path.write_text(
+        operator_upgrade_module.yaml.safe_dump_all([
+            {"kind": "ClusterRole", "metadata": {"name": name}, "rules": rules}
+            for name, rules in expected_rules.items()
+        ]),
+        encoding="utf8",
+    )
+
+    assert operator_upgrade_module._load_default_operator_clusterrole_rules(
+        manifest_path
+    ) == expected_rules
+
+
 def test_sync_default_operator_clusterroles_applies_manifest_rules(
     operator_upgrade_module,
     monkeypatch,
@@ -471,3 +490,9 @@ def test_config_feature_versions_accept_hotfix_tags(monkeypatch, version, expect
     config.server_version_tag = version
 
     assert getattr(config, attribute) == expected
+
+
+def test_mysql_upgrade_versions_normalize_missing_hotfix(operator_upgrade_module):
+    parse = operator_upgrade_module.parse_mysql_version
+    assert parse("26.10.0") == parse("26.10.0.0")
+    assert parse("26.10.0.9") < parse("26.10.0.10")

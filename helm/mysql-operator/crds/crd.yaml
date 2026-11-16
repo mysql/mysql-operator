@@ -44,7 +44,7 @@ spec:
                       description: "Name of a Secret containing MySQL Enterprise Backup client certificate and private key"
                 version:
                   type: string
-                  pattern: '^\d+\.\d+\.\d+(-.+)?'
+                  pattern: '^\d+\.\d+\.\d+(\.\d+)?(-.+)?'
                   description: "MySQL Server version"
                 edition:
                   type: string
@@ -415,7 +415,7 @@ spec:
                       description: "Name of a TLS type Secret containing MySQL Router certificate and private key used for SSL"
                     version:
                       type: string
-                      pattern: '^\d+\.\d+\.\d+(-.+)?'
+                      pattern: '^\d+\.\d+\.\d+(\.\d+)?(-.+)?'
                       description: "Override MySQL Router version"
                     podSpec:
                       type: object
@@ -1078,7 +1078,7 @@ spec:
                         type: string
                       version:
                         type: string
-                        pattern: '^\d+\.\d+\.\d+(-.+)?'
+                        pattern: '^\d+\.\d+\.\d+(\.\d+)?(-.+)?'
                         description: "MySQL Server version"
                       baseServerId:
                         type: integer

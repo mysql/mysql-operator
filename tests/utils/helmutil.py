@@ -226,7 +226,7 @@ def _parse_operator_chart_release(
         _parse_numeric_version(
             mysql_version,
             description="operator mysql release",
-        ),
+        ) + ((0,) if len(mysql_version.split(".")) == 3 else ()),
         _parse_numeric_version(
             chart_version,
             description="operator chart release",
@@ -1607,17 +1607,6 @@ def _get_custom_cluster_server_version() -> Optional[str]:
     return None
 
 
-def _validate_custom_cluster_router_version() -> None:
-    custom_router_version_override = g_ts_cfg.get_custom_ic_router_version_override()
-    custom_router_version = g_ts_cfg.get_custom_ic_router_version()
-    if custom_router_version_override or custom_router_version:
-        raise RuntimeError(
-            "mysql-innodbcluster Helm installs cannot emulate test-harness "
-            "router version overrides because the chart has no existing value "
-            "for router.version"
-        )
-
-
 def _build_cluster_values_for_helm(
     options: HelmClusterInstallOptions,
 ) -> dict:
@@ -1644,7 +1633,10 @@ def _build_cluster_values_for_helm(
     if custom_server_version:
         values["serverVersion"] = custom_server_version
 
-    _validate_custom_cluster_router_version()
+    router_version = (g_ts_cfg.get_custom_ic_router_version_override()
+                      or g_ts_cfg.get_custom_ic_router_version())
+    if router_version:
+        values.setdefault("router", {})["version"] = router_version
 
     if values.get("serverVersion") == g_ts_cfg.operator_version_tag:
         values.pop("serverVersion", None)
@@ -1704,6 +1696,31 @@ def _build_install_with_helm_options(
         source_operator_deployment_name=source_operator_deployment_name,
         source_operator_deployment=source_operator_deployment,
     )
+
+
+def _validate_rendered_router_version(
+    options: HelmClusterInstallOptions,
+    chart_path: str,
+    values_path: str,
+    expected: str,
+    install_if_missing: bool,
+) -> None:
+    command = ["helm", "template", options.release_name, chart_path,
+               "--namespace", options.namespace, "--values", values_path,
+               "--set", "disableLookups=true"]
+    if options.version:
+        command.extend(["--version", options.version])
+    if not install_if_missing:
+        command.append("--is-upgrade")
+    rendered = run_command(command)
+    clusters = [doc for doc in yaml.safe_load_all(rendered.stdout)
+                if doc and doc.get("kind") == "InnoDBCluster"
+                and doc.get("metadata", {}).get("name") == options.release_name]
+    if (len(clusters) != 1
+            or clusters[0].get("spec", {}).get("router", {}).get("version") != expected):
+        raise RuntimeError(
+            f"Selected chart {chart_path} cannot honor router.version={expected}. "
+            "Use a chart that renders the requested Router version.")
 
 
 def _install_or_upgrade_with_helm(
@@ -1775,6 +1792,13 @@ def _install_or_upgrade_with_helm(
                 f"{rendered_values}",
                 flush=True,
             )
+
+            if isinstance(options, HelmClusterInstallOptions):
+                router_version = helm_values.get("router", {}).get("version")
+                if router_version:
+                    _validate_rendered_router_version(
+                        options, chart_path, values_file.name, router_version,
+                        install_if_missing)
 
             helm_cmd = _build_helm_apply_command(
                 options,

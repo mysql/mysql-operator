@@ -1888,58 +1888,16 @@ def test_install_cluster_with_helm_merges_supported_test_harness_overrides(
     }
 
 
-def test_install_cluster_with_helm_rejects_custom_router_version_override(
-    monkeypatch,
-    operator_helm_module,
-):
-    monkeypatch.setattr(
-        operator_helm_module.kutil,
-        "create_ns",
-        lambda namespace, labels=None: None,
-    )
-    monkeypatch.setattr(
-        operator_helm_module,
-        "get_helm_chart_path",
-        lambda chart_name, app_version=None: f"/charts/{chart_name}",
-    )
-    monkeypatch.setattr(
-        operator_helm_module,
-        "run_command",
-        lambda argv, check=True, cwd=None: pytest.fail(
-            "helm command should not run when router version overrides are unsupported"
-        ),
-    )
-    monkeypatch.setattr(
-        operator_helm_module.g_ts_cfg,
-        "get_custom_ic_router_version_override",
-        lambda: "8.4.7",
-    )
-    monkeypatch.setattr(
-        operator_helm_module.g_ts_cfg,
-        "get_custom_ic_router_version",
-        lambda: "",
-    )
-
+@pytest.mark.parametrize("override", ["", "26.10.0.1"])
+def test_cluster_helm_values_select_router_version(monkeypatch, operator_helm_module, override):
+    monkeypatch.setattr(operator_helm_module.g_ts_cfg,
+                        "get_custom_ic_router_version_override", lambda: override)
+    monkeypatch.setattr(operator_helm_module.g_ts_cfg,
+                        "get_custom_ic_router_version", lambda: "9.7.4.1")
     options = _make_cluster_install_options(
-        operator_helm_module,
-        cluster_values={
-            "serverInstances": 3,
-            "router": {
-                "instances": 1,
-            },
-            "credentials": {
-                "root": {
-                    "secretName": "root-secret",
-                },
-            },
-        },
-    )
-
-    with pytest.raises(RuntimeError, match="router version overrides"):
-        operator_helm_module.install_cluster_with_helm(
-            "cluster-ns",
-            resolved_options=options,
-        )
+        operator_helm_module, cluster_values={"router": {"instances": 2}})
+    values = operator_helm_module._build_cluster_values_for_helm(options)
+    assert values["router"] == {"instances": 2, "version": override or "9.7.4.1"}
 
 
 def test_install_with_helm_captures_debug_sections_and_manifest_inventory(
@@ -3054,3 +3012,73 @@ def test_wait_for_namespace_empty_waits_for_transient_pods(
         ("operator-ns", "myop", 5),
         ("operator-ns", "myop", 5),
     ]
+
+
+def test_operator_release_versions_normalize_missing_hotfix(operator_helm_module):
+    parse = operator_helm_module._parse_operator_chart_release
+    assert parse("26.10.0-2.3.2") == parse("26.10.0.0-2.3.2")
+    assert parse("26.10.0.9-2.3.2") < parse("26.10.0.10-2.3.2")
+
+
+@pytest.mark.parametrize("honors_override", [True, False])
+def test_router_version_preflight_renders_selected_chart(
+    operator_helm_module, tmp_path, honors_override,
+):
+    chart = tmp_path / "chart"
+    (chart / "templates").mkdir(parents=True)
+    (chart / "Chart.yaml").write_text("apiVersion: v2\nname: selected-chart\nversion: 1.0.0\n")
+    # Historical charts emit Router instances but do not consume router.version.
+    template = """apiVersion: mysql.oracle.com/v2
+kind: InnoDBCluster
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  router:
+    instances: 1
+"""
+    if honors_override:
+        template += '    version: {{ .Values.router.version | quote }}\n'
+    (chart / "templates/cluster.yaml").write_text(template)
+    values = tmp_path / "values.yaml"
+    values.write_text("router:\n  version: 26.10.0.1\n")
+    options = _make_cluster_install_options(operator_helm_module)
+    if honors_override:
+        operator_helm_module._validate_rendered_router_version(
+            options, str(chart), str(values), "26.10.0.1", True)
+    else:
+        with pytest.raises(RuntimeError, match="cannot honor.*router.version"):
+            operator_helm_module._validate_rendered_router_version(
+                options, str(chart), str(values), "26.10.0.1", True)
+
+
+@pytest.mark.parametrize("rendered_version", [None, "26.10.0.1"])
+def test_cluster_install_preflights_router_override_before_apply(
+    monkeypatch, operator_helm_module, rendered_version,
+):
+    module = operator_helm_module
+    monkeypatch.setattr(module.kutil, "create_ns", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "get_helm_chart_path", lambda *args, **kwargs: "/charts/selected")
+    options = _make_cluster_install_options(
+        module, cluster_values={"router": {"version": "26.10.0.1"}})
+    recorded = {}
+    apply = _fake_helm_run_command(recorded)
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv[1])
+        if argv[1] == "template":
+            return types.SimpleNamespace(stdout=yaml.safe_dump({
+                "apiVersion": "mysql.oracle.com/v2", "kind": "InnoDBCluster",
+                "metadata": {"name": "mycluster"},
+                "spec": {"router": {"version": rendered_version}},
+            }))
+        return apply(argv, **kwargs)
+
+    monkeypatch.setattr(module, "run_command", run)
+    if rendered_version:
+        module.install_cluster_with_helm("cluster-ns", resolved_options=options)
+        assert calls[:2] == ["template", "upgrade"]
+    else:
+        with pytest.raises(RuntimeError, match="cannot honor.*router.version"):
+            module.install_cluster_with_helm("cluster-ns", resolved_options=options)
+        assert calls == ["template"]

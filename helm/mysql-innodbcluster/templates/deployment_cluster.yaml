@@ -13,7 +13,8 @@
   {{- end }}
 {{- end }}
 {{- $routerInstances := coalesce ((.Values).routerInstances) (((.Values).router).instances) }}
-{{- if semverCompare (printf "<%s" $minimalVersion) $serverVersion }}
+{{- $baseVersion := regexReplaceAll "^([0-9]+\\.[0-9]+\\.[0-9]+)\\.[0-9]+$" $serverVersion "${1}" }}
+{{- if semverCompare (printf "<%s" $minimalVersion) $baseVersion }}
   {{- $err := printf "It is not possible to use MySQL version %s . Please, use %s or above" $serverVersion $minimalVersion }}
   {{- fail $err }}
 {{- end }}
@@ -38,6 +39,9 @@ spec:
   instances: {{ required "serverInstances is required" .Values.serverInstances | toString | atoi }}
   tlsUseSelfSigned: {{ $use_self_signed }}
   router:
+{{- if ((.Values).router).version }}
+    version: {{ .Values.router.version | quote }}
+{{- end }}
     instances: {{ required "router.instances is required" $routerInstances | toString | atoi  }}
 {{- if (((.Values).router).podSpec) }}
     podSpec:  {{ toYaml (((.Values).router).podSpec) | nindent 6 }}

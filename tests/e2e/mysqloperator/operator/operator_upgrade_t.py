@@ -31,7 +31,8 @@ HELM_FIELD_MANAGER = "helm"
 
 
 def parse_mysql_version(version: str) -> tuple[int, ...]:
-    return tuple(int(part) for part in str(version).split("."))
+    parts = tuple(int(part) for part in str(version).split("."))
+    return parts + (0,) * (4 - len(parts))
 
 
 def get_default_operator_deploy_manifest_path() -> pathlib.Path:
@@ -104,7 +105,12 @@ def _load_default_operator_clusterrole_rules(
             if name in DEFAULT_OPERATOR_CLUSTERROLE_NAMES:
                 rules_by_name[name] = doc["rules"]
 
-    missing = set(DEFAULT_OPERATOR_CLUSTERROLE_NAMES) - set(rules_by_name)
+    required_names = (
+        DEFAULT_OPERATOR_CLUSTERROLE_NAMES
+        if manifest_path == get_current_operator_deploy_manifest_path()
+        else ("mysql-operator", "mysql-sidecar")
+    )
+    missing = set(required_names) - set(rules_by_name)
     if missing:
         raise AssertionError(
             f"Missing default operator ClusterRoles in {manifest_path}: {sorted(missing)}"
@@ -317,7 +323,7 @@ spec:
       instances: {self.routers_count}
   secretName: {self.cluster_secret_name}
   tlsUseSelfSigned: true
-  version: "{g_ts_cfg.get_current_lts_version()}"
+  version: "{g_ts_cfg.operator_current_lts_version_tag.split("-", 1)[0]}"
 
   backupProfiles:
     - name: testprofile
@@ -370,18 +376,20 @@ spec:
         assert_cj_image(f"{self.cluster_name}-testscheduleinactive-cb", operator_image)
 
         # 3 - Upgrading the InnoDB Cluster updates sidecar
-        kutil.patch_ic(self.ns, self.cluster_name, {"spec": {
-            "version": g_ts_cfg.version_tag
-        }}, type="merge")
+        for upgrade_version in dict.fromkeys([
+            g_ts_cfg.get_current_lts_version(), g_ts_cfg.version_tag,
+        ]):
+            kutil.patch_ic(self.ns, self.cluster_name, {"spec": {
+                "version": upgrade_version
+            }}, type="merge")
 
-        def check_done(pod):
-            po = kutil.get_po(self.ns, pod)
-            # self.logger.debug(json.loads(po["metadata"].get("annotations", {}).get("mysql.oracle.com/membership-info", "{}")))
-            return json.loads(po["metadata"].get("annotations", {}).get("mysql.oracle.com/membership-info", "{}")).get("version", "")
+            def check_done(pod):
+                po = kutil.get_po(self.ns, pod)
+                # self.logger.debug(json.loads(po["metadata"].get("annotations", {}).get("mysql.oracle.com/membership-info", "{}")))
+                return json.loads(po["metadata"].get("annotations", {}).get("mysql.oracle.com/membership-info", "{}")).get("version", "")
 
-        self.wait(check_done, args=(f"{self.cluster_name}-0", ),
-                  check=lambda s: s.startswith(g_ts_cfg.version_tag), timeout=150, delay=10)
-
+            self.wait(check_done, args=(f"{self.cluster_name}-0", ),
+                      check=lambda s: s.startswith(upgrade_version), timeout=150, delay=10)
         assert_sidecar_image(g_ts_cfg.get_operator_image())
 
     def test_9_destroy(self):

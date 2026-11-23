@@ -49,6 +49,14 @@ $> helm install mycluster mysql-operator/mysql-innodbcluster \
         --set routerInstances=1
 ```
 
+## Router version
+
+The Router image version defaults to the chart `appVersion` (`26.10.0` in this
+release) and is independent of `serverVersion`. To pin a different Router
+image, set `router.version`; for example, `--set router.version=9.7.0`. MySQL
+Router supports active MySQL Server versions equal to or below its own version,
+so the default supports 8.4, 9.7, and 26.x servers.
+
 ## More Information
 
 Refer to the official documentation at:

@@ -5,6 +5,8 @@
 {{- $forbiddenVersions := list "8.0.29" }}
 {{- $imagePullPolicies := list "ifnotpresent" "always" "never" }}
 {{- $serverVersion := .Values.serverVersion | default .Chart.AppVersion }}
+{{- $router_config := default (dict) .Values.router }}
+{{- $routerVersion := $router_config.version | default .Chart.AppVersion }}
 {{- $install_namespace := .Release.Namespace }}
 {{- if and ((.Values).routerInstances) (((.Values).router).instances) }}
   {{- if ne ((.Values).routerInstances) (((.Values).router).instances) }}
@@ -38,6 +40,7 @@ spec:
   instances: {{ required "serverInstances is required" .Values.serverInstances | toString | atoi }}
   tlsUseSelfSigned: {{ $use_self_signed }}
   router:
+    version: {{ $routerVersion | quote }}
     instances: {{ required "router.instances is required" $routerInstances | toString | atoi  }}
 {{- if (((.Values).router).podSpec) }}
     podSpec:  {{ toYaml (((.Values).router).podSpec) | nindent 6 }}

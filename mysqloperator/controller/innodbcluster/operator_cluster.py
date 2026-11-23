@@ -1240,11 +1240,15 @@ def on_innodbcluster_field_router_instances(old: Any, new: Any, body: Body, clus
     patcher.patch_deploy(router_objects.update_size(cluster, new, True, logger))
 
 
+def _router_version_tuple(version: str) -> tuple:
+    return tuple(int(part) for part in version.split("-", 1)[0].split("."))
+
+
 def on_innodbcluster_field_router_version(old: Any, new: Any, body: Body, cluster: InnoDBCluster, patcher: cluster_objects.InnoDBClusterObjectModifier, logger: Logger) -> None:
     cluster.validate_spec(logger)
     try:
         cluster_ctl = ClusterController(cluster)
-        if new > old:
+        if new and (not old or _router_version_tuple(new) > _router_version_tuple(old)):
             cluster_ctl.on_router_upgrade(logger)
     except:
         # revert version in the spec
